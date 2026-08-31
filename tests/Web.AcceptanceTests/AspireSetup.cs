@@ -50,6 +50,8 @@ public class AspireSetup
         await Task.WhenAll(
             App.ResourceNotifications.WaitForResourceHealthyAsync(Services.WebApi, cancellationToken).WaitAsync(cancellationToken),
             App.ResourceNotifications.WaitForResourceHealthyAsync(Services.WebFrontend, cancellationToken).WaitAsync(cancellationToken));
+
+        await AcceptanceTestCredentials.CreateAsync(App, cancellationToken);
     }
 
     [OneTimeTearDown]

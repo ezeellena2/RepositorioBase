@@ -42,7 +42,7 @@
     <!-- Include the newly-built files in the publish output -->
     <ItemGroup>
       <DistFiles Include="$(SpaRoot)dist\browser\**;" Condition="'$(ClientFramework)' == 'Angular'" />
-      <DistFiles Include="$(SpaRoot)dist\**" Condition="'$(ClientFramework)' == 'React'" />
+      <DistFiles Include="$(SpaRoot)build\**" Condition="'$(ClientFramework)' == 'React'" />
       <ResolvedFileToPublish Include="@(DistFiles->'%(FullPath)')" Exclude="@(ResolvedFileToPublish)">
         <RelativePath>wwwroot\%(RecursiveDir)%(FileName)%(Extension)</RelativePath>
         <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>

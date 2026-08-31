@@ -59,6 +59,50 @@ public sealed class StackBaselineTests
     }
 
     [Test]
+    public void Web_publish_contract_uses_each_client_build_output_directory()
+    {
+        var project = XDocument.Load(GetRepositoryPath("src/Web/Web.csproj"));
+        var viteConfiguration = File.ReadAllText(GetRepositoryPath("src/Web/ClientApp/vite.config.ts"));
+        using var angularConfiguration = JsonDocument.Parse(File.ReadAllText(GetRepositoryPath("src/Web/ClientApp-Angular/angular.json")));
+
+        var publishTarget = project.Descendants("Target").Single(target => target.Attribute("Name")?.Value == "PublishRunWebpack");
+        var reactPublishFiles = publishTarget.Descendants("DistFiles")
+            .Single(item => item.Attribute("Condition")?.Value.Contains("React", StringComparison.Ordinal) == true);
+        var angularPublishFiles = publishTarget.Descendants("DistFiles")
+            .Single(item => item.Attribute("Condition")?.Value.Contains("Angular", StringComparison.Ordinal) == true);
+
+        viteConfiguration.ShouldContain("outDir: 'build'");
+        reactPublishFiles.Attribute("Include")?.Value.ShouldBe("$(SpaRoot)build\\**");
+        angularConfiguration.RootElement
+            .GetProperty("projects")
+            .GetProperty("CleanArchitecture.Web")
+            .GetProperty("architect")
+            .GetProperty("build")
+            .GetProperty("options")
+            .GetProperty("outputPath")
+            .GetString()
+            .ShouldBe("dist");
+        angularPublishFiles.Attribute("Include")?.Value.ShouldBe("$(SpaRoot)dist\\browser\\**;");
+    }
+
+    [Test]
+    public void Acceptance_harness_provisions_an_in_memory_account_through_the_public_registration_endpoint()
+    {
+        var setup = File.ReadAllText(GetRepositoryPath("tests/Web.AcceptanceTests/AspireSetup.cs"));
+        var credentials = File.ReadAllText(GetRepositoryPath("tests/Web.AcceptanceTests/AcceptanceTestCredentials.cs"));
+        var loginSteps = File.ReadAllText(GetRepositoryPath("tests/Web.AcceptanceTests/StepDefinitions/LoginStepDefinitions.cs"));
+        var weatherSteps = File.ReadAllText(GetRepositoryPath("tests/Web.AcceptanceTests/StepDefinitions/WeatherStepDefinitions.cs"));
+
+        setup.ShouldContain("AcceptanceTestCredentials.CreateAsync(App, cancellationToken)");
+        credentials.ShouldContain("/api/Users/register");
+        credentials.ShouldNotContain("Environment.GetEnvironmentVariable");
+        credentials.ShouldNotContain("CLEANARCHITECTURE_ACCEPTANCE_TEST_");
+        credentials.ShouldNotContain("administrator@localhost");
+        loginSteps.ShouldContain("AcceptanceTestCredentials.SignInAsync");
+        weatherSteps.ShouldContain("AcceptanceTestCredentials.SignInAsync");
+    }
+
+    [Test]
     public void Template_includes_postgresql_migrations_for_every_generated_variant()
     {
         using var template = JsonDocument.Parse(File.ReadAllText(GetRepositoryPath(".template.config/template.json")));
@@ -143,9 +187,8 @@ public sealed class StackBaselineTests
         buildScript.ShouldContain("./src/Web/ClientApp-Angular");
 
         var credentials = File.ReadAllText(GetRepositoryPath("tests/Web.AcceptanceTests/AcceptanceTestCredentials.cs"));
-        credentials.ShouldContain("CLEANARCHITECTURE_ACCEPTANCE_TEST_EMAIL");
-        credentials.ShouldContain("CLEANARCHITECTURE_ACCEPTANCE_TEST_PASSWORD");
-        credentials.ShouldContain("No seeded default account is available");
+        credentials.ShouldNotContain("CLEANARCHITECTURE_ACCEPTANCE_TEST_");
+        credentials.ShouldNotContain("Environment.GetEnvironmentVariable");
 
         var adr = File.ReadAllText(GetRepositoryPath("docs/decisions/ADR-004-Adopt-Multitenant-Identity-Access.md"));
         adr.ShouldContain("Before Tasks 1 and 2");
