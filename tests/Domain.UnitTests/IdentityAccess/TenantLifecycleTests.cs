@@ -55,4 +55,17 @@ public class TenantLifecycleTests
         tenant.AuthorizationVersion.ShouldBe(3);
         Should.Throw<InvalidOperationException>(() => membership.Suspend(tenant));
     }
+
+    [Test]
+    public void StrongIdsDoNotExposePublicGuidConstructors()
+    {
+        typeof(TenantId).GetConstructor([typeof(Guid)]).ShouldBeNull();
+        typeof(MembershipId).GetConstructor([typeof(Guid)]).ShouldBeNull();
+    }
+
+    [Test]
+    public void TenantFactoryRejectsTheDefaultSlug()
+    {
+        Should.Throw<ArgumentException>(() => Tenant.CreateOrganization(default));
+    }
 }

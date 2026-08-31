@@ -45,14 +45,22 @@ public sealed class Tenant : BaseEntity<TenantId>
 
     internal void IncrementAuthorizationVersion() => AuthorizationVersion++;
 
-    private static Tenant Create(TenantType type, TenantSlug slug) => new()
+    private static Tenant Create(TenantType type, TenantSlug slug)
     {
-        Id = TenantId.New(),
-        Type = type,
-        Status = TenantStatus.PendingConfirmation,
-        Slug = slug,
-        AuthorizationVersion = 0
-    };
+        if (string.IsNullOrWhiteSpace(slug.Value))
+        {
+            throw new ArgumentException("Tenant slugs cannot be empty.", nameof(slug));
+        }
+
+        return new Tenant
+        {
+            Id = TenantId.New(),
+            Type = type,
+            Status = TenantStatus.PendingConfirmation,
+            Slug = slug,
+            AuthorizationVersion = 0
+        };
+    }
 
     private void EnsureStatus(TenantStatus expectedStatus, string message)
     {

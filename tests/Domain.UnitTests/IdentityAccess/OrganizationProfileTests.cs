@@ -36,4 +36,12 @@ public class OrganizationProfileTests
         var personalTenant = Tenant.CreatePersonal(TenantSlug.From("jane-doe"));
         Should.Throw<InvalidOperationException>(() => OrganizationProfile.Create(personalTenant, "Jane Doe", NormalizedCuit.From("30-71234567-4")));
     }
+
+    [Test]
+    public void ProfileFactoryRejectsTheDefaultNormalizedCuit()
+    {
+        var organization = Tenant.CreateOrganization(TenantSlug.From("acme-sa"));
+
+        Should.Throw<ArgumentException>(() => OrganizationProfile.Create(organization, "Acme S.A.", default));
+    }
 }

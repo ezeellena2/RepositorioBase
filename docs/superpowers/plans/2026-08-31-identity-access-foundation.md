@@ -10,7 +10,7 @@
 
 ---
 
-**Status:** In progress. Tasks 1 and 2 are complete: the template targets PostgreSQL only, the real PostgreSQL harness is active, `BaselinePostgreSql` is applied at startup with `MigrateAsync`, and destructive initialization/default identity seeding are removed. Task 3 is next.
+**Status:** In progress. Tasks 1, 2, and 3 are complete: the template targets PostgreSQL only, the real PostgreSQL harness is active, `BaselinePostgreSql` is applied at startup with `MigrateAsync`, destructive initialization/default identity seeding are removed, and the core identity-access domain is modeled. Task 4 is next; IA-004 remains incomplete until persistence is delivered.
 
 ## Review Workload Forecast
 

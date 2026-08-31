@@ -1,5 +1,6 @@
 using CleanArchitecture.Domain.IdentityAccess.Tenants;
 using System.Collections.ObjectModel;
+using System.Text.RegularExpressions;
 
 namespace CleanArchitecture.Domain.IdentityAccess.Auditing;
 
@@ -26,7 +27,7 @@ public sealed class AuditEvent : BaseEntity<Guid>
         string correlationId,
         IReadOnlyDictionary<string, string>? metadata = null)
     {
-        if (tenantId.Value == Guid.Empty)
+        if (tenantId.IsEmpty)
         {
             throw new ArgumentException("Tenant identifiers cannot be empty.", nameof(tenantId));
         }
@@ -63,7 +64,7 @@ public sealed class AuditEvent : BaseEntity<Guid>
 
         foreach (var (key, value) in metadata)
         {
-            if (key is not ("reason" or "code" or "outcome") || string.IsNullOrWhiteSpace(value) || ContainsSecretMarker(value))
+            if (!IsSafeMetadataValue(key, value))
             {
                 throw new ArgumentException("Audit metadata must use safe allowlisted scalar fields.", nameof(metadata));
             }
@@ -74,11 +75,34 @@ public sealed class AuditEvent : BaseEntity<Guid>
         return copiedMetadata;
     }
 
-    private static bool ContainsSecretMarker(string value) =>
-        value.Contains("password", StringComparison.OrdinalIgnoreCase) ||
-        value.Contains("token", StringComparison.OrdinalIgnoreCase) ||
-        value.Contains("cookie", StringComparison.OrdinalIgnoreCase) ||
-        value.Contains("connection string", StringComparison.OrdinalIgnoreCase) ||
-        value.Contains("connectionstring", StringComparison.OrdinalIgnoreCase) ||
-        value.Contains("secret", StringComparison.OrdinalIgnoreCase);
+    private static bool IsSafeMetadataValue(string key, string value)
+    {
+        if (key is not ("reason" or "code" or "outcome") || string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        return key switch
+        {
+            "reason" => !ContainsDangerousMarker(value) && !ContainsSensitiveCodeMaterial(value),
+            "code" or "outcome" => IsStableMachineIdentifier(value),
+            _ => false
+        };
+    }
+
+    private static bool IsStableMachineIdentifier(string value) =>
+        value.Any(char.IsAsciiLetter) &&
+        value.All(character => char.IsAsciiLetterOrDigit(character) || character is '.' or '-' or '_');
+
+    private static bool ContainsDangerousMarker(string value) =>
+        Regex.IsMatch(
+            value,
+            @"\b(?:password|token|cookie|secret|connection\s*string|connectionstring)\b\s*[:=]",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    private static bool ContainsSensitiveCodeMaterial(string value) =>
+        Regex.IsMatch(
+            value,
+            @"\b(?:otp|one[-\s]?time|recovery|confirmation|verification)\b(?:\s+(?:code|pin))?\s*[:=-]?\s*\d{4,10}\b",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 }

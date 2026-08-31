@@ -27,6 +27,16 @@ public sealed class OrganizationProfile
             throw new ArgumentException("Legal name cannot be empty.", nameof(legalName));
         }
 
+        if (tenant.Id.IsEmpty)
+        {
+            throw new ArgumentException("Tenant identifiers cannot be empty.", nameof(tenant));
+        }
+
+        if (string.IsNullOrWhiteSpace(cuit.Value))
+        {
+            throw new ArgumentException("CUIT cannot be empty.", nameof(cuit));
+        }
+
         return new OrganizationProfile
         {
             TenantId = tenant.Id,

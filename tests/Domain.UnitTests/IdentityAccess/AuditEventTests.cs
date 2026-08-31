@@ -48,4 +48,37 @@ public class AuditEventTests
             "corr-789",
             new Dictionary<string, string> { ["reason"] = "token=secret" }));
     }
+
+    [Test]
+    public void AuditEventRejectsOtpAndRecoveryOrConfirmationCodeMaterial()
+    {
+        Should.Throw<ArgumentException>(() => AuditEvent.Create(
+            TenantId.New(),
+            null,
+            "identity.confirmed",
+            "corr-otp",
+            new Dictionary<string, string> { ["code"] = "123456" }));
+        Should.Throw<ArgumentException>(() => AuditEvent.Create(
+            TenantId.New(),
+            null,
+            "identity.confirmed",
+            "corr-recovery",
+            new Dictionary<string, string> { ["reason"] = "recovery code 123456" }));
+        Should.Throw<ArgumentException>(() => AuditEvent.Create(
+            TenantId.New(),
+            null,
+            "identity.confirmed",
+            "corr-confirmation",
+            new Dictionary<string, string> { ["reason"] = "confirmation code 874321" }));
+    }
+
+    [Test]
+    public void AuditEventIdentityCannotBeExternallyMutated()
+    {
+        var idProperty = typeof(AuditEvent).GetProperty(nameof(AuditEvent.Id));
+
+        idProperty.ShouldNotBeNull();
+        idProperty!.SetMethod.ShouldNotBeNull();
+        idProperty.SetMethod!.IsPublic.ShouldBeFalse();
+    }
 }

@@ -22,6 +22,11 @@ public sealed class TenantMembership : BaseEntity<MembershipId>
             throw new ArgumentException("Identity identifiers cannot be empty.", nameof(identityId));
         }
 
+        if (tenant.Id.IsEmpty)
+        {
+            throw new ArgumentException("Tenant identifiers cannot be empty.", nameof(tenant));
+        }
+
         return new TenantMembership
         {
             Id = MembershipId.New(),
