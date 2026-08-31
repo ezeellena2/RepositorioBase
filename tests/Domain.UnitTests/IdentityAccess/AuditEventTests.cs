@@ -81,4 +81,34 @@ public class AuditEventTests
         idProperty!.SetMethod.ShouldNotBeNull();
         idProperty.SetMethod!.IsPublic.ShouldBeFalse();
     }
+
+    [TestCase("code", "otp-123456")]
+    [TestCase("code", "recovery_code_874321")]
+    [TestCase("outcome", "confirmation-code-654321")]
+    [TestCase("reason", "recovery-code: 123456")]
+    [TestCase("reason", "confirmation code A1B2C3")]
+    public void AuditEventRejectsEncodedVerificationCodeMaterial(string key, string value)
+    {
+        Should.Throw<ArgumentException>(() => AuditEvent.Create(
+            TenantId.New(),
+            null,
+            "identity.confirmed",
+            "corr-encoded-code",
+            new Dictionary<string, string> { [key] = value }));
+    }
+
+    [TestCase("reason", "confirmation code expired")]
+    [TestCase("code", "identity.confirmed")]
+    [TestCase("outcome", "success")]
+    public void AuditEventRetainsSafeSemanticMetadata(string key, string value)
+    {
+        var auditEvent = AuditEvent.Create(
+            TenantId.New(),
+            null,
+            "identity.confirmed",
+            "corr-safe-metadata",
+            new Dictionary<string, string> { [key] = value });
+
+        auditEvent.Metadata[key].ShouldBe(value);
+    }
 }

@@ -82,9 +82,14 @@ public sealed class AuditEvent : BaseEntity<Guid>
             return false;
         }
 
+        if (ContainsSecretMaterial(value))
+        {
+            return false;
+        }
+
         return key switch
         {
-            "reason" => !ContainsDangerousMarker(value) && !ContainsSensitiveCodeMaterial(value),
+            "reason" => true,
             "code" or "outcome" => IsStableMachineIdentifier(value),
             _ => false
         };
@@ -94,15 +99,18 @@ public sealed class AuditEvent : BaseEntity<Guid>
         value.Any(char.IsAsciiLetter) &&
         value.All(character => char.IsAsciiLetterOrDigit(character) || character is '.' or '-' or '_');
 
+    private static bool ContainsSecretMaterial(string value) =>
+        ContainsDangerousMarker(value) || ContainsVerificationCodeMaterial(value);
+
     private static bool ContainsDangerousMarker(string value) =>
         Regex.IsMatch(
             value,
             @"\b(?:password|token|cookie|secret|connection\s*string|connectionstring)\b\s*[:=]",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
-    private static bool ContainsSensitiveCodeMaterial(string value) =>
+    private static bool ContainsVerificationCodeMaterial(string value) =>
         Regex.IsMatch(
             value,
-            @"\b(?:otp|one[-\s]?time|recovery|confirmation|verification)\b(?:\s+(?:code|pin))?\s*[:=-]?\s*\d{4,10}\b",
+            @"\b(?:otp|one[\s_-]?time|recovery|confirmation|verification)(?=$|[\s_-])[\s_-]*(?:code|pin)?[\s_:-]*(?:\d{4,10}|(?=[A-Za-z0-9]{6,}\b)(?=[A-Za-z0-9]*[A-Za-z])(?=[A-Za-z0-9]*\d)[A-Za-z0-9]{6,})\b",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 }
