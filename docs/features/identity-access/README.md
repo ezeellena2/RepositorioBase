@@ -14,4 +14,4 @@ The package adopts the reference standard's business semantics, not its workflow
 
 ## Status
 
-The documentation proposal is under human review. It includes a one-time, no-default-credential Platform bootstrap and safe operations panel, but does not authorize implementation or claim runtime behavior.
+The planning package remains under human review for the pending Identity Access slices. Tasks IA-002 and IA-003 are implemented with a PostgreSQL-only template, a safe baseline migration, and no default credentials; this does not authorize the remaining runtime behavior.

@@ -1,5 +1,0 @@
-<Project>
-  <PropertyGroup>
-    <DatabaseProvider>SqlServer</DatabaseProvider>
-  </PropertyGroup>
-</Project>

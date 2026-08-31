@@ -6,7 +6,7 @@
 
 Decision needed before apply: No
 Chained PRs recommended: Yes
-Chain strategy: size-exception
+Delivery decision: size:exception (not a chain strategy)
 400-line budget risk: High
 
 Suggested units: stack/migrations/test harness; domain/persistence; authorization/registration/session; invitations/outbox/MFA/Platform backend; React/Platform/E2E. The maintainer accepted `size:exception` and direct work on `main`; these units remain mandatory commit, verification, and rollback boundaries.
@@ -21,8 +21,8 @@ Suggested units: stack/migrations/test harness; domain/persistence; authorizatio
 | ID | Task | Requirements | Status | Depends on | Observable result |
 |---|---|---|---|---|---|
 | IA-001 | Approve SPEC and ADR | — | Review | — | human approval |
-| IA-002 | PostgreSQL target and harness | IA-REQ-031 | Blocked | IA-001 | real-PostgreSQL tests |
-| IA-003 | Safe baseline migration/startup | IA-REQ-032,037 | Blocked | IA-002 | sentinel preserved; no administrator |
+| IA-002 | PostgreSQL target and harness | IA-REQ-031 | Complete | IA-001 | real-PostgreSQL tests |
+| IA-003 | Safe baseline migration/startup | IA-REQ-032,037 | Complete | IA-002 | sentinel preserved; no administrator |
 | IA-004 | Core identity/tenant/membership/audit persistence | IA-REQ-001,002,033..037 | Blocked | IA-003 | constraints, stale-write proof, upgrades |
 | IA-005 | Roles, authorization, HTTP contract | IA-REQ-006..013,026,030,038 | Blocked | IA-004 | permission/Problem Details contracts |
 | IA-006 | Organization registration/confirmation | IA-REQ-003..005,026..029; applies 038 | Blocked | IA-005 | atomic, idempotent neutral replay |

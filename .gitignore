@@ -486,9 +486,5 @@ $RECYCLE.BIN/
 *.swp
 .azure
 
-# SQLite database files
-*.db
-*.db-shm
-*.db-wal
 # Local AI runtime state
 .atl/

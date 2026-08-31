@@ -10,13 +10,13 @@
 
 ---
 
-**Status:** Proposed. No implementation task has started.
+**Status:** In progress. Tasks 1 and 2 are complete: the template targets PostgreSQL only, the real PostgreSQL harness is active, `BaselinePostgreSql` is applied at startup with `MigrateAsync`, and destructive initialization/default identity seeding are removed. Task 3 is next.
 
 ## Review Workload Forecast
 
 - Decision needed before apply: No
 - Chained PRs recommended: Yes
-- Chain strategy: size-exception (maintainer accepted direct work on `main`; keep the five work units as commit, verification, and rollback boundaries)
+- Delivery decision: size:exception (maintainer accepted direct work on `main`; this is not a chain strategy, and the five work units remain commit, verification, and rollback boundaries)
 - 400-line budget risk: High
 
 Suggested review units:
@@ -27,7 +27,7 @@ Suggested review units:
 4. invitations/outbox/MFA/Platform backend
 5. React/Platform/E2E
 
-Do not begin apply until the user selects a chain strategy or explicitly accepts one large review.
+The maintainer accepted `size:exception`; proceed in the defined work units with commit, verification, and rollback boundaries.
 
 ## Preconditions and Execution Rules
 
@@ -85,23 +85,23 @@ For every task that introduces a production type or module:
 - Move: `src/Web/ClientApp` -> `src/Web/ClientApp-Angular`
 - Move: `src/Web/ClientApp-React` -> `src/Web/ClientApp`
 
-- [ ] **Step 1: GREEN harness prerequisite**
+- [x] **Step 1: GREEN harness prerequisite**
 
 Add `Shouldly`, `Aspire.Hosting.Testing`, and `Microsoft.AspNetCore.Mvc.Testing`; add project references to `src/Web/Web.csproj`, `src/Shared/Shared.csproj`, and `tests/TestAppHost/TestAppHost.csproj`. Mirror `tests/Application.FunctionalTests/FunctionalTestSetup.cs`: start TestAppHost, wait for `Services.Database`, obtain PostgreSQL's connection string, build the local factory, and expose `TestServices.CreateScope()`.
 
 Run: `dotnet build tests/Infrastructure.IntegrationTests/Infrastructure.IntegrationTests.csproj -v minimal`  
 Expected: PASS; the first integration RED compiles and can start PostgreSQL.
 
-- [ ] **Step 2: RED - current provider**
+- [x] **Step 2: RED - current provider**
 
 With existing `ApplicationDbContext`, assert `Database.ProviderName == "Npgsql.EntityFrameworkCore.PostgreSQL"`.
 
 Run: `dotnet test tests/Infrastructure.IntegrationTests/Infrastructure.IntegrationTests.csproj --filter StackBaselineTests`  
-Expected: FAIL at runtime because the provider is SQLite.
+Recorded RED: the prior provider configuration did not satisfy the PostgreSQL contract.
 
-- [ ] **Step 3: GREEN - React/PostgreSQL**
+- [x] **Step 3: GREEN - React/PostgreSQL**
 
-Activate `UsePostgreSQL;UseReact`, Npgsql/Aspire references and defaults; move the clients; remove SQLite/SQL Server from active source paths while retaining valid template conditionals.
+Make Npgsql/Aspire the unconditional database stack, retain Angular/React/API-only client choices, and remove SQLite/SQL Server from active source paths and template metadata.
 
 ```powershell
 git mv src/Web/ClientApp src/Web/ClientApp-Angular
@@ -114,7 +114,7 @@ dotnet build "$env:TEMP\ca-identity-smoke\CleanArchitecture.slnx" -v minimal
 
 Expected: PASS.
 
-- [ ] **Step 4: REFACTOR and commit**
+- [x] **Step 4: REFACTOR and commit**
 
 ```bash
 git add .template.config Directory.Build.props src tests
@@ -135,14 +135,14 @@ git commit -m "build: target React and PostgreSQL"
 - Modify: `src/Web/Program.cs`
 - Modify: `tests/Application.FunctionalTests/FunctionalTestSetup.cs`
 
-- [ ] **Step 1: RED - current destructive behavior**
+- [x] **Step 1: RED - current destructive behavior**
 
 Using only current types, initialize, insert a `TodoList` sentinel, initialize again, and assert the sentinel remains and no Identity user exists.
 
 Run: `dotnet test tests/Infrastructure.IntegrationTests/Infrastructure.IntegrationTests.csproj --filter DatabaseInitialisationTests`  
-Expected: FAIL at runtime because `EnsureDeletedAsync` removes the sentinel or a default administrator is seeded.
+Recorded RED: destructive initialization or default identity seeding did not preserve the sentinel/no-user contract.
 
-- [ ] **Step 2: Create the current-template baseline**
+- [x] **Step 2: Create the current-template baseline**
 
 ```powershell
 dotnet ef migrations add BaselinePostgreSql --project src/Infrastructure/Infrastructure.csproj --startup-project src/Web/Web.csproj --output-dir Data/Migrations
@@ -151,7 +151,7 @@ dotnet ef migrations script 0 BaselinePostgreSql --project src/Infrastructure/In
 
 Expected: the migration contains only the current template model, not identity-access tables.
 
-- [ ] **Step 3: GREEN - migrate without seed/destruction**
+- [x] **Step 3: GREEN - migrate without seed/destruction**
 
 `InitialiseAsync(CancellationToken)` calls `MigrateAsync`. Remove `RoleManager<IdentityRole>`, user/role/demo seeds, fixed credentials, `EnsureDeletedAsync`, and `EnsureCreatedAsync` before Guid work begins. Migrate before accepting traffic.
 
@@ -162,7 +162,7 @@ dotnet test tests/Application.FunctionalTests/Application.FunctionalTests.csproj
 
 Expected: PASS; restart preserves the Todo sentinel and creates no user/role.
 
-- [ ] **Step 4: REFACTOR and commit**
+- [x] **Step 4: REFACTOR and commit**
 
 ```bash
 git add src/Infrastructure/Data src/Web/Program.cs tests

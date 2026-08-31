@@ -1,5 +1,0 @@
-<Project>
-  <PropertyGroup>
-    <DatabaseProvider>PostgreSQL</DatabaseProvider>
-  </PropertyGroup>
-</Project>

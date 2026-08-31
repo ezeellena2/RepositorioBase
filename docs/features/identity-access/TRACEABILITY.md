@@ -1,6 +1,6 @@
 # Identity Access — Traceability
 
-**Status:** Proposed. `Pending` means not implemented. IA-009 supplies end-to-end acceptance evidence but is never a normative owner.
+**Status:** In progress. `Pending` means not implemented. IA-002 and IA-003 have implementation evidence; IA-009 supplies end-to-end acceptance evidence but is never a normative owner.
 
 | Requirement | Scope | Normative owner(s) | Planned evidence | Evidence |
 |---|---|---|---|---|
@@ -24,11 +24,11 @@
 | IA-REQ-029 | session/invitation/delivery redaction | IA-007, IA-008 | Problem Details, audit, outbox, and telemetry tests | Pending |
 | IA-REQ-029 | Platform MFA/projection redaction | IA-012, IA-014 | encrypted-secret, hashed-code, allowlist, and negative leak tests | Pending |
 | IA-REQ-030 | 401/403/404 semantics | IA-005 | authorization matrix and stable Problem Details | Pending |
-| IA-REQ-031 | target stack and same-origin policy | IA-002, IA-007 | architecture/configuration and cookie-session tests | Pending |
-| IA-REQ-032 | no seed or destructive startup | IA-003 | restart/sentinel/no-user test | Pending |
+| IA-REQ-031 | target stack and same-origin policy | IA-002, IA-007 | architecture/configuration and cookie-session tests | IA-002 complete: PostgreSQL-only target and real PostgreSQL harness |
+| IA-REQ-032 | no seed or destructive startup | IA-003 | restart/sentinel/no-user test | IA-003 complete: baseline migration, restart/sentinel preservation, and no-user test |
 | IA-REQ-033..034, IA-REQ-036 | PostgreSQL uniqueness, composite FKs, deletes | IA-004 | metadata plus real-PostgreSQL constraint tests | Pending |
 | IA-REQ-035 | lost-update protection | IA-004 | Task 4 real-PostgreSQL stale `UpdateTodoItemDetailCommand` proof; Task 6 typed `todo_item_concurrency_conflict` RFC 9457 `409`/`traceId` evidence | Pending |
-| IA-REQ-037 | current-template baseline | IA-003 | empty-to-baseline and restart preservation | Pending |
+| IA-REQ-037 | current-template baseline | IA-003 | empty-to-baseline and restart preservation | IA-003 complete: `BaselinePostgreSql` migration and restart preservation |
 | IA-REQ-037 | identity-access upgrade | IA-004 | empty-to-latest and baseline-to-latest sentinel preservation | Pending |
 | IA-REQ-038 | shared Result types, HTTP mapping/writer, and OpenAPI contract | IA-005 | model, runtime, media-type, status/header/code, safe-500, and drift tests | Pending |
 | IA-REQ-038 | registration/confirmation endpoint application | IA-005 | IA-006 DTO/status/error metadata and functional evidence | Pending |

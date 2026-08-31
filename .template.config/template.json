@@ -264,30 +264,10 @@
         {
           "choice": "postgresql",
           "description": "PostgreSQL"
-        },
-        {
-          "choice": "sqlite",
-          "description": "SQLite"
-        },
-        {
-          "choice": "sqlserver",
-          "description": "SQL Server"
         }
       ],
       "defaultValue": "postgresql",
       "description": "The database type to use."
-    },
-    "UsePostgreSQL": {
-      "type": "computed",
-      "value": "(Database == \"postgresql\")"
-    },
-    "UseSqlite": {
-      "type": "computed",
-      "value": "(Database == \"sqlite\")"
-    },
-    "UseSqlServer": {
-      "type": "computed",
-      "value": "(Database == \"sqlserver\")"
     }
   },
   "sources": [
@@ -302,23 +282,6 @@
         "**/*.user",
         "**/*.lock.json",
         "*.nuspec",
-        "src/Web/appsettings.json",
-        "src/Web/appsettings.PostgreSQL.json",
-        "src/Web/appsettings.SQLite.json",
-        "src/Web/appsettings.SQLServer.json",
-        "tests/Application.FunctionalTests/PostgreSQLTestcontainersTestDatabase.cs",
-        "tests/Application.FunctionalTests/PostgreSQLTestDatabase.cs",
-        "tests/Application.FunctionalTests/SqliteTestDatabase.cs",
-        "tests/Application.FunctionalTests/SqlTestcontainersTestDatabase.cs",
-        "tests/Application.FunctionalTests/SqlTestDatabase.cs",
-        "tests/Application.FunctionalTests/appsettings.json",
-        "tests/Application.FunctionalTests/appsettings.PostgreSQL.json",
-        "tests/Application.FunctionalTests/appsettings.SQLServer.json",
-        "src/Infrastructure/Data/Migrations/**",
-        "build/DatabaseProvider.props",
-        "build/DatabaseProvider.PostgreSQL.props",
-        "build/DatabaseProvider.SqlServer.props",
-        "build/DatabaseProvider.Sqlite.props",
         "build/ClientFramework.props",
         "build/ClientFramework.React.props",
         "build/ClientFramework.Angular.props",
@@ -377,49 +340,6 @@
           "include": [
             "build/ClientFramework.ApiOnly.props"
           ]
-        },
-        {
-          "condition": "(UsePostgreSQL)",
-          "include": [
-            "src/Web/appsettings.PostgreSQL.json",
-            "tests/Application.FunctionalTests/PostgreSQLTestcontainersTestDatabase.cs",
-            "tests/Application.FunctionalTests/PostgreSQLTestDatabase.cs",
-            "tests/Application.FunctionalTests/appsettings.PostgreSQL.json",
-            "src/Infrastructure/Data/Migrations/**",
-            "build/DatabaseProvider.PostgreSQL.props"
-          ],
-          "rename": {
-            "src/Web/appsettings.PostgreSQL.json": "src/Web/appsettings.json",
-            "tests/Application.FunctionalTests/appsettings.PostgreSQL.json": "tests/Application.FunctionalTests/appsettings.json",
-            "build/DatabaseProvider.PostgreSQL.props": "build/DatabaseProvider.props"
-          }
-        },
-        {
-          "condition": "(UseSqlServer)",
-          "include": [
-            "src/Web/appsettings.SQLServer.json",
-            "tests/Application.FunctionalTests/SqlTestcontainersTestDatabase.cs",
-            "tests/Application.FunctionalTests/SqlTestDatabase.cs",
-            "tests/Application.FunctionalTests/appsettings.SQLServer.json",
-            "build/DatabaseProvider.SqlServer.props"
-          ],
-          "rename": {
-            "src/Web/appsettings.SQLServer.json": "src/Web/appsettings.json",
-            "tests/Application.FunctionalTests/appsettings.SQLServer.json": "tests/Application.FunctionalTests/appsettings.json",
-            "build/DatabaseProvider.SqlServer.props": "build/DatabaseProvider.props"
-          }
-        },
-        {
-          "condition": "(UseSqlite)",
-          "include": [
-            "src/Web/appsettings.SQLite.json",
-            "tests/Application.FunctionalTests/SqliteTestDatabase.cs",
-            "build/DatabaseProvider.Sqlite.props"
-          ],
-          "rename": {
-            "src/Web/appsettings.SQLite.json": "src/Web/appsettings.json",
-            "build/DatabaseProvider.Sqlite.props": "build/DatabaseProvider.props"
-          }
         }
       ]
     }

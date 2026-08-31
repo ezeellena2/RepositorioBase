@@ -8,9 +8,7 @@
 
   <ItemGroup>
     <PackageReference Include="Aspire.Hosting.AppHost" />
-    <PackageReference Include="Aspire.Hosting.Azure.PostgreSQL" Condition="'$(DatabaseProvider)' == 'PostgreSQL'" />
-    <PackageReference Include="Aspire.Hosting.Azure.Sql" Condition="'$(DatabaseProvider)' == 'SqlServer'" />
-    <PackageReference Include="CommunityToolkit.Aspire.Hosting.SQLite" Condition="'$(DatabaseProvider)' == 'Sqlite'" />
+    <PackageReference Include="Aspire.Hosting.Azure.PostgreSQL" />
   </ItemGroup>
 
   <ItemGroup>

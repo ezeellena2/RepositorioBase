@@ -1,6 +1,5 @@
 param (
-    [string[]]$ClientFramework = @("angular", "react", "none"),
-    [string[]]$Database = @("sqlite", "sqlserver", "postgresql")
+    [string[]]$ClientFramework = @("angular", "react", "none")
 )
 
 $outputPath = Join-Path (Split-Path $PSScriptRoot -Parent) "artifacts\template-tests"
@@ -88,9 +87,7 @@ if (-not (Test-Path $outputPath)) {
 }
 
 foreach ($cf in $ClientFramework) {
-    foreach ($db in $Database) {
-        CreateAndTestProject -clientFramework $cf -database $db
-    }
+    CreateAndTestProject -clientFramework $cf -database "postgresql"
 }
 
 $results | Format-Table -Property ClientFramework, Database, Status, Duration -AutoSize

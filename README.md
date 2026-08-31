@@ -6,7 +6,7 @@
 [![Nuget](https://img.shields.io/nuget/dt/Clean.Architecture.Solution.Template?label=Downloads)](https://www.nuget.org/packages/Clean.Architecture.Solution.Template)
 ![Twitter Follow](https://img.shields.io/twitter/follow/jasontaylordev?label=Follow&style=social)
 
-The goal of this template is to provide a straightforward and efficient approach to enterprise application development, leveraging the power of Clean Architecture and ASP.NET Core. Using this template, you can effortlessly create a new app with Angular, React, or Web API only, powered by ASP.NET Core and Aspire. Getting started is easy - simply install the **.NET template** (see below for full details).
+The goal of this template is to provide a straightforward and efficient approach to enterprise application development, leveraging the power of Clean Architecture and ASP.NET Core. Using this template, you can effortlessly create a PostgreSQL-backed app with Angular, React, or Web API only, powered by ASP.NET Core and Aspire. Getting started is easy - simply install the **.NET template** (see below for full details).
 
 For full documentation, visit **[cleanarchitecture.jasontaylor.dev](https://cleanarchitecture.jasontaylor.dev)**.
 
@@ -18,7 +18,7 @@ If you find this project useful, please give it a star. Thanks! ⭐
 
 - [.NET 10.0 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) or later
 - [Node.js](https://nodejs.org/) (LTS) — only required if you plan to use the Angular or React frontend
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) or [Podman](https://podman.io/) (or any OCI-compliant container runtime) — only required when using SQL Server or PostgreSQL. Not required when using SQLite (the default).
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) or [Podman](https://podman.io/) (or any OCI-compliant container runtime) — required for the PostgreSQL development database.
 
 ### Install the template
 
@@ -28,16 +28,16 @@ dotnet new install Clean.Architecture.Solution.Template
 
 ### Create a new solution
 
-Create a new solution using the template. Specify the client framework using `--client-framework` (`-cf`) and the database provider using `--database` (`-db`):
+Create a new PostgreSQL-backed solution using the template. Specify the client framework using `--client-framework` (`-cf`); `--database` (`-db`) accepts only `postgresql` and defaults to it:
 
 ```bash
-dotnet new ca-sln --client-framework [angular|react|none] --database [postgresql|sqlite|sqlserver] --output YourProjectName
+dotnet new ca-sln --client-framework [angular|react|none] --database postgresql --output YourProjectName
 ```
 
 | Option | Values | Default |
 |---|---|---|
-| `--client-framework` | `angular`, `react`, `none` | `angular` |
-| `--database` | `postgresql`, `sqlite`, `sqlserver` | `sqlite` |
+| `--client-framework` | `angular`, `react`, `none` | `react` |
+| `--database` | `postgresql` | `postgresql` |
 
 **Examples:**
 
@@ -46,14 +46,14 @@ dotnet new ca-sln --client-framework [angular|react|none] --database [postgresql
 dotnet new ca-sln -cf angular -db postgresql -o YourProjectName
 ```
 
-⚛️ React SPA with ASP.NET Core Web API and SQL Server:
+⚛️ React SPA with ASP.NET Core Web API and PostgreSQL:
 ```bash
-dotnet new ca-sln -cf react -db sqlserver -o YourProjectName
+dotnet new ca-sln -cf react -db postgresql -o YourProjectName
 ```
 
-🔌 ASP.NET Core Web API only with SQLite:
+🔌 ASP.NET Core Web API only with PostgreSQL:
 ```bash
-dotnet new ca-sln -cf none -db sqlite -o YourProjectName
+dotnet new ca-sln -cf none -db postgresql -o YourProjectName
 ```
 
 > 💡 **Tip:** Run `dotnet new ca-sln --help` to see all available template options.

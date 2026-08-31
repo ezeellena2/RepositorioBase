@@ -28,14 +28,15 @@ public sealed class StackBaselineTests
     [TestCase("src/Infrastructure/Infrastructure.csproj")]
     [TestCase("src/AppHost/AppHost.csproj")]
     [TestCase("tests/TestAppHost/TestAppHost.csproj")]
-    public void Active_projects_do_not_reference_unselected_database_providers(string relativeProjectPath)
+    public void Active_projects_reference_only_unconditional_postgresql_packages(string relativeProjectPath)
     {
         var project = XDocument.Load(GetRepositoryPath(relativeProjectPath));
         var packageReferences = project.Descendants("PackageReference").ToList();
 
         foreach (var packageReference in packageReferences.Where(IsDatabaseProviderPackage))
         {
-            packageReference.Attribute("Condition")?.Value.ShouldContain("DatabaseProvider");
+            packageReference.Attribute("Condition").ShouldBeNull();
+            packageReference.Attribute("Include")?.Value.ShouldContain("PostgreSQL");
         }
     }
 
@@ -58,20 +59,59 @@ public sealed class StackBaselineTests
     }
 
     [Test]
-    public void Template_isolates_postgresql_migrations_to_the_postgresql_choice()
+    public void Template_includes_postgresql_migrations_for_every_generated_variant()
     {
         using var template = JsonDocument.Parse(File.ReadAllText(GetRepositoryPath(".template.config/template.json")));
         var source = template.RootElement.GetProperty("sources")[0];
         var exclusions = source.GetProperty("exclude").EnumerateArray().Select(element => element.GetString()).ToList();
 
-        exclusions.ShouldContain("src/Infrastructure/Data/Migrations/**");
-
-        var modifiers = source.GetProperty("modifiers").EnumerateArray().ToList();
-        var postgresqlModifier = modifiers.Single(modifier => modifier.GetProperty("condition").GetString() == "(UsePostgreSQL)");
-        postgresqlModifier.GetProperty("include").EnumerateArray().Select(element => element.GetString())
-            .ShouldContain("src/Infrastructure/Data/Migrations/**");
+        exclusions.ShouldNotContain("src/Infrastructure/Data/Migrations/**");
 
         File.ReadAllText(GetRepositoryPath("CleanArchitecture.nuspec")).ShouldContain("<file src=\"build\\*.props\" target=\"content\\build\" />");
+    }
+
+    [Test]
+    public void Template_supports_only_postgresql_and_includes_the_baseline_migration()
+    {
+        using var template = JsonDocument.Parse(File.ReadAllText(GetRepositoryPath(".template.config/template.json")));
+        var symbols = template.RootElement.GetProperty("symbols");
+        var database = symbols.GetProperty("Database");
+
+        database.GetProperty("defaultValue").GetString().ShouldBe("postgresql");
+        database.GetProperty("choices").EnumerateArray()
+            .Select(choice => choice.GetProperty("choice").GetString())
+            .ShouldBe(["postgresql"]);
+        symbols.TryGetProperty("UseSqlite", out _).ShouldBeFalse();
+        symbols.TryGetProperty("UseSqlServer", out _).ShouldBeFalse();
+
+        var templateText = File.ReadAllText(GetRepositoryPath(".template.config/template.json"));
+        templateText.ShouldNotContain("Sqlite");
+        templateText.ShouldNotContain("SQLServer");
+        templateText.ShouldNotContain("UsePostgreSQL");
+
+        File.Exists(GetRepositoryPath("src/Infrastructure/Data/Migrations/20260831183429_BaselinePostgreSql.cs")).ShouldBeTrue();
+        File.Exists(GetRepositoryPath("src/Infrastructure/Data/Migrations/20260831183429_BaselinePostgreSql.Designer.cs")).ShouldBeTrue();
+        File.Exists(GetRepositoryPath("build/DatabaseProvider.props")).ShouldBeFalse();
+        File.Exists(GetRepositoryPath("build/DatabaseProvider.PostgreSQL.props")).ShouldBeFalse();
+        File.Exists(GetRepositoryPath("build/DatabaseProvider.Sqlite.props")).ShouldBeFalse();
+        File.Exists(GetRepositoryPath("build/DatabaseProvider.SqlServer.props")).ShouldBeFalse();
+        File.Exists(GetRepositoryPath("src/Web/appsettings.SQLite.json")).ShouldBeFalse();
+        File.Exists(GetRepositoryPath("src/Web/appsettings.SQLServer.json")).ShouldBeFalse();
+
+        foreach (var relativePath in new[]
+        {
+            "Directory.Build.props",
+            "Directory.Packages.props",
+            "src/Infrastructure/Infrastructure.csproj",
+            "src/AppHost/AppHost.csproj",
+            "tests/TestAppHost/TestAppHost.csproj"
+        })
+        {
+            var source = File.ReadAllText(GetRepositoryPath(relativePath));
+            source.ShouldNotContain("DatabaseProvider");
+            source.ShouldNotContain("SqlServer");
+            source.ShouldNotContain("Sqlite");
+        }
     }
 
     [Test]
@@ -93,8 +133,6 @@ public sealed class StackBaselineTests
     {
         var packageId = packageReference.Attribute("Include")?.Value;
         return packageId?.Contains("Npgsql", StringComparison.Ordinal) == true ||
-            packageId?.Contains("PostgreSQL", StringComparison.Ordinal) == true ||
-            packageId?.Contains("SqlServer", StringComparison.Ordinal) == true ||
-            packageId?.Contains("SQLite", StringComparison.Ordinal) == true;
+            packageId?.Contains("PostgreSQL", StringComparison.Ordinal) == true;
     }
 }

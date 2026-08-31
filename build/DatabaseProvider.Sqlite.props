@@ -1,5 +1,0 @@
-<Project>
-  <PropertyGroup>
-    <DatabaseProvider>Sqlite</DatabaseProvider>
-  </PropertyGroup>
-</Project>

@@ -1,6 +1,5 @@
 ﻿<!-- See https://aka.ms/dotnet/msbuild/customize for more details on customizing your build -->
 <Project>
-  <Import Project="$(MSBuildThisFileDirectory)build\DatabaseProvider.props" Condition="Exists('$(MSBuildThisFileDirectory)build\DatabaseProvider.props')" />
   <Import Project="$(MSBuildThisFileDirectory)build\ClientFramework.props" Condition="Exists('$(MSBuildThisFileDirectory)build\ClientFramework.props')" />
 
   <PropertyGroup>
@@ -13,15 +12,6 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
-  <PropertyGroup Condition="'$(DatabaseProvider)' == 'PostgreSQL'">
-    <DefineConstants>$(DefineConstants);UsePostgreSQL</DefineConstants>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(DatabaseProvider)' == 'SqlServer'">
-    <DefineConstants>$(DefineConstants);UseSqlServer</DefineConstants>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(DatabaseProvider)' == 'Sqlite'">
-    <DefineConstants>$(DefineConstants);UseSqlite</DefineConstants>
-  </PropertyGroup>
   <PropertyGroup Condition="'$(ClientFramework)' == 'React'">
     <DefineConstants>$(DefineConstants);UseReact</DefineConstants>
   </PropertyGroup>

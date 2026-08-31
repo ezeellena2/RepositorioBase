@@ -1,10 +1,4 @@
-#if (UsePostgreSQL)
 using Npgsql;
-#elif (UseSqlServer)
-using Microsoft.Data.SqlClient;
-#else
-using Microsoft.Data.Sqlite;
-#endif
 using Respawn;
 using System.Data.Common;
 
@@ -23,13 +17,7 @@ internal sealed class DatabaseResetter : IAsyncDisposable
 
     public static async Task<DatabaseResetter> CreateAsync(string connectionString)
     {
-#if (UsePostgreSQL)
         var connection = new NpgsqlConnection(connectionString);
-#elif (UseSqlServer)
-        var connection = new SqlConnection(connectionString);
-#else
-        var connection = new SqliteConnection(connectionString);
-#endif
 
         await connection.OpenAsync();
         var respawner = await Respawner.CreateAsync(connection);

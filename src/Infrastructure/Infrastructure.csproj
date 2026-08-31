@@ -7,12 +7,10 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore" />
-    <PackageReference Include="Aspire.Microsoft.EntityFrameworkCore.SqlServer" Condition="'$(DatabaseProvider)' == 'SqlServer'" />
-    <PackageReference Include="Aspire.Npgsql.EntityFrameworkCore.PostgreSQL" Condition="'$(DatabaseProvider)' == 'PostgreSQL'" />
+    <PackageReference Include="Aspire.Npgsql.EntityFrameworkCore.PostgreSQL" />
     <PackageReference Include="Microsoft.AspNetCore.Diagnostics.EntityFrameworkCore" />
     <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" />
-    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Condition="'$(DatabaseProvider)' == 'PostgreSQL'" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Condition="'$(DatabaseProvider)' == 'Sqlite'" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
   </ItemGroup>
 
   <ItemGroup>
