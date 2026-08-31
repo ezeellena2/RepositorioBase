@@ -1,0 +1,5 @@
+<Project>
+  <PropertyGroup>
+    <ClientFramework>ApiOnly</ClientFramework>
+  </PropertyGroup>
+</Project>

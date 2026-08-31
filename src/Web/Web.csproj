@@ -3,12 +3,10 @@
   <PropertyGroup>
     <RootNamespace>CleanArchitecture.Web</RootNamespace>
     <AssemblyName>CleanArchitecture.Web</AssemblyName>
-    <!--#if (!UseApiOnly)-->
-    <SpaRoot>ClientApp\</SpaRoot>
+    <SpaRoot Condition="'$(ClientFramework)' != 'ApiOnly'">ClientApp\</SpaRoot>
     <OpenApiDocumentsDirectory>./wwwroot/openapi/</OpenApiDocumentsDirectory>
     <OpenApiGenerateDocumentsOptions>--file-name v1</OpenApiGenerateDocumentsOptions>
-    <OpenApiGenerateDocumentsOnBuild>false</OpenApiGenerateDocumentsOnBuild>
-    <!--#endif-->
+    <OpenApiGenerateDocumentsOnBuild>true</OpenApiGenerateDocumentsOnBuild>
   </PropertyGroup>
 
   <ItemGroup>
@@ -23,12 +21,10 @@
     <PackageReference Include="Microsoft.AspNetCore.Diagnostics.EntityFrameworkCore" />
     <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
-    <!--#if (!UseApiOnly)-->
-    <PackageReference Include="Microsoft.Extensions.ApiDescription.Server">
+    <PackageReference Include="Microsoft.Extensions.ApiDescription.Server" Condition="'$(ClientFramework)' != 'ApiOnly'">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <!--#endif-->
     <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
       <PrivateAssets>all</PrivateAssets>
@@ -37,21 +33,16 @@
     <PackageReference Include="Scalar.AspNetCore" />
   </ItemGroup>
 
-  <!--#if (!UseApiOnly)-->
-  <Target Name="PublishRunWebpack" AfterTargets="ComputeFilesToPublish">
+  <Target Name="PublishRunWebpack" AfterTargets="ComputeFilesToPublish" Condition="'$(ClientFramework)' != 'ApiOnly'">
     <!-- As part of publishing, ensure the JS resources are freshly built in production mode -->
     <Exec WorkingDirectory="$(SpaRoot)" Command="npm install" />
-    <!--#if (UseAngular)-->
-    <Exec WorkingDirectory="$(SpaRoot)" Command="npm run build -- --configuration production" />
-    <!--#endif-->
-    <Exec WorkingDirectory="$(SpaRoot)" Command="npm run build" Condition="'$(UseReact)' == 'True'" />
+    <Exec WorkingDirectory="$(SpaRoot)" Command="npm run build -- --configuration production" Condition="'$(ClientFramework)' == 'Angular'" />
+    <Exec WorkingDirectory="$(SpaRoot)" Command="npm run build" Condition="'$(ClientFramework)' == 'React'" />
 
     <!-- Include the newly-built files in the publish output -->
     <ItemGroup>
-      <!--#if (UseAngular)-->
-      <DistFiles Include="$(SpaRoot)dist\browser\**;" />
-      <!--#endif-->
-      <DistFiles Include="$(SpaRoot)build\**" Condition="'$(UseReact)' == 'True'" />
+      <DistFiles Include="$(SpaRoot)dist\browser\**;" Condition="'$(ClientFramework)' == 'Angular'" />
+      <DistFiles Include="$(SpaRoot)dist\**" Condition="'$(ClientFramework)' == 'React'" />
       <ResolvedFileToPublish Include="@(DistFiles->'%(FullPath)')" Exclude="@(ResolvedFileToPublish)">
         <RelativePath>wwwroot\%(RecursiveDir)%(FileName)%(Extension)</RelativePath>
         <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
@@ -59,5 +50,4 @@
       </ResolvedFileToPublish>
     </ItemGroup>
   </Target>
-  <!--#endif-->
 </Project>

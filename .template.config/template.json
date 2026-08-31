@@ -313,7 +313,16 @@
         "tests/Application.FunctionalTests/SqlTestDatabase.cs",
         "tests/Application.FunctionalTests/appsettings.json",
         "tests/Application.FunctionalTests/appsettings.PostgreSQL.json",
-        "tests/Application.FunctionalTests/appsettings.SQLServer.json"
+        "tests/Application.FunctionalTests/appsettings.SQLServer.json",
+        "src/Infrastructure/Data/Migrations/**",
+        "build/DatabaseProvider.props",
+        "build/DatabaseProvider.PostgreSQL.props",
+        "build/DatabaseProvider.SqlServer.props",
+        "build/DatabaseProvider.Sqlite.props",
+        "build/ClientFramework.props",
+        "build/ClientFramework.React.props",
+        "build/ClientFramework.Angular.props",
+        "build/ClientFramework.ApiOnly.props"
       ],
       "rename": {
         "README-template.md": "README.md"
@@ -332,15 +341,25 @@
             "src/Web/Web-webapi.http"
           ],
           "rename": {
-            "ClientApp-Angular": "ClientApp"
-          }
+            "ClientApp-Angular": "ClientApp",
+            "build/ClientFramework.Angular.props": "build/ClientFramework.props"
+          },
+          "include": [
+            "build/ClientFramework.Angular.props"
+          ]
         },
         {
           "condition": "(UseReact)",
           "exclude": [
             "src/Web/ClientApp-Angular/**",
             "src/Web/Web-webapi.http"
-          ]
+          ],
+          "include": [
+            "build/ClientFramework.React.props"
+          ],
+          "rename": {
+            "build/ClientFramework.React.props": "build/ClientFramework.props"
+          }
         },
         {
           "condition": "(UseApiOnly)",
@@ -352,8 +371,12 @@
             "tests/Web.AcceptanceTests/**"
           ],
           "rename": {
-            "Web-webapi.http": "Web.http"
-          }
+            "Web-webapi.http": "Web.http",
+            "build/ClientFramework.ApiOnly.props": "build/ClientFramework.props"
+          },
+          "include": [
+            "build/ClientFramework.ApiOnly.props"
+          ]
         },
         {
           "condition": "(UsePostgreSQL)",
@@ -361,11 +384,14 @@
             "src/Web/appsettings.PostgreSQL.json",
             "tests/Application.FunctionalTests/PostgreSQLTestcontainersTestDatabase.cs",
             "tests/Application.FunctionalTests/PostgreSQLTestDatabase.cs",
-            "tests/Application.FunctionalTests/appsettings.PostgreSQL.json"
+            "tests/Application.FunctionalTests/appsettings.PostgreSQL.json",
+            "src/Infrastructure/Data/Migrations/**",
+            "build/DatabaseProvider.PostgreSQL.props"
           ],
           "rename": {
             "src/Web/appsettings.PostgreSQL.json": "src/Web/appsettings.json",
-            "tests/Application.FunctionalTests/appsettings.PostgreSQL.json": "tests/Application.FunctionalTests/appsettings.json"
+            "tests/Application.FunctionalTests/appsettings.PostgreSQL.json": "tests/Application.FunctionalTests/appsettings.json",
+            "build/DatabaseProvider.PostgreSQL.props": "build/DatabaseProvider.props"
           }
         },
         {
@@ -374,21 +400,25 @@
             "src/Web/appsettings.SQLServer.json",
             "tests/Application.FunctionalTests/SqlTestcontainersTestDatabase.cs",
             "tests/Application.FunctionalTests/SqlTestDatabase.cs",
-            "tests/Application.FunctionalTests/appsettings.SQLServer.json"
+            "tests/Application.FunctionalTests/appsettings.SQLServer.json",
+            "build/DatabaseProvider.SqlServer.props"
           ],
           "rename": {
             "src/Web/appsettings.SQLServer.json": "src/Web/appsettings.json",
-            "tests/Application.FunctionalTests/appsettings.SQLServer.json": "tests/Application.FunctionalTests/appsettings.json"
+            "tests/Application.FunctionalTests/appsettings.SQLServer.json": "tests/Application.FunctionalTests/appsettings.json",
+            "build/DatabaseProvider.SqlServer.props": "build/DatabaseProvider.props"
           }
         },
         {
           "condition": "(UseSqlite)",
           "include": [
             "src/Web/appsettings.SQLite.json",
-            "tests/Application.FunctionalTests/SqliteTestDatabase.cs"
+            "tests/Application.FunctionalTests/SqliteTestDatabase.cs",
+            "build/DatabaseProvider.Sqlite.props"
           ],
           "rename": {
-            "src/Web/appsettings.SQLite.json": "src/Web/appsettings.json"
+            "src/Web/appsettings.SQLite.json": "src/Web/appsettings.json",
+            "build/DatabaseProvider.Sqlite.props": "build/DatabaseProvider.props"
           }
         }
       ]

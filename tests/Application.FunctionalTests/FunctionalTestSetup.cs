@@ -41,6 +41,7 @@ public class FunctionalTestSetup
         var connectionString = (await _app.GetConnectionStringAsync(Services.Database))!;
 
         _factory = new WebApiFactory(connectionString);
+        using var client = _factory.CreateClient();
         ScopeFactory = _factory.Services.GetRequiredService<IServiceScopeFactory>();
         DbResetter = await DatabaseResetter.CreateAsync(connectionString);
     }

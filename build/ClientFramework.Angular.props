@@ -1,0 +1,5 @@
+<Project>
+  <PropertyGroup>
+    <ClientFramework>Angular</ClientFramework>
+  </PropertyGroup>
+</Project>
