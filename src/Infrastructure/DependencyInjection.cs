@@ -42,6 +42,7 @@ public static class DependencyInjection
         builder.Services.AddScoped<IApplicationDbContext>(provider => provider.GetRequiredService<ApplicationDbContext>());
 
         builder.Services.AddScoped<ApplicationDbContextInitialiser>();
+        builder.Services.AddHostedService<DatabaseMigrationHostedService>();
 
 #if (UseApiOnly)
         builder.Services.AddAuthentication()

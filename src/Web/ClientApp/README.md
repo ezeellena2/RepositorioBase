@@ -1,27 +1,59 @@
-# CleanArchitecture.Web
+# CleanArchitecture React Client
 
-This project was generated with [Angular CLI](https://github.com/angular/angular-cli) version 21.1.5.
+This project uses [Vite](https://vitejs.dev/) with React 19 and TypeScript.
 
-## Development server
+## Available Scripts
 
-Run `ng serve` for a dev server. Navigate to `http://localhost:4200/`. The application will automatically reload if you change any of the source files.
+### `npm start`
 
-## Code scaffolding
+Runs the app in development mode with hot module replacement.
+Opens at [https://localhost:44447](https://localhost:44447).
 
-Run `ng generate component component-name` to generate a new component. You can also use `ng generate directive|pipe|service|class|guard|interface|enum|module`.
+The development server proxies API requests to the ASP.NET Core backend.
 
-## Build
+### `npm run build`
 
-Run `ng build` to build the project. The build artifacts will be stored in the `dist/` directory.
+Builds the app for production to the `build` folder.
+Optimizes the build for best performance.
 
-## Running unit tests
+### `npm run preview`
 
-Run `ng test` to execute the unit tests via [Karma](https://karma-runner.github.io).
+Previews the production build locally.
 
-## Running end-to-end tests
+### `npm run lint`
 
-Run `ng e2e` to execute the end-to-end tests via a platform of your choice. To use this command, you need to first add a package that implements end-to-end testing capabilities.
+Runs ESLint on the src directory.
 
-## Further help
+## Project Structure
 
-To get more help on the Angular CLI use `ng help` or go check out the [Angular CLI Overview and Command Reference](https://angular.io/cli) page.
+- `src/` - React source code
+- `src/main.jsx` - Application entry point
+- `src/App.js` - Root component
+- `src/components/` - React components
+- `public/` - Static assets (favicon, manifest)
+- `vite.config.ts` - Vite configuration with proxy settings
+- `index.html` - HTML template
+
+## Environment Variables
+
+Vite environment variables must be prefixed with `VITE_` to be exposed to client code.
+
+Example:
+```
+VITE_API_URL=https://api.example.com
+```
+
+Access in code:
+```javascript
+const apiUrl = import.meta.env.VITE_API_URL;
+```
+
+## HTTPS Configuration
+
+The development server uses ASP.NET Core development certificates for HTTPS.
+Run `npm start` to automatically set up certificates via `aspnetcore-https.js`.
+
+## Learn More
+
+- [Vite Documentation](https://vitejs.dev/)
+- [React Documentation](https://react.dev/)

@@ -6,6 +6,8 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <PackageReference Include="Aspire.Hosting.Testing" />
+        <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
         <PackageReference Include="Microsoft.NET.Test.Sdk" />
         <PackageReference Include="NUnit" />
         <PackageReference Include="NUnit3TestAdapter" />
@@ -13,10 +15,22 @@
           <PrivateAssets>all</PrivateAssets>
           <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
+        <PackageReference Include="Shouldly" />
         <PackageReference Include="coverlet.collector">
           <PrivateAssets>all</PrivateAssets>
           <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
+    </ItemGroup>
+
+    <ItemGroup>
+        <Using Include="Aspire.Hosting" />
+        <Using Include="Aspire.Hosting.Testing" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\..\src\Shared\Shared.csproj" />
+        <ProjectReference Include="..\..\src\Web\Web.csproj" />
+        <ProjectReference Include="..\TestAppHost\TestAppHost.csproj" />
     </ItemGroup>
 
 </Project>

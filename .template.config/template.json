@@ -242,7 +242,7 @@
           "description": "Web API only"
         }
       ],
-      "defaultValue": "Angular",
+      "defaultValue": "React",
       "description": "The type of client framework to use"
     },
     "UseAngular": {
@@ -274,7 +274,7 @@
           "description": "SQL Server"
         }
       ],
-      "defaultValue": "sqlite",
+      "defaultValue": "postgresql",
       "description": "The database type to use."
     },
     "UsePostgreSQL": {
@@ -328,25 +328,25 @@
         {
           "condition": "(UseAngular)",
           "exclude": [
-            "src/Web/ClientApp-React/**",
-            "src/Web/Web-webapi.http"
-          ]
-        },
-        {
-          "condition": "(UseReact)",
-          "exclude": [
             "src/Web/ClientApp/**",
             "src/Web/Web-webapi.http"
           ],
           "rename": {
-            "ClientApp-React": "ClientApp"
+            "ClientApp-Angular": "ClientApp"
           }
+        },
+        {
+          "condition": "(UseReact)",
+          "exclude": [
+            "src/Web/ClientApp-Angular/**",
+            "src/Web/Web-webapi.http"
+          ]
         },
         {
           "condition": "(UseApiOnly)",
           "exclude": [
             "src/Web/ClientApp/**",
-            "src/Web/ClientApp-React/**",
+            "src/Web/ClientApp-Angular/**",
             "src/Web/Pages/**",
             "src/Web/Web.http",
             "tests/Web.AcceptanceTests/**"
