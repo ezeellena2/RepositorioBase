@@ -1,8 +1,11 @@
 using CleanArchitecture.Application.Common.Interfaces;
 using CleanArchitecture.Domain.ValueObjects;
 
+using CleanArchitecture.Application.Common.Security;
+
 namespace CleanArchitecture.Application.TodoLists.Commands.UpdateTodoList;
 
+[Authorize("todos.write", false)]
 public record UpdateTodoListCommand : IRequest
 {
     public int Id { get; init; }

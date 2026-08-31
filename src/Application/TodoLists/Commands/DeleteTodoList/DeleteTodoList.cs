@@ -1,7 +1,10 @@
 ﻿using CleanArchitecture.Application.Common.Interfaces;
 
+using CleanArchitecture.Application.Common.Security;
+
 namespace CleanArchitecture.Application.TodoLists.Commands.DeleteTodoList;
 
+[Authorize("todos.write", false)]
 public record DeleteTodoListCommand(int Id) : IRequest;
 
 public class DeleteTodoListCommandHandler : IRequestHandler<DeleteTodoListCommand>

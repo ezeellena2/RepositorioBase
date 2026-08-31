@@ -2,8 +2,11 @@
 using CleanArchitecture.Domain.Entities;
 using CleanArchitecture.Domain.ValueObjects;
 
+using CleanArchitecture.Application.Common.Security;
+
 namespace CleanArchitecture.Application.TodoLists.Commands.CreateTodoList;
 
+[Authorize("todos.write", false)]
 public record CreateTodoListCommand : IRequest<int>
 {
     public string? Title { get; init; }

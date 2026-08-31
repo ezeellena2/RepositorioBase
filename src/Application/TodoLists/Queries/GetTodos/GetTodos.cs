@@ -6,7 +6,7 @@ using CleanArchitecture.Domain.ValueObjects;
 
 namespace CleanArchitecture.Application.TodoLists.Queries.GetTodos;
 
-[Authorize]
+[Authorize("todos.read", false)]
 public record GetTodosQuery : IRequest<TodosVm>;
 
 public class GetTodosQueryHandler : IRequestHandler<GetTodosQuery, TodosVm>

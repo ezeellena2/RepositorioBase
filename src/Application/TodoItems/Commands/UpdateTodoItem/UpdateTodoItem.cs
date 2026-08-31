@@ -1,7 +1,10 @@
 ﻿using CleanArchitecture.Application.Common.Interfaces;
 
+using CleanArchitecture.Application.Common.Security;
+
 namespace CleanArchitecture.Application.TodoItems.Commands.UpdateTodoItem;
 
+[Authorize("todos.write", false)]
 public record UpdateTodoItemCommand : IRequest
 {
     public int Id { get; init; }

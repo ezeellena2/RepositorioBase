@@ -1,5 +1,8 @@
-﻿namespace CleanArchitecture.Application.WeatherForecasts.Queries.GetWeatherForecasts;
+﻿using CleanArchitecture.Application.Common.Security;
 
+namespace CleanArchitecture.Application.WeatherForecasts.Queries.GetWeatherForecasts;
+
+[Authorize("weather.read", false)]
 public record GetWeatherForecastsQuery : IRequest<IEnumerable<WeatherForecast>>;
 
 public class GetWeatherForecastsQueryHandler : IRequestHandler<GetWeatherForecastsQuery, IEnumerable<WeatherForecast>>

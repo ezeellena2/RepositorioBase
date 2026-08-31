@@ -1,8 +1,11 @@
 ﻿using CleanArchitecture.Application.Common.Interfaces;
 using CleanArchitecture.Domain.Enums;
 
+using CleanArchitecture.Application.Common.Security;
+
 namespace CleanArchitecture.Application.TodoItems.Commands.UpdateTodoItemDetail;
 
+[Authorize("todos.write", false)]
 public record UpdateTodoItemDetailCommand : IRequest
 {
     public int Id { get; init; }
