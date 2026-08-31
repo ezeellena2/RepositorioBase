@@ -1,8 +1,9 @@
 ﻿# For more info on HTTP files go to https://aka.ms/vs/httpfile
 @Web_HostAddress = https://localhost:5001
 
-@Email=administrator@localhost
-@Password=Administrator1!
+# Supply credentials for an existing account. The template does not seed a default administrator.
+@Email=<ExistingAccountEmail>
+@Password=<ExistingAccountPassword>
 @BearerToken=<YourToken>
 
 # POST Users Register

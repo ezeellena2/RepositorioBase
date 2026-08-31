@@ -5,7 +5,7 @@
 
 ## Context
 
-The repository is currently the source of a Clean Architecture template with Angular/React/API-only clients and PostgreSQL as its only database provider. Its reference sign-in uses default ASP.NET Core Identity endpoints, general roles/claims, a minimal React client, open CORS, database recreation in Development, and a default administrator password.
+Before Tasks 1 and 2, the generated template paired Angular/React/API-only clients with default ASP.NET Core Identity endpoints, general roles/claims, a minimal React client, open CORS, Development database recreation, and a fixed administrator account. Tasks 1 and 2 now make PostgreSQL the only database provider, apply `BaselinePostgreSql` with `MigrateAsync`, and remove destructive initialization and default credential seeding. The remaining reference sign-in still uses the default Identity endpoints, general roles/claims, and minimal React client that this decision replaces incrementally.
 
 The target starter needs global identity, multitenant organizations, memberships, contextual authorization, invitations, revocable sessions, audit, and reliable external effects. The functional standard comes from the external `CleanArchitecture` reference repository at `docs/standards/identity-access`.
 

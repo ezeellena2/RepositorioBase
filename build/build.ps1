@@ -6,7 +6,7 @@ param (
 $ErrorActionPreference = "Stop"
 
 $solution = "CleanArchitecture.slnx"
-$clientApps = @("./src/Web/ClientApp", "./src/Web/ClientApp-React")
+$clientApps = @("./src/Web/ClientApp", "./src/Web/ClientApp-Angular")
 
 Write-Host "Building solution..."
 dotnet build $solution --configuration $Configuration

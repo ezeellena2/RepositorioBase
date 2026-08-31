@@ -33,7 +33,7 @@ jobs:
         cache: 'npm'
         cache-dependency-path: |
           src/Web/ClientApp/package-lock.json
-          src/Web/ClientApp-React/package-lock.json
+          src/Web/ClientApp-Angular/package-lock.json
 
     - name: Cache NuGet packages
       uses: actions/cache@v6

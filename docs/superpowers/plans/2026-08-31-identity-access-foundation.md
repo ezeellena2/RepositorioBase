@@ -31,8 +31,8 @@ The maintainer accepted `size:exception`; proceed in the defined work units with
 
 ## Preconditions and Execution Rules
 
-- [ ] Accept [SPEC.md](../../features/identity-access/SPEC.md) and [ADR-004](../../decisions/ADR-004-Adopt-Multitenant-Identity-Access.md); move IA-002 from `Blocked` to `Ready`.
-- [ ] Execute in this dependency order: IA-002 -> IA-003 -> IA-004 domain -> IA-004 persistence -> IA-005 roles -> IA-005 authorization -> IA-006 registration -> IA-007 sessions -> IA-008 invitations/outbox -> IA-012 Platform invitation persistence then MFA -> IA-014 bootstrap/operations -> IA-009 final React/E2E acceptance.
+- [ ] Obtain human approval of [SPEC.md](../../features/identity-access/SPEC.md) and [ADR-004](../../decisions/ADR-004-Adopt-Multitenant-Identity-Access.md) before Task 3; IA-002 and IA-003 are already `Complete`.
+- [ ] Continue in this dependency order: IA-004 domain -> IA-004 persistence -> IA-005 roles -> IA-005 authorization -> IA-006 registration -> IA-007 sessions -> IA-008 invitations/outbox -> IA-012 Platform invitation persistence then MFA -> IA-014 bootstrap/operations -> IA-009 final React/E2E acceptance.
 - [ ] Do not introduce `UserSession` before IA-007 or Invitation behavior before IA-008. IA-004 may establish reusable `AuditEvent`; IA-006 may establish confirmation `OutboxMessage`/`OutboxSecret`.
 - [ ] Keep Personal/DNI, password recovery/change, Google OIDC, impersonation, destructive Platform actions, tenant-private business-data access, and production operations outside this increment.
 - [ ] Use `@solid`, `@architecture-patterns`, `@postgresql-expert`, `@frontend-react-best-practices`, and `@verification-before-completion`.
@@ -82,8 +82,7 @@ For every task that introduces a production type or module:
 - Modify: `src/Infrastructure/DependencyInjection.cs`
 - Modify: `src/Infrastructure/Infrastructure.csproj`
 - Modify: `src/Web/appsettings.json`
-- Move: `src/Web/ClientApp` -> `src/Web/ClientApp-Angular`
-- Move: `src/Web/ClientApp-React` -> `src/Web/ClientApp`
+- Reconcile client paths so `src/Web/ClientApp` is the active React client and `src/Web/ClientApp-Angular` remains the alternate template client.
 
 - [x] **Step 1: GREEN harness prerequisite**
 
@@ -104,8 +103,7 @@ Recorded RED: the prior provider configuration did not satisfy the PostgreSQL co
 Make Npgsql/Aspire the unconditional database stack, retain Angular/React/API-only client choices, and remove SQLite/SQL Server from active source paths and template metadata.
 
 ```powershell
-git mv src/Web/ClientApp src/Web/ClientApp-Angular
-git mv src/Web/ClientApp-React src/Web/ClientApp
+# Historical completion evidence: the active React client and retained Angular client are now in their current paths.
 dotnet test tests/Infrastructure.IntegrationTests/Infrastructure.IntegrationTests.csproj --filter StackBaselineTests
 dotnet new install .
 dotnet new ca-sln -cf react -db postgresql -o "$env:TEMP\ca-identity-smoke"

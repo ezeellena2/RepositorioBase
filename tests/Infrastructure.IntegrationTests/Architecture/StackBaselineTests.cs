@@ -115,6 +115,47 @@ public sealed class StackBaselineTests
     }
 
     [Test]
+    public void Repository_does_not_retain_stale_scaffold_references_or_fixed_acceptance_credentials()
+    {
+        var retiredReactClient = string.Concat("ClientApp", "-React");
+        var retiredAdministratorEmail = string.Concat("administrator", "@localhost");
+        var retiredAdministratorPassword = string.Concat("Administrator", "1!");
+
+        foreach (var relativePath in new[]
+        {
+            "build/build.ps1",
+            ".github/workflows/build.yml",
+            ".github/workflows/test-templates.yml",
+            ".gitignore",
+            "src/Web/Web.http",
+            "src/Web/Web-webapi.http",
+            "tests/Web.AcceptanceTests/StepDefinitions/LoginStepDefinitions.cs",
+            "tests/Web.AcceptanceTests/StepDefinitions/WeatherStepDefinitions.cs"
+        })
+        {
+            var source = File.ReadAllText(GetRepositoryPath(relativePath));
+            source.ShouldNotContain(retiredReactClient);
+            source.ShouldNotContain(retiredAdministratorEmail);
+            source.ShouldNotContain(retiredAdministratorPassword);
+        }
+
+        var buildScript = File.ReadAllText(GetRepositoryPath("build/build.ps1"));
+        buildScript.ShouldContain("./src/Web/ClientApp-Angular");
+
+        var credentials = File.ReadAllText(GetRepositoryPath("tests/Web.AcceptanceTests/AcceptanceTestCredentials.cs"));
+        credentials.ShouldContain("CLEANARCHITECTURE_ACCEPTANCE_TEST_EMAIL");
+        credentials.ShouldContain("CLEANARCHITECTURE_ACCEPTANCE_TEST_PASSWORD");
+        credentials.ShouldContain("No seeded default account is available");
+
+        var adr = File.ReadAllText(GetRepositoryPath("docs/decisions/ADR-004-Adopt-Multitenant-Identity-Access.md"));
+        adr.ShouldContain("Before Tasks 1 and 2");
+
+        var plan = File.ReadAllText(GetRepositoryPath("docs/superpowers/plans/2026-08-31-identity-access-foundation.md"));
+        plan.ShouldContain("IA-002 and IA-003 are already `Complete`");
+        plan.ShouldNotContain("move IA-002 from `Blocked` to `Ready`");
+    }
+
+    [Test]
     public void Database_migration_policy_skips_only_the_openapi_document_generator()
     {
         DatabaseMigrationExecutionPolicy.IsOpenApiDocumentGeneration(

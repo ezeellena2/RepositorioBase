@@ -1,6 +1,6 @@
 # Identity Access — Tasks
 
-**Status:** Proposed.
+**Status:** In progress. IA-002 and IA-003 are complete; the remaining Identity Access tasks remain pending approval and implementation.
 
 ## Review Workload Forecast
 
