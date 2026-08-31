@@ -5,7 +5,7 @@ using CleanArchitecture.Domain.Entities;
 
 namespace CleanArchitecture.Application.FunctionalTests.TodoItems.Commands;
 
-public class UpdateTodoItemTests : TestBase
+public class UpdateTodoItemTests : AuthorizedTestBase
 {
     [Test]
     public async Task ShouldRequireValidTodoItemId()
@@ -17,7 +17,7 @@ public class UpdateTodoItemTests : TestBase
     [Test]
     public async Task ShouldUpdateTodoItem()
     {
-        var userId = await TestApp.RunAsDefaultUserAsync();
+        var userId = TestApp.GetUserId();
 
         var listId = await TestApp.SendAsync(new CreateTodoListCommand
         {

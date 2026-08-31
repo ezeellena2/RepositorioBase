@@ -4,7 +4,7 @@ using CleanArchitecture.Domain.Entities;
 
 namespace CleanArchitecture.Application.FunctionalTests.TodoLists.Commands;
 
-public class DeleteTodoListTests : TestBase
+public class DeleteTodoListTests : AuthorizedTestBase
 {
     [Test]
     public async Task ShouldRequireValidTodoListId()

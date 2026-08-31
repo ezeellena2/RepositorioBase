@@ -5,7 +5,7 @@ using CleanArchitecture.Domain.Entities;
 
 namespace CleanArchitecture.Application.FunctionalTests.TodoItems.Commands;
 
-public class DeleteTodoItemTests : TestBase
+public class DeleteTodoItemTests : AuthorizedTestBase
 {
     [Test]
     public async Task ShouldRequireValidTodoItemId()

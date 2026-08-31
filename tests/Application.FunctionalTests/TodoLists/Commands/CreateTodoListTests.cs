@@ -4,7 +4,7 @@ using CleanArchitecture.Domain.Entities;
 
 namespace CleanArchitecture.Application.FunctionalTests.TodoLists.Commands;
 
-public class CreateTodoListTests : TestBase
+public class CreateTodoListTests : AuthorizedTestBase
 {
     [Test]
     public async Task ShouldRequireMinimumFields()
@@ -32,7 +32,7 @@ public class CreateTodoListTests : TestBase
     [Test]
     public async Task ShouldCreateTodoList()
     {
-        var userId = await TestApp.RunAsDefaultUserAsync();
+        var userId = TestApp.GetUserId();
 
         var command = new CreateTodoListCommand
         {

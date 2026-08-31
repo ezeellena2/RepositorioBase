@@ -8,7 +8,6 @@ namespace CleanArchitecture.Application.UnitTests.Architecture;
 
 public class RequestAuthorizationMetadataTests
 {
-    private const string PublicRequestInterfaceName = "CleanArchitecture.Application.Common.Security.IPublicRequest";
     private const string PermissionPropertyName = "Permission";
     private const string RequiresTenantPropertyName = "RequiresTenant";
 
@@ -18,11 +17,11 @@ public class RequestAuthorizationMetadataTests
         foreach (var requestType in GetConcreteRequests())
         {
             var authorizeAttributes = requestType.GetCustomAttributes<AuthorizeAttribute>(false).ToArray();
-            var isPublicRequest = requestType.GetInterfaces().Any(@interface => @interface.FullName == PublicRequestInterfaceName);
+            var isPublicRequest = typeof(IPublicRequest).IsAssignableFrom(requestType);
 
             (authorizeAttributes.Length == 1).ShouldBe(
                 !isPublicRequest,
-                $"{requestType.FullName} must declare exactly one AuthorizeAttribute or implement {PublicRequestInterfaceName}.");
+                $"{requestType.FullName} must declare exactly one AuthorizeAttribute or implement {typeof(IPublicRequest).FullName}.");
 
             if (isPublicRequest)
             {
@@ -41,16 +40,40 @@ public class RequestAuthorizationMetadataTests
 
         parameters.Select(parameter => parameter.Name).ShouldBe(["permission", "requiresTenant"]);
         parameters.Select(parameter => parameter.ParameterType).ShouldBe([typeof(string), typeof(bool)]);
-        typeof(AuthorizeAttribute).GetCustomAttribute<AttributeUsageAttribute>()!.AllowMultiple.ShouldBeFalse();
+        var attributeUsage = typeof(AuthorizeAttribute).GetCustomAttribute<AttributeUsageAttribute>()!;
+        attributeUsage.ValidOn.ShouldBe(AttributeTargets.Class);
+        attributeUsage.Inherited.ShouldBeTrue();
+        attributeUsage.AllowMultiple.ShouldBeFalse();
+
+        var attribute = new AuthorizeAttribute("todos.read", false);
+        typeof(AuthorizeAttribute).GetProperty(nameof(AuthorizeAttribute.Roles))!.PropertyType.ShouldBe(typeof(string));
+        typeof(AuthorizeAttribute).GetProperty(nameof(AuthorizeAttribute.Roles))!.CanWrite.ShouldBeTrue();
+        typeof(AuthorizeAttribute).GetProperty(nameof(AuthorizeAttribute.Policy))!.PropertyType.ShouldBe(typeof(string));
+        typeof(AuthorizeAttribute).GetProperty(nameof(AuthorizeAttribute.Policy))!.CanWrite.ShouldBeTrue();
+        attribute.Roles.ShouldBe(string.Empty);
+        attribute.Policy.ShouldBe(string.Empty);
+    }
+
+    [Test]
+    public void ValueTypeRequestsAreIncludedByRequestDiscovery()
+    {
+        IsConcreteRequest(typeof(ValueTypeRequest)).ShouldBeTrue();
     }
 
     private static IEnumerable<Type> GetConcreteRequests()
     {
         return typeof(AuthorizeAttribute).Assembly
             .GetTypes()
-            .Where(type => type.IsClass && !type.IsAbstract)
-            .Where(type => typeof(IBaseRequest).IsAssignableFrom(type))
-            .Where(type => !typeof(INotification).IsAssignableFrom(type));
+            .Where(IsConcreteRequest);
+    }
+
+    private static bool IsConcreteRequest(Type type)
+    {
+        return !type.IsInterface
+            && !type.IsAbstract
+            && !type.ContainsGenericParameters
+            && typeof(IBaseRequest).IsAssignableFrom(type)
+            && !typeof(INotification).IsAssignableFrom(type);
     }
 
     private static void AssertAuthorizationMetadata(Type requestType, AuthorizeAttribute authorizeAttribute)
@@ -69,4 +92,6 @@ public class RequestAuthorizationMetadataTests
         string.IsNullOrWhiteSpace(permission).ShouldBeFalse($"{requestType.FullName} requires a nonblank permission.");
         requiresTenant.ShouldBeOfType<bool>($"{requestType.FullName} must explicitly declare whether it requires a tenant.");
     }
+
+    private readonly record struct ValueTypeRequest : IRequest;
 }
