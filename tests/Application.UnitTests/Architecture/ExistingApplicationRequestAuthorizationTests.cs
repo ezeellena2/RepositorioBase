@@ -28,10 +28,8 @@ public class ExistingApplicationRequestAuthorizationTests
     public void ExistingRequestsAreAuthorizedWithoutTenantRequirement(Type requestType, string permission)
     {
         var authorizeAttribute = requestType.GetCustomAttributes<AuthorizeAttribute>(false).ShouldHaveSingleItem();
-        var publicRequestInterface = requestType.GetInterfaces()
-            .SingleOrDefault(@interface => @interface.FullName == "CleanArchitecture.Application.Common.Security.IPublicRequest");
-
-        publicRequestInterface.ShouldBeNull($"{requestType.FullName} must remain authorized, not public.");
+        ApplicationRequestInventory.IsPublicRequest(requestType)
+            .ShouldBeFalse($"{requestType.FullName} must remain authorized, not public.");
 
         GetRequiredMetadata<string>(authorizeAttribute, "Permission").ShouldBe(permission);
         GetRequiredMetadata<bool>(authorizeAttribute, "RequiresTenant").ShouldBeFalse();
@@ -40,14 +38,7 @@ public class ExistingApplicationRequestAuthorizationTests
     [Test]
     public void ExistingRequestInventoryContainsExactlyTheKnownNineRequests()
     {
-        var actualRequestTypes = typeof(AuthorizeAttribute).Assembly
-            .GetTypes()
-            .Where(type => type.IsClass && !type.IsAbstract)
-            .Where(type => typeof(MediatR.IBaseRequest).IsAssignableFrom(type))
-            .Where(type => !typeof(MediatR.INotification).IsAssignableFrom(type))
-            .Select(type => type.FullName)
-            .Order()
-            .ToArray();
+        var actualRequestTypes = GetConcreteRequestTypes(typeof(AuthorizeAttribute).Assembly);
 
         string?[] expectedRequestTypes =
         [
@@ -65,6 +56,22 @@ public class ExistingApplicationRequestAuthorizationTests
         actualRequestTypes.ShouldBe(expectedRequestTypes.Order());
     }
 
+    [Test]
+    public void InventoryDiscoveryIncludesValueTypeRequests()
+    {
+        GetConcreteRequestTypes(typeof(ValueTypeRequest).Assembly)
+            .ShouldContain(typeof(ValueTypeRequest).FullName);
+    }
+
+    private static string?[] GetConcreteRequestTypes(Assembly assembly)
+    {
+        return ApplicationRequestInventory
+            .GetConcreteRequests(assembly)
+            .Select(type => type.FullName)
+            .Order()
+            .ToArray();
+    }
+
     private static T GetRequiredMetadata<T>(AuthorizeAttribute authorizeAttribute, string propertyName)
     {
         var property = typeof(AuthorizeAttribute).GetProperty(propertyName);
@@ -73,4 +80,6 @@ public class ExistingApplicationRequestAuthorizationTests
 
         return property!.GetValue(authorizeAttribute).ShouldBeOfType<T>();
     }
+
+    private readonly record struct ValueTypeRequest : MediatR.IRequest;
 }

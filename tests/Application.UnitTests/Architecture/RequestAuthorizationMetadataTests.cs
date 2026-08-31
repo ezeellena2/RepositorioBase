@@ -17,7 +17,7 @@ public class RequestAuthorizationMetadataTests
         foreach (var requestType in GetConcreteRequests())
         {
             var authorizeAttributes = requestType.GetCustomAttributes<AuthorizeAttribute>(false).ToArray();
-            var isPublicRequest = typeof(IPublicRequest).IsAssignableFrom(requestType);
+            var isPublicRequest = ApplicationRequestInventory.IsPublicRequest(requestType);
 
             (authorizeAttributes.Length == 1).ShouldBe(
                 !isPublicRequest,
@@ -57,23 +57,12 @@ public class RequestAuthorizationMetadataTests
     [Test]
     public void ValueTypeRequestsAreIncludedByRequestDiscovery()
     {
-        IsConcreteRequest(typeof(ValueTypeRequest)).ShouldBeTrue();
+        ApplicationRequestInventory.IsConcreteRequest(typeof(ValueTypeRequest)).ShouldBeTrue();
     }
 
     private static IEnumerable<Type> GetConcreteRequests()
     {
-        return typeof(AuthorizeAttribute).Assembly
-            .GetTypes()
-            .Where(IsConcreteRequest);
-    }
-
-    private static bool IsConcreteRequest(Type type)
-    {
-        return !type.IsInterface
-            && !type.IsAbstract
-            && !type.ContainsGenericParameters
-            && typeof(IBaseRequest).IsAssignableFrom(type)
-            && !typeof(INotification).IsAssignableFrom(type);
+        return ApplicationRequestInventory.GetConcreteRequests(typeof(AuthorizeAttribute).Assembly);
     }
 
     private static void AssertAuthorizationMetadata(Type requestType, AuthorizeAttribute authorizeAttribute)
