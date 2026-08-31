@@ -4,43 +4,38 @@
 
 ## Review Workload Forecast
 
-Decision needed before apply: Yes  
-Chained PRs recommended: Yes  
-Chain strategy: pending  
+Decision needed before apply: No
+Chained PRs recommended: Yes
+Chain strategy: size-exception
 400-line budget risk: High
 
-Suggested units: stack/migrations/test harness; domain/persistence; authz/registration/session; invitations/outbox; React/E2E. A person chooses the chain strategy before apply.
+Suggested units: stack/migrations/test harness; domain/persistence; authorization/registration/session; invitations/outbox/MFA/Platform backend; React/Platform/E2E. The maintainer accepted `size:exception` and direct work on `main`; these units remain mandatory commit, verification, and rollback boundaries.
 
 ## Canonical requirement ownership
 
-- `IA-REQ-006..008`: IA-005 and IA-007.
-- `IA-REQ-026`: IA-005, IA-006, IA-007, and IA-008 for their respective events.
-- `IA-REQ-030`: IA-005 only.
-- `IA-REQ-033..036`: IA-004 only.
-- `IA-REQ-037`: IA-003 and IA-004.
-- `IA-REQ-038`: IA-005 only; IA-006..008 apply endpoint contracts and IA-009 supplies evidence.
-- IA-009 owns no normative requirement.
+- IA-005 owns IA-REQ-030/038 and request classification; IA-004 owns IA-REQ-033..036, including stale-write evidence.
+- IA-006 owns registration replay; IA-012 owns IA-REQ-041; IA-014 owns IA-REQ-039..040 and IA-REQ-042..046. IA-009 provides evidence only.
 
 ## Tracked work
 
 | ID | Task | Requirements | Status | Depends on | Observable result |
 |---|---|---|---|---|---|
-| IA-001 | Approve SPEC and ADR | — | Review | — | a person accepts scope and security decisions |
-| IA-002 | Specialize React/PostgreSQL and create the test harness | IA-REQ-031 | Blocked | IA-001 | target stack and real-PostgreSQL tests run |
-| IA-003 | Add `BaselinePostgreSql` and safe startup | IA-REQ-032, 037 | Blocked | IA-002 | restart preserves a Todo sentinel and creates no administrator |
-| IA-004 | Model and persist identity, tenant, organization profile, membership, and audit foundation; add `IdentityAccess` | IA-REQ-001, 002, 033..037 | Blocked | IA-003 | UUID/composite constraints and both migration paths pass |
-| IA-005 | Persist roles/permissions; enforce authorization and API contracts | IA-REQ-006..013, 026, 030, 038 | Blocked | IA-004 | permissions, denials, and shared HTTP contracts pass |
-| IA-006 | Register and confirm organizations | IA-REQ-003..005, 026, 027, 029; applies 038 | Blocked | IA-005 | pending state activates atomically with endpoint contracts |
-| IA-007 | Add sessions, login controls, and active tenant | IA-REQ-006..008, 019..026, 029, 031; applies 038 | Blocked | IA-006 | sessions, limits, tenant switching, and HTTP errors pass |
-| IA-008 | Add invitations and reliable outbox delivery | IA-REQ-014..018, 026..029; applies 038 | Blocked | IA-007 | onboarding, delivery, and endpoint contracts pass |
-| IA-009 | Deliver React and E2E acceptance evidence | evidence only, including 038 | Blocked | IA-008 | every first-increment journey and client contract passes |
-| IA-010 | Add Personal tenant and AR/DNI protection | roadmap | Proposed | IA-009, PII policy | protected Personal profile works |
-| IA-011 | Add recovery/change and session management | roadmap | Proposed | IA-009 | recovery and revocation work |
-| IA-012 | Add TOTP and recovery codes | roadmap | Proposed | IA-011 | sensitive actions require stronger authentication |
-| IA-013 | Add Google OIDC and explicit linking | roadmap | Proposed | IA-011, IA-012 | linking never trusts email coincidence |
-| IA-014 | Add Platform and controlled bootstrap | roadmap | Proposed | IA-012 | no default credential or global bypass exists |
-| IA-015 | Complete operations and preproduction gate | roadmap | Proposed | IA-010..014 | hardened-baseline evidence is complete |
+| IA-001 | Approve SPEC and ADR | — | Review | — | human approval |
+| IA-002 | PostgreSQL target and harness | IA-REQ-031 | Blocked | IA-001 | real-PostgreSQL tests |
+| IA-003 | Safe baseline migration/startup | IA-REQ-032,037 | Blocked | IA-002 | sentinel preserved; no administrator |
+| IA-004 | Core identity/tenant/membership/audit persistence | IA-REQ-001,002,033..037 | Blocked | IA-003 | constraints, stale-write proof, upgrades |
+| IA-005 | Roles, authorization, HTTP contract | IA-REQ-006..013,026,030,038 | Blocked | IA-004 | permission/Problem Details contracts |
+| IA-006 | Organization registration/confirmation | IA-REQ-003..005,026..029; applies 038 | Blocked | IA-005 | atomic, idempotent neutral replay |
+| IA-007 | Sessions, limits, active tenant | IA-REQ-006..008,019..026,029,031; applies 038 | Blocked | IA-006 | revocable sessions and limits |
+| IA-008 | Invitations and reliable outbox | IA-REQ-014..018,026..029; applies 038 | Blocked | IA-007 | secure onboarding and delivery |
+| IA-012 | Platform invitation persistence, credential onboarding, MFA and recovery codes | IA-REQ-041 | Blocked | IA-008 | persisted invitation, password confirmation, encrypted TOTP, hashed codes, step-up |
+| IA-014 | Platform bootstrap, administration, operations panel | IA-REQ-039..040,042..046; applies 038 | Blocked | IA-012 | cold-start recovery, safe directories, no bypass |
+| IA-009 | React and E2E acceptance evidence | evidence only, including 038 | Blocked | IA-014 | post-Platform verified journeys ready for Review |
+| IA-010 | Personal tenant and AR/DNI | roadmap | Proposed | IA-009, PII policy | protected profile |
+| IA-011 | Recovery/change and session management | roadmap | Proposed | IA-009 | recovery lifecycle |
+| IA-013 | Google OIDC and linking | roadmap | Proposed | IA-011, IA-012 | explicit secure linking |
+| IA-015 | Operations/preproduction gate | roadmap | Proposed | IA-010..014 | hardened baseline |
 
 ## Executable-task contract
 
-Before `Ready`, record actor, preconditions, input/output/errors, permission or `IPublicRequest`, tenant scope, files/migration, compile-safe shape RED, behavioral RED, GREEN/REFACTOR, denial/concurrency/cross-tenant tests, audit/outbox behavior, and evidence. IA-001 approves documentation only; it authorizes no implementation or external effect.
+Before `Ready`, record actor, preconditions, request marker/permission, tenant scope, files/migration, compile-safe RED, behavioral RED, GREEN/REFACTOR, denial/concurrency/replay tests, audit/outbox behavior, and evidence. Platform tasks additionally prove invitation-before-MFA, bootstrap recovery, MFA freshness, last-owner, reserved-tenant, projection, and prohibited-capability invariants. IA-009 reaches `Review` only after IA-014 Platform verification. IA-001 approves documentation only.

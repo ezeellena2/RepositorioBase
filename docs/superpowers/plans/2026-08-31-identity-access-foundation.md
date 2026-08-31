@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Deliver a multitenant SaaS identity slice with safe PostgreSQL upgrades, Organization registration and confirmation, revocable sessions, active-tenant permissions, invitation onboarding, reliable email delivery, and a reachable same-origin React client.
+**Goal:** Deliver a multitenant SaaS identity slice with safe PostgreSQL upgrades, Organization registration and confirmation, revocable sessions, active-tenant permissions, invitation onboarding, reliable email delivery, a one-time MFA-bound Platform owner bootstrap, and a reachable same-origin React client.
 
-**Architecture:** ASP.NET Core Identity is a credential adapter. Domain/Application own lifecycle, tenants, memberships, roles, permissions, sessions, invitations, audit, and outbox rules. PostgreSQL enforces UUID and tenant-local invariants; the BFF cookie references a revocable server session; React keeps antiforgery state only in memory.
+**Architecture:** ASP.NET Core Identity is a credential adapter. Domain/Application own lifecycle, tenants, memberships, roles, permissions, sessions, invitations, MFA, audit, and outbox rules. Platform uses the same active-tenant membership and permission evaluator, never a global bypass. PostgreSQL enforces UUID and tenant-local invariants; the BFF cookie references a revocable server session; React keeps antiforgery state only in memory.
 
 **Tech Stack:** .NET 10, ASP.NET Core Identity, EF Core 10, PostgreSQL/Npgsql, Aspire, MediatR, FluentValidation, React 19, Vite, Vitest, MSW, NUnit, Shouldly, Reqnroll, and Playwright.
 
@@ -14,9 +14,9 @@
 
 ## Review Workload Forecast
 
-- Decision needed before apply: Yes
+- Decision needed before apply: No
 - Chained PRs recommended: Yes
-- Chain strategy: pending
+- Chain strategy: size-exception (maintainer accepted direct work on `main`; keep the five work units as commit, verification, and rollback boundaries)
 - 400-line budget risk: High
 
 Suggested review units:
@@ -24,17 +24,17 @@ Suggested review units:
 1. stack/migrations/test harness
 2. domain/persistence
 3. authz/registration/session
-4. invitations/outbox
-5. React/E2E
+4. invitations/outbox/MFA/Platform backend
+5. React/Platform/E2E
 
 Do not begin apply until the user selects a chain strategy or explicitly accepts one large review.
 
 ## Preconditions and Execution Rules
 
 - [ ] Accept [SPEC.md](../../features/identity-access/SPEC.md) and [ADR-004](../../decisions/ADR-004-Adopt-Multitenant-Identity-Access.md); move IA-002 from `Blocked` to `Ready`.
-- [ ] Execute in this dependency order: IA-002 -> IA-003 -> IA-004 domain -> IA-004 persistence -> IA-005 roles -> IA-005 authorization -> IA-006 registration -> IA-007 sessions -> IA-008 invitations/outbox -> IA-009 React -> IA-009 E2E.
+- [ ] Execute in this dependency order: IA-002 -> IA-003 -> IA-004 domain -> IA-004 persistence -> IA-005 roles -> IA-005 authorization -> IA-006 registration -> IA-007 sessions -> IA-008 invitations/outbox -> IA-012 Platform invitation persistence then MFA -> IA-014 bootstrap/operations -> IA-009 final React/E2E acceptance.
 - [ ] Do not introduce `UserSession` before IA-007 or Invitation behavior before IA-008. IA-004 may establish reusable `AuditEvent`; IA-006 may establish confirmation `OutboxMessage`/`OutboxSecret`.
-- [ ] Keep Personal/DNI, recovery, TOTP, Google OIDC, Platform, and production operations outside this increment.
+- [ ] Keep Personal/DNI, password recovery/change, Google OIDC, impersonation, destructive Platform actions, tenant-private business-data access, and production operations outside this increment.
 - [ ] Use `@solid`, `@architecture-patterns`, `@postgresql-expert`, `@frontend-react-best-practices`, and `@verification-before-completion`.
 - [ ] Execute one RED -> GREEN -> REFACTOR cycle at a time. Commits require explicit commit authority and imply neither push nor deployment.
 
@@ -50,12 +50,13 @@ For every task that introduces a production type or module:
 
 ### Normative contracts and ownership
 
-- `IA-REQ-006..008` are owned by IA-005 and IA-007; `IA-REQ-026` by IA-005 through IA-008 for each slice's events; `IA-REQ-030` by IA-005 only; `IA-REQ-033..036` by IA-004 only; `IA-REQ-037` by IA-003 and IA-004; and `IA-REQ-038` by IA-005 only. IA-006..008 apply IA-REQ-038 to their endpoints; IA-009 adds evidence only.
+- `IA-REQ-006..008` are owned by IA-005 and IA-007; `IA-REQ-026` by IA-005 through IA-008 and IA-014 for their respective events; `IA-REQ-030` and IA-REQ-038 are IA-005-only; `IA-REQ-033..036` are IA-004-only; `IA-REQ-037` is IA-003 and IA-004; IA-REQ-041 is IA-012; IA-REQ-039..040 and IA-REQ-042..046 are IA-014. IA-006..008/014 apply IA-REQ-038; IA-009 adds evidence only.
 - Migration order starts `BaselinePostgreSql` (current template) -> `IdentityAccess` (core identity-access schema), followed by named incremental migrations. Every migration addition reruns empty-to-latest and BaselinePostgreSql-to-latest preservation.
 - Sample entity keys remain `int`; identity-access and ASP.NET Identity keys are `Guid`/`uuid`. Composite foreign keys repeat `TenantId`.
-- Every Application request implements exactly one of `IPublicRequest` or `[Authorize]`.
+- Every Application request implements exactly one of `IPublicRequest` or `[Authorize]`; the current inventory is in Task 6 and remains architecture-guarded.
 - `UserSession.ActiveTenantId` is the sole tenant-context source. Headers, query strings, client state, claims, and route IDs never establish it.
 - Authentication claims contain only `UserId` and opaque `SessionId`.
+- Platform authority is an active `TenantType.Platform` membership plus explicit `platform.*` permission; `IsSuperAdmin`, global claims/roles, and context bypasses are forbidden.
 - Antiforgery cookie is `__Host-XSRF-TOKEN`; request header is `X-CSRF-TOKEN`; no `X-CSRF-Refresh` header exists.
 - Raw tokens/provider errors never enter outbox payloads, audit, logs, Problem Details, URLs sent to the server, or telemetry.
 - Expected business failures are internal typed `Result`/`Result<T>` values; exceptions represent unexpected failures. Web never serializes Result or a universal `{ success, data, error }` envelope. All non-success responses use one RFC 9457 Problem Details writer; React knows only endpoint DTOs and that external error contract.
@@ -246,6 +247,9 @@ Expected: PASS.
 - Modify: `src/Web/Services/CurrentUser.cs`
 - Modify: `src/Domain/Common/BaseAuditableEntity.cs`
 - Modify: `src/Infrastructure/Data/Interceptors/AuditableEntityInterceptor.cs`
+- Modify: `src/Infrastructure/Data/Configurations/TodoItemConfiguration.cs`
+- Modify: `src/Application/TodoItems/Commands/UpdateTodoItemDetail/UpdateTodoItemDetail.cs`
+- Modify: `src/Web/Endpoints/TodoItems.cs`
 - Modify: `tests/Application.FunctionalTests/Infrastructure/TestApp.cs`
 - Modify: `tests/Application.FunctionalTests/Infrastructure/WebApiFactory.cs`
 - Modify: `tests/Application.UnitTests/Common/Behaviours/RequestLoggerTests.cs`
@@ -266,11 +270,12 @@ Expected: PASS.
 - Modify: `src/Infrastructure/Data/Migrations/ApplicationDbContextModelSnapshot.cs`
 - Create: `tests/Infrastructure.IntegrationTests/IdentityAccess/IdentityAccessMappingTests.cs`
 - Create: `tests/Infrastructure.IntegrationTests/IdentityAccess/AuditPersistenceTests.cs`
+- Create: `tests/Infrastructure.IntegrationTests/IdentityAccess/ConcurrencyTests.cs`
 - Create: `tests/Infrastructure.IntegrationTests/Data/MigrationUpgradeTests.cs`
 
 - [ ] **Step 1: Metadata RED**
 
-Inspect EF metadata by entity/property name for core entities, unique normalized email/slug/CUIT, membership uniqueness, composite tenant FKs, explicit deletes, concurrency tokens, `Guid?` audit actors, and append-only audit mapping.
+Inspect EF metadata by entity/property name for core entities, unique normalized email/slug/CUIT, membership uniqueness, composite tenant FKs, explicit deletes, concurrency tokens (including `TodoItem`), `Guid?` audit actors, and append-only audit mapping.
 
 Run: `dotnet test tests/Infrastructure.IntegrationTests/Infrastructure.IntegrationTests.csproj --filter "IdentityAccessMappingTests|AuditPersistenceTests"`  
 Expected: FAIL at runtime because entities/constraints are absent and actor IDs are strings.
@@ -299,9 +304,9 @@ Review conversion of baseline string Identity/audit actor IDs to UUID using vali
 
 - [ ] **Step 4: RED/GREEN migration and audit proof**
 
-`MigrationUpgradeTests` migrates (a) empty -> latest and (b) `BaselinePostgreSql` -> latest after inserting a Todo sentinel and parseable GUID-string Identity row. Assert sentinel preservation, UUID columns, core constraints, no pending migrations, and raw/tracked `AuditEvent` update/delete rejection.
+`MigrationUpgradeTests` migrates (a) empty -> latest and (b) `BaselinePostgreSql` -> latest after inserting a Todo sentinel and parseable GUID-string Identity row. Assert sentinel preservation, UUID columns, core constraints, no pending migrations, and raw/tracked `AuditEvent` update/delete rejection. `ConcurrencyTests` uses two real PostgreSQL DbContexts reading one `TodoItem`; the first `UpdateTodoItemDetailCommand` write persists and the stale second conditional write fails.
 
-Run: `dotnet test tests/Infrastructure.IntegrationTests/Infrastructure.IntegrationTests.csproj --filter "IdentityAccessMappingTests|AuditPersistenceTests|MigrationUpgradeTests"`  
+Run: `dotnet test tests/Infrastructure.IntegrationTests/Infrastructure.IntegrationTests.csproj --filter "IdentityAccessMappingTests|AuditPersistenceTests|ConcurrencyTests|MigrationUpgradeTests"`
 Expected initial RED: missing mapping/migration/append-only runtime assertions; after GREEN: both upgrade paths PASS.
 
 - [ ] **Step 5: REFACTOR and commit**
@@ -345,7 +350,7 @@ Expected RED: runtime missing-type assertion. Add only shells; rerun PASS.
 
 - [ ] **Step 2: Behavioral RED**
 
-Test immutable `resource.action` codes, system-role protection, normalized tenant-local names, allowed tenant types, one active membership as evaluator input, cross-tenant role/permission rejection, authorization-version increments, and exact `membership.changed`/`role.changed` audit events with correlation and allowlisted payload.
+Test immutable `resource.action` codes, including distinct `platform.admins.read` and `platform.admins.manage`; system-role protection, normalized tenant-local names, allowed tenant types, one active membership as evaluator input, cross-tenant role/permission rejection, authorization-version increments, and exact `membership.changed`/`role.changed` audit events with correlation and allowlisted payload.
 
 ```powershell
 dotnet test tests/Domain.UnitTests/Domain.UnitTests.csproj --filter RolePermissionTests
@@ -356,7 +361,7 @@ Expected: FAIL at runtime on shell behavior/missing audit rows.
 
 - [ ] **Step 3: GREEN - persistence and incremental migration**
 
-Implement catalog synchronization, evaluator over explicit identity/tenant inputs, composite membership-role/role-permission FKs, version updates, and transactional audits. Do not add `UserSession`.
+Implement catalog synchronization that seeds `platform.admins.read` separately from `platform.admins.manage`, evaluator over explicit identity/tenant inputs, composite membership-role/role-permission FKs, version updates, and transactional audits. Do not add `UserSession`.
 
 ```powershell
 dotnet ef migrations add TenantAuthorization --project src/Infrastructure/Infrastructure.csproj --startup-project src/Web/Web.csproj --output-dir Data/Migrations
@@ -390,6 +395,15 @@ git commit -m "feat: add tenant authorization model"
 - Create: `src/Application/IdentityAccess/Common/IdentityAccessErrors.cs`
 - Modify: `src/Application/Common/Interfaces/IIdentityService.cs`
 - Modify: `src/Application/Common/Behaviours/AuthorizationBehaviour.cs`
+- Modify: `src/Application/TodoLists/Commands/CreateTodoList/CreateTodoList.cs`
+- Modify: `src/Application/TodoLists/Commands/UpdateTodoList/UpdateTodoList.cs`
+- Modify: `src/Application/TodoLists/Commands/DeleteTodoList/DeleteTodoList.cs`
+- Modify: `src/Application/TodoLists/Queries/GetTodos/GetTodos.cs`
+- Modify: `src/Application/TodoItems/Commands/CreateTodoItem/CreateTodoItem.cs`
+- Modify: `src/Application/TodoItems/Commands/UpdateTodoItem/UpdateTodoItem.cs`
+- Modify: `src/Application/TodoItems/Commands/UpdateTodoItemDetail/UpdateTodoItemDetail.cs`
+- Modify: `src/Application/TodoItems/Commands/DeleteTodoItem/DeleteTodoItem.cs`
+- Modify: `src/Application/WeatherForecasts/Queries/GetWeatherForecasts/GetWeatherForecastsQuery.cs`
 - Create: `src/Application/IdentityAccess/Authorization/ICurrentTenant.cs`
 - Create: `src/Application/Common/Interfaces/ISecurityDenialAuditWriter.cs`
 - Modify: `src/Infrastructure/Identity/IdentityService.cs`
@@ -408,6 +422,7 @@ git commit -m "feat: add tenant authorization model"
 - Create: `tests/Application.UnitTests/Common/Models/ResultContractShapeTests.cs`
 - Create: `tests/Application.UnitTests/Common/Models/ResultTests.cs`
 - Create: `tests/Application.UnitTests/Architecture/RequestAuthorizationMetadataTests.cs`
+- Create: `tests/Application.UnitTests/Architecture/ExistingApplicationRequestAuthorizationTests.cs`
 - Create: `tests/Application.UnitTests/Common/Behaviours/PermissionAuthorizationBehaviourTests.cs`
 - Create: `tests/Application.FunctionalTests/IdentityAccess/Authorization/PermissionMatrixTests.cs`
 - Create: `tests/Application.FunctionalTests/IdentityAccess/Api/ProblemDetailsContractTests.cs`
@@ -415,9 +430,23 @@ git commit -m "feat: add tenant authorization model"
 
 - [ ] **Step 1: Compile-safe shape RED**
 
-Reflect by name for `IPublicRequest`, `AuthorizationMetadataMissingException`, `ApplicationErrorCategory`, `ApplicationError`, generic `Result<T>`, and `AuthorizeAttribute.Permission/RequiresTenant`; check the Web contract files by path without importing missing types.
+Reflect by name for `IPublicRequest`, `AuthorizationMetadataMissingException`, `ApplicationErrorCategory`, `ApplicationError`, generic `Result<T>`, and `AuthorizeAttribute.Permission/RequiresTenant`; check Web contract files by path without importing missing types. `ExistingApplicationRequestAuthorizationTests` asserts this current inventory; every row is `[Authorize]` with `RequiresTenant=false`, because its sole endpoint group calls `RequireAuthorization()` and current Todo entities have no `TenantId`. No existing request is public.
 
-Run: `dotnet test tests/Application.UnitTests/Application.UnitTests.csproj --filter "RequestAuthorizationMetadataTests|ResultContractShapeTests"`  
+| Existing request | Permission | Tenant |
+|---|---|---|
+| `CreateTodoListCommand` | `todos.write` | no |
+| `UpdateTodoListCommand` | `todos.write` | no |
+| `DeleteTodoListCommand` | `todos.write` | no |
+| `GetTodosQuery` | `todos.read` | no |
+| `CreateTodoItemCommand` | `todos.write` | no |
+| `UpdateTodoItemCommand` | `todos.write` | no |
+| `UpdateTodoItemDetailCommand` | `todos.write` | no |
+| `DeleteTodoItemCommand` | `todos.write` | no |
+| `GetWeatherForecastsQuery` | `weather.read` | no |
+
+The same future-request guard classifies `RegisterPlatformInvitee`, `ConfirmPlatformInvitee`, and `RecoverPendingPlatformOwnerInvitation` as `IPublicRequest`: each is limited by antiforgery, a bound token where applicable, server-derived recipient/state, and no membership/elevation. Only valid opaque business states receive the neutral response: antiforgery rejects as `400 antiforgery_validation_failed`, and rate-limit rejection is `429 rate_limit_exceeded` plus `Retry-After`. Registration accepts a PasswordOptions-valid password only for a missing matching identity; an existing identity ignores it and receives generic flow behavior. `BeginPlatformMfaEnrollment`, `VerifyPlatformMfaEnrollment`, and `AcknowledgePlatformRecoveryCodes` are `[Authorize]` with `RequiresTenant=false` because they require the authenticated confirmed matching identity and invitation token before Platform activation. All Platform operations after activation require `[Authorize]`, active Platform tenant, and their explicit `platform.*` permission.
+
+Run: `dotnet test tests/Application.UnitTests/Application.UnitTests.csproj --filter "RequestAuthorizationMetadataTests|ExistingApplicationRequestAuthorizationTests|ResultContractShapeTests"`
 Expected: FAIL at runtime with missing type/member/file assertions, never compilation failure.
 
 - [ ] **Step 2: Add shells and migrate current Result atomically**
@@ -435,7 +464,7 @@ Expected: build and shape tests PASS; behavior remains deliberately unimplemente
 
 - [ ] **Step 3: Behavioral RED - authorization and Result semantics**
 
-Test unmarked rejection before handler, invalid dual marking, anonymous public request, `401` invalid identity, `403` missing permission, suspended tenant/membership, one-membership isolation, cross-tenant `404`, and header/route spoof rejection. Use a fake validated `ICurrentTenant`; its persisted-session adapter belongs to IA-007.
+Test unmarked rejection before handler, invalid dual marking, anonymous public request, `401` invalid identity, `403` missing permission, suspended tenant/membership, one-membership isolation, cross-tenant `404`, and header/route spoof rejection. The architecture guard scans every `IRequest` in Application so present and future requests have exactly one marker; the inventory test proves the nine existing request classifications. Use a fake validated `ICurrentTenant`; its persisted-session adapter belongs to IA-007.
 
 Test a denied mutation whose business transaction rolls back still commits one `authorization.denied` event through `SecurityDenialAuditWriter` using a separate DbContext/transaction. Its allowlist contains correlation ID, actor/session/tenant IDs, permission code, outcome, and timestamp only—no resource value, email, token, cookie, or provider text.
 
@@ -450,7 +479,7 @@ Expected: runtime assertions fail on shell Result behavior, authorization fall-t
 
 - [ ] **Step 4: Behavioral RED - runtime and OpenAPI**
 
-`ProblemDetailsContractTests`, through `FunctionalTestSetup.HttpClient`, cover semantic `200` DTO, existing `201` plus `Location`, empty `204`, and runtime `400/401/403/404/409/500`. Every failure must be `application/problem+json` with matching status, stable `code`, opaque `traceId`, safe optional `detail`, validation-only field-indexed `errors`, and no stack, exception, provider, PII, or secret data. The generic `500` comes only from an unexpected exception. Assert neither internal Result fields nor universal `success/data/error` fields appear.
+`ProblemDetailsContractTests`, through `FunctionalTestSetup.HttpClient`, cover semantic `200` DTO, existing `201` plus `Location`, empty `204`, and runtime `400/401/403/404/409/500`. Map the Task 4 stale `UpdateTodoItemDetailCommand` write to typed `Conflict` code `todo_item_concurrency_conflict`; its endpoint is RFC 9457 `409` with that stable code and opaque `traceId`. Every failure must be `application/problem+json` with matching status, stable `code`, opaque `traceId`, safe optional `detail`, validation-only field-indexed `errors`, and no stack, exception, provider, PII, or secret data. The generic `500` comes only from an unexpected exception. Assert neither internal Result fields nor universal `success/data/error` fields appear.
 
 `OpenApiContractTests` rejects missing/mismatched success schemas, statuses, required headers, supported error statuses, Problem Details schema, or endpoint error codes. IA-006 later adds neutral `202`; IA-007 adds normalized `429` plus `Retry-After`; IA-008 adds identity `201 Location`/`200` evidence to these same suites.
 
@@ -491,21 +520,29 @@ git commit -m "feat: enforce authorization and API contracts"
 - Create: `src/Application/Common/Interfaces/ISecureTokenGenerator.cs`
 - Create: `src/Application/Common/Interfaces/ITokenHasher.cs`
 - Create: `src/Application/Common/Interfaces/IOutboxSecretWriter.cs`
+- Create: `src/Application/IdentityAccess/Organizations/RegisterOrganization/IRegistrationIdempotencyStore.cs`
 - Create: `src/Application/IdentityAccess/Sessions/IValidatedOptionalSession.cs`
 - Create: `src/Application/IdentityAccess/Organizations/RegisterOrganization/RegisterOrganization.cs`
 - Create: `src/Application/IdentityAccess/Organizations/ConfirmEmail/ConfirmEmail.cs`
 - Create: `src/Infrastructure/Security/SecureTokenGenerator.cs`
 - Create: `src/Infrastructure/Security/VersionedTokenHasher.cs`
 - Create: `src/Infrastructure/Outbox/OutboxSecretWriter.cs`
+- Create: `src/Infrastructure/IdentityAccess/Organizations/RegistrationIdempotencyStore.cs`
+- Create: `src/Domain/IdentityAccess/Organizations/RegistrationSubmission.cs`
+- Create: `src/Infrastructure/Data/Configurations/IdentityAccess/RegistrationSubmissionConfiguration.cs`
 - Create: `src/Infrastructure/Data/Configurations/IdentityAccess/OutboxMessageConfiguration.cs`
 - Create: `src/Infrastructure/Data/Configurations/IdentityAccess/OutboxSecretConfiguration.cs`
 - Create: `src/Infrastructure/Data/Migrations/<timestamp>_RegistrationMessaging.cs`
+- Modify: `src/Infrastructure/Data/Migrations/ApplicationDbContextModelSnapshot.cs`
+- Modify: `src/Application/Common/Interfaces/IApplicationDbContext.cs`
+- Modify: `src/Infrastructure/Data/ApplicationDbContext.cs`
 - Modify: `src/Web/DependencyInjection.cs`
 - Modify: `src/Web/Program.cs`
 - Create: `src/Web/Endpoints/Identity/AntiforgeryEndpoints.cs`
 - Create: `src/Web/Endpoints/Identity/RegistrationEndpoints.cs`
 - Create: `src/Web/Endpoints/Identity/Contracts/AntiforgeryResponse.cs`
 - Create: `tests/Application.UnitTests/Architecture/RegistrationApplicationShapeTests.cs`
+- Create: `tests/Application.UnitTests/IdentityAccess/Organizations/RegistrationIdempotencyTests.cs`
 - Create: `tests/Application.FunctionalTests/IdentityAccess/Organizations/RegisterOrganizationTests.cs`
 - Create: `tests/Application.FunctionalTests/IdentityAccess/Organizations/ConfirmEmailTests.cs`
 - Create: `tests/Infrastructure.IntegrationTests/IdentityAccess/AntiforgeryTests.cs`
@@ -514,14 +551,14 @@ git commit -m "feat: enforce authorization and API contracts"
 
 - [ ] **Step 1: Shape RED, then shells**
 
-Reflect for both requests, outbox types and exact routes `GET /api/identity/antiforgery`, `POST /api/identity/organizations/register`, and `POST /api/identity/confirm-email`. Assert `OutboxMessage.AttemptCount`, `NextAttemptAt`, `FailureCode`; and `OutboxSecret.ExpiresAt`, terminal state/reason, ciphertext, receipt/evidence.
+Reflect for both requests, `IRegistrationIdempotencyStore`/durable `RegistrationSubmission`, outbox types and exact routes `GET /api/identity/antiforgery`, `POST /api/identity/organizations/register`, and `POST /api/identity/confirm-email`. Assert `OutboxMessage.AttemptCount`, `NextAttemptAt`, `FailureCode`; and `OutboxSecret.ExpiresAt`, terminal state/reason, ciphertext, receipt/evidence.
 
 Run: `dotnet test tests/Application.UnitTests/Application.UnitTests.csproj --filter RegistrationApplicationShapeTests`  
 Expected RED: runtime missing-type/member/route assertion. Add request/domain/endpoint shells; public requests implement `IPublicRequest`; rerun PASS.
 
 - [ ] **Step 2: Behavioral RED**
 
-Registration tests cover: anonymous/new creates unconfirmed identity plus `PendingConfirmation` Organization/profile/responsible membership atomically; anonymous/existing returns identical `202` and creates none; authenticated validated identity creates an active second Organization only for itself; mismatched email rejects; any supplied invalid/revoked session returns `401`, never anonymous. Until IA-007 provides persisted sessions, the production optional-session adapter fails closed on any supplied cookie while functional tests inject a trusted adapter for the authenticated branch.
+`RegistrationIdempotencyTests` first prove the Application service computes one canonical key from normalized caller scope and normalized registration intent, atomically claims a durable submission before effects, and returns its recorded neutral result; storage uniqueness coordinates claims but does not decide business idempotency. `RegisterOrganizationTests` prove sequential replay and contract-appropriate concurrent replay of equivalent anonymous registration each return the same bodyless `202` and leave exactly one organization, responsible membership, outbox-message/secret set, and audit-event set. They preserve true branches: existing identity remains neutral with no creation, authenticated mismatched email rejects, and invalid/revoked supplied session is `401`, never anonymous. Until IA-007 provides persisted sessions, the production optional-session adapter fails closed on any supplied cookie while functional tests inject a trusted adapter for the authenticated branch.
 
 Confirmation tests cover atomic activation of identity/tenant/membership, injected rollback, idempotent replay, suspended/terminal rejection, and exact `organization.registration.requested`/`identity.confirmed` audit events. Outbox tests assert confirmation intent shares the transaction, payload has no token, and encrypted secret expires.
 
@@ -875,10 +912,10 @@ git add src/Web/ClientApp
 git commit -m "feat: add reachable identity experience"
 ```
 
-## Task 13: Verify the first increment end to end
+## Task 13: Verify the pre-Platform foundation
 
-**Requirements:** acceptance evidence, including IA-REQ-038; normative ownership remains IA-002..IA-008  
-**Tracking:** IA-009
+**Requirements:** pre-Platform acceptance evidence, including IA-REQ-038; normative ownership remains IA-002..IA-008
+**Tracking:** IA-009 foundation only
 
 **Files:**
 
@@ -913,17 +950,201 @@ Expected: every command exits 0.
 
 - [ ] **Step 3: REFACTOR traceability and commit**
 
-Record exact evidence without transferring normative ownership to IA-009; move IA-002..IA-009 only to `Review`.
+Record exact pre-Platform evidence without transferring normative ownership to IA-009; move only IA-002..IA-008 to `Review`. Keep IA-009 `Blocked`: its final acceptance and any move to `Review` wait for Tasks 14–16 and verified Platform evidence.
 
 ```bash
 git add tests docs/features/identity-access
 git commit -m "test: verify identity access foundation"
 ```
 
+## Task 14: Persist Platform invitations before MFA and model MFA invariants
+
+**Requirements:** IA-REQ-039, IA-REQ-041; IA-REQ-042 onboarding foundation
+**Tracking:** IA-012 and IA-014 foundation
+
+**Files:**
+
+- Modify: `src/Domain/IdentityAccess/Tenants/Tenant.cs`
+- Modify: `src/Domain/IdentityAccess/Tenants/TenantType.cs`
+- Modify: `src/Domain/IdentityAccess/Tenants/TenantStatus.cs`
+- Create: `src/Domain/IdentityAccess/Platform/PlatformAdminInvitation.cs`
+- Create: `src/Domain/IdentityAccess/Platform/PlatformAdminInvitationStatus.cs`
+- Create: `src/Infrastructure/Data/Configurations/IdentityAccess/PlatformAdminInvitationConfiguration.cs`
+- Create: `src/Infrastructure/Data/Migrations/<timestamp>_PlatformAdminInvitation.cs`
+- Create: `src/Application/IdentityAccess/Platform/Invitations/RegisterPlatformInvitee.cs`
+- Create: `src/Application/IdentityAccess/Platform/Invitations/RegisterPlatformInviteeValidator.cs`
+- Create: `src/Application/IdentityAccess/Platform/Invitations/ConfirmPlatformInvitee.cs`
+- Create: `src/Application/IdentityAccess/Platform/Invitations/ConfirmPlatformInviteeValidator.cs`
+- Create: `src/Domain/IdentityAccess/Platform/PlatformMfaEnrollment.cs`
+- Create: `src/Domain/IdentityAccess/Platform/PlatformMfaEnrollmentStatus.cs`
+- Create: `src/Domain/IdentityAccess/Platform/PlatformRecoveryCode.cs`
+- Create: `src/Application/IdentityAccess/Platform/Mfa/BeginPlatformMfaEnrollment.cs`
+- Create: `src/Application/IdentityAccess/Platform/Mfa/VerifyPlatformMfaEnrollment.cs`
+- Create: `src/Application/IdentityAccess/Platform/Mfa/AcknowledgePlatformRecoveryCodes.cs`
+- Create: `src/Application/IdentityAccess/Platform/Mfa/StepUpPlatformMfa.cs`
+- Create: `src/Application/IdentityAccess/Platform/IPlatformMfaVerifier.cs`
+- Create: `src/Application/IdentityAccess/Platform/IRecentMfaVerifier.cs`
+- Create: `src/Infrastructure/Security/PlatformTotpSecretProtector.cs`
+- Create: `src/Infrastructure/Security/PlatformRecoveryCodeHasher.cs`
+- Create: `src/Infrastructure/Data/Configurations/IdentityAccess/PlatformMfaEnrollmentConfiguration.cs`
+- Create: `src/Infrastructure/Data/Configurations/IdentityAccess/PlatformRecoveryCodeConfiguration.cs`
+- Create: `src/Infrastructure/Data/Migrations/<timestamp>_PlatformMfa.cs`
+- Modify: `src/Infrastructure/Data/Migrations/ApplicationDbContextModelSnapshot.cs`
+- Modify: `src/Application/Common/Interfaces/IApplicationDbContext.cs`
+- Modify: `src/Infrastructure/Data/ApplicationDbContext.cs`
+- Modify: `src/Infrastructure/DependencyInjection.cs`
+- Modify: `src/Web/DependencyInjection.cs`
+- Create: `src/Web/Endpoints/Platform/PlatformMfaEndpoints.cs`
+- Create: `src/Web/Endpoints/Platform/PlatformInvitationEndpoints.cs`
+- Create: `src/Web/Endpoints/Platform/Contracts/PlatformInvitationRegistrationRequest.cs`
+- Create: `src/Web/Endpoints/Platform/Contracts/PlatformInvitationConfirmationRequest.cs`
+- Create: `tests/Domain.UnitTests/IdentityAccess/PlatformMfaTests.cs`
+- Create: `tests/Infrastructure.IntegrationTests/IdentityAccess/PlatformMfaMappingTests.cs`
+- Create: `tests/Application.UnitTests/Architecture/PlatformMfaShapeTests.cs`
+- Create: `tests/Application.UnitTests/Architecture/PlatformInvitationApplicationShapeTests.cs`
+- Create: `tests/Application.FunctionalTests/IdentityAccess/Platform/PlatformInvitationOnboardingTests.cs`
+- Create: `tests/Application.FunctionalTests/IdentityAccess/Platform/PlatformMfaTests.cs`
+- Create: `tests/Application.FunctionalTests/IdentityAccess/Platform/PlatformMfaAuthenticationTests.cs`
+
+- [ ] **Step 1: Platform invitation persistence RED, migration, then GREEN**
+
+Extend `PlatformMfaShapeTests` and `PlatformMfaMappingTests` to first require `PlatformAdminInvitation`, status, hash/expiry/delivery state, DbSet/configuration, and its migration. Run `dotnet test tests/Application.UnitTests/Application.UnitTests.csproj --filter PlatformMfaShapeTests` and `dotnet test tests/Infrastructure.IntegrationTests/Infrastructure.IntegrationTests.csproj --filter PlatformMfaMappingTests`; expect runtime missing-type/member RED. Add only invitation shells, run `dotnet ef migrations add PlatformAdminInvitation --project src/Infrastructure/Infrastructure.csproj --startup-project src/Web/Web.csproj --output-dir Data/Migrations`, then run `dotnet test tests/Infrastructure.IntegrationTests/Infrastructure.IntegrationTests.csproj --filter "PlatformMfaMappingTests|MigrationUpgradeTests"`; expect PASS with empty/latest and baseline/latest upgrades before any MFA RED.
+
+- [ ] **Step 2: Platform invitation onboarding RED, then GREEN**
+
+After Step 1 PASS, make `PlatformInvitationApplicationShapeTests` require `RegisterPlatformInvitee`/validator, `ConfirmPlatformInvitee`/validator, `POST /api/platform/invitations/register`, and `/confirm`; its registration DTO carries invitation token plus password. Run `dotnet test tests/Application.UnitTests/Application.UnitTests.csproj --filter PlatformInvitationApplicationShapeTests` and expect route/type RED. The public token-aware registration request validates the submitted password against `PasswordOptions` only when it creates a missing matching identity; it uses Identity hashing, atomically binds `PlatformAdminInvitation`, and creates confirmation outbox/secret. For an existing matching identity, it ignores supplied credentials and returns only generic sign-in/confirmation behavior. Confirmation consumes its email and invitation tokens, marks the identity confirmed, and still creates no Platform membership. Run `dotnet test tests/Application.FunctionalTests/Application.FunctionalTests.csproj --filter "PlatformInvitationOnboardingTests|ProblemDetailsContractTests|OpenApiContractTests"`; expect behavioral RED for password creation, existing-identity non-takeover, neutral `202`/`204`, outbox, and no early activation. Implement by generalizing existing credential/confirmation/outbox mechanics without treating Organization `Invitation` as `PlatformAdminInvitation` or generating a default password; rerun both commands and expect PASS.
+
+- [ ] **Step 3: MFA RED, migration, then GREEN after confirmed onboarding**
+
+Only after Step 2 PASS, reflect for Platform tenant type, one-enrollment-per-user, recovery-code/encrypted-secret members, and no global administrator member; run `dotnet test tests/Application.UnitTests/Application.UnitTests.csproj --filter PlatformMfaShapeTests` and `dotnet test tests/Application.FunctionalTests/Application.FunctionalTests.csproj --filter "PlatformMfaTests|PlatformMfaAuthenticationTests"`; expect RED. MFA tests require a registered, confirmed, signed-in matching invitee and bound token, reject theft/mismatch/anonymous/token-only/invalid-session/pre-activation access, and prove no membership activation before TOTP, recovery acknowledgement, and MFA session. Persist encrypted TOTP/hashed codes, run `dotnet ef migrations add PlatformMfa --project src/Infrastructure/Infrastructure.csproj --startup-project src/Web/Web.csproj --output-dir Data/Migrations`, then run `dotnet test tests/Infrastructure.IntegrationTests/Infrastructure.IntegrationTests.csproj --filter "PlatformMfaMappingTests|MigrationUpgradeTests"` and the two prior commands; expect PASS with no plaintext secret and ordered `PlatformAdminInvitation` then `PlatformMfa` migrations.
+
+- [ ] **Step 4: REFACTOR and commit**
+
+```bash
+git add src tests
+git commit -m "feat: add platform MFA foundation"
+```
+
+## Task 15: Bootstrap and operate Platform through normal authority
+
+**Requirements:** IA-REQ-039..046; applies IA-REQ-038
+**Tracking:** IA-014
+
+**Files:**
+
+- Create: `src/Application/IdentityAccess/Platform/Bootstrap/BootstrapPlatformOwner.cs`
+- Create: `src/Application/IdentityAccess/Platform/Bootstrap/IPlatformBootstrapOptions.cs`
+- Create: `src/Application/IdentityAccess/Platform/Bootstrap/RecoverPendingPlatformOwnerInvitation.cs`
+- Create: `src/Application/IdentityAccess/Platform/Bootstrap/RecoverPendingPlatformOwnerInvitationValidator.cs`
+- Create: `src/Application/IdentityAccess/Platform/Bootstrap/IPlatformBootstrapRecoveryRateLimiter.cs`
+- Create: `src/Application/IdentityAccess/Platform/Administrators/InvitePlatformAdministrator.cs`
+- Create: `src/Application/IdentityAccess/Platform/Administrators/RevokePlatformAdministrator.cs`
+- Create: `src/Application/IdentityAccess/Platform/Organizations/SuspendOrganizationTenant.cs`
+- Create: `src/Application/IdentityAccess/Platform/Organizations/ReactivateOrganizationTenant.cs`
+- Create: `src/Application/IdentityAccess/Platform/Queries/ListPlatformOrganizations.cs`
+- Create: `src/Application/IdentityAccess/Platform/Queries/ListPlatformIdentities.cs`
+- Create: `src/Application/IdentityAccess/Platform/Queries/ListPlatformAdministrators.cs`
+- Create: `src/Application/IdentityAccess/Platform/Queries/ListPlatformAudit.cs`
+- Create: `src/Application/IdentityAccess/Platform/Queries/PlatformDirectoryQuery.cs`
+- Create: `src/Application/IdentityAccess/Platform/Queries/PlatformDirectoryPage.cs`
+- Create: `src/Application/IdentityAccess/Platform/Queries/PlatformAdministratorProjection.cs`
+- Create: `src/Application/IdentityAccess/Platform/IPlatformOperationalProjectionReader.cs`
+- Create: `src/Infrastructure/Platform/ConfiguredPlatformBootstrapper.cs`
+- Create: `src/Infrastructure/Platform/PlatformBootstrapRecoveryRateLimiter.cs`
+- Create: `src/Infrastructure/Platform/PlatformOperationalProjectionReader.cs`
+- Create: `src/Web/HostedServices/PlatformBootstrapHostedService.cs`
+- Create: `src/Web/Endpoints/Platform/PlatformEndpoints.cs`
+- Create: `src/Web/Endpoints/Platform/Contracts/PlatformOrganizationResponse.cs`
+- Create: `src/Web/Endpoints/Platform/Contracts/PlatformIdentityResponse.cs`
+- Create: `src/Web/Endpoints/Platform/Contracts/PlatformAdministratorResponse.cs`
+- Create: `src/Web/Endpoints/Platform/Contracts/PlatformAuditEventResponse.cs`
+- Create: `src/Web/Endpoints/Platform/Contracts/PlatformOrganizationDirectoryResponse.cs`
+- Create: `src/Web/Endpoints/Platform/Contracts/PlatformIdentityDirectoryResponse.cs`
+- Create: `src/Web/Endpoints/Platform/Contracts/PlatformAdministratorDirectoryResponse.cs`
+- Create: `src/Web/Endpoints/Platform/Contracts/PlatformAuditDirectoryResponse.cs`
+- Create: `src/Web/Endpoints/Platform/Contracts/PlatformMfaEnrollmentResponse.cs`
+- Create: `src/Web/Endpoints/Platform/Contracts/PlatformTenantLifecycleRequest.cs`
+- Modify: `src/Application/IdentityAccess/Authorization/Permissions.cs`
+- Modify: `src/Infrastructure/DependencyInjection.cs`
+- Modify: `src/Web/DependencyInjection.cs`
+- Modify: `src/Web/Program.cs`
+- Modify: `tests/Application.FunctionalTests/IdentityAccess/Api/ProblemDetailsContractTests.cs`
+- Modify: `tests/Application.FunctionalTests/IdentityAccess/Api/OpenApiContractTests.cs`
+- Create: `tests/Application.UnitTests/Architecture/PlatformApplicationShapeTests.cs`
+- Create: `tests/Application.FunctionalTests/IdentityAccess/Platform/PlatformBootstrapTests.cs`
+- Create: `tests/Application.UnitTests/IdentityAccess/Platform/RecoverPendingPlatformOwnerInvitationValidatorTests.cs`
+- Create: `tests/Application.FunctionalTests/IdentityAccess/Platform/PlatformBootstrapRecoveryTests.cs`
+- Create: `tests/Application.FunctionalTests/IdentityAccess/Platform/PlatformAdministrationTests.cs`
+- Create: `tests/Application.FunctionalTests/IdentityAccess/Platform/PlatformOperationsTests.cs`
+- Create: `tests/Application.FunctionalTests/IdentityAccess/Platform/PlatformProjectionTests.cs`
+- Create: `tests/Application.FunctionalTests/IdentityAccess/Platform/PlatformDirectoryContractTests.cs`
+
+- [ ] **Step 1: Compile-safe shape RED**
+
+Reflect for the bootstrap/options, `RecoverPendingPlatformOwnerInvitation` handler/validator/rate-limit port, protected `platform.*` requests, exact Platform routes including `POST /api/platform/bootstrap/recover` and `GET /api/platform/admins`, typed `PlatformDirectoryQuery`/`PlatformDirectoryPage`/`PlatformAdministratorProjection`, and allowlisted DTOs. Run `dotnet test tests/Application.UnitTests/Application.UnitTests.csproj --filter PlatformApplicationShapeTests`; expect runtime missing-type/route/classification RED. Assert active-Platform requests are `[Authorize]` with Platform tenant required; recovery is bodyless `IPublicRequest` with antiforgery/rate-limit/server-derived recipient only, no identity/email/token input, activation, or elevation; and no endpoint is named impersonate/delete/context-bypass.
+
+- [ ] **Step 2: Behavioral RED**
+
+With real PostgreSQL, run bootstrap twice with one configured email: only the first missing-Platform invocation atomically creates the singleton tenant, system owner role, pending invitation, outbox message/secret, and audit event. `POST /api/platform/bootstrap/recover` dispatches `RecoverPendingPlatformOwnerInvitation` as a bodyless same-origin antiforgery request with no identity, email, token, or replacement-recipient input. Its validator permits only expired or permanently delivery-failed pending invitations and derives the unchanged configured/pending recipient; its rate-limit port keys the pending invitation and transport source. The handler conditionally claims that invitation in one transaction, invalidates the old token, writes one replacement token/outbox/audit effect, and makes equivalent sequential/concurrent requests idempotent without membership activation/elevation. Test cold-start with no `ApplicationUser`, active/used invitation, unknown/ineligible opaque state, configuration change, and race branches: each valid state-obscuring outcome is neutral `202`, and only one current invitation/effect set survives. Test malformed/missing antiforgery separately as RFC 9457 `400` code `antiforgery_validation_failed`; test exhausted recovery limit separately as RFC 9457 `429` code `rate_limit_exceeded` plus `Retry-After`. Missing configuration creates nothing; completed first activation permanently closes recovery.
+
+Test normal active-Platform membership plus distinct `platform.admins.read`/`platform.admins.manage`, `platform.tenants.manage`, `platform.organizations.read`, `platform.identities.read`, and `platform.audit.read`; reject stale/non-MFA/unauthorized/cross-context requests. The already-persisted `PlatformAdminInvitation` reuses the Invitation/Outbox token and delivery pattern without widening Organization invitations; invitation/revocation preserves one active owner. Two status writers prove a required allowlisted suspension reason and conditional concurrency: first Organization suspension persists; stale second returns typed `Conflict` and RFC 9457 `409` with `platform_tenant_concurrency_conflict`/`traceId`; Platform cannot be suspended/deleted. The evaluator immediately denies the suspended Organization.
+
+`PlatformProjectionTests` proves exact fields: organization IDs/slug/type/status/timestamps/suspension metadata/version; identity/admin IDs, normalized email only with directory permission, confirmation/account/membership/MFA/owner status, and operational timestamps; audit IDs/type/time/correlation/actor-tenant IDs/outcome/reason-code only. It rejects CUIT, business rows, profile payloads, credentials, secrets, tokens, extra PII, and mutable audit payloads. `PlatformDirectoryContractTests` proves `/api/platform/organizations`, `/identities`, `/admins`, and `/audit` accept only `limit=1..100` plus opaque `cursor` and return each endpoint's typed `items`/`nextCursor` DTO; `/api/identity/*` remains unchanged. `PlatformAdministrationTests` lists administrators through the protected directory before inviting or revoking and uses only the allowlisted membership ID; it still blocks last-owner removal. Negative tests reject impersonation, destructive deletion, direct arbitrary elevation, global claims/booleans/roles, private tenant rows, credentials, secrets, raw tokens, and client-selected context. Contract tests require semantic DTOs/`202`/`204`, stable Problem Details codes, and no Result or universal envelope in runtime/OpenAPI.
+
+Run `dotnet test tests/Application.FunctionalTests/Application.FunctionalTests.csproj --filter "PlatformBootstrapTests|PlatformBootstrapRecoveryTests|PlatformAdministrationTests|PlatformOperationsTests|PlatformProjectionTests|PlatformDirectoryContractTests|ProblemDetailsContractTests|OpenApiContractTests"`; expect behavioral/contract RED before handlers/endpoints. Implement the normal authority flow, then rerun that command and `dotnet test tests/Application.UnitTests/Application.UnitTests.csproj --filter PlatformApplicationShapeTests`; expect PASS.
+
+- [ ] **Step 3: GREEN, REFACTOR, commit**
+
+Reuse only confirmation/outbox mechanics where sound; `PlatformAdminInvitation` remains separate from Organization `Invitation`. Bootstrap uses deployment configuration only as a one-time email selector and never as authority after creation. Register no default password or admin. Run `dotnet test tests/Infrastructure.IntegrationTests/Infrastructure.IntegrationTests.csproj --filter MigrationUpgradeTests` and the prior functional/shape commands; expect PASS before commit.
+
+```bash
+git add src tests
+git commit -m "feat: add controlled platform operations"
+```
+
+## Task 16: Deliver the MFA-bound Platform panel and acceptance evidence
+
+**Requirements:** IA-REQ-044..046; IA-009 evidence applies IA-REQ-038
+**Tracking:** IA-014 and IA-009
+
+**Files:**
+
+- Create: `src/Web/ClientApp/src/features/platform/api/platformClient.js`
+- Create: `src/Web/ClientApp/src/features/platform/PlatformPanel.jsx`
+- Create: `src/Web/ClientApp/src/features/platform/PlatformPanel.test.jsx`
+- Create: `src/Web/ClientApp/src/features/platform/platformClient.test.js`
+- Create: `src/Web/ClientApp/src/features/platform/platformDirectory.test.js`
+- Create: `src/Web/ClientApp/src/features/platform/invitations/PlatformInvitationPages.jsx`
+- Create: `src/Web/ClientApp/src/features/platform/invitations/PlatformInvitationPages.test.jsx`
+- Modify: `src/Web/ClientApp/src/AppRoutes.jsx`
+- Modify: `src/Web/ClientApp/src/components/NavMenu.jsx`
+- Modify: `src/Web/ClientApp/src/features/identity/context/IdentityProvider.jsx`
+- Create: `tests/Web.AcceptanceTests/Features/PlatformOperations.feature`
+- Create: `tests/Web.AcceptanceTests/Pages/PlatformOperationsPage.cs`
+- Create: `tests/Web.AcceptanceTests/StepDefinitions/PlatformOperationsStepDefinitions.cs`
+- Modify: `tests/Application.UnitTests/Architecture/IdentityAccessArchitectureTests.cs`
+
+- [ ] **Step 1: Shape RED, then shells**
+
+Filesystem/route shape tests require the Platform client, token-aware public invitation pages, panel, safe DTO parser, and protected route. Run `npm test --prefix src/Web/ClientApp -- PlatformPanel.test.jsx platformClient.test.js platformDirectory.test.js PlatformInvitationPages.test.jsx`; expect missing-module/route RED. Shells must not expose an impersonation control, delete action, unrestricted identity fields, or client tenant override.
+
+- [ ] **Step 2: Behavioral RED**
+
+`platformClient.test.js`, `platformDirectory.test.js`, and `PlatformInvitationPages.test.jsx` prove public Platform-token registration/confirmation calls use antiforgery and neutral responses; a missing identity submits a PasswordOptions-valid password, while an existing identity's supplied credentials are ignored and cannot take over the account. After confirmation they hand off to normal password sign-in and cannot activate membership. They also assert recovery `400 antiforgery_validation_failed` and `429 rate_limit_exceeded`/`Retry-After`, while valid opaque recovery outcomes are `202`. The tests prove the client calls the protected typed administrator directory before invite/revoke, carries only the selected allowlisted membership ID into mutations, and follows only typed bounded `items`/`nextCursor` directories. MSW/React tests prove only a recent-MFA Platform context sees the panel; it renders allowlisted organization/identity/administrator/audit projections, handles typed `401/403/404/409/429` Problem Details, requires confirmation for suspension/revocation, and cannot render private data or bypass controls. Run the Step 1 command; expect behavioral RED. Browser journeys prove cold-start bootstrap → expired/failed delivery recovery with no identity → Platform token registration with submitted password/reuse without credential effect → confirmation → normal password sign-in → invitation-bound TOTP/recovery acknowledgement → activation → MFA step-up → admin listing/invitation → suspend/reactivate → audit; the later admin follows the same register/confirm/sign-in/MFA gates. Last-owner revocation and prohibited routes/actions fail.
+
+- [ ] **Step 3: GREEN, REFACTOR, commit**
+
+Only after Tasks 14 and 15 have PASS evidence for Platform invitation persistence/onboarding, MFA, bootstrap recovery, ordered migrations, functional/PostgreSQL, and OpenAPI contracts, route all calls through the existing typed API boundary with same-origin credentials and antiforgery. Run `npm test --prefix src/Web/ClientApp -- PlatformPanel.test.jsx platformClient.test.js platformDirectory.test.js PlatformInvitationPages.test.jsx`, `npm run lint --prefix src/Web/ClientApp`, and `npm run build --prefix src/Web/ClientApp`; expect PASS. Then run `dotnet test tests/Web.AcceptanceTests/Web.AcceptanceTests.csproj --filter PlatformOperations` and `dotnet test tests/Application.UnitTests/Application.UnitTests.csproj --filter IdentityAccessArchitectureTests`; expect PASS. Record traceability without changing normative ownership and only then move IA-009 from `Blocked` to `Review`.
+
+```bash
+git add src/Web/ClientApp tests docs/features/identity-access
+git commit -m "test: verify platform operations"
+```
+
 ## Exit Criteria
 
 - `BaselinePostgreSql`, `IdentityAccess`, and incremental migrations pass empty-to-latest and baseline-to-latest tests with sentinel preservation and no pending migration.
-- No default administrator, startup deletion, stale string Identity key/audit actor, or pre-IA-007 `UserSession`/pre-IA-008 Invitation behavior remains.
+- No default administrator, startup deletion, stale string Identity key/audit actor, global bypass, Platform impersonation/delete capability, or pre-IA-007 `UserSession`/pre-IA-008 Invitation behavior remains.
 - OrganizationProfile/CUIT, UUIDs, concurrency, explicit deletes, uniqueness, and composite tenant FKs are proven by PostgreSQL.
 - Every Application request is exactly `IPublicRequest` or `[Authorize]`; IA-REQ-030 remains IA-005-only.
 - Expected failures use typed Result internally and unexpected failures use exceptions. Result/universal envelopes never cross HTTP. Runtime, OpenAPI, and React agree on endpoint DTOs, semantic `200`/`201 + Location`/neutral `202`/bodyless `204`, RFC 9457 `400/401/403/404/409/429/500`, stable codes, trace IDs, validation errors, required headers, and safe diagnostics.
@@ -933,4 +1154,5 @@ git commit -m "test: verify identity access foundation"
 - Active tenant comes only from validated, revocable `UserSession`; exact routes and CSRF names match SPEC.
 - Outbox transient retries are due-time/CAS/idempotency safe. Delivered, expired, and permanently failed secret rows retain non-secret evidence with ciphertext cleared; evidence rows are never deleted.
 - Root React composition makes every journey reachable, uses the same-origin proxy and MSW tests, and retains no reusable/raw token.
-- Deferred roadmap items remain IA-010..IA-015 and are not presented as implemented.
+- Platform is a singleton active-tenant membership with encrypted TOTP, hashed recovery codes, recent step-up, last-owner protection, conditional Organization lifecycle, allowlisted projections, and append-only audit evidence.
+- Deferred roadmap items remain IA-010, IA-011, IA-013, and IA-015 and are not presented as implemented.

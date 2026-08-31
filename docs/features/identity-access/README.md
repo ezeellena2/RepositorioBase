@@ -1,6 +1,6 @@
 # Identity Access
 
-Proposed identity/access planning package prepared for SDD delivery of a reusable multitenant SaaS foundation with ASP.NET Core, PostgreSQL, and React.
+Proposed identity/access planning package prepared for SDD delivery of a reusable multitenant SaaS foundation with ASP.NET Core, PostgreSQL, React, and a minimal MFA-bound Platform operations slice.
 
 The package adopts the reference standard's business semantics, not its workflow.
 
@@ -14,4 +14,4 @@ The package adopts the reference standard's business semantics, not its workflow
 
 ## Status
 
-The documentation proposal is under human review. It does not yet authorize replacement of the sign-in flow or claim that the baseline has been implemented.
+The documentation proposal is under human review. It includes a one-time, no-default-credential Platform bootstrap and safe operations panel, but does not authorize implementation or claim runtime behavior.

@@ -7,7 +7,7 @@
 
 ## 1. Objective
 
-Turn this starter into a reusable identity and access foundation for multitenant SaaS applications with an ASP.NET Core backend, PostgreSQL, and React web. Identity is global; access is resolved within an active tenant through memberships, roles, and permissions. The system supports invitations, revocable sessions, and auditability without delegating business rules to ASP.NET Core Identity or the frontend.
+Turn this starter into a reusable identity and access foundation for multitenant SaaS applications with an ASP.NET Core backend, PostgreSQL, and React web. Identity is global; access is resolved within an active tenant through memberships, roles, and permissions. The system supports invitations, revocable sessions, a minimal Platform operations slice, and auditability without delegating business rules to ASP.NET Core Identity or the frontend.
 
 This specification adopts the reference standard's **business semantics**. It does not copy the reference repository's working methodology. This repository uses the project SDD protocol summarized in section 12.
 
@@ -35,7 +35,9 @@ The first increment delivers one usable vertical journey:
 7. accept the invitation idempotently as a new or existing identity;
 8. switch organizations without mixing data or permissions;
 9. sign out and revoke the current session;
-10. deliver React screens and tests for the complete journey.
+10. bootstrap the first Platform owner, complete mandatory MFA, and manage Platform administrators;
+11. use a safe Platform panel to operate organization lifecycle and inspect allowlisted security projections;
+12. deliver React screens and tests for the complete journey.
 
 ### 2.3 Required roadmap outside the first increment
 
@@ -43,13 +45,15 @@ The following capabilities remain part of the baseline but are delivered in late
 
 - `Personal` tenant, `PersonProfile`, and protected `AR/DNI` document data;
 - password recovery and password change;
-- TOTP, recovery codes, and reauthentication;
 - Google OIDC sign-in and secure account linking;
 - custom roles and complete membership administration;
-- reserved `Platform` tenant, bootstrap without default credentials, and super-administration;
 - lifecycle/recovery, retention, and advanced operational controls from the standard.
 
 Until the applicable controls are complete, the starter must not claim full baseline compliance or enable real PII or production use.
+
+### 2.4 Explicit non-goals
+
+The initial Platform slice does not permit impersonation, destructive deletion, tenant-private or business-data reading, a client-selected tenant context, a global boolean/claim/role bypass, or a default administrator credential.
 
 ## 3. Domain language
 
@@ -64,6 +68,8 @@ Until the applicable controls are complete, the starter must not claim full base
 | Session | Persisted revocable record referenced by a protected cookie |
 | Invitation | Temporary, single-use intent to add an identity to an organization |
 | Outbox | Transactional intent to perform an external effect |
+| Platform | Reserved singleton tenant used only for explicit operational permissions |
+| Platform MFA | TOTP enrollment, recovery-code acknowledgement, and recent step-up proof for a Platform administrator |
 
 `TenantId` is used for tenancy. `ClientId` remains reserved for OAuth/OIDC. B2C and B2B describe operating contexts, not user types.
 
@@ -77,7 +83,7 @@ Until the applicable controls are complete, the starter must not claim full base
   - An anonymous request for an email with no identity creates an unconfirmed identity plus a pending organization and responsible membership, then returns the neutral `202` response.
   - An anonymous request for an email that already belongs to an identity creates no identity, tenant, membership, or role. It returns the same neutral `202` response and may enqueue a generic sign-in or confirmation notice; the caller must authenticate before creating another organization.
   - An authenticated request creates another organization for the current identity. Any submitted email must normalize to that identity's email; otherwise the request is rejected. The new tenant and responsible membership belong to the authenticated identity only.
-- **IA-REQ-004:** a partial failure never leaves an organization without its responsible membership. Repeated equivalent submissions are protected by database uniqueness and an application idempotency boundary.
+- **IA-REQ-004:** a partial failure never leaves an organization without its responsible membership. The Application registration service derives a canonical equivalent-submission key from normalized caller scope and normalized registration intent, claims it before effects, and stores the completed neutral response. Sequential or concurrent replay returns the same bodyless `202` and produces one organization, responsible membership, outbox set, and audit set; database uniqueness remains a backstop, not the idempotency mechanism. Distinct conflicting branches in IA-REQ-003 remain unchanged.
 - **IA-REQ-005:** email must be confirmed before inviting members, administering roles, accepting an invitation, or performing a sensitive operation.
 
 ### Tenancy and authorization
@@ -131,6 +137,17 @@ Until the applicable controls are complete, the starter must not claim full base
 
 - **IA-REQ-038:** expected Domain/Application business failures use typed `Result`/`Result<T>` values with a stable code and category; unexpected infrastructure or programmer failures remain exceptions. Web maps both paths to the external HTTP contract and never serializes the internal Result or a universal `{ success, data, error }` envelope. Body-bearing success returns an endpoint-specific DTO with semantic status and headers (`200`; `201` with `Location`; the documented neutral `202`; or bodyless `204`). Every non-success is RFC 9457 `application/problem+json` with matching status, stable `code`, opaque `traceId`, optional safe `detail`, and field-indexed `errors` only for validation; a generic safe `500` exposes no internal diagnostics. Generated `401`, `403`, and `429` use the same Problem Details writer, and `429` includes `Retry-After`. OpenAPI declares each endpoint's success schema/status/required headers and supported error statuses/shapes/codes; contract tests reject drift across runtime, OpenAPI, and React. React consumes one typed API boundary, knows nothing of internal Result, and adds no pagination envelope to identity endpoints.
 
+### Platform operations and MFA
+
+- **IA-REQ-039:** exactly one reserved `TenantType.Platform` tenant may exist. A Platform owner is a normal global `ApplicationUser` with an active Platform `TenantMembership`; every Platform request resolves that active tenant and explicit `platform.*` permission through the normal evaluator. The system MUST NOT use `IsSuperAdmin`, a global claim/role, or a context bypass.
+- **IA-REQ-040:** a deployment owner may explicitly configure one bootstrap email. Only while the Platform tenant is absent, an idempotent transaction creates the singleton tenant, system owner role, pending owner invitation, audit event, and outbox intent without a password or source/config secret. Before owner activation, a bodyless same-origin, antiforgery-protected, rate-limited, neutral recovery request may rotate/reissue only an expired or permanently delivery-failed pending owner invitation. It accepts no email, identity, or replacement recipient: the destination is derived only from the unchanged configured and pending normalized recipient, so it also works before an `ApplicationUser` exists. It invalidates the prior token, preserves one pending owner, records outbox/audit evidence, and has no membership activation or elevation effect. Concurrent recovery attempts yield one current invitation/effect set. A configuration change MUST NOT replace or elevate the pending owner. First owner activation permanently closes bootstrap; later configuration changes MUST NOT elevate an identity.
+- **IA-REQ-041:** Platform invitation registration and confirmation are token-aware for both a bootstrap owner and a later Platform administrator. When the matching global `ApplicationUser` is absent, registration accepts validated credential-registration input and creates that identity with the submitted password through configured `PasswordOptions`; it never generates or stores a default password. When the matching identity already exists, credential material is ignored and the neutral flow gives only generic sign-in/confirmation behavior. Both branches issue/consume confirmation through the transactional outbox and never create or activate a Platform membership. Platform membership activation requires that confirmed identity, completed encrypted TOTP enrollment, acknowledged hashed one-time recovery codes, and an MFA-authenticated session. Every Platform MFA enrollment, verification, and recovery-acknowledgement request requires antiforgery plus an authenticated, confirmed identity whose normalized email matches the pending Platform invitation and its bound one-time token; it is never globally public or token-only. That identity may hold an authenticated session with no active Platform tenant until activation. Platform mutations require recent MFA step-up; TOTP secrets are encrypted and recovery codes are stored only as hashes.
+- **IA-REQ-042:** Platform administrators are invited and revoked through `PlatformAdminInvitation` and Platform memberships, never directly elevated. A bootstrap owner and a new administrator can use the token-aware register/confirm path—with a submitted password only when creating a missing identity—before normal password sign-in and invitation-bound MFA, but neither gains active Platform membership before those gates. The system MUST preserve at least one active Platform owner and reject a last-owner revocation.
+- **IA-REQ-043:** a Platform administrator with the appropriate permission may suspend or reactivate an Organization tenant through a reasoned conditional mutation. It is concurrency-safe, immediately effective in the normal authorization evaluator, and audited. Platform itself MUST NOT be suspended or deleted through these endpoints.
+- **IA-REQ-044:** Platform organization, identity, administrator, and global security/audit views are read-only allowlisted operational projections. Organization responses contain only `tenantId`, normalized slug, type, status, created/updated timestamps, suspension state/reason/timestamp, and concurrency version. Identity/admin responses contain only user/membership IDs, normalized email behind the explicit directory permission, email-confirmed/account/membership/MFA status, owner flag, and operational timestamps. Audit responses contain only event ID/type, occurred timestamp, correlation ID, actor/tenant identifiers, outcome, and allowlisted reason/code metadata. They MUST NOT expose CUIT, tenant business/domain rows, arbitrary profile payloads, credentials, secrets, raw tokens, extra PII, or mutable audit payloads.
+- **IA-REQ-045:** the typed React client exposes a Platform panel only for an MFA-authenticated Platform session. It uses declared DTOs and Problem Details for organization/identity/administrator projections, tenant lifecycle, administrator invitation/revocation, and global audit; it never obtains a bypass or private tenant data. Platform directories are distinct `/api/platform/*` resources: each accepts bounded `limit` (1–100) and opaque `cursor`, and returns its endpoint-specific typed `{ items, nextCursor }` response. This does not change the no-pagination-envelope contract for `/api/identity/*` endpoints.
+- **IA-REQ-046:** Platform operations MUST NOT implement impersonation, destructive deletion, arbitrary cross-tenant context selection, tenant-private/business-data reading, default credentials, or any global authorization bypass. Architecture, functional, OpenAPI, React, and E2E tests reject these capabilities.
+
 ## 5. Conceptual model
 
 ```text
@@ -141,7 +158,9 @@ Tenant 1---* Role *---* Permission
 TenantMembership *---* Role
 Tenant 1---* Invitation *---* Role
 ApplicationUser 1---* UserSession
+ApplicationUser 1---0..1 PlatformMfaEnrollment 1---* PlatformRecoveryCode
 Invitation 0..1---1 ApplicationUser (AcceptedBy)
+Tenant (Platform) 1---* PlatformAdminInvitation 0..1---1 ApplicationUser (BoundUser)
 OutboxMessage 1---0..1 OutboxSecret
 Tenant 1---* AuditEvent
 ```
@@ -152,7 +171,10 @@ Initial aggregates:
 - `TenantMembership`: membership, state, and role assignments.
 - `Role`: name, `SystemCode`, and permissions within one tenant.
 - `Invitation`: recipient, token hash, expiry, state, and offered roles.
+- `PlatformAdminInvitation`: Platform-only recipient, token hash, expiry/delivery state, and optional bound user; it is not an Organization `Invitation`.
 - `UserSession`: idle/absolute lifetime, active tenant, and revocation.
+- `PlatformMfaEnrollment`: encrypted TOTP secret, enrollment state, and step-up evidence.
+- `PlatformRecoveryCode`: hashed one-time recovery material bound to one enrollment.
 
 ## 6. Initial HTTP contract
 
@@ -170,6 +192,17 @@ Routes are contractual drafts; generated OpenAPI becomes the implementation sour
 | `POST /api/tenants/{tenantId}/invitations` | `members.invite` + antiforgery | `201` invitation DTO + `Location` |
 | `POST /api/invitations/register` | Public + invitation token + antiforgery | neutral bodyless `202`; registration/confirmation only |
 | `POST /api/invitations/accept` | Authenticated + token + antiforgery | idempotent `200` acceptance DTO |
+| `POST /api/platform/bootstrap/recover` | public bodyless same-origin + antiforgery + rate limit; no identity, email, or replacement recipient input | valid opaque states: neutral bodyless `202`; missing/malformed antiforgery: `400` Problem Details `antiforgery_validation_failed`; exhausted limit: `429` Problem Details `rate_limit_exceeded` + `Retry-After` |
+| `POST /api/platform/invitations/register` | public + Platform invitation token + credential-registration DTO + antiforgery | neutral bodyless `202`; missing identity uses submitted PasswordOptions-valid password, existing identity ignores credentials; issue confirmation, never membership |
+| `POST /api/platform/invitations/confirm` | public + Platform invitation token + email-confirmation token + antiforgery | idempotent bodyless `204`; confirms identity, never membership |
+| `POST /api/platform/mfa/enroll`, `/verify`, and `/recovery-acknowledge` | authenticated, confirmed pending Platform invitee whose normalized email matches its bound one-time invitation token + antiforgery; no active Platform tenant is required before activation | enrollment DTO, then bodyless `204` |
+| `POST /api/platform/mfa/step-up` | Platform administrator + antiforgery | bodyless `204` or Problem Details |
+| `GET /api/platform/organizations` with `limit`/`cursor` | active Platform tenant + `platform.organizations.read` | `200` typed `{ items: PlatformOrganizationResponse[], nextCursor }` |
+| `GET /api/platform/identities` with `limit`/`cursor` | active Platform tenant + `platform.identities.read` | `200` typed `{ items: PlatformIdentityResponse[], nextCursor }` |
+| `GET /api/platform/admins` with `limit`/`cursor` | active Platform tenant + `platform.admins.read` | `200` bounded `{ items, nextCursor }` administrator directory DTO |
+| `GET /api/platform/audit` with `limit`/`cursor` | active Platform tenant + `platform.audit.read` | `200` typed `{ items: PlatformAuditEventResponse[], nextCursor }` |
+| `POST /api/platform/organizations/{tenantId}/suspend`, `/reactivate` | `platform.tenants.manage` + recent MFA | bodyless `204` or `409` Problem Details |
+| `POST /api/platform/admins/invitations`; `POST /api/platform/admins/{membershipId}/revoke` | `platform.admins.manage` + recent MFA | neutral `202` / bodyless `204` |
 
 All non-success responses follow IA-REQ-038. Sign-in, registration, recovery, and invitation flows do not unnecessarily reveal whether an email exists.
 
@@ -196,6 +229,7 @@ The client uses `permissions` only for UX. It always handles `401`, `403`, `404`
 - Same-origin BFF; no open CORS and no bearer token for the SPA.
 - `GET /api/identity/antiforgery` creates the `Secure`, `HttpOnly`, `SameSite=Lax`, `Path=/`, host-only cookie `__Host-XSRF-TOKEN` and returns `{ "requestToken": "..." }` with `Cache-Control: no-store`. React keeps that request token in memory only and sends it as `X-CSRF-TOKEN` on every state-changing request, including public credential or invitation submissions.
 - The server rotates the antiforgery cookie/request-token pair whenever authentication state or the session identifier changes, including successful sign-in and sign-out. The client fetches a fresh pair after initial load, page reload, sign-in, sign-out, or a stable `antiforgery_validation_failed` response; old pairs are rejected after rotation. Neither token is logged or persisted by the client.
+- A malformed or missing antiforgery pair on any state-changing Platform request returns RFC 9457 `400` with stable code `antiforgery_validation_failed`; it is never normalized to a business `202`. An exhausted Platform bootstrap recovery limit returns RFC 9457 `429` with `rate_limit_exceeded` and `Retry-After`; only valid state-obscuring recovery outcomes remain neutral `202`.
 - Authenticated `POST`, `PUT`, `PATCH`, and `DELETE` requests require antiforgery and exact-origin validation.
 - CSP and secure headers are defined before production.
 - `PasswordOptions`, lockout, and rate limits are configured and tested.
@@ -211,6 +245,7 @@ The client uses `permissions` only for UX. It always handles `401`, `403`, `404`
 - **Infrastructure:** mappings, constraints, cookies, Identity, active-session context, and outbox claiming/delivery.
 - **HTTP:** status codes, Problem Details, antiforgery bootstrap/rotation, and OpenAPI.
 - **React/E2E:** registration, simulated confirmation, sign-in, tenant selector, invitation, acceptance, and isolation between two tenants.
+- **Platform:** bootstrap ceremony, MFA enrollment/step-up, last-owner protection, safe projections, conditional Organization suspension, and prohibited-capability negatives.
 - **Architecture:** Domain has no external references; endpoints do not access EF directly; no Application business request is public by omission.
 
 Minimum matrix for each protected operation: unauthenticated `401`; missing permission `403`; permitted custom role; suspended membership/tenant; resource from another tenant; permission revoked after a previously authorized request.
@@ -265,6 +300,47 @@ Scenario: Contract drift is rejected
   Given runtime responses, OpenAPI, and the React API boundary
   When their statuses, headers, schemas, or codes diverge
   Then contract verification fails before acceptance
+
+Scenario: Bootstrap creates the first Platform owner once
+  Given no Platform tenant and an explicitly configured deployment-owner email
+  When the bootstrap ceremony runs twice
+  Then one Platform tenant, pending owner invitation, outbox intent, and audit decision exist
+  And changing the configured email after activation creates no administrator
+
+Scenario: Platform mutation requires normal MFA-bound authority
+  Given a confirmed Platform administrator with an active Platform membership
+  And the administrator has completed TOTP, acknowledged recovery codes, and recently stepped up
+  When the administrator suspends an Organization with the required permission
+  Then the conditional change is audited and immediately affects authorization
+  And no Platform tenant, private tenant data, or bypass is exposed
+
+Scenario: Last Platform owner cannot be revoked
+  Given exactly one active Platform owner
+  When an administrator attempts to revoke that membership
+  Then the API returns stable RFC 9457 Problem Details
+  And the membership remains active
+
+Scenario: Pending bootstrap invitation recovers without changing authority
+  Given the configured bootstrap email has the only pending owner invitation and no owner activated
+  And that invitation is expired or permanently failed
+  And no ApplicationUser exists for that recipient
+  When concurrent bodyless same-origin antiforgery recovery requests are rate-limited
+  Then one replacement invitation/token, outbox effect, and audit record set is current
+  And no requester email, identity, replacement recipient, membership activation, or elevation is accepted
+
+Scenario: Platform invitee reaches MFA without early activation
+  Given a bootstrap owner or later Platform administrator has a pending Platform invitation
+  And no matching ApplicationUser exists, or the matching identity is unconfirmed
+  When the recipient registers with the invitation token and a PasswordOptions-valid password, then confirms through the confirmation outbox
+  Then the system creates the missing global identity with that submitted password, or ignores credentials for an existing identity, and returns neutral responses
+  And after normal password sign-in the confirmed matching identity may complete invitation-bound MFA
+  But no Platform membership becomes active before the MFA gates complete
+
+Scenario: Platform directories are bounded operational projections
+  Given a recent-MFA Platform administrator with the directory permission
+  When the administrator requests `/api/platform/admins` with an opaque cursor and bounded limit
+  Then the typed directory returns only its declared allowlisted fields and `nextCursor`
+  And no `/api/identity/*` contract, private profile field, credential, token, CUIT, or audit payload is exposed
 ```
 
 ## 11. Open decisions that do not block the first plan
