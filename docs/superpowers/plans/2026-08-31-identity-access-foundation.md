@@ -192,28 +192,28 @@ git commit -m "fix: establish safe PostgreSQL migrations"
 - Create: `tests/Domain.UnitTests/IdentityAccess/OrganizationProfileTests.cs`
 - Create: `tests/Domain.UnitTests/IdentityAccess/AuditEventTests.cs`
 
-- [ ] **Step 1: Shape RED**
+- [x] **Step 1: Shape RED**
 
 Reflect by fully qualified names for `Tenant`, `OrganizationProfile`, `TenantMembership`, `AuditEvent`, `TenantStatus.PendingConfirmation`, and `MembershipStatus.PendingConfirmation`.
 
 Run: `dotnet test tests/Domain.UnitTests/Domain.UnitTests.csproj --filter IdentityAccessContractShapeTests`  
 Expected: FAIL at runtime because expected types/members are missing.
 
-- [ ] **Step 2: Compile shells**
+- [x] **Step 2: Compile shells**
 
 Add `BaseEntity<TId>` while keeping `BaseEntity : BaseEntity<int>`; add UUID ID structs, enums, and private-constructor shells with throwing transitions.
 
 Run the shape command.  
 Expected: PASS.
 
-- [ ] **Step 3: Behavioral RED**
+- [x] **Step 3: Behavioral RED**
 
 Test normalized CUIT, Organization-only profile, pending responsible membership, activation transitions, suspended/terminal rejection, authorization-version increments, and an `AuditEvent` factory that requires correlation ID and accepts only allowlisted non-secret scalar fields.
 
 Run: `dotnet test tests/Domain.UnitTests/Domain.UnitTests.csproj --filter "TenantLifecycleTests|OrganizationProfileTests|AuditEventTests"`  
 Expected: FAIL at runtime with `NotImplementedException` or incorrect state/payload.
 
-- [ ] **Step 4: GREEN, REFACTOR, commit**
+- [x] **Step 4: GREEN, REFACTOR, commit**
 
 Implement invariants without EF/HTTP dependencies. Do not introduce roles, `UserSession`, invitations, or outbox types.
 
