@@ -10,9 +10,13 @@ public sealed class AuditEvent : BaseEntity<Guid>
     {
     }
 
-    public TenantId TenantId { get; private set; }
+    public TenantId? TenantId { get; private set; }
 
     public Guid? ActorId { get; private set; }
+
+    public Guid? SessionId { get; private set; }
+
+    public DateTimeOffset OccurredAt { get; private set; }
 
     public string EventType { get; private set; } = string.Empty;
 
@@ -48,9 +52,50 @@ public sealed class AuditEvent : BaseEntity<Guid>
             Id = Guid.NewGuid(),
             TenantId = tenantId,
             ActorId = actorId,
+            OccurredAt = DateTimeOffset.UtcNow,
             EventType = eventType.Trim(),
             CorrelationId = correlationId.Trim(),
             Metadata = new ReadOnlyDictionary<string, string>(copiedMetadata)
+        };
+    }
+
+    /// <summary>
+    /// Records a denial independently of a tenant-owned resource. The value object only
+    /// accepts the safe evidence contract for authorization denials.
+    /// </summary>
+    public static AuditEvent CreateAuthorizationDenied(
+        TenantId? tenantId,
+        Guid? actorId,
+        Guid? sessionId,
+        string correlationId,
+        string permissionCode,
+        string outcome,
+        DateTimeOffset occurredAt)
+    {
+        if (actorId == Guid.Empty || sessionId == Guid.Empty || tenantId is { IsEmpty: true })
+        {
+            throw new ArgumentException("Authorization denial identifiers cannot be empty.");
+        }
+
+        if (string.IsNullOrWhiteSpace(correlationId) || !IsStableMachineIdentifier(permissionCode) || !IsStableMachineIdentifier(outcome))
+        {
+            throw new ArgumentException("Authorization denials require safe correlation, permission, and outcome values.");
+        }
+
+        return new AuditEvent
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            ActorId = actorId,
+            SessionId = sessionId,
+            OccurredAt = occurredAt,
+            EventType = "authorization.denied",
+            CorrelationId = correlationId.Trim(),
+            Metadata = new ReadOnlyDictionary<string, string>(new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["code"] = permissionCode.Trim(),
+                ["outcome"] = outcome.Trim()
+            })
         };
     }
 

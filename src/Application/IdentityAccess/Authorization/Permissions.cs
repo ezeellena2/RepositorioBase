@@ -4,6 +4,10 @@ namespace CleanArchitecture.Application.IdentityAccess.Authorization;
 
 public static class Permissions
 {
+    public const string ApplicationPermissionClaimType = "permission";
+    public const string TodosRead = "todos.read";
+    public const string TodosWrite = "todos.write";
+    public const string WeatherRead = "weather.read";
     public const string MembersRead = "members.read";
     public const string MembersManage = "members.manage";
     public const string MembersInvite = "members.invite";
@@ -26,6 +30,14 @@ public static class Permissions
         new(TenantManage, [TenantType.Organization, TenantType.Platform]),
         new(TenantRead, [TenantType.Organization, TenantType.Platform])
     ];
+
+    public static IReadOnlySet<string> ApplicationScopedCodes { get; } = new HashSet<string>(StringComparer.Ordinal)
+    {
+        TodosRead,
+        TodosWrite,
+        WeatherRead
+    };
+
 }
 
 public sealed record PermissionDefinition(string Code, IReadOnlyCollection<TenantType> AllowedTenantTypes);

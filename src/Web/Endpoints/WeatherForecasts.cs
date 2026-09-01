@@ -9,7 +9,8 @@ public class WeatherForecasts : IEndpointGroup
     {
         groupBuilder.RequireAuthorization();
 
-        groupBuilder.MapGet(GetWeatherForecasts);
+        groupBuilder.MapGet(GetWeatherForecasts).WithApiProblemDetails(
+            ApiProblemMetadata.AuthenticationRequired, ApiProblemMetadata.PermissionDenied, ApiProblemMetadata.InternalServerError);
     }
 
     [EndpointSummary("Get Weather Forecasts")]

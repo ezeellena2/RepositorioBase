@@ -7,6 +7,8 @@ public class FunctionalTestSetup
 {
     internal static IServiceScopeFactory ScopeFactory { get; private set; } = null!;
     internal static DatabaseResetter? DbResetter { get; private set; }
+    internal static HttpClient HttpClient { get; private set; } = null!;
+    internal static string ConnectionString { get; private set; } = string.Empty;
 
     private static WebApiFactory? _factory;
     private static DistributedApplication? _app;
@@ -39,9 +41,10 @@ public class FunctionalTestSetup
             Services.Database, cancellationToken);
 
         var connectionString = (await _app.GetConnectionStringAsync(Services.Database))!;
+        ConnectionString = connectionString;
 
         _factory = new WebApiFactory(connectionString);
-        using var client = _factory.CreateClient();
+        HttpClient = _factory.CreateClient();
         ScopeFactory = _factory.Services.GetRequiredService<IServiceScopeFactory>();
         DbResetter = await DatabaseResetter.CreateAsync(connectionString);
     }
@@ -51,6 +54,7 @@ public class FunctionalTestSetup
     {
         if (DbResetter is not null) await DbResetter.DisposeAsync();
         if (_app is not null) await _app.DisposeAsync();
+        HttpClient.Dispose();
         if (_factory is not null) await _factory.DisposeAsync();
     }
 }

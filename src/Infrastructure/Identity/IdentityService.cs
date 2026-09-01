@@ -4,6 +4,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
+using CleanArchitecture.Application.IdentityAccess.Common;
+
 namespace CleanArchitecture.Infrastructure.Identity;
 
 public class IdentityService : IIdentityService
@@ -29,7 +31,7 @@ public class IdentityService : IIdentityService
         return user?.UserName;
     }
 
-    public async Task<(Result Result, Guid UserId)> CreateUserAsync(string userName, string password)
+    public async Task<Result<Guid>> CreateUserAsync(string userName, string password)
     {
         var user = new ApplicationUser
         {
@@ -39,7 +41,9 @@ public class IdentityService : IIdentityService
 
         var result = await _userManager.CreateAsync(user, password);
 
-        return (result.ToApplicationResult(), user.Id);
+        return result.Succeeded
+            ? Result<Guid>.Success(user.Id)
+            : Result<Guid>.Failure(IdentityAccessErrors.UserCreationFailed());
     }
 
     public async Task<bool> IsInRoleAsync(Guid userId, string role)
@@ -76,6 +80,6 @@ public class IdentityService : IIdentityService
     {
         var result = await _userManager.DeleteAsync(user);
 
-        return result.ToApplicationResult();
+        return result.ToApplicationResult(IdentityAccessErrors.UserDeletionFailed());
     }
 }

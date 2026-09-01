@@ -4,11 +4,13 @@ using CleanArchitecture.Domain.IdentityAccess.Memberships;
 using CleanArchitecture.Domain.IdentityAccess.Tenants;
 using CleanArchitecture.Infrastructure.Data;
 using CleanArchitecture.Infrastructure.Identity;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
+using System.Security.Claims;
 
 namespace CleanArchitecture.Infrastructure.IntegrationTests.IdentityAccess;
 
@@ -88,6 +90,7 @@ public sealed class RolePermissionMappingTests
         using var scope = TestServices.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var evaluator = scope.ServiceProvider.GetRequiredService<IPermissionEvaluator>();
+        var httpContextAccessor = scope.ServiceProvider.GetRequiredService<IHttpContextAccessor>();
         var identityId = Guid.NewGuid();
         var user = new ApplicationUser { Id = identityId, UserName = $"permission-{identityId:N}", Email = $"permission-{identityId:N}@test.invalid" };
         var grantedTenant = Tenant.CreateOrganization(TenantSlug.From($"permission-granted-{Guid.NewGuid():N}"));
@@ -107,6 +110,19 @@ public sealed class RolePermissionMappingTests
 
         (await evaluator.HasPermissionAsync(identityId, grantedTenant.Id, Permissions.MembersRead)).ShouldBeTrue();
         (await evaluator.HasPermissionAsync(identityId, otherTenant.Id, Permissions.MembersRead)).ShouldBeFalse();
+        httpContextAccessor.HttpContext = new DefaultHttpContext
+        {
+            User = new ClaimsPrincipal(new ClaimsIdentity(
+                [new Claim(ClaimTypes.NameIdentifier, identityId.ToString())],
+                "integration-test"))
+        };
+        (await evaluator.HasPermissionAsync(identityId, Permissions.TodosRead)).ShouldBeFalse("known application permissions require an explicit trusted principal grant");
+
+        httpContextAccessor.HttpContext.User.AddIdentity(new ClaimsIdentity(
+            [new Claim(Permissions.ApplicationPermissionClaimType, Permissions.TodosRead)],
+            "integration-test"));
+        (await evaluator.HasPermissionAsync(identityId, Permissions.TodosRead)).ShouldBeTrue();
+        (await evaluator.HasPermissionAsync(identityId, "future.unregistered.permission")).ShouldBeFalse("unregistered application permission codes must fail closed");
     }
 
     [Test]
@@ -242,6 +258,14 @@ public sealed class RolePermissionMappingTests
         context.AddRange(user, tenant, membership, role, activeGrant, MembershipRole.Create(tenant, membership, role));
         await context.SaveChangesAsync();
         (await evaluator.HasPermissionAsync(identityId, tenant.Id, Permissions.MembersRead)).ShouldBeTrue();
+
+        membership.Suspend(tenant);
+        await context.SaveChangesAsync();
+        (await evaluator.HasPermissionAsync(identityId, tenant.Id, Permissions.MembersRead)).ShouldBeFalse("a suspended membership must never retain a tenant permission");
+
+        tenant.Suspend();
+        await context.SaveChangesAsync();
+        (await evaluator.HasPermissionAsync(identityId, tenant.Id, Permissions.MembersRead)).ShouldBeFalse("a suspended tenant must never retain a tenant permission");
 
         role.Retire(tenant);
         await context.SaveChangesAsync();

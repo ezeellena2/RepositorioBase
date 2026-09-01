@@ -2,6 +2,7 @@ using CleanArchitecture.Domain.Entities;
 using CleanArchitecture.Application.IdentityAccess.Authorization;
 using CleanArchitecture.Infrastructure.Data;
 using CleanArchitecture.Infrastructure.Identity;
+using CleanArchitecture.Domain.IdentityAccess.Auditing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -131,6 +132,41 @@ public sealed class MigrationUpgradeTests
             foreach (var definition in Permissions.Catalog)
             {
                 persisted.Single(permission => permission.Code == definition.Code).AllowedTenantTypes.SetEquals(definition.AllowedTenantTypes).ShouldBeTrue();
+            }
+        }
+        finally
+        {
+            if (connectionString is not null)
+            {
+                await DropDatabase(databaseName, connectionString);
+            }
+        }
+    }
+
+    [Test]
+    public async Task Authorization_denial_audit_migration_downgrades_after_a_tenantless_denial_exists()
+    {
+        var databaseName = $"authorization_denial_downgrade_{Guid.NewGuid():N}";
+        string? connectionString = null;
+
+        try
+        {
+            using (var scope = TestServices.CreateScope())
+            {
+                var sharedContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                var sharedConnectionString = sharedContext.Database.GetConnectionString() ?? throw new InvalidOperationException("The test PostgreSQL connection string is required.");
+                connectionString = new NpgsqlConnectionStringBuilder(sharedConnectionString) { Database = databaseName }.ConnectionString;
+                await CreateDatabase(databaseName, sharedConnectionString);
+            }
+
+            var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseNpgsql(connectionString).Options;
+            await using (var context = new ApplicationDbContext(options))
+            {
+                await context.Database.GetService<IMigrator>().MigrateAsync();
+                context.AuditEvents.Add(AuditEvent.CreateAuthorizationDenied(null, null, null, "downgrade-denial", "todos.read", "permission_denied", DateTimeOffset.UtcNow));
+                await context.SaveChangesAsync();
+
+                await context.Database.GetService<IMigrator>().MigrateAsync("20260901012806_TenantAuthorization");
             }
         }
         finally

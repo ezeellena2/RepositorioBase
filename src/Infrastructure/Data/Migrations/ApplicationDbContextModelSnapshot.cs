@@ -130,18 +130,26 @@ namespace CleanArchitecture.Infrastructure.Data.Migrations
                         .IsRequired()
                         .HasColumnType("jsonb");
 
-                    b.Property<Guid>("TenantId")
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("SessionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("TenantId")
                         .HasColumnType("uuid");
 
                     b.HasKey("Id");
 
                     b.HasIndex("ActorId");
 
+                    b.HasIndex("SessionId");
+
                     b.HasIndex("TenantId");
 
                     b.ToTable("AuditEvents", null, t =>
                         {
-                            t.HasCheckConstraint("CK_AuditEvents_Ids_NotEmpty", "\"Id\" <> '00000000-0000-0000-0000-000000000000'::uuid AND \"TenantId\" <> '00000000-0000-0000-0000-000000000000'::uuid AND (\"ActorId\" IS NULL OR \"ActorId\" <> '00000000-0000-0000-0000-000000000000'::uuid)");
+                            t.HasCheckConstraint("CK_AuditEvents_Ids_NotEmpty", "\"Id\" <> '00000000-0000-0000-0000-000000000000'::uuid AND (\"TenantId\" IS NULL OR \"TenantId\" <> '00000000-0000-0000-0000-000000000000'::uuid) AND (\"ActorId\" IS NULL OR \"ActorId\" <> '00000000-0000-0000-0000-000000000000'::uuid) AND (\"SessionId\" IS NULL OR \"SessionId\" <> '00000000-0000-0000-0000-000000000000'::uuid)");
                         });
                 });
 
@@ -595,8 +603,7 @@ namespace CleanArchitecture.Infrastructure.Data.Migrations
                     b.HasOne("CleanArchitecture.Domain.IdentityAccess.Tenants.Tenant", null)
                         .WithMany()
                         .HasForeignKey("TenantId")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.NoAction);
                 });
 
             modelBuilder.Entity("CleanArchitecture.Domain.IdentityAccess.Authorization.MembershipRole", b =>

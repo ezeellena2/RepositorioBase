@@ -3,6 +3,7 @@ using CleanArchitecture.Application.Common.Interfaces;
 using CleanArchitecture.Infrastructure.Data;
 using CleanArchitecture.Web.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Routing;
 
 namespace Microsoft.Extensions.DependencyInjection;
 
@@ -17,10 +18,15 @@ public static class DependencyInjection
         builder.Services.AddHttpContextAccessor();
 
         builder.Services.AddExceptionHandler<ProblemDetailsExceptionHandler>();
+        builder.Services.AddSingleton<ApiProblemDetailsMapper>();
+        builder.Services.AddSingleton<CleanArchitecture.Web.Infrastructure.IProblemDetailsService>(provider => provider.GetRequiredService<ApiProblemDetailsMapper>());
+        builder.Services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationMiddlewareResultHandler, ApiAuthorizationMiddlewareResultHandler>();
 
         // Customise default API behaviour
         builder.Services.Configure<ApiBehaviorOptions>(options =>
             options.SuppressModelStateInvalidFilter = true);
+        builder.Services.Configure<RouteHandlerOptions>(options =>
+            options.ThrowOnBadRequest = true);
 
         builder.Services.AddEndpointsApiExplorer();
 

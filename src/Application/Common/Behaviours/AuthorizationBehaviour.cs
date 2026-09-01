@@ -1,80 +1,94 @@
-﻿using System.Reflection;
+using System.Reflection;
 using CleanArchitecture.Application.Common.Exceptions;
 using CleanArchitecture.Application.Common.Interfaces;
 using CleanArchitecture.Application.Common.Security;
+using CleanArchitecture.Application.IdentityAccess.Authorization;
+using CleanArchitecture.Domain.IdentityAccess.Tenants;
 
 namespace CleanArchitecture.Application.Common.Behaviours;
 
-public class AuthorizationBehaviour<TRequest, TResponse> : IPipelineBehavior<TRequest, TResponse> 
+/// <summary>Enforces the Application request contract before a handler runs.</summary>
+public sealed class AuthorizationBehaviour<TRequest, TResponse> : IPipelineBehavior<TRequest, TResponse>
     where TRequest : notnull
 {
     private readonly IUser _user;
-    private readonly IIdentityService _identityService;
+    private readonly ICurrentTenant _currentTenant;
+    private readonly IPermissionEvaluator _permissionEvaluator;
+    private readonly ISecurityDenialAuditWriter _denialAuditWriter;
 
-    public AuthorizationBehaviour(
-        IUser user,
-        IIdentityService identityService)
+    public AuthorizationBehaviour(IUser user, ICurrentTenant currentTenant, IPermissionEvaluator permissionEvaluator, ISecurityDenialAuditWriter denialAuditWriter)
     {
         _user = user;
-        _identityService = identityService;
+        _currentTenant = currentTenant;
+        _permissionEvaluator = permissionEvaluator;
+        _denialAuditWriter = denialAuditWriter;
     }
 
     public async Task<TResponse> Handle(TRequest request, RequestHandlerDelegate<TResponse> next, CancellationToken cancellationToken)
     {
-        var authorizeAttributes = request.GetType().GetCustomAttributes<AuthorizeAttribute>();
+        var requestType = request.GetType();
+        var authorizeAttributes = requestType.GetCustomAttributes<AuthorizeAttribute>(false).ToArray();
+        var isPublicRequest = request is IPublicRequest;
 
-        if (authorizeAttributes.Any())
+        if (isPublicRequest && authorizeAttributes.Length > 0)
         {
-            // Must be authenticated user
-            if (!_user.Id.HasValue)
+            throw new AuthorizationMetadataMissingException(requestType, "a request cannot be both public and authorized");
+        }
+
+        if (!isPublicRequest && authorizeAttributes.Length != 1)
+        {
+            throw new AuthorizationMetadataMissingException(requestType, "exactly one authorization declaration is required");
+        }
+
+        if (isPublicRequest)
+        {
+            return await next();
+        }
+
+        var authorization = authorizeAttributes.Single();
+        if (string.IsNullOrWhiteSpace(authorization.Permission))
+        {
+            throw new AuthorizationMetadataMissingException(requestType, "a nonblank permission is required");
+        }
+
+        if (!_user.Id.HasValue || _user.Id.Value == Guid.Empty)
+        {
+            await WriteDenialAsync(null, authorization.Permission, "identity_missing_or_invalid", cancellationToken);
+            throw new UnauthorizedAccessException();
+        }
+
+        if (!authorization.RequiresTenant)
+        {
+            if (!await _permissionEvaluator.HasPermissionAsync(_user.Id.Value, authorization.Permission, cancellationToken))
             {
-                throw new UnauthorizedAccessException();
+                await WriteDenialAsync(null, authorization.Permission, "permission_denied", cancellationToken);
+                throw new ForbiddenAccessException();
             }
 
-            // Role-based authorization
-            var authorizeAttributesWithRoles = authorizeAttributes.Where(a => !string.IsNullOrWhiteSpace(a.Roles));
+            return await next();
+        }
 
-            if (authorizeAttributesWithRoles.Any())
+        if (authorization.RequiresTenant)
+        {
+            var tenantId = _currentTenant.TenantId;
+            if (tenantId is null || tenantId.Value.IsEmpty)
             {
-                var authorized = false;
-
-                foreach (var roles in authorizeAttributesWithRoles.Select(a => a.Roles.Split(',')))
-                {
-                    foreach (var role in roles)
-                    {
-                        var isInRole = _user.Roles?.Any(x => role == x)??false;
-                        if (isInRole)
-                        {
-                            authorized = true;
-                            break;
-                        }
-                    }
-                }
-
-                // Must be a member of at least one role in roles
-                if (!authorized)
-                {
-                    throw new ForbiddenAccessException();
-                }
+                await WriteDenialAsync(null, authorization.Permission, "tenant_context_missing", cancellationToken);
+                throw new ForbiddenAccessException();
             }
 
-            // Policy-based authorization
-            var authorizeAttributesWithPolicies = authorizeAttributes.Where(a => !string.IsNullOrWhiteSpace(a.Policy));
-            if (authorizeAttributesWithPolicies.Any())
+            if (!await _permissionEvaluator.HasPermissionAsync(_user.Id.Value, tenantId.Value, authorization.Permission, cancellationToken))
             {
-                foreach (var policy in authorizeAttributesWithPolicies.Select(a => a.Policy))
-                {
-                    var authorized = await _identityService.AuthorizeAsync(_user.Id.Value, policy);
-
-                    if (!authorized)
-                    {
-                        throw new ForbiddenAccessException();
-                    }
-                }
+                await WriteDenialAsync(tenantId, authorization.Permission, "permission_denied", cancellationToken);
+                throw new ForbiddenAccessException();
             }
         }
 
-        // User is authorized / authorization not required
         return await next();
     }
+
+    private Task WriteDenialAsync(TenantId? tenantId, string permissionCode, string outcome, CancellationToken cancellationToken) =>
+        _denialAuditWriter.WriteDeniedAsync(
+            new SecurityDenialAudit(System.Diagnostics.Activity.Current?.TraceId.ToString() ?? Guid.NewGuid().ToString("N"), _user.Id, tenantId, permissionCode, outcome),
+            cancellationToken);
 }

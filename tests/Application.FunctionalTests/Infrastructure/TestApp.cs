@@ -1,6 +1,8 @@
 using CleanArchitecture.Domain.Constants;
 using CleanArchitecture.Infrastructure.Data;
 using CleanArchitecture.Infrastructure.Identity;
+using CleanArchitecture.Domain.IdentityAccess.Tenants;
+using CleanArchitecture.Application.IdentityAccess.Common;
 using MediatR;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -11,7 +13,13 @@ namespace CleanArchitecture.Application.FunctionalTests.Infrastructure;
 public static class TestApp
 {
     private static Guid? _userId;
+    private static Guid? _sessionId;
     private static List<string>? _roles;
+    private static TenantId? _tenantId;
+    private static bool _httpAuthorizationGranted;
+    private static bool _applicationPermissionGranted;
+    private static bool _forceTodoItemConcurrencyConflict;
+    private static bool _forceUnexpectedFailure;
 
     public static async Task<TResponse> SendAsync<TResponse>(IRequest<TResponse> request)
     {
@@ -33,7 +41,29 @@ public static class TestApp
 
     public static Guid? GetUserId() => _userId;
 
+    public static Guid? GetSessionId() => _sessionId;
+
     public static List<string>? GetRoles() => _roles;
+
+    public static TenantId? GetTenantId() => _tenantId;
+
+    public static bool IsHttpAuthorizationGranted() => _httpAuthorizationGranted;
+
+    public static bool IsApplicationPermissionGranted() => _applicationPermissionGranted;
+
+    public static bool ConsumeForcedTodoItemConcurrencyConflict() => Interlocked.Exchange(ref _forceTodoItemConcurrencyConflict, false);
+
+    public static bool ConsumeForcedUnexpectedFailure() => Interlocked.Exchange(ref _forceUnexpectedFailure, false);
+
+    public static void SetCurrentTenant(TenantId? tenantId) => _tenantId = tenantId;
+
+    public static void SetHttpAuthorizationGranted(bool granted) => _httpAuthorizationGranted = granted;
+
+    public static void SetApplicationPermissionGranted(bool granted) => _applicationPermissionGranted = granted;
+
+    public static void ForceTodoItemConcurrencyConflict() => _forceTodoItemConcurrencyConflict = true;
+
+    public static void ForceUnexpectedFailure() => _forceUnexpectedFailure = true;
 
     public static async Task<Guid> RunAsDefaultUserAsync()
     {
@@ -70,13 +100,14 @@ public static class TestApp
         if (result.Succeeded)
         {
             _userId = user.Id;
+            _sessionId = Guid.NewGuid();
             _roles = [..roles];
+            _httpAuthorizationGranted = true;
+            _applicationPermissionGranted = true;
             return _userId.Value;
         }
 
-        var errors = string.Join(Environment.NewLine, result.ToApplicationResult().Errors);
-
-        throw new Exception($"Unable to create {userName}.{Environment.NewLine}{errors}");
+        throw new Exception($"Unable to create test identity. Error code: {result.ToApplicationResult(IdentityAccessErrors.UserCreationFailed()).Error?.Code ?? "unknown"}.");
     }
 
     public static async Task ResetState()
@@ -87,7 +118,13 @@ public static class TestApp
         }
 
         _userId = null;
+        _sessionId = null;
         _roles = null;
+        _tenantId = null;
+        _httpAuthorizationGranted = false;
+        _applicationPermissionGranted = false;
+        _forceTodoItemConcurrencyConflict = false;
+        _forceUnexpectedFailure = false;
     }
 
     public static async Task<TEntity?> FindAsync<TEntity>(params object[] keyValues)

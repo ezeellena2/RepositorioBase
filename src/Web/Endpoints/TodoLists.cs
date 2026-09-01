@@ -2,6 +2,7 @@ using CleanArchitecture.Application.TodoLists.Commands.CreateTodoList;
 using CleanArchitecture.Application.TodoLists.Commands.DeleteTodoList;
 using CleanArchitecture.Application.TodoLists.Commands.UpdateTodoList;
 using CleanArchitecture.Application.TodoLists.Queries.GetTodos;
+using CleanArchitecture.Application.Common.Models;
 using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace CleanArchitecture.Web.Endpoints;
@@ -12,10 +13,19 @@ public class TodoLists : IEndpointGroup
     {
         groupBuilder.RequireAuthorization();
 
-        groupBuilder.MapGet(GetTodoLists);
-        groupBuilder.MapPost(CreateTodoList);
-        groupBuilder.MapPut(UpdateTodoList, "{id}");
-        groupBuilder.MapDelete(DeleteTodoList, "{id}");
+        groupBuilder.MapGet(GetTodoLists).WithApiProblemDetails(
+            ApiProblemMetadata.AuthenticationRequired, ApiProblemMetadata.PermissionDenied, ApiProblemMetadata.InternalServerError);
+        groupBuilder.MapPost(CreateTodoList)
+            .WithCreatedLocation<int>()
+            .WithApiProblemDetails(
+                ApiProblemMetadata.ValidationFailed, ApiProblemMetadata.InvalidRequest, ApiProblemMetadata.AuthenticationRequired, ApiProblemMetadata.PermissionDenied, ApiProblemMetadata.InternalServerError);
+        groupBuilder.MapPut(UpdateTodoList, "{id}")
+            .Produces(StatusCodes.Status204NoContent)
+            .WithApiProblemDetails(
+                ApiProblemMetadata.ValidationFailed, ApiProblemMetadata.InvalidRequest, ApiProblemMetadata.RouteBodyIdMismatch, ApiProblemMetadata.AuthenticationRequired,
+                ApiProblemMetadata.PermissionDenied, ApiProblemMetadata.NotFound, ApiProblemMetadata.InternalServerError);
+        groupBuilder.MapDelete(DeleteTodoList, "{id}").WithApiProblemDetails(
+            ApiProblemMetadata.InvalidRequest, ApiProblemMetadata.AuthenticationRequired, ApiProblemMetadata.PermissionDenied, ApiProblemMetadata.NotFound, ApiProblemMetadata.InternalServerError);
     }
 
     [EndpointSummary("Get all Todo Lists")]
@@ -38,9 +48,15 @@ public class TodoLists : IEndpointGroup
 
     [EndpointSummary("Update a Todo List")]
     [EndpointDescription("Updates the specified todo list. The ID in the URL must match the ID in the payload.")]
-    public static async Task<Results<NoContent, BadRequest>> UpdateTodoList(ISender sender, int id, UpdateTodoListCommand command)
+    public static async Task<IResult> UpdateTodoList(ISender sender, ApiProblemDetailsMapper problemDetailsMapper, int id, UpdateTodoListCommand command)
     {
-        if (id != command.Id) return TypedResults.BadRequest();
+        if (id != command.Id)
+        {
+            return problemDetailsMapper.ToHttpResult(new ApplicationError(
+                "route_body_id_mismatch",
+                ApplicationErrorCategory.Validation,
+                validationErrors: new Dictionary<string, string[]> { ["id"] = ["The route identifier must match the payload identifier."] }));
+        }
 
         await sender.Send(command);
 

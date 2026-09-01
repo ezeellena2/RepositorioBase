@@ -2,12 +2,25 @@ using CleanArchitecture.Application.IdentityAccess.Authorization;
 using CleanArchitecture.Domain.IdentityAccess.Memberships;
 using CleanArchitecture.Domain.IdentityAccess.Tenants;
 using CleanArchitecture.Infrastructure.Data;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 
 namespace CleanArchitecture.Infrastructure.Identity;
 
-public sealed class PermissionEvaluator(ApplicationDbContext context) : IPermissionEvaluator
+public sealed class PermissionEvaluator(ApplicationDbContext context, IHttpContextAccessor httpContextAccessor) : IPermissionEvaluator
 {
+    public Task<bool> HasPermissionAsync(Guid identityId, string permissionCode, CancellationToken cancellationToken = default)
+    {
+        var principal = httpContextAccessor.HttpContext?.User;
+        var hasMatchingIdentity = principal?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value == identityId.ToString();
+        return Task.FromResult(
+            identityId != Guid.Empty &&
+            !string.IsNullOrWhiteSpace(permissionCode) &&
+            hasMatchingIdentity &&
+            Permissions.ApplicationScopedCodes.Contains(permissionCode) &&
+            principal!.HasClaim(Permissions.ApplicationPermissionClaimType, permissionCode));
+    }
+
     public async Task<bool> HasPermissionAsync(Guid identityId, TenantId tenantId, string permissionCode, CancellationToken cancellationToken = default)
     {
         if (identityId == Guid.Empty || tenantId.IsEmpty || string.IsNullOrWhiteSpace(permissionCode) || !Permissions.Catalog.Any(permission => permission.Code == permissionCode))

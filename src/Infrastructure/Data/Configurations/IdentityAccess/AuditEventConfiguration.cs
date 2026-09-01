@@ -22,16 +22,21 @@ public sealed class AuditEventConfiguration : IEntityTypeConfiguration<AuditEven
             metadata => MetadataHash(metadata),
             metadata => CopyMetadata(metadata));
 
-        builder.ToTable("AuditEvents", table => table.HasCheckConstraint("CK_AuditEvents_Ids_NotEmpty", "\"Id\" <> '00000000-0000-0000-0000-000000000000'::uuid AND \"TenantId\" <> '00000000-0000-0000-0000-000000000000'::uuid AND (\"ActorId\" IS NULL OR \"ActorId\" <> '00000000-0000-0000-0000-000000000000'::uuid)"));
+        builder.ToTable("AuditEvents", table => table.HasCheckConstraint("CK_AuditEvents_Ids_NotEmpty", "\"Id\" <> '00000000-0000-0000-0000-000000000000'::uuid AND (\"TenantId\" IS NULL OR \"TenantId\" <> '00000000-0000-0000-0000-000000000000'::uuid) AND (\"ActorId\" IS NULL OR \"ActorId\" <> '00000000-0000-0000-0000-000000000000'::uuid) AND (\"SessionId\" IS NULL OR \"SessionId\" <> '00000000-0000-0000-0000-000000000000'::uuid)"));
         builder.HasKey(auditEvent => auditEvent.Id);
         builder.Property(auditEvent => auditEvent.Id).ValueGeneratedNever();
-        builder.Property(auditEvent => auditEvent.TenantId).HasConversion(id => id.Value, value => TenantId.From(value)).IsRequired();
+        builder.Property(auditEvent => auditEvent.TenantId).HasConversion(
+            id => id.HasValue ? id.Value.Value : (Guid?)null,
+            value => value.HasValue ? TenantId.From(value.Value) : null);
         builder.Property(auditEvent => auditEvent.ActorId);
+        builder.Property(auditEvent => auditEvent.SessionId);
+        builder.Property(auditEvent => auditEvent.OccurredAt).IsRequired();
         builder.Property(auditEvent => auditEvent.EventType).HasMaxLength(128).IsRequired();
         builder.Property(auditEvent => auditEvent.CorrelationId).HasMaxLength(128).IsRequired();
         builder.Property(auditEvent => auditEvent.Metadata).HasConversion(converter).HasColumnType("jsonb").Metadata.SetValueComparer(comparer);
         builder.HasIndex(auditEvent => auditEvent.TenantId);
         builder.HasIndex(auditEvent => auditEvent.ActorId);
+        builder.HasIndex(auditEvent => auditEvent.SessionId);
         builder.HasOne<Tenant>().WithMany().HasForeignKey(auditEvent => auditEvent.TenantId).OnDelete(DeleteBehavior.NoAction);
         builder.HasOne<ApplicationUser>().WithMany().HasForeignKey(auditEvent => auditEvent.ActorId).OnDelete(DeleteBehavior.NoAction);
     }

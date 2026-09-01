@@ -2,6 +2,7 @@
 using CleanArchitecture.Application.IdentityAccess.Authorization;
 using CleanArchitecture.Infrastructure.Data;
 using CleanArchitecture.Infrastructure.Data.Interceptors;
+using CleanArchitecture.Infrastructure.Auditing;
 using CleanArchitecture.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -70,5 +71,7 @@ public static class DependencyInjection
         builder.Services.AddSingleton(TimeProvider.System);
         builder.Services.AddTransient<IIdentityService, IdentityService>();
         builder.Services.AddScoped<IPermissionEvaluator, PermissionEvaluator>();
+        builder.Services.AddScoped<ICurrentTenant, CurrentTenant>();
+        builder.Services.AddScoped<ISecurityDenialAuditWriter, SecurityDenialAuditWriter>();
     }
 }

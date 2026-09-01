@@ -2,23 +2,56 @@
 
 public class Result
 {
-    internal Result(bool succeeded, IEnumerable<string> errors)
+    protected Result(bool succeeded, ApplicationError? error)
     {
+        if (succeeded == (error is not null))
+        {
+            throw new ArgumentException("A result must contain either success or exactly one error.", nameof(error));
+        }
+
         Succeeded = succeeded;
-        Errors = errors.ToArray();
+        Error = error;
     }
 
-    public bool Succeeded { get; init; }
+    public bool Succeeded { get; }
 
-    public string[] Errors { get; init; }
+    public bool IsSuccess => Succeeded;
+
+    public bool IsFailure => !Succeeded;
+
+    public ApplicationError? Error { get; }
 
     public static Result Success()
     {
-        return new Result(true, Array.Empty<string>());
+        return new Result(true, null);
     }
 
-    public static Result Failure(IEnumerable<string> errors)
+    public static Result Failure(ApplicationError error)
     {
-        return new Result(false, errors);
+        ArgumentNullException.ThrowIfNull(error);
+        return new Result(false, error);
+    }
+}
+
+public sealed class Result<T> : Result
+{
+    private Result(T? value, ApplicationError? error, bool succeeded)
+        : base(succeeded, error)
+    {
+        Value = value;
+    }
+
+    public T? Value { get; }
+
+    public static Result<T> Success(T value)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        return new Result<T>(value, null, true);
+    }
+
+    public static new Result<T> Failure(ApplicationError error)
+    {
+        ArgumentNullException.ThrowIfNull(error);
+        return new Result<T>(default, error, false);
     }
 }

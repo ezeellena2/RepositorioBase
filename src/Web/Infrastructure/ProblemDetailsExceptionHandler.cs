@@ -1,52 +1,40 @@
 using CleanArchitecture.Application.Common.Exceptions;
+using CleanArchitecture.Application.Common.Models;
 using Microsoft.AspNetCore.Diagnostics;
-using Microsoft.AspNetCore.Mvc;
 
 namespace CleanArchitecture.Web.Infrastructure;
 
-/// <summary>
-/// Converts well-known application exceptions into RFC 9110-compliant <see cref="ProblemDetails"/> responses,
-/// mapping <see cref="ValidationException"/> → 400, <see cref="NotFoundException"/> → 404,
-/// <see cref="UnauthorizedAccessException"/> → 401, and <see cref="ForbiddenAccessException"/> → 403.
-/// Unrecognised exceptions are not handled and fall through to the default middleware.
-/// </summary>
-public class ProblemDetailsExceptionHandler : IExceptionHandler
+/// <summary>Writes every exception response through the shared RFC 9457 boundary.</summary>
+public sealed class ProblemDetailsExceptionHandler(IProblemDetailsService problemDetails) : IExceptionHandler
 {
     public async ValueTask<bool> TryHandleAsync(HttpContext httpContext, Exception exception, CancellationToken cancellationToken)
     {
-        var (statusCode, problemDetails) = exception switch
+        if (exception is UnauthorizedAccessException)
         {
-            ValidationException ve => (StatusCodes.Status400BadRequest, (ProblemDetails)new ValidationProblemDetails(ve.Errors)
-            {
-                Status = StatusCodes.Status400BadRequest,
-                Type = "https://tools.ietf.org/html/rfc9110#section-15.5.1"
-            }),
-            NotFoundException ne => (StatusCodes.Status404NotFound, new ProblemDetails
-            {
-                Status = StatusCodes.Status404NotFound,
-                Type = "https://tools.ietf.org/html/rfc9110#section-15.5.5",
-                Title = "The specified resource was not found.",
-                Detail = ne.Message
-            }),
-            UnauthorizedAccessException => (StatusCodes.Status401Unauthorized, new ProblemDetails
-            {
-                Status = StatusCodes.Status401Unauthorized,
-                Title = "Unauthorized",
-                Type = "https://tools.ietf.org/html/rfc9110#section-15.5.2"
-            }),
-            ForbiddenAccessException => (StatusCodes.Status403Forbidden, new ProblemDetails
-            {
-                Status = StatusCodes.Status403Forbidden,
-                Title = "Forbidden",
-                Type = "https://tools.ietf.org/html/rfc9110#section-15.5.4"
-            }),
-            _ => (-1, null)
+            await ApiAuthenticationChallenge.ChallengeAsync(httpContext);
+        }
+
+        var error = exception switch
+        {
+            ValidationException validation => new ApplicationError(
+                "validation_failed",
+                ApplicationErrorCategory.Validation,
+                validationErrors: new Dictionary<string, string[]>(validation.Errors, StringComparer.Ordinal)),
+            NotFoundException => new ApplicationError("not_found", ApplicationErrorCategory.NotFound),
+            UnauthorizedAccessException => new ApplicationError("authentication_required", ApplicationErrorCategory.Authentication),
+            ForbiddenAccessException => new ApplicationError("permission_denied", ApplicationErrorCategory.Authorization),
+            BadHttpRequestException => new ApplicationError("invalid_request", ApplicationErrorCategory.Validation),
+            System.Text.Json.JsonException => new ApplicationError("invalid_request", ApplicationErrorCategory.Validation),
+            _ => null
         };
 
-        if (problemDetails is null) return false;
+        if (error is null)
+        {
+            await problemDetails.WriteUnexpectedAsync(httpContext, cancellationToken);
+            return true;
+        }
 
-        httpContext.Response.StatusCode = statusCode;
-        await httpContext.Response.WriteAsJsonAsync(problemDetails, cancellationToken);
+        await problemDetails.WriteAsync(httpContext, error, cancellationToken);
         return true;
     }
 }

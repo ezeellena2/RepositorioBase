@@ -1,5 +1,7 @@
 using CleanArchitecture.Application.Common.Interfaces;
+using CleanArchitecture.Application.Common.Models;
 using CleanArchitecture.Application.IdentityAccess.Authorization;
+using CleanArchitecture.Application.IdentityAccess.Common;
 using CleanArchitecture.Domain.Common;
 using CleanArchitecture.Domain.IdentityAccess.Authorization;
 using CleanArchitecture.Domain.IdentityAccess.Memberships;
@@ -37,15 +39,29 @@ public class IdentityGuidContractTests
         identityService.GetMethod(nameof(IIdentityService.IsInRoleAsync))!.GetParameters().First().ParameterType.ShouldBe(typeof(Guid));
         identityService.GetMethod(nameof(IIdentityService.AuthorizeAsync))!.GetParameters().First().ParameterType.ShouldBe(typeof(Guid));
         identityService.GetMethod(nameof(IIdentityService.DeleteUserAsync))!.GetParameters().Single().ParameterType.ShouldBe(typeof(Guid));
-        identityService.GetMethod(nameof(IIdentityService.CreateUserAsync))!.ReturnType.GenericTypeArguments.Single().GenericTypeArguments[1].ShouldBe(typeof(Guid));
+        var createUserReturn = identityService.GetMethod(nameof(IIdentityService.CreateUserAsync))!.ReturnType.GenericTypeArguments.Single();
+        createUserReturn.GetGenericTypeDefinition().ShouldBe(typeof(Result<>));
+        createUserReturn.GenericTypeArguments.Single().ShouldBe(typeof(Guid));
     }
 
     [Test]
-    public void PermissionEvaluator_requires_explicit_identity_and_tenant_inputs()
+    public void PermissionEvaluator_requires_explicit_identity_inputs_for_application_and_tenant_scopes()
     {
-        var method = typeof(IPermissionEvaluator).GetMethod(nameof(IPermissionEvaluator.HasPermissionAsync))!;
+        var methods = typeof(IPermissionEvaluator).GetMethods()
+            .Where(method => method.Name == nameof(IPermissionEvaluator.HasPermissionAsync))
+            .ToArray();
+        var tenantMethod = methods.Single(method => method.GetParameters().Any(parameter => parameter.ParameterType == typeof(TenantId)));
+        var applicationMethod = methods.Single(method => method.GetParameters().All(parameter => parameter.ParameterType != typeof(TenantId)));
 
-        method.GetParameters().Select(parameter => parameter.ParameterType).Take(3).ShouldBe([typeof(Guid), typeof(TenantId), typeof(string)]);
+        tenantMethod.GetParameters().Select(parameter => parameter.ParameterType).Take(3).ShouldBe([typeof(Guid), typeof(TenantId), typeof(string)]);
+        applicationMethod.GetParameters().Select(parameter => parameter.ParameterType).Take(2).ShouldBe([typeof(Guid), typeof(string)]);
+    }
+
+    [Test]
+    public void Identity_deletion_failure_uses_its_own_safe_stable_error_code()
+    {
+        IdentityAccessErrors.UserDeletionFailed().Code.ShouldBe("identity_user_deletion_failed");
+        IdentityAccessErrors.UserDeletionFailed().Detail.ShouldBe("The identity could not be deleted.");
     }
 
     [Test]

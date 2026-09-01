@@ -1,29 +1,63 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.OpenApi;
 using Microsoft.OpenApi;
+using System.Text.Json.Nodes;
 
 namespace CleanArchitecture.Web.Infrastructure;
 
-/// <summary>
-/// Adds standard error responses to every OpenAPI operation. A 400 Bad Request is added to all
-/// operations because every request passes through <c>ValidationBehaviour</c> in the MediatR
-/// pipeline. 401 Unauthorized and 403 Forbidden are added only to operations that carry
-/// <see cref="IAuthorizeData"/> metadata.
-/// </summary>
+/// <summary>Adds the stable public problem-code metadata declared by each endpoint.</summary>
 internal sealed class ApiExceptionOperationTransformer : IOpenApiOperationTransformer
 {
     public Task TransformAsync(OpenApiOperation operation, OpenApiOperationTransformerContext context, CancellationToken cancellationToken)
     {
-        operation.Responses ??= [];
-        operation.Responses.TryAdd("400", new OpenApiResponse { Description = "Bad Request" });
+        operation.Responses ??= new OpenApiResponses();
+        var contracts = context.Description.ActionDescriptor.EndpointMetadata
+            .OfType<ApiProblemContractMetadata>()
+            .SelectMany(metadata => metadata.Contracts)
+            .GroupBy(contract => contract.StatusCode);
 
-        var requiresAuth = context.Description.ActionDescriptor.EndpointMetadata
-            .Any(m => m is IAuthorizeData);
-
-        if (requiresAuth)
+        foreach (var statusContracts in contracts)
         {
-            operation.Responses.TryAdd("401", new OpenApiResponse { Description = "Unauthorized" });
-            operation.Responses.TryAdd("403", new OpenApiResponse { Description = "Forbidden" });
+            var status = statusContracts.Key.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            if (!operation.Responses.TryGetValue(status, out var response) || response is not OpenApiResponse concreteResponse)
+            {
+                continue;
+            }
+
+            concreteResponse.Extensions ??= new Dictionary<string, IOpenApiExtension>();
+            concreteResponse.Extensions["x-problem-codes"] = new JsonNodeExtension(
+                new JsonArray(statusContracts.Select(contract => JsonValue.Create(contract.Code)).ToArray()));
+
+            if (statusContracts.Any(contract => contract.RequiresRetryAfter))
+            {
+                concreteResponse.Headers ??= new Dictionary<string, IOpenApiHeader>();
+                concreteResponse.Headers.TryAdd("Retry-After", new OpenApiHeader
+                {
+                    Description = "Seconds until the caller may retry.",
+                    Schema = new OpenApiSchema { Type = JsonSchemaType.Integer, Format = "int32" }
+                });
+            }
+
+        }
+
+        var successContracts = context.Description.ActionDescriptor.EndpointMetadata
+            .OfType<ApiSuccessContractMetadata>()
+            .Where(contract => contract.RequiresLocationHeader);
+
+        foreach (var successContract in successContracts)
+        {
+            var status = successContract.StatusCode.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            if (!operation.Responses.TryGetValue(status, out var response) || response is not OpenApiResponse concreteResponse)
+            {
+                continue;
+            }
+
+            concreteResponse.Headers ??= new Dictionary<string, IOpenApiHeader>();
+            concreteResponse.Headers.TryAdd("Location", new OpenApiHeader
+            {
+                Description = "URI of the created resource.",
+                Schema = new OpenApiSchema { Type = JsonSchemaType.String, Format = "uri-reference" }
+            });
         }
 
         return Task.CompletedTask;
