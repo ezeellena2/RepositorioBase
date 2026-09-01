@@ -1,6 +1,5 @@
 export interface Health {
-  status: "ok";
-  time: string;
+  ok: true;
 }
 
 async function request<T>(method: string, url: string, body?: unknown): Promise<T> {

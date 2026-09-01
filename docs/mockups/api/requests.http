@@ -1,0 +1,35 @@
+### Salud
+GET http://localhost:3001/api/health
+
+### Registro (empresa)
+POST http://localhost:3001/api/auth/register
+Content-Type: application/json
+
+{ "cuit": "30-70123456-8", "name": "Talleres Norte S.A.", "email": "hola@norte.com", "password": "1234" }
+
+### Correo enviado (copiar el token del link)
+GET http://localhost:3001/api/dev/mails
+
+### Confirmar
+POST http://localhost:3001/api/auth/confirm
+Content-Type: application/json
+
+{ "token": "PEGAR_TOKEN" }
+
+### Login
+POST http://localhost:3001/api/auth/login
+Content-Type: application/json
+
+{ "email": "hola@norte.com", "password": "1234" }
+
+### Quién soy
+GET http://localhost:3001/api/me
+
+### Elegir espacio
+PUT http://localhost:3001/api/me/tenant
+Content-Type: application/json
+
+{ "tenantId": "PEGAR_TENANT_ID" }
+
+### Salir
+POST http://localhost:3001/api/auth/logout
