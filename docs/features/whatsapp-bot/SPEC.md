@@ -83,6 +83,7 @@ The channel does not implement model-authored statements, a second authorization
 - **WA-REQ-004:** channel administration requires an active Platform tenant, an explicit `platform.whatsapp.*` permission, and recent MFA step-up for mutations, through the ADR-004 evaluator. No channel capability exists outside that evaluator.
 - **WA-REQ-005:** inbound routing resolves the channel from the WABA identifier of the event, never from configuration assumed to be singular. An event for an unknown or suspended channel is recorded and discarded without processing.
 - **WA-REQ-006:** channel health — quality rating, messaging tier, webhook subscription state, credential validity — is persisted and observable. A channel whose credentials fail verification transitions to `Suspended` and stops sending.
+Channel observability is specified in WA-REQ-055 and WA-REQ-056.
 
 ### Linking and identification
 
@@ -153,8 +154,13 @@ The channel does not implement model-authored statements, a second authorization
 - **WA-REQ-050:** the reply to an unknown sender is determined by the channel's audience. A channel that does not accept self-service returns a fixed message revealing nothing about the platform or its organizations. A self-service channel may return an enrollment invitation. Neither reply discloses whether any number, identity, or organization exists.
 - **WA-REQ-051:** a `Personal` tenant reaches only capabilities scoped to itself. Membership of an organization never widens what a `Personal` link may do, and a `Personal` link never reaches organization data, in either direction.
 - **WA-REQ-052:** every capability declares the audiences it is exposed to. The resolution chain of WA-REQ-029 intersects that declaration with the audience of the current message, so a capability not declared for an audience is never offered and never selectable. Any capability that issues a fiscal document, moves money, or reads organization-wide data MUST NOT declare the `Contacts` audience. An architecture test enforces this for every irreversible capability.
-- **WA-REQ-054:** one phone number may hold an active link in more than one tenant — typically an organization membership and the person's own `Personal` tenant. The conversation carries exactly one active tenant, resolved from a single link, and the offered catalog is built for that context alone; permissions are never accumulated across contexts, preserving IA-REQ-007. Switching context is explicit and is offered automatically once a second active link exists. When a capability is enabled in more than one of that person's contexts, the rendered summary of WA-REQ-034 MUST name the acting tenant, and confirmation MUST NOT be skipped regardless of the capability's default. The issuing party is therefore always present in the text the person approves, so a sticky context cannot silently produce an effect under the wrong tenant.
 - **WA-REQ-053:** a `Contacts` message is authorized by row scope, never by permission. A capability serving `Contacts` receives the channel's tenant and the sender's phone number, and MUST restrict every result to rows that phone number owns within that tenant. It MUST NOT accept a record identifier from the message or from the model as its sole scoping term, and it MUST NOT expose aggregate, cross-customer, or organization-internal data.
+- **WA-REQ-054:** one phone number may hold an active link in more than one tenant — typically an organization membership and the person's own `Personal` tenant. The conversation carries exactly one active tenant, resolved from a single link, and the offered catalog is built for that context alone; permissions are never accumulated across contexts, preserving IA-REQ-007. Switching context is explicit and is offered automatically once a second active link exists. When a capability is enabled in more than one of that person's contexts, the rendered summary of WA-REQ-034 MUST name the acting tenant, and confirmation MUST NOT be skipped regardless of the capability's default. The issuing party is therefore always present in the text the person approves, so a sticky context cannot silently produce an effect under the wrong tenant.
+
+### Channel observability
+
+- **WA-REQ-055:** channel setup state is derived from the provider, never from operator memory. The platform queries and persists, per channel: phone number registration and display-name status, whether this application is subscribed to the business account, business verification and account review state, quality rating, and messaging tier. Each item records the outcome and the time of its last check. An item that cannot be verified is reported as **unknown** and never as satisfied, because a setup step silently assumed complete is the failure mode this requirement exists to prevent — an unsubscribed application accepts configuration, reports health, and delivers no events at all.
+- **WA-REQ-056:** any transition that reduces a channel's ability to operate — failed credential verification, quality downgrade, messaging-tier reduction, lost application subscription, account restriction, or a module credential reaching expiry — raises an alert written to the transactional outbox in the same transaction as the state change, under IA-REQ-027. An alert declares the permission that identifies its recipients rather than an address, is deduplicated per channel and condition so a persistent fault does not repeat indefinitely, and is cleared when the condition resolves. Silence therefore means healthy, not unobserved.
 
 ## 5. Data model
 
@@ -280,6 +286,8 @@ Routes are contractual drafts; generated OpenAPI becomes the source of truth.
 | `GET /api/platform/whatsapp/channel` | `platform.whatsapp.read` | `200` channel DTO, secrets masked |
 | `PUT /api/platform/whatsapp/channel` | `platform.whatsapp.configure` + recent MFA | `200` channel DTO |
 | `POST /api/platform/whatsapp/channel/verify` | `platform.whatsapp.configure` | `200` connectivity DTO |
+| `GET /api/platform/whatsapp/channel/setup` | `platform.whatsapp.read` | `200` setup-checklist DTO: per item, outcome, last check |
+| `POST /api/platform/whatsapp/channel/setup/refresh` | `platform.whatsapp.configure` | `200` refreshed setup-checklist DTO |
 | `GET /api/platform/bot/capabilities` | `platform.bot.capabilities.read` | `200` typed `{ items, nextCursor }` |
 | `PUT /api/tenants/{tenantId}/bot/capabilities/{code}` | `bot.capabilities.manage` + antiforgery | `200` settings DTO |
 | `PUT /api/tenants/{tenantId}/bot/modules/{code}/credentials` | `bot.modules.manage` + recent MFA | bodyless `204` |
@@ -370,6 +378,26 @@ Scenario: An unsigned webhook is discarded
   When the receiver handles it
   Then it is rejected without persistence
   And no acknowledgement implies acceptance
+
+Scenario: An unsubscribed application is reported, not assumed
+  Given a channel whose credentials are valid and whose number is registered
+  And this application is not subscribed to the business account
+  When the setup checklist is read
+  Then the subscription item reports not satisfied
+  And the channel is not presented as ready to receive
+
+Scenario: A setup item that cannot be checked is unknown
+  Given the provider is unreachable when the checklist refreshes
+  When the checklist is read
+  Then the affected items report unknown with the time of the last successful check
+  And no item reports satisfied on the strength of a previous result alone
+
+Scenario: Degradation raises exactly one alert until it clears
+  Given a channel whose quality rating is downgraded
+  When the state change is persisted
+  Then one alert is written to the outbox in the same transaction
+  And a repeated check of the same condition writes no further alert
+  And resolution of the condition clears it
 
 Scenario: Channel secrets are never readable
   Given a configured channel

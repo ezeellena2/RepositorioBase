@@ -11,6 +11,7 @@ The package adds a channel and a catalog. It adds no business rules: every capab
 - [TRACEABILITY.md](TRACEABILITY.md): requirement → task → test → evidence.
 - [ADR-005](../../decisions/ADR-005-Adopt-WhatsApp-Delivery-Channel.md): the channel decision.
 - [ADR-006](../../decisions/ADR-006-Bot-Capability-Catalog-And-Modules.md): the capability and module decision.
+- [SCREENS.md](SCREENS.md): the screen inventory, its states, and what each screen serves.
 - [ONBOARDING.md](ONBOARDING.md): the operational runbook for provisioning a channel in Meta.
 - [MODULES.md](MODULES.md): what a module must bring, and what it never has to touch.
 

@@ -29,14 +29,14 @@ The whole package is blocked on the identity-access first increment delivering `
 | ID | Task | Requirements | Status | Depends on | Observable result |
 |---|---|---|---|---|---|
 | WA-001 | Approve ADR-005, ADR-006, and SPEC | — | Review | IA-001 | human approval |
-| WA-002 | Channel persistence, encrypted credentials, Platform panel | WA-REQ-001..006, 044 | Blocked | WA-001, IA-008 | configured channel; secrets never readable; connectivity check |
+| WA-002 | Channel persistence, encrypted credentials, setup checklist, alerting, Platform panel | WA-REQ-001..006, 044, 055, 056 | Blocked | WA-001, IA-008 | configured channel; secrets never readable; connectivity check; provider-derived checklist that reports an unsubscribed application; degradation raises one alert until cleared |
 | WA-003 | Webhook receiver, signature, inbox, deduplication | WA-REQ-014..020, 047 | Blocked | WA-002 | signed events persisted and acknowledged; replay produces one effect |
 | WA-004 | Linking, verification, allowlist, revalidation | WA-REQ-007..013, 045 | Blocked | WA-003 | web-initiated link confirmed from the phone; revocation immediate |
 | WA-005 | Outbound sending, service window, delivery evidence | WA-REQ-021..023 | Blocked | WA-004 | outbox delivery with idempotency key; window enforced before send |
 | WA-006 | Capability catalog, resolution chain, model routing | WA-REQ-024..032, 046 | Blocked | WA-005 | closed catalog; tenant-filtered queries; absent capabilities not offered |
 | WA-007 | Action runs, two-phase confirmation, idempotency | WA-REQ-033..035, 038, 039 | Blocked | WA-006 | rendered summary approved; one effect per confirmation |
 | WA-008 | Module contract, credentials, reconciliation | WA-REQ-031, 036, 037 | Blocked | WA-007 | reversible external module; `Unknown` reconciles, never retries |
-| WA-009 | React screens and E2E acceptance evidence | evidence only | Blocked | WA-008 | linking, confirmation, and panel journeys verified |
+| WA-009 | React screens and E2E acceptance evidence | evidence only; delivers the 12 first-increment screens of [SCREENS.md](SCREENS.md) | Blocked | WA-008 | linking, confirmation, and panel journeys verified, each screen handling its six shared states |
 | WA-010 | WhatsApp Flows and encrypted data endpoint | WA-REQ-040..043 | Proposed | WA-009 | published Flow per channel; drift detected; no business rules in the definition |
 | WA-014 | Self-service enrollment and `Personal` tenants on the channel | WA-REQ-048..051 | Proposed | WA-010, IA-010, PII policy | phone claim with no authority; link activated only after web registration; personal and organization scopes isolated |
 | WA-011 | Embedded Signup, `TenantOwned` channels, and the `Contacts` audience | roadmap | Proposed | WA-010, Tech Provider approval, contact-catalog design | a client-connected channel serving that organization's own customers, row-scoped, with no fiscal capability reachable |
