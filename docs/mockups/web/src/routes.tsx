@@ -3,6 +3,7 @@ import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import { Alert, Button, Card, Field } from "./components";
 import { api } from "./lib/api";
 import { AppPage } from "./pages/AppPage";
+import { ConfirmPage } from "./pages/ConfirmPage";
 import { LoginPage } from "./pages/LoginPage";
 import { RegisterPage } from "./pages/RegisterPage";
 import { RegisterSentPage } from "./pages/RegisterSentPage";
@@ -66,6 +67,7 @@ const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
   { path: "/registro", element: <RegisterPage /> },
   { path: "/registro/enviado", element: <RegisterSentPage /> },
+  { path: "/confirmar", element: <ConfirmPage /> },
   { path: "/app", element: <AppPage /> },
 ]);
 

@@ -331,3 +331,12 @@ a:hover {
 .form > .btn:not(.btn--text) {
   margin-top: 6px; /* 18px + 6px = 24px debajo del último campo */
 }
+
+/* Card: spinner de espera, sin botones */
+
+.card__spinner {
+  display: flex;
+  justify-content: center;
+  padding: 4px 0 8px;
+  color: var(--primary);
+}
