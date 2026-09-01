@@ -50,6 +50,25 @@ The gate is per capability, not per module. WA-012b MUST NOT start before WA-012
 
 Splitting ARCA this way is deliberate. Voucher verification is read-only — it calls the same external system with the same credentials and has no side effect to reconcile — so it de-risks the expensive half of the integration before a single fiscal document can be issued.
 
+## Module roadmap
+
+Indicative, not committed. Recorded so the sequencing argument survives, and so nobody has to re-derive why invoicing is not first.
+
+| Module | What it is | External | Reversible | Depends on |
+|---|---|---|---|---|
+| `core` | queries over the product's own data | no | reads only | WA-006 |
+| `arca-read` | voucher verification, taxpayer lookup | yes | reads only | WA-008, media intake for photographed vouchers |
+| `arca-issue` | invoices and credit notes | yes | **no** | `arca-read` in production |
+| `banks` | statement import, matching, reconciliation rules | yes | reversible | its own domain, largest of these |
+| `payments` | payment links, collection status | yes | link reversible, collection not | decision 8 if it triggers issuing |
+| `scheduling` | agenda, appointments | no | reversible | `Contacts` audience for customer-facing use |
+
+Two properties of this table matter more than its contents.
+
+**The channel does not grow with the modules.** The fifth module costs the same in channel terms as the first: some rows, an attribute per capability, and a credential schema. What grows is the product — each module is a full vertical slice with its own domain, migration, screens, and tests, and the assistant is a surface onto it. Reaching a feature from WhatsApp is a small fraction of building that feature.
+
+**Order is chosen by consequence, not by value.** `arca-read` precedes `arca-issue` even though issuing is worth more, because it exercises the same credentials, the same access-ticket lifecycle, and the same health path with **no external side effect at all**. The first module through the machinery should not be the one that cannot be undone.
+
 ## Executable-task contract
 
 Before `Ready`, record actor, preconditions, request marker and permission, tenant scope, files and migration, compile-safe RED, behavioral RED, GREEN, REFACTOR, denial and concurrency and replay tests, audit and outbox behavior, and evidence. Channel tasks additionally prove signature rejection against a captured raw body, secret non-disclosure across every projection, and phone normalization. Action tasks additionally prove expiry, foreign-tenant refusal, double confirmation, and reconciliation on `Unknown`. WA-001 approves documentation only.
