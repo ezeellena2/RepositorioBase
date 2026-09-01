@@ -15,6 +15,22 @@ public sealed class Task6TestSaveChangesInterceptor : SaveChangesInterceptor
             throw new InvalidOperationException("provider password=must-not-reach-the-client");
         }
 
+        if (eventData.Context?.ChangeTracker.Entries<CleanArchitecture.Domain.IdentityAccess.Tenants.Tenant>()
+            .Any(entry => entry.State == EntityState.Added) == true &&
+            TestApp.ConsumeForcedRegistrationRollbackAfterPersistedEffects())
+        {
+            throw new InvalidOperationException("registration rollback after identity persistence");
+        }
+
+        if (eventData.Context?.ChangeTracker.Entries<CleanArchitecture.Domain.IdentityAccess.Tenants.Tenant>()
+            .Any(entry => entry.State == EntityState.Modified) == true &&
+            eventData.Context.ChangeTracker.Entries<CleanArchitecture.Domain.IdentityAccess.Outbox.OutboxSecret>()
+                .Any(entry => entry.State == EntityState.Modified) &&
+            TestApp.ConsumeForcedConfirmationRollbackAfterPersistedEffects())
+        {
+            throw new InvalidOperationException("confirmation rollback after identity activation");
+        }
+
         var context = eventData.Context;
         var staleItem = context?.ChangeTracker.Entries<TodoItem>()
             .Select(entry => entry.Entity)

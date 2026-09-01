@@ -4,6 +4,11 @@ using CleanArchitecture.Infrastructure.Data;
 using CleanArchitecture.Infrastructure.Data.Interceptors;
 using CleanArchitecture.Infrastructure.Auditing;
 using CleanArchitecture.Infrastructure.Identity;
+using CleanArchitecture.Infrastructure.IdentityAccess;
+using CleanArchitecture.Application.IdentityAccess.Organizations;
+using CleanArchitecture.Application.IdentityAccess.Organizations.RegisterOrganization;
+using CleanArchitecture.Application.IdentityAccess.Organizations.ConfirmEmail;
+using CleanArchitecture.Application.IdentityAccess.Sessions;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
@@ -26,6 +31,7 @@ public static class DependencyInjection
         builder.Services.AddDbContext<ApplicationDbContext>((sp, options) =>
         {
             options.AddInterceptors(sp.GetServices<ISaveChangesInterceptor>());
+            options.AddInterceptors(sp.GetServices<DbCommandInterceptor>());
             options.UseNpgsql(connectionString);
             options.ConfigureWarnings(warnings => warnings.Ignore(RelationalEventId.PendingModelChangesWarning));
         });
@@ -33,6 +39,7 @@ public static class DependencyInjection
         builder.EnrichNpgsqlDbContext<ApplicationDbContext>();
 
         builder.Services.AddScoped<IApplicationDbContext>(provider => provider.GetRequiredService<ApplicationDbContext>());
+        builder.Services.AddScoped<IApplicationTransaction, EfApplicationTransaction>();
 
         builder.Services.AddScoped<ApplicationDbContextInitialiser>();
         builder.Services.AddScoped<PermissionCatalogSynchronizer>();
@@ -70,6 +77,15 @@ public static class DependencyInjection
 
         builder.Services.AddSingleton(TimeProvider.System);
         builder.Services.AddTransient<IIdentityService, IdentityService>();
+        builder.Services.AddScoped<IIdentityAccountService, IdentityAccountService>();
+        builder.Services.AddScoped<IRegistrationIdempotencyStore, RegistrationIdempotencyStore>();
+        builder.Services.AddScoped<IConfirmationSecretStore, ConfirmationSecretStore>();
+        builder.Services.AddScoped<IRegistrationInitialRoleProvisioner, RegistrationInitialRoleProvisioner>();
+        builder.Services.AddSingleton<ISecureTokenGenerator, SecureTokenGenerator>();
+        builder.Services.AddSingleton<ITokenHasher, VersionedTokenHasher>();
+        builder.Services.AddSingleton<IOutboxSecretWriter, OutboxSecretWriter>();
+        builder.Services.AddScoped<IValidatedOptionalSession, ValidatedOptionalSession>();
+        builder.Services.AddDataProtection();
         builder.Services.AddScoped<IPermissionEvaluator, PermissionEvaluator>();
         builder.Services.AddScoped<ICurrentTenant, CurrentTenant>();
         builder.Services.AddScoped<ISecurityDenialAuditWriter, SecurityDenialAuditWriter>();

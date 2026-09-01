@@ -153,6 +153,15 @@ namespace CleanArchitecture.Infrastructure.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("CleanArchitecture.Domain.IdentityAccess.Outbox.OutboxSecret", b =>
+                {
+                    b.HasOne("CleanArchitecture.Domain.IdentityAccess.Outbox.OutboxMessage", null)
+                        .WithOne()
+                        .HasForeignKey("CleanArchitecture.Domain.IdentityAccess.Outbox.OutboxSecret", "OutboxMessageId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("CleanArchitecture.Domain.IdentityAccess.Authorization.MembershipRole", b =>
                 {
                     b.Property<Guid>("TenantId")
@@ -198,10 +207,10 @@ namespace CleanArchitecture.Infrastructure.Data.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid");
 
-                    b.Property<bool>("IsSystem")
+                    b.Property<bool>("IsRetired")
                         .HasColumnType("boolean");
 
-                    b.Property<bool>("IsRetired")
+                    b.Property<bool>("IsSystem")
                         .HasColumnType("boolean");
 
                     b.Property<string>("Name")
@@ -314,6 +323,134 @@ namespace CleanArchitecture.Infrastructure.Data.Migrations
                     b.ToTable("OrganizationProfiles", null, t =>
                         {
                             t.HasCheckConstraint("CK_OrganizationProfiles_TenantId_NotEmpty", "\"TenantId\" <> '00000000-0000-0000-0000-000000000000'::uuid");
+                        });
+                });
+
+            modelBuilder.Entity("CleanArchitecture.Domain.IdentityAccess.Organizations.RegistrationSubmission", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CanonicalKey")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Outcome")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CanonicalKey")
+                        .IsUnique();
+
+                    b.ToTable("registration_submissions", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_registration_submissions_Id_NotEmpty", "\"Id\" <> '00000000-0000-0000-0000-000000000000'::uuid");
+                        });
+                });
+
+            modelBuilder.Entity("CleanArchitecture.Domain.IdentityAccess.Outbox.OutboxMessage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("FailureCode")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTimeOffset>("NextAttemptAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Payload")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NextAttemptAt");
+
+                    b.ToTable("outbox_messages", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_outbox_messages_Id_NotEmpty", "\"Id\" <> '00000000-0000-0000-0000-000000000000'::uuid");
+                        });
+                });
+
+            modelBuilder.Entity("CleanArchitecture.Domain.IdentityAccess.Outbox.OutboxSecret", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Ciphertext")
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DeliveryReason")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTimeOffset?>("DeliveredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("OutboxMessageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ProviderReceipt")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("TerminalReason")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("VersionedHash")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OutboxMessageId")
+                        .IsUnique();
+
+                    b.HasIndex("VersionedHash")
+                        .IsUnique();
+
+                    b.ToTable("outbox_secrets", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_outbox_secrets_Ids_NotEmpty", "\"Id\" <> '00000000-0000-0000-0000-000000000000'::uuid AND \"OutboxMessageId\" <> '00000000-0000-0000-0000-000000000000'::uuid");
+                            t.HasCheckConstraint("CK_outbox_secrets_Lifecycle", "(\"Status\" = 'Pending' AND \"Ciphertext\" IS NOT NULL AND \"DeliveryReason\" IS NULL AND \"DeliveredAt\" IS NULL AND \"TerminalReason\" IS NULL AND \"CompletedAt\" IS NULL AND \"ProviderReceipt\" IS NULL) OR (\"Status\" = 'Delivered' AND \"Ciphertext\" IS NULL AND \"DeliveryReason\" IS NOT NULL AND \"DeliveredAt\" IS NOT NULL AND \"TerminalReason\" IS NULL AND \"CompletedAt\" IS NULL AND \"ProviderReceipt\" IS NOT NULL) OR (\"Status\" = 'Consumed' AND \"Ciphertext\" IS NULL AND \"TerminalReason\" IS NOT NULL AND \"CompletedAt\" IS NOT NULL AND ((\"DeliveryReason\" IS NULL AND \"DeliveredAt\" IS NULL AND \"ProviderReceipt\" IS NULL) OR (\"DeliveryReason\" IS NOT NULL AND \"DeliveredAt\" IS NOT NULL AND \"ProviderReceipt\" IS NOT NULL))) OR (\"Status\" IN ('Expired', 'Failed') AND \"Ciphertext\" IS NULL AND \"TerminalReason\" IS NOT NULL AND \"CompletedAt\" IS NOT NULL AND ((\"DeliveryReason\" IS NULL AND \"DeliveredAt\" IS NULL AND \"ProviderReceipt\" IS NULL) OR (\"DeliveryReason\" IS NOT NULL AND \"DeliveredAt\" IS NOT NULL AND \"ProviderReceipt\" IS NOT NULL)))");
                         });
                 });
 

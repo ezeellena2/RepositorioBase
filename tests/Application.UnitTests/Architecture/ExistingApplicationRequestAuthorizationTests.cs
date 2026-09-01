@@ -1,5 +1,7 @@
 using System.Reflection;
 using CleanArchitecture.Application.Common.Security;
+using CleanArchitecture.Application.IdentityAccess.Organizations.ConfirmEmail;
+using CleanArchitecture.Application.IdentityAccess.Organizations.RegisterOrganization;
 using CleanArchitecture.Application.TodoItems.Commands.CreateTodoItem;
 using CleanArchitecture.Application.TodoItems.Commands.DeleteTodoItem;
 using CleanArchitecture.Application.TodoItems.Commands.UpdateTodoItem;
@@ -36,12 +38,14 @@ public class ExistingApplicationRequestAuthorizationTests
     }
 
     [Test]
-    public void ExistingRequestInventoryContainsExactlyTheKnownNineRequests()
+    public void ExistingRequestInventoryContainsExactlyTheKnownElevenRequests()
     {
         var actualRequestTypes = GetConcreteRequestTypes(typeof(AuthorizeAttribute).Assembly);
 
         string?[] expectedRequestTypes =
         [
+            typeof(ConfirmEmailCommand).FullName,
+            typeof(RegisterOrganizationCommand).FullName,
             typeof(CreateTodoListCommand).FullName,
             typeof(UpdateTodoListCommand).FullName,
             typeof(DeleteTodoListCommand).FullName,

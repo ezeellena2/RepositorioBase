@@ -112,7 +112,7 @@ dotnet build "$env:TEMP\ca-identity-smoke\CleanArchitecture.slnx" -v minimal
 
 Expected: PASS.
 
-- [x] **Step 4: REFACTOR and commit**
+- [ ] **Step 4: REFACTOR and commit**
 
 ```bash
 git add .template.config Directory.Build.props src tests
@@ -547,14 +547,14 @@ git commit -m "feat: enforce authorization and API contracts"
 - Modify: `tests/Application.FunctionalTests/IdentityAccess/Api/ProblemDetailsContractTests.cs`
 - Modify: `tests/Application.FunctionalTests/IdentityAccess/Api/OpenApiContractTests.cs`
 
-- [ ] **Step 1: Shape RED, then shells**
+- [x] **Step 1: Shape RED, then shells**
 
 Reflect for both requests, `IRegistrationIdempotencyStore`/durable `RegistrationSubmission`, outbox types and exact routes `GET /api/identity/antiforgery`, `POST /api/identity/organizations/register`, and `POST /api/identity/confirm-email`. Assert `OutboxMessage.AttemptCount`, `NextAttemptAt`, `FailureCode`; and `OutboxSecret.ExpiresAt`, terminal state/reason, ciphertext, receipt/evidence.
 
 Run: `dotnet test tests/Application.UnitTests/Application.UnitTests.csproj --filter RegistrationApplicationShapeTests`  
 Expected RED: runtime missing-type/member/route assertion. Add request/domain/endpoint shells; public requests implement `IPublicRequest`; rerun PASS.
 
-- [ ] **Step 2: Behavioral RED**
+- [x] **Step 2: Behavioral RED**
 
 `RegistrationIdempotencyTests` first prove the Application service computes one canonical key from normalized caller scope and normalized registration intent, atomically claims a durable submission before effects, and returns its recorded neutral result; storage uniqueness coordinates claims but does not decide business idempotency. `RegisterOrganizationTests` prove sequential replay and contract-appropriate concurrent replay of equivalent anonymous registration each return the same bodyless `202` and leave exactly one organization, responsible membership, outbox-message/secret set, and audit-event set. They preserve true branches: existing identity remains neutral with no creation, authenticated mismatched email rejects, and invalid/revoked supplied session is `401`, never anonymous. Until IA-007 provides persisted sessions, the production optional-session adapter fails closed on any supplied cookie while functional tests inject a trusted adapter for the authenticated branch.
 
@@ -565,7 +565,7 @@ Before GREEN, extend shared contract tests: antiforgery is `200` with its endpoi
 Run: `dotnet test tests/Application.FunctionalTests/Application.FunctionalTests.csproj --filter "RegisterOrganizationTests|ConfirmEmailTests|ProblemDetailsContractTests|OpenApiContractTests"`  
 Expected: runtime shell/state/audit or status/schema/header drift failures.
 
-- [ ] **Step 3: GREEN - routes, CSRF, migration**
+- [x] **Step 3: GREEN - routes, CSRF, migration**
 
 Configure antiforgery in Web DI and middleware in `Program.cs`. `GET /api/identity/antiforgery` emits the Secure, HttpOnly, SameSite=Lax, Path=/, host-only `__Host-XSRF-TOKEN` and returns `AntiforgeryResponse` with `Cache-Control: no-store`. POST routes require exact origin and `X-CSRF-TOKEN`. Generate 32-byte tokens; persist only versioned hash plus encrypted expiring envelope. `OutboxSecret` retains evidence after ciphertext clearing. Apply `ApiProblemMetadata` with exact statuses/codes; map handler Results through the shared Web boundary.
 
@@ -577,7 +577,7 @@ dotnet test tests/Infrastructure.IntegrationTests/Infrastructure.IntegrationTest
 
 Expected: focused tests and both migration paths PASS with no pending migrations.
 
-- [ ] **Step 4: REFACTOR and commit**
+- [x] **Step 4: REFACTOR and commit**
 
 ```bash
 git add src tests

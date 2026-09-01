@@ -5,6 +5,30 @@ namespace CleanArchitecture.Application.FunctionalTests.IdentityAccess.Api;
 public sealed class OpenApiContractTests : TestBase
 {
     [Test]
+    public async Task Registration_endpoints_declare_bodyless_success_and_problem_details_contracts()
+    {
+        var response = await FunctionalTestSetup.HttpClient.GetAsync("/openapi/v1.json");
+        response.EnsureSuccessStatusCode();
+        var paths = JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement.GetProperty("paths");
+
+        var antiforgery = paths.GetProperty("/api/identity/antiforgery").GetProperty("get").GetProperty("responses");
+        antiforgery.GetProperty("200").GetProperty("content").TryGetProperty("application/json", out _).ShouldBeTrue();
+        var register = paths.GetProperty("/api/identity/organizations/register").GetProperty("post").GetProperty("responses");
+        register.TryGetProperty("202", out _).ShouldBeTrue();
+        foreach (var status in new[] { "400", "401", "409", "500" }) register.GetProperty(status).GetProperty("content").TryGetProperty("application/problem+json", out _).ShouldBeTrue();
+        AssertProblemCodes(register, "400", "antiforgery_validation_failed", "invalid_registration");
+        AssertProblemCodes(register, "401", "invalid_session");
+        AssertProblemCodes(register, "409", "registration_conflict");
+        AssertProblemCodes(register, "500", "internal_server_error");
+        var confirm = paths.GetProperty("/api/identity/confirm-email").GetProperty("post").GetProperty("responses");
+        confirm.TryGetProperty("204", out _).ShouldBeTrue();
+        confirm.GetProperty("204").TryGetProperty("content", out _).ShouldBeFalse();
+        AssertProblemCodes(confirm, "400", "antiforgery_validation_failed", "invalid_confirmation");
+        AssertProblemCodes(confirm, "409", "registration_conflict");
+        AssertProblemCodes(confirm, "500", "internal_server_error");
+    }
+
+    [Test]
     public async Task Todo_item_detail_update_declares_204_and_problem_details_contracts()
     {
         var response = await FunctionalTestSetup.HttpClient.GetAsync("/openapi/v1.json");

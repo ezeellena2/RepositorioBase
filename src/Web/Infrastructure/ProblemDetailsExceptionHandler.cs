@@ -23,8 +23,7 @@ public sealed class ProblemDetailsExceptionHandler(IProblemDetailsService proble
             NotFoundException => new ApplicationError("not_found", ApplicationErrorCategory.NotFound),
             UnauthorizedAccessException => new ApplicationError("authentication_required", ApplicationErrorCategory.Authentication),
             ForbiddenAccessException => new ApplicationError("permission_denied", ApplicationErrorCategory.Authorization),
-            BadHttpRequestException => new ApplicationError("invalid_request", ApplicationErrorCategory.Validation),
-            System.Text.Json.JsonException => new ApplicationError("invalid_request", ApplicationErrorCategory.Validation),
+            BadHttpRequestException or System.Text.Json.JsonException => BindingError(httpContext),
             _ => null
         };
 
@@ -36,5 +35,12 @@ public sealed class ProblemDetailsExceptionHandler(IProblemDetailsService proble
 
         await problemDetails.WriteAsync(httpContext, error, cancellationToken);
         return true;
+    }
+
+    private static ApplicationError BindingError(HttpContext httpContext)
+    {
+        var endpointCode = httpContext.Features.Get<IExceptionHandlerFeature>()?.Endpoint
+            ?.Metadata.GetMetadata<ApiBodyBindingFailureMetadata>()?.Code;
+        return new ApplicationError(endpointCode ?? "invalid_request", ApplicationErrorCategory.Validation);
     }
 }

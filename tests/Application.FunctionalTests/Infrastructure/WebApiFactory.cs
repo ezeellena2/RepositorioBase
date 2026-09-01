@@ -1,5 +1,7 @@
 using CleanArchitecture.Application.Common.Interfaces;
 using CleanArchitecture.Application.IdentityAccess.Authorization;
+using CleanArchitecture.Application.IdentityAccess.Organizations.RegisterOrganization;
+using CleanArchitecture.Application.IdentityAccess.Sessions;
 using CleanArchitecture.Domain.IdentityAccess.Tenants;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
@@ -9,6 +11,8 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using CleanArchitecture.Infrastructure.IdentityAccess;
 
 namespace CleanArchitecture.Application.FunctionalTests.Infrastructure;
 
@@ -56,10 +60,35 @@ public class WebApiFactory(string connectionString, string? environmentName = nu
                 });
             services.RemoveAll<ICurrentTenant>();
             services.AddScoped<ICurrentTenant, TestCurrentTenant>();
+            services.RemoveAll<IValidatedOptionalSession>();
+            services.AddScoped<IValidatedOptionalSession>(_ => TestApp.GetValidatedOptionalSession());
+            services.RemoveAll<ISecureTokenGenerator>();
+            services.AddSingleton<ISecureTokenGenerator, TestRegistrationTokenGenerator>();
+            services.RemoveAll<ITokenHasher>();
+            services.AddSingleton<ITokenHasher, TestCountingTokenHasher>();
             services.RemoveAll<IPermissionEvaluator>();
             services.AddScoped<IPermissionEvaluator, TestPermissionEvaluator>();
             services.AddScoped<Microsoft.EntityFrameworkCore.Diagnostics.ISaveChangesInterceptor, Task6TestSaveChangesInterceptor>();
+            services.AddScoped<DbCommandInterceptor, ConfirmationSecretLockBarrierInterceptor>();
         });
+    }
+
+    private sealed class TestRegistrationTokenGenerator : ISecureTokenGenerator
+    {
+        public string Generate() => TestApp.GetRegistrationRawToken();
+    }
+
+    private sealed class TestCountingTokenHasher : ITokenHasher
+    {
+        private readonly VersionedTokenHasher _inner = new();
+
+        public string Hash(string token)
+        {
+            TestApp.RecordConfirmationTokenHash();
+            return _inner.Hash(token);
+        }
+
+        public bool Verify(string token, string versionedHash) => _inner.Verify(token, versionedHash);
     }
 
     private sealed class TestCurrentTenant : ICurrentTenant

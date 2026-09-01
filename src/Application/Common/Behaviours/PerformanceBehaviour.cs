@@ -1,5 +1,4 @@
-﻿using System.Diagnostics;
-using CleanArchitecture.Application.Common.Interfaces;
+using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 
 namespace CleanArchitecture.Application.Common.Behaviours;
@@ -7,46 +6,22 @@ namespace CleanArchitecture.Application.Common.Behaviours;
 public class PerformanceBehaviour<TRequest, TResponse> : IPipelineBehavior<TRequest, TResponse>
     where TRequest : notnull
 {
-    private readonly Stopwatch _timer;
+    private readonly Stopwatch _timer = new();
     private readonly ILogger<TRequest> _logger;
-    private readonly IUser _user;
-    private readonly IIdentityService _identityService;
 
-    public PerformanceBehaviour(
-        ILogger<TRequest> logger,
-        IUser user,
-        IIdentityService identityService)
-    {
-        _timer = new Stopwatch();
-
-        _logger = logger;
-        _user = user;
-        _identityService = identityService;
-    }
+    public PerformanceBehaviour(ILogger<TRequest> logger) => _logger = logger;
 
     public async Task<TResponse> Handle(TRequest request, RequestHandlerDelegate<TResponse> next, CancellationToken cancellationToken)
     {
         _timer.Start();
-
-        var response = await next();
-
+        var response = await next(cancellationToken);
         _timer.Stop();
 
-        var elapsedMilliseconds = _timer.ElapsedMilliseconds;
-
-        if (elapsedMilliseconds > 500)
+        if (_timer.ElapsedMilliseconds > 500)
         {
-            var requestName = typeof(TRequest).Name;
-            var userId = _user.Id;
-            var userName = string.Empty;
-
-            if (userId.HasValue)
-            {
-                userName = await _identityService.GetUserNameAsync(userId.Value);
-            }
-
-            _logger.LogWarning("CleanArchitecture Long Running Request: {Name} ({ElapsedMilliseconds} milliseconds) {@UserId} {@UserName} {@Request}",
-                requestName, elapsedMilliseconds, userId, userName, request);
+            var metadata = SafeRequestLogContext.Create<TRequest>();
+            _logger.LogWarning("CleanArchitecture Long Running Request: {RequestName} ({ElapsedMilliseconds} milliseconds); CorrelationId {CorrelationId}",
+                metadata.RequestName, _timer.ElapsedMilliseconds, metadata.CorrelationId);
         }
 
         return response;
