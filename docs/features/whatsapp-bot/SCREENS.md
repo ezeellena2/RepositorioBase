@@ -4,6 +4,14 @@
 
 Fourteen screens across four actors. Each names the requirements it serves, the states it must handle, and the increment it belongs to. A screen absent from this list is a screen nobody agreed to build.
 
+## What this inventory does not cover
+
+These are the screens the **channel** brings. They are not the product's screens.
+
+Every module brings its own — a list of the documents it issued, a report on what was billed, a configuration page for its own rules — and those belong to that module, specified with it, not here. The assistant is one surface onto a product that must be fully usable without it: a person who never opens WhatsApp should be able to do everything from the web, and a person who lives in WhatsApp should be able to check, correct, and audit the same things there.
+
+That has a practical consequence for sequencing. The channel is worth building when there is already something to reach through it. A module's own screens come first, and the assistant is added to a feature that already works.
+
 ## States every screen handles
 
 Before the per-screen notes, six states apply everywhere and are not repeated below. A screen that only defines its happy path is not specified.

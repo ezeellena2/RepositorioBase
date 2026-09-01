@@ -489,9 +489,9 @@ Scenario: A personal link never reaches organization data
   And no Organization A data is reachable in either direction
 ```
 
-## 10. Resolved decisions
+## 10. Decisions
 
-All seven decisions previously open are resolved. Each records what was decided, why, and what would reopen it.
+Seven of the eight are resolved; each records what was decided, why, and what would reopen it. The eighth was opened by evidence that arrived after the others closed, and is left open deliberately.
 
 **1 — One number, several contexts.** A phone number may hold one active link per tenant, so a person who works for an organization and also acts for themselves links once in each context. WA-REQ-054 and WA-INV-001 carry the mechanism: one active tenant per conversation, a catalog built for that context alone, and — for any capability enabled in more than one of that person's contexts — the acting tenant named in the summary the person approves, with confirmation never skipped. The sticky context is a convenience; the approved text is the safeguard.
 
@@ -508,6 +508,12 @@ All seven decisions previously open are resolved. Each records what was decided,
 For that tail, routing is a classification-and-extraction task over a described catalog, not a reasoning task, and the two-phase confirmation of WA-REQ-033 means a routing miss costs a wasted turn rather than a wrong effect. The fixture set of section 8 is still built and still gates catalog changes: the model is chosen by measurement, and this is the starting point, not the conclusion. Because WA-REQ-046 records which path resolved each message, the real ratio is observable rather than assumed. A stage that genuinely reasons — extracting fields from a photographed document, for one — is a separate stage and is chosen separately.
 
 **7 — Nothing to decide; the model already allows it.** Channels are a table and links reference a channel, so adding a second phone number is a row, sharing the same WABA, application secret, and token, differing only in phone number identifier. Inbound routing already keys on that identifier. No architectural commitment is pending, and the operational question — whether a large organization warrants its own number — is answered when quality or volume makes it concrete.
+
+**8 — Open: may a capability be invoked by an external event rather than by a person?** Every requirement here assumes a person initiates and, for anything irreversible, approves. A capability triggered by an incoming payment or an order — invoice what was just collected, with nobody writing anything — has no person in the loop and therefore no summary to approve, so the safeguard of WA-REQ-033 through WA-REQ-035 does not apply as written.
+
+This is a different authorization shape, not a missing feature: a **standing authorization** configured once in the web, scoped to one source, with its own amount ceiling, daily ceiling, and revocation, replacing per-instance confirmation. The pieces already exist — `TenantCapability` carries limits, the run and its attempts carry idempotency and reconciliation, and the audit trail is unchanged — but the trigger, the standing grant, and its review are unspecified.
+
+It is deliberately left open rather than designed on assumption, because whether the product wants unattended issuing at all is a business decision with real exposure: an automation that misfires issues real fiscal documents nobody asked for, and every one of them needs a credit note. It blocks any event-triggered module and nothing in the current increment. Whoever resolves it should decide, at minimum: which sources may trigger, whether the grant expires, what the ceilings are, and what the person sees after the fact.
 
 ## 11. Definition of Done per slice
 
