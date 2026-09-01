@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import { Alert, Button, Card, Field } from "./components";
 import { api } from "./lib/api";
+import { AppPage } from "./pages/AppPage";
+import { LoginPage } from "./pages/LoginPage";
 
 // Página de verificación del sistema visual. Se borra cuando existan las pantallas reales.
 function SistemaVisual() {
@@ -57,7 +59,11 @@ function SistemaVisual() {
   );
 }
 
-const router = createBrowserRouter([{ path: "/", element: <SistemaVisual /> }]);
+const router = createBrowserRouter([
+  { path: "/", element: <SistemaVisual /> },
+  { path: "/login", element: <LoginPage /> },
+  { path: "/app", element: <AppPage /> },
+]);
 
 export function AppRoutes() {
   return <RouterProvider router={router} />;

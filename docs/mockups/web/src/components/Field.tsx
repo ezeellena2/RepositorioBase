@@ -1,6 +1,6 @@
-import { useId, type InputHTMLAttributes, type ReactNode } from "react";
+import { useId, type ComponentProps, type ReactNode } from "react";
 
-interface FieldProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "id"> {
+interface FieldProps extends Omit<ComponentProps<"input">, "id"> {
   label: string;
   error?: string;
   action?: ReactNode;
