@@ -83,11 +83,12 @@ The channel does not implement model-authored statements, a second authorization
 - **WA-REQ-004:** channel administration requires an active Platform tenant, an explicit `platform.whatsapp.*` permission, and recent MFA step-up for mutations, through the ADR-004 evaluator. No channel capability exists outside that evaluator.
 - **WA-REQ-005:** inbound routing resolves the channel from the WABA identifier of the event, never from configuration assumed to be singular. An event for an unknown or suspended channel is recorded and discarded without processing.
 - **WA-REQ-006:** channel health — quality rating, messaging tier, webhook subscription state, credential validity — is persisted and observable. A channel whose credentials fail verification transitions to `Suspended` and stops sending.
-Channel observability is specified in WA-REQ-055 and WA-REQ-056.
+
+Provider-derived setup state and degradation alerting are specified in WA-REQ-055 and WA-REQ-056.
 
 ### Linking and identification
 
-- **WA-REQ-007:** a link binds `(ChannelId, WaId)` to exactly one `(UserId, TenantId)` pair and carries a lifecycle status. At most one link per `WaId` may be `Active` on a channel.
+- **WA-REQ-007:** a link binds `(ChannelId, WaId)` to exactly one `(UserId, TenantId)` pair and carries a lifecycle status and a kind. At most one link may be `Active` per `(ChannelId, WaId, TenantId)`, so one number may hold one link per context under WA-REQ-054, and never two in the same context.
 - **WA-REQ-008:** a link is created only by an authenticated request carrying a validated active tenant under IA-REQ-006. The tenant and identity are taken from the session; a submitted tenant or identity is rejected. Self-service enrollment under WA-REQ-049 is the only other path to an active link, and it reaches the same authenticated state before activating.
 - **WA-REQ-009:** activation requires an inbound message from the bound number carrying a single-use verification code. Only the code hash and its expiry are persisted. An expired, reused, mismatched, or wrong-sender code never activates a link.
 - **WA-REQ-010:** an administrator may create a link on behalf of a member, but that link is created `Pending` and follows the same confirmation path. No administrative action activates a link without an inbound confirmation from the number.
@@ -144,7 +145,7 @@ Channel observability is specified in WA-REQ-055 and WA-REQ-056.
 
 - **WA-REQ-044:** secrets, tokens, verification codes, raw provider payloads containing personal data, and message bodies MUST NOT appear in logs, Problem Details, audit records, or telemetry. Message content is retained only in its own table under documented retention.
 - **WA-REQ-045:** channel permissions are the intersection of the membership's effective permissions and the channel allowlist. A channel never grants what the membership lacks.
-- **WA-REQ-046:** every model invocation records its capability outcome, token usage, latency, and model identifier for cost and quality observation, without recording credentials.
+- **WA-REQ-046:** every resolved message records how it was resolved — deterministically from an explicit intent, or by model invocation — together with its capability outcome and latency, and, when a model was invoked, its token usage and model identifier, without recording credentials. The ratio between the two paths is therefore measurable, which is what makes the cost of the assistant a number rather than an estimate.
 - **WA-REQ-047:** all HTTP endpoints follow IA-REQ-038: endpoint-specific DTOs with semantic status on success, RFC 9457 Problem Details with stable codes on failure, and no universal envelope. Webhook acknowledgement is bodyless `200` and is exempt from Problem Details, since its consumer is Meta.
 
 ### Channel audience and self-service enrollment
@@ -162,6 +163,11 @@ Channel observability is specified in WA-REQ-055 and WA-REQ-056.
 - **WA-REQ-055:** channel setup state is derived from the provider, never from operator memory. The platform queries and persists, per channel: phone number registration and display-name status, whether this application is subscribed to the business account, business verification and account review state, quality rating, and messaging tier. Each item records the outcome and the time of its last check. An item that cannot be verified is reported as **unknown** and never as satisfied, because a setup step silently assumed complete is the failure mode this requirement exists to prevent — an unsubscribed application accepts configuration, reports health, and delivers no events at all.
 - **WA-REQ-056:** any transition that reduces a channel's ability to operate — failed credential verification, quality downgrade, messaging-tier reduction, lost application subscription, account restriction, or a module credential reaching expiry — raises an alert written to the transactional outbox in the same transaction as the state change, under IA-REQ-027. An alert declares the permission that identifies its recipients rather than an address, is deduplicated per channel and condition so a persistent fault does not repeat indefinitely, and is cleared when the condition resolves. Silence therefore means healthy, not unobserved.
 
+- **WA-REQ-057:** deterministic resolution precedes interpretation. An inbound message that carries an explicit intent — a reply-button identifier, a list selection, or a flow submission — resolves its capability and its parameters from that identifier and its payload, and **MUST NOT** invoke a language model. The model is invoked only for free-form input that carries no explicit intent, and for media that must first be transcribed or read. An invocation that could have been resolved deterministically is a defect, not an inefficiency: it spends money and adds latency to a decision that was already made when the person tapped.
+
+  Determinism is not trust. A returned identifier originates in the client and MUST be validated exactly as a model selection is under WA-REQ-028: it must reference something this server issued into this conversation, its capability must still pass the full resolution chain of WA-REQ-029, and its payload must validate against the capability's parameter schema. Authorization is never skipped; only interpretation is.
+
+  Both paths converge before any effect. A capability reached deterministically is subject to the same confirmation rules, including the acting-tenant disclosure of WA-REQ-054 — tapping a button is not itself an approval of a summary the person has not seen.
 ## 5. Data model
 
 Fourteen new tables. No identity-access table is altered; only the references that cross into them are shown.
@@ -336,6 +342,26 @@ Scenario: A replayed webhook produces one effect
   Then the acknowledgement is 200
   And no additional interaction, run, or outbound message exists
 
+Scenario: A tapped button never invokes a model
+  Given a person taps a reply button the assistant sent
+  When the message is processed
+  Then the capability resolves from the button identifier
+  And no model invocation is recorded
+  And the interaction records that it resolved deterministically
+
+Scenario: A completed flow carries its own parameters
+  Given a person completes a flow the assistant sent
+  When the submission arrives
+  Then the parameters come from the submission and not from a model
+  And the flow token resolves to an open run for that link
+  And the parameters are validated against the capability schema before use
+
+Scenario: A forged identifier is refused like any other input
+  Given an inbound reply carrying an identifier this server never issued into this conversation
+  When the message is processed
+  Then the capability does not resolve
+  And no effect occurs
+
 Scenario: The catalog excludes capabilities whose module is unconfigured
   Given a capability belonging to a module with expired credentials
   When a permitted member asks for it
@@ -477,7 +503,9 @@ All seven decisions previously open are resolved. Each records what was decided,
 
 **5 — An organization administrator never sees a member's `PersonProfile`.** Administration of members exposes membership, roles, status, and email confirmation, and nothing from the personal tenant. A person's identity document and tax identification belong to their own `Personal` tenant and are visible only to them. This is a firm boundary, not a default: an administrative screen that surfaces a member's profile fails the projection tests.
 
-**6 — `claude-sonnet-5` at low effort for capability routing.** Routing is a classification-and-extraction task over a described catalog, not a reasoning task, and the two-phase confirmation of WA-REQ-033 means a routing miss costs a wasted turn rather than a wrong effect — which materially lowers the cost of being wrong. The fixture set of section 8 is still built and still gates catalog changes: the model is chosen by measurement, and this is the starting point, not the conclusion. A stage that genuinely reasons — extracting fields from a photographed document, for one — is a separate stage and is chosen separately.
+**6 — `claude-sonnet-5` at low effort for capability routing, on the minority of messages that need it.** Under WA-REQ-057 the model is invoked only for free-form input: a tapped button, a list selection, and a completed flow all resolve deterministically and cost nothing. In an assistant driven mostly through its interface, routing is the long tail rather than the common path, and the choice of model matters proportionally less than it first appears.
+
+For that tail, routing is a classification-and-extraction task over a described catalog, not a reasoning task, and the two-phase confirmation of WA-REQ-033 means a routing miss costs a wasted turn rather than a wrong effect. The fixture set of section 8 is still built and still gates catalog changes: the model is chosen by measurement, and this is the starting point, not the conclusion. Because WA-REQ-046 records which path resolved each message, the real ratio is observable rather than assumed. A stage that genuinely reasons — extracting fields from a photographed document, for one — is a separate stage and is chosen separately.
 
 **7 — Nothing to decide; the model already allows it.** Channels are a table and links reference a channel, so adding a second phone number is a row, sharing the same WABA, application secret, and token, differing only in phone number identifier. Inbound routing already keys on that identifier. No architectural commitment is pending, and the operational question — whether a large organization warrants its own number — is answered when quality or volume makes it concrete.
 

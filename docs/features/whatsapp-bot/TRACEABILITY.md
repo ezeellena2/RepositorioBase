@@ -60,6 +60,7 @@
 | WA-REQ-054 | multi-context links and acting-tenant disclosure | WA-004, WA-007 | one active link per tenant; single-context catalog with no accumulated permissions; summary names the acting tenant and confirmation is not skipped for a capability enabled in more than one context | Pending |
 | WA-REQ-055 | provider-derived setup checklist | WA-002 | per-item outcome and last-check persistence; unsubscribed-application detection; unreachable-provider reports unknown rather than satisfied | Pending |
 | WA-REQ-056 | degradation alerting | WA-002, WA-005 | same-transaction outbox write, permission-addressed recipients, per-condition deduplication, and clearing on resolution | Pending |
+| WA-REQ-057 | deterministic resolution before interpretation | WA-006, WA-010 | button, list, and flow inputs resolve with no model invocation; forged and foreign identifiers refused; both paths converge on the same authorization and confirmation rules | Pending |
 | WA-INV-001..008 | persistence invariants | WA-002, WA-003, WA-004, WA-006, WA-007 | real-PostgreSQL constraint, composite-FK cross-tenant rejection, delete-behavior, and stale-write `409` tests | Pending |
 | WA-INV-009 | audit classification | WA-002 | architecture test asserting each table's base type against the section 5.3 table, and that no append-only table carries modification columns | Pending |
 | WA-INV-010 | actor attribution outside HTTP | WA-003, WA-007 | worker-written row carries the link's identity; system-written row carries the declared principal; no audited row is unattributed | Pending |
