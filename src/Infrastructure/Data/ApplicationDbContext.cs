@@ -2,6 +2,7 @@
 using CleanArchitecture.Application.Common.Interfaces;
 using CleanArchitecture.Domain.Entities;
 using CleanArchitecture.Domain.IdentityAccess.Auditing;
+using CleanArchitecture.Domain.IdentityAccess.Authorization;
 using CleanArchitecture.Domain.IdentityAccess.Memberships;
 using CleanArchitecture.Domain.IdentityAccess.Organizations;
 using CleanArchitecture.Domain.IdentityAccess.Tenants;
@@ -27,6 +28,14 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
     public DbSet<TenantMembership> TenantMemberships => Set<TenantMembership>();
 
     public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
+
+    public DbSet<Role> TenantRoles => Set<Role>();
+
+    public DbSet<Permission> Permissions => Set<Permission>();
+
+    public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
+
+    public DbSet<MembershipRole> MembershipRoles => Set<MembershipRole>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {

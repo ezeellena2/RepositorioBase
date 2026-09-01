@@ -7,13 +7,16 @@ public sealed class ApplicationDbContextInitialiser
 {
     private readonly ILogger<ApplicationDbContextInitialiser> _logger;
     private readonly ApplicationDbContext _context;
+    private readonly PermissionCatalogSynchronizer _permissionCatalogSynchronizer;
 
     public ApplicationDbContextInitialiser(
         ILogger<ApplicationDbContextInitialiser> logger,
-        ApplicationDbContext context)
+        ApplicationDbContext context,
+        PermissionCatalogSynchronizer permissionCatalogSynchronizer)
     {
         _logger = logger;
         _context = context;
+        _permissionCatalogSynchronizer = permissionCatalogSynchronizer;
     }
 
     public async Task InitialiseAsync(CancellationToken cancellationToken = default)
@@ -21,6 +24,7 @@ public sealed class ApplicationDbContextInitialiser
         try
         {
             await _context.Database.MigrateAsync(cancellationToken);
+            await _permissionCatalogSynchronizer.SynchronizeAsync(cancellationToken);
         }
         catch (Exception ex)
         {

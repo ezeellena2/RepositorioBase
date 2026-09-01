@@ -43,7 +43,7 @@ public sealed class Tenant : BaseEntity<TenantId>
         IncrementAuthorizationVersion();
     }
 
-    internal void IncrementAuthorizationVersion() => AuthorizationVersion++;
+    public void IncrementAuthorizationVersion() => AuthorizationVersion++;
 
     private static Tenant Create(TenantType type, TenantSlug slug)
     {

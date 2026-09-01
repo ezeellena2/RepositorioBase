@@ -54,6 +54,20 @@ public sealed class AuditEvent : BaseEntity<Guid>
         };
     }
 
+    public static AuditEvent CreateMembershipChanged(TenantId tenantId, Guid? actorId, string correlationId, string outcome = "changed") =>
+        Create(tenantId, actorId, "membership.changed", correlationId, new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["code"] = "membership.changed",
+            ["outcome"] = outcome
+        });
+
+    public static AuditEvent CreateRoleChanged(TenantId tenantId, Guid? actorId, string correlationId, string outcome = "changed") =>
+        Create(tenantId, actorId, "role.changed", correlationId, new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["code"] = "role.changed",
+            ["outcome"] = outcome
+        });
+
     private static Dictionary<string, string> CopyAllowlistedMetadata(IReadOnlyDictionary<string, string>? metadata)
     {
         var copiedMetadata = new Dictionary<string, string>(StringComparer.Ordinal);

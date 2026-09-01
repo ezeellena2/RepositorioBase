@@ -12,6 +12,11 @@ public class IdentityAccessContractShapeTests
     [TestCase("CleanArchitecture.Domain.IdentityAccess.Organizations.OrganizationProfile")]
     [TestCase("CleanArchitecture.Domain.IdentityAccess.Memberships.TenantMembership")]
     [TestCase("CleanArchitecture.Domain.IdentityAccess.Auditing.AuditEvent")]
+    [TestCase("CleanArchitecture.Domain.IdentityAccess.Authorization.Role")]
+    [TestCase("CleanArchitecture.Domain.IdentityAccess.Authorization.RoleId")]
+    [TestCase("CleanArchitecture.Domain.IdentityAccess.Authorization.Permission")]
+    [TestCase("CleanArchitecture.Domain.IdentityAccess.Authorization.RolePermission")]
+    [TestCase("CleanArchitecture.Domain.IdentityAccess.Authorization.MembershipRole")]
     public void RequiredAggregateTypeExists(string fullyQualifiedName)
     {
         DomainAssembly.GetType(fullyQualifiedName).ShouldNotBeNull();
@@ -34,4 +39,5 @@ public class IdentityAccessContractShapeTests
         membershipStatus.ShouldNotBeNull();
         Enum.GetNames(membershipStatus!).ShouldContain("PendingConfirmation");
     }
+
 }
