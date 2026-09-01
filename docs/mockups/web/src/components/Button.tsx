@@ -1,47 +1,22 @@
-import { type ButtonHTMLAttributes, type ReactNode } from "react";
-import { Link } from "react-router-dom";
+import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { Spinner } from "./Spinner";
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: "primary" | "secondary" | "ghost";
-  block?: boolean;
-  size?: "md" | "sm";
+  variant?: "primary" | "ghost" | "text";
   loading?: boolean;
   children: ReactNode;
 }
 
-function classes(variant: string, block?: boolean, size?: string, extra?: string) {
-  return [
-    "btn",
-    `btn--${variant}`,
-    block ? "btn--block" : "",
-    size === "sm" ? "btn--sm" : "",
-    extra ?? "",
-  ]
-    .filter(Boolean)
-    .join(" ");
-}
-
-export function Button({ variant = "primary", block, size, loading, children, className, disabled, ...rest }: ButtonProps) {
+export function Button({ variant = "primary", loading = false, disabled, className, children, ...rest }: ButtonProps) {
+  const classes = ["btn", `btn--${variant}`, loading ? "btn--loading" : "", className ?? ""].filter(Boolean).join(" ");
   return (
-    <button className={classes(variant, block, size, className)} disabled={disabled || loading} {...rest}>
-      {loading && <span className="btn__spinner" aria-hidden="true" />}
-      {children}
+    <button className={classes} disabled={disabled || loading} aria-busy={loading || undefined} {...rest}>
+      <span className="btn__label">{children}</span>
+      {loading && (
+        <span className="btn__spinner">
+          <Spinner />
+        </span>
+      )}
     </button>
-  );
-}
-
-interface LinkButtonProps {
-  to: string;
-  variant?: "primary" | "secondary" | "ghost";
-  block?: boolean;
-  size?: "md" | "sm";
-  children: ReactNode;
-}
-
-export function LinkButton({ to, variant = "primary", block, size, children }: LinkButtonProps) {
-  return (
-    <Link to={to} className={classes(variant, block, size)}>
-      {children}
-    </Link>
   );
 }

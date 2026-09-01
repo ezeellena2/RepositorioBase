@@ -1,11 +1,14 @@
-import { type ReactNode } from "react";
-import { AlertIcon, CheckIcon } from "./Icons";
+import type { ReactNode } from "react";
 
-export function Alert({ tone, children }: { tone: "danger" | "success" | "info"; children: ReactNode }) {
+interface AlertProps {
+  variant: "error" | "success" | "info";
+  children: ReactNode;
+}
+
+export function Alert({ variant, children }: AlertProps) {
   return (
-    <div className={`alert alert--${tone}`} role={tone === "danger" ? "alert" : "status"}>
-      <span className="alert__icon">{tone === "success" ? <CheckIcon size={16} /> : <AlertIcon size={16} />}</span>
-      <div>{children}</div>
+    <div className={`alert alert--${variant}`} role={variant === "error" ? "alert" : "status"}>
+      {children}
     </div>
   );
 }

@@ -1,0 +1,24 @@
+:root {
+  --bg: #F4F6F8;
+  --bg-glow: radial-gradient(ellipse 60% 50% at 50% 0%, #E3ECF0 0%, transparent 70%);
+  --surface: #FFFFFF;
+  --ink: #16212B;
+  --ink-2: #4A5B66;
+  --muted: #7A8B95;
+  --line: #DDE4E8;
+  --primary: #0E5C66;
+  --primary-hover: #0B4A52;
+  --primary-soft: #E3EEF0;
+  --danger: #B3412A;
+  --danger-soft: #F9E8E4;
+  --success: #1F6B40;
+  --success-soft: #E1F0E7;
+  --r-card: 12px;
+  --r-control: 8px;
+  --shadow-card: 0 1px 2px rgba(22, 33, 43, 0.04), 0 16px 40px -20px rgba(22, 33, 43, 0.2);
+  --focus: 0 0 0 3px var(--primary-soft);
+
+  --font-display: "Manrope", sans-serif;
+  --font-text: "Source Sans 3", sans-serif;
+  --transition: 120ms ease;
+}
