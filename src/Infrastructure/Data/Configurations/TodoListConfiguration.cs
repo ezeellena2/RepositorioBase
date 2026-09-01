@@ -8,6 +8,7 @@ public class TodoListConfiguration : IEntityTypeConfiguration<TodoList>
 {
     public void Configure(EntityTypeBuilder<TodoList> builder)
     {
+        builder.ToTable("TodoLists", table => table.HasCheckConstraint("CK_TodoLists_AuditActors_NotEmpty", "(\"CreatedBy\" IS NULL OR \"CreatedBy\" <> '00000000-0000-0000-0000-000000000000'::uuid) AND (\"LastModifiedBy\" IS NULL OR \"LastModifiedBy\" <> '00000000-0000-0000-0000-000000000000'::uuid)"));
         builder.Property(t => t.Title)
             .HasMaxLength(200)
             .IsRequired();

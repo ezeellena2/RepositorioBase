@@ -28,9 +28,24 @@ internal sealed class DatabaseResetter : IAsyncDisposable
     public async Task ResetAsync()
     {
         await _connection.OpenAsync();
-        await _respawner.ResetAsync(_connection);
-        await _connection.CloseAsync();
+        try
+        {
+            await Execute("ALTER TABLE \"AuditEvents\" DISABLE TRIGGER USER");
+            await _respawner.ResetAsync(_connection);
+        }
+        finally
+        {
+            await Execute("ALTER TABLE \"AuditEvents\" ENABLE TRIGGER USER");
+            await _connection.CloseAsync();
+        }
     }
 
     public async ValueTask DisposeAsync() => await _connection.DisposeAsync();
+
+    private async Task Execute(string sql)
+    {
+        await using var command = _connection.CreateCommand();
+        command.CommandText = sql;
+        await command.ExecuteNonQueryAsync();
+    }
 }
