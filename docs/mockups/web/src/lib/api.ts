@@ -73,4 +73,5 @@ export const api = {
   login: (input: { email: string; password: string }) => request<void>("POST", "/api/auth/login", input),
   logout: () => request<void>("POST", "/api/auth/logout"),
   me: () => request<Me>("GET", "/api/me"),
+  selectTenant: (tenantId: string) => request<Me>("PUT", "/api/me/tenant", { tenantId }),
 };
