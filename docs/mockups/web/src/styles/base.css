@@ -188,6 +188,17 @@ a:hover {
   color: var(--danger);
 }
 
+.field__hint {
+  display: block;
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.field__hint--muted {
+  color: var(--muted);
+}
+
 /* Button */
 
 .btn {

@@ -4,6 +4,8 @@ import { Alert, Button, Card, Field } from "./components";
 import { api } from "./lib/api";
 import { AppPage } from "./pages/AppPage";
 import { LoginPage } from "./pages/LoginPage";
+import { RegisterPage } from "./pages/RegisterPage";
+import { RegisterSentPage } from "./pages/RegisterSentPage";
 
 // Página de verificación del sistema visual. Se borra cuando existan las pantallas reales.
 function SistemaVisual() {
@@ -62,6 +64,8 @@ function SistemaVisual() {
 const router = createBrowserRouter([
   { path: "/", element: <SistemaVisual /> },
   { path: "/login", element: <LoginPage /> },
+  { path: "/registro", element: <RegisterPage /> },
+  { path: "/registro/enviado", element: <RegisterSentPage /> },
   { path: "/app", element: <AppPage /> },
 ]);
 

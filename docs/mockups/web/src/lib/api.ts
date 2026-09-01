@@ -67,6 +67,8 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
 
 export const api = {
   health: () => request<Health>("GET", "/api/health"),
+  register: (input: { cuit: string; name: string; email: string; password: string }) =>
+    request<void>("POST", "/api/auth/register", input),
   login: (input: { email: string; password: string }) => request<void>("POST", "/api/auth/login", input),
   logout: () => request<void>("POST", "/api/auth/logout"),
   me: () => request<Me>("GET", "/api/me"),
