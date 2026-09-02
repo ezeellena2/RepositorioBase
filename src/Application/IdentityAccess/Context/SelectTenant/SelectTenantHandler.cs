@@ -1,5 +1,6 @@
 using CleanArchitecture.Application.Common.Interfaces;
 using CleanArchitecture.Application.Common.Models;
+using CleanArchitecture.Application.IdentityAccess.Authorization;
 using CleanArchitecture.Application.IdentityAccess.Common;
 using CleanArchitecture.Application.IdentityAccess.Context.GetIdentityContext;
 using CleanArchitecture.Application.IdentityAccess.Organizations;
@@ -15,6 +16,7 @@ public sealed class SelectTenantCommandHandler(
     IApplicationDbContext context,
     ICurrentSession currentSession,
     IIdentityAccountService identities,
+    IEffectivePermissionReader permissions,
     TimeProvider timeProvider) : IRequestHandler<SelectTenantCommand, Result<IdentityContext>>
 {
     public Task<Result<IdentityContext>> Handle(SelectTenantCommand request, CancellationToken cancellationToken)
@@ -28,26 +30,47 @@ public sealed class SelectTenantCommandHandler(
         {
             var session = await context.UserSessions.SingleOrDefaultAsync(candidate => candidate.Id == currentSession.SessionId.Value && candidate.IdentityId == currentSession.IdentityId.Value, ct);
             var account = await identities.FindByIdAsync(currentSession.IdentityId.Value, ct);
-            var selectedEntity = await (from membership in context.TenantMemberships
-                                        join tenant in context.Tenants on membership.TenantId equals tenant.Id
-                                        where membership.IdentityId == currentSession.IdentityId.Value && membership.TenantId == request.TenantId && membership.Status == MembershipStatus.Active && tenant.Status == TenantStatus.Active
-                                        select tenant).SingleOrDefaultAsync(ct);
-            if (session is null || account is null || !account.IsActive || !session.IsActiveAt(timeProvider.GetUtcNow()))
+            if (session is null || account is null || !account.IsActive)
                 return Result<IdentityContext>.Failure(IdentityAccessErrors.InvalidSession());
-            if (selectedEntity is null)
-                return Result<IdentityContext>.Failure(new ApplicationError("permission_denied", ApplicationErrorCategory.Authorization));
 
-            var now = timeProvider.GetUtcNow();
-            session.SelectTenant(request.TenantId, now);
-            var tenantEntities = await (from membership in context.TenantMemberships
-                                        join tenant in context.Tenants on membership.TenantId equals tenant.Id
-                                        where membership.IdentityId == account.Id && membership.Status == MembershipStatus.Active && tenant.Status == TenantStatus.Active
-                                        orderby tenant.Id
-                                        select tenant).ToListAsync(ct);
-            var tenants = tenantEntities.Select(tenant => new TenantContext(tenant.Id.Value, tenant.Type.ToString(), tenant.Slug.Value)).ToArray();
-            await context.SaveChangesAsync(ct);
-            var selected = new TenantContext(selectedEntity.Id.Value, selectedEntity.Type.ToString(), selectedEntity.Slug.Value);
-            return Result<IdentityContext>.Success(new IdentityContext(account.Id, account.Email, account.IsActive, selected, tenants, [], session.AbsoluteExpiresAt, false));
+            for (var attempt = 0; attempt < SessionWriteRetry.Attempts; attempt++)
+            {
+                var now = timeProvider.GetUtcNow();
+                if (!session.IsActiveAt(now))
+                    return Result<IdentityContext>.Failure(IdentityAccessErrors.InvalidSession());
+
+                // Re-read on every attempt: whatever won the previous round may also have suspended the
+                // membership or the tenant, and an authorization decision must never use pre-conflict state.
+                var selectedEntity = await (from membership in context.TenantMemberships.AsNoTracking()
+                                            join tenant in context.Tenants.AsNoTracking() on membership.TenantId equals tenant.Id
+                                            where membership.IdentityId == currentSession.IdentityId.Value && membership.TenantId == request.TenantId && membership.Status == MembershipStatus.Active && tenant.Status == TenantStatus.Active
+                                            select tenant).SingleOrDefaultAsync(ct);
+                if (selectedEntity is null)
+                    return Result<IdentityContext>.Failure(new ApplicationError("permission_denied", ApplicationErrorCategory.Authorization));
+
+                session.SelectTenant(request.TenantId, now);
+                try
+                {
+                    await context.SaveChangesAsync(ct);
+                }
+                catch (DbUpdateConcurrencyException)
+                {
+                    await context.ReloadAsync(session, ct);
+                    continue;
+                }
+
+                var tenantEntities = await (from membership in context.TenantMemberships.AsNoTracking()
+                                            join tenant in context.Tenants.AsNoTracking() on membership.TenantId equals tenant.Id
+                                            where membership.IdentityId == account.Id && membership.Status == MembershipStatus.Active && tenant.Status == TenantStatus.Active
+                                            orderby tenant.Id
+                                            select tenant).ToListAsync(ct);
+                var tenants = tenantEntities.Select(tenant => new TenantContext(tenant.Id.Value, tenant.Type.ToString(), tenant.Slug.Value)).ToArray();
+                var selected = new TenantContext(selectedEntity.Id.Value, selectedEntity.Type.ToString(), selectedEntity.Slug.Value);
+                var effectivePermissions = await permissions.GetEffectivePermissionsAsync(account.Id, request.TenantId, ct);
+                return Result<IdentityContext>.Success(new IdentityContext(account.Id, account.Email, account.IsActive, selected, tenants, effectivePermissions, session.AbsoluteExpiresAt, false));
+            }
+
+            return Result<IdentityContext>.Failure(IdentityAccessErrors.SessionConcurrencyConflict());
         }, cancellationToken);
     }
 }

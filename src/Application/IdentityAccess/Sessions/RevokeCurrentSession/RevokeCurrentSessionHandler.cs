@@ -24,21 +24,48 @@ public sealed class RevokeCurrentSessionCommandHandler(
             var session = await context.UserSessions.SingleOrDefaultAsync(candidate =>
                 candidate.Id == currentSession.SessionId.Value &&
                 candidate.IdentityId == currentSession.IdentityId.Value, ct);
-            var now = timeProvider.GetUtcNow();
-            if (session is null || !session.IsActiveAt(now))
+            if (session is null)
             {
                 return Result.Failure(IdentityAccessErrors.InvalidSession());
             }
 
-            session.Revoke(now);
-            context.AuditEvents.Add(AuditEvent.CreateSessionEvent(
-                session.IdentityId,
-                session.Id.Value,
-                "session.revoked",
-                AuditCorrelation.Current(),
-                "revoked"));
-            await context.SaveChangesAsync(ct);
-            return Result.Success();
+            for (var attempt = 0; attempt < SessionWriteRetry.Attempts; attempt++)
+            {
+                // The clock is read per attempt: a reload after a lost update takes real time, and liveness must
+                // never be re-decided against the instant the request started.
+                var now = timeProvider.GetUtcNow();
+
+                // The committed row is the only authority. A session another request already revoked, or one that
+                // expired meanwhile, fails closed and this request audits nothing it did not actually do.
+                if (!session.IsActiveAt(now))
+                {
+                    return Result.Failure(IdentityAccessErrors.InvalidSession());
+                }
+
+                session.Revoke(now);
+                try
+                {
+                    // The state transition is persisted on its own, so losing the optimistic update leaves no
+                    // half-written audit inside the transaction this boundary is about to commit.
+                    await context.SaveChangesAsync(ct);
+                }
+                catch (DbUpdateConcurrencyException)
+                {
+                    await context.ReloadAsync(session, ct);
+                    continue;
+                }
+
+                context.AuditEvents.Add(AuditEvent.CreateSessionEvent(
+                    session.IdentityId,
+                    session.Id.Value,
+                    "session.revoked",
+                    AuditCorrelation.Current(),
+                    "revoked"));
+                await context.SaveChangesAsync(ct);
+                return Result.Success();
+            }
+
+            return Result.Failure(IdentityAccessErrors.SessionConcurrencyConflict());
         }, cancellationToken);
     }
 }

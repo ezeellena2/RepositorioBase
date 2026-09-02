@@ -55,26 +55,10 @@ public sealed class TestSaveChangesRaceInterceptor : SaveChangesInterceptor
             await competingContext.SaveChangesAsync(cancellationToken);
         }
 
-        // Races the persistence of a failed sign-in attempt with a competing failure of the same account, which also
-        // rotates the Identity concurrency stamp exactly like a second real request would.
-        var failingUser = context?.ChangeTracker.Entries<CleanArchitecture.Infrastructure.Identity.ApplicationUser>()
-            .FirstOrDefault(entry => entry.State == EntityState.Modified && entry.Property(nameof(CleanArchitecture.Infrastructure.Identity.ApplicationUser.AccessFailedCount)).IsModified)?.Entity;
-        if (failingUser is not null && TestApp.ConsumeConcurrentFailedAccess())
-        {
-            var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-                .UseNpgsql(context!.Database.GetConnectionString())
-                .Options;
-            await using var competingContext = new ApplicationDbContext(options);
-            var competingUser = await competingContext.Users.SingleAsync(user => user.Id == failingUser.Id, cancellationToken);
-            competingUser.AccessFailedCount++;
-            competingUser.ConcurrencyStamp = Guid.NewGuid().ToString();
-            await competingContext.SaveChangesAsync(cancellationToken);
-        }
-
         // Cookie validation persists activity through an atomic conditional update that never reaches SaveChanges;
         // SessionLivenessRaceInterceptor races that statement. This hook races the explicit state transitions.
         var staleSession = context?.ChangeTracker.Entries<UserSession>()
-            .Where(entry => entry.State is EntityState.Unchanged or EntityState.Modified)
+            .Where(entry => entry.State == EntityState.Modified)
             .Select(entry => entry.Entity)
             .FirstOrDefault();
 
@@ -83,6 +67,10 @@ public sealed class TestSaveChangesRaceInterceptor : SaveChangesInterceptor
             if (TestApp.ConsumeConcurrentSessionRevoke(stage))
             {
                 await CompeteAsync(context!, staleSession.Id, session => session.Revoke(staleSession.LastSeenAt), cancellationToken);
+            }
+            else if (TestApp.ConsumeConcurrentSessionSelection(stage) is { } selection)
+            {
+                await CompeteAsync(context!, staleSession.Id, session => session.SelectTenant(selection.TenantId, staleSession.LastSeenAt), cancellationToken, selection.SuspendMembershipOf);
             }
             else if (stage == SessionWriteStage.TenantClearing && TestApp.ConsumeConcurrentSessionClear())
             {
@@ -97,13 +85,17 @@ public sealed class TestSaveChangesRaceInterceptor : SaveChangesInterceptor
         return await base.SavingChangesAsync(eventData, result, cancellationToken);
     }
 
-    /// <summary>Classifies which session write is about to be persisted so a test can race exactly that step.</summary>
+    /// <summary>
+    /// Classifies which session write is about to be persisted so a test can race exactly that step. The
+    /// revocation is recognised by its own state transition rather than by a companion audit row, because the
+    /// session transition and its audit are persisted as separate statements.
+    /// </summary>
     private static SessionWriteStage? DetectSessionWriteStage(DbContext context)
     {
-        var session = context.ChangeTracker.Entries<UserSession>().FirstOrDefault(entry => entry.State is EntityState.Unchanged or EntityState.Modified);
+        var session = context.ChangeTracker.Entries<UserSession>().FirstOrDefault(entry => entry.State == EntityState.Modified);
         if (session is null) return null;
-        if (context.ChangeTracker.Entries<CleanArchitecture.Domain.IdentityAccess.Auditing.AuditEvent>().Any(entry => entry.State == EntityState.Added && entry.Entity.EventType == "session.revoked")) return SessionWriteStage.Revocation;
-        if (session.State == EntityState.Modified && session.Property(nameof(UserSession.ActiveTenantId)).IsModified)
+        if (session.Property(nameof(UserSession.RevokedAt)).IsModified) return SessionWriteStage.Revocation;
+        if (session.Property(nameof(UserSession.ActiveTenantId)).IsModified)
         {
             return session.Entity.ActiveTenantId is null ? SessionWriteStage.TenantClearing : SessionWriteStage.TenantSelection;
         }
@@ -111,7 +103,12 @@ public sealed class TestSaveChangesRaceInterceptor : SaveChangesInterceptor
         return null;
     }
 
-    private static async Task CompeteAsync(DbContext context, UserSessionId sessionId, Action<UserSession> compete, CancellationToken cancellationToken)
+    private static async Task CompeteAsync(
+        DbContext context,
+        UserSessionId sessionId,
+        Action<UserSession> compete,
+        CancellationToken cancellationToken,
+        CleanArchitecture.Domain.IdentityAccess.Tenants.TenantId? suspendMembershipOf = null)
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseNpgsql(context.Database.GetConnectionString())
@@ -119,6 +116,15 @@ public sealed class TestSaveChangesRaceInterceptor : SaveChangesInterceptor
         await using var competingContext = new ApplicationDbContext(options);
         var competingSession = await competingContext.UserSessions.SingleAsync(session => session.Id == sessionId, cancellationToken);
         compete(competingSession);
+        if (suspendMembershipOf is { } suspendedTenantId)
+        {
+            var tenant = await competingContext.Tenants.SingleAsync(candidate => candidate.Id == suspendedTenantId, cancellationToken);
+            var membership = await competingContext.TenantMemberships.SingleAsync(
+                candidate => candidate.TenantId == suspendedTenantId && candidate.IdentityId == competingSession.IdentityId,
+                cancellationToken);
+            membership.Suspend(tenant);
+        }
+
         await competingContext.SaveChangesAsync(cancellationToken);
     }
 }

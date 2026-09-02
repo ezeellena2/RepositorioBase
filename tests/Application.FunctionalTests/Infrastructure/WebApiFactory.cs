@@ -97,6 +97,7 @@ public class WebApiFactory(
             services.AddScoped<Microsoft.EntityFrameworkCore.Diagnostics.ISaveChangesInterceptor, TestSaveChangesRaceInterceptor>();
             services.AddScoped<DbCommandInterceptor, ConfirmationSecretLockBarrierInterceptor>();
             services.AddScoped<DbCommandInterceptor, SessionLivenessRaceInterceptor>();
+            services.AddScoped<DbCommandInterceptor, FailedAccessBarrierInterceptor>();
         });
     }
 

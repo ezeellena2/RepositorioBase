@@ -46,8 +46,9 @@ public sealed class OpenApiContractTests : TestBase
         AssertProblemCodes(select, "400", "antiforgery_validation_failed", "invalid_request");
         AssertProblemCodes(select, "401", "authentication_required", "invalid_session");
         AssertProblemCodes(select, "403", "permission_denied");
+        AssertProblemCodes(select, "409", "session_concurrency_conflict");
         AssertProblemCodes(select, "500", "internal_server_error");
-        foreach (var status in new[] { "404", "409", "429" }) select.TryGetProperty(status, out _).ShouldBeFalse();
+        foreach (var status in new[] { "404", "429" }) select.TryGetProperty(status, out _).ShouldBeFalse();
     }
 
     [Test]
@@ -71,8 +72,9 @@ public sealed class OpenApiContractTests : TestBase
         revoke.GetProperty("204").TryGetProperty("content", out _).ShouldBeFalse();
         AssertProblemCodes(revoke, "400", "antiforgery_validation_failed");
         AssertProblemCodes(revoke, "401", "authentication_required", "invalid_session");
+        AssertProblemCodes(revoke, "409", "session_concurrency_conflict");
         AssertProblemCodes(revoke, "500", "internal_server_error");
-        foreach (var status in new[] { "403", "404", "409", "429" }) revoke.TryGetProperty(status, out _).ShouldBeFalse($"DELETE sessions/current must not advertise {status}.");
+        foreach (var status in new[] { "403", "404", "429" }) revoke.TryGetProperty(status, out _).ShouldBeFalse($"DELETE sessions/current must not advertise {status}.");
     }
 
     [Test]

@@ -29,7 +29,11 @@ public static class TestApp
     private static SessionWriteStage? _concurrentSessionTouchStage;
     private static bool _concurrentSessionClear;
     private static SessionWriteStage? _concurrentSessionRevokeStage;
+    private static readonly Queue<ConcurrentSessionSelection> _concurrentSessionSelections = new();
     private static int _concurrentFailedAccessCount;
+    private static TaskCompletionSource? _failedAccessBarrier;
+    private static int _failedAccessBarrierParticipants;
+    private static int _failedAccessBarrierArrivals;
     private static Guid? _optionalSessionIdentityId;
     private static string? _optionalSessionEmail;
     private static bool _optionalSessionIsInvalid;
@@ -109,6 +113,23 @@ public static class TestApp
         return true;
     }
 
+    public static bool HasPendingConcurrentSessionSelection
+    {
+        get
+        {
+            lock (_concurrentSessionSelections) return _concurrentSessionSelections.Count > 0;
+        }
+    }
+
+    public static ConcurrentSessionSelection? ConsumeConcurrentSessionSelection(SessionWriteStage stage)
+    {
+        lock (_concurrentSessionSelections)
+        {
+            if (_concurrentSessionSelections.Count == 0 || _concurrentSessionSelections.Peek().Stage != stage) return null;
+            return _concurrentSessionSelections.Dequeue();
+        }
+    }
+
     public static bool ConsumeConcurrentSessionTouch(SessionWriteStage stage)
     {
         if (_concurrentSessionTouchStage != stage) return false;
@@ -169,7 +190,48 @@ public static class TestApp
 
     public static void EnableConcurrentSessionRevoke(SessionWriteStage stage) => _concurrentSessionRevokeStage = stage;
 
+    /// <summary>
+    /// Arms a competing request that selects <paramref name="tenantId"/> on the same session — and optionally
+    /// suspends another membership — right before the session write of <paramref name="stage"/> is persisted.
+    /// </summary>
+    public static void EnableConcurrentSessionSelection(SessionWriteStage stage, TenantId tenantId, TenantId? suspendMembershipOf = null)
+    {
+        lock (_concurrentSessionSelections) _concurrentSessionSelections.Enqueue(new ConcurrentSessionSelection(stage, tenantId, suspendMembershipOf));
+    }
+
+    /// <summary>
+    /// Arms one competing selection per <paramref name="tenantIds"/> entry, consumed in order. Each entry must
+    /// change the active tenant, because only a real state transition rotates the session concurrency token — a
+    /// no-op selection would let the raced request win. Arming as many as a handler has attempts is how a test
+    /// drives it to exhaust them.
+    /// </summary>
+    public static void EnableConcurrentSessionSelections(SessionWriteStage stage, params TenantId[] tenantIds)
+    {
+        foreach (var tenantId in tenantIds) EnableConcurrentSessionSelection(stage, tenantId);
+    }
+
     public static void EnableConcurrentFailedAccess(int times = 1) => Interlocked.Exchange(ref _concurrentFailedAccessCount, times);
+
+    /// <summary>
+    /// Holds every failed-access persistence attempt until <paramref name="participants"/> of them have arrived, so
+    /// concurrent sign-in failures really contend for the same account row instead of serializing by accident.
+    /// </summary>
+    public static void EnableFailedAccessBarrier(int participants)
+    {
+        _failedAccessBarrierParticipants = participants;
+        Interlocked.Exchange(ref _failedAccessBarrierArrivals, 0);
+        _failedAccessBarrier = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+
+    public static bool FailedAccessBarrierWasFullyObserved => Volatile.Read(ref _failedAccessBarrierArrivals) >= _failedAccessBarrierParticipants && _failedAccessBarrierParticipants > 0;
+
+    public static async Task WaitForFailedAccessBarrierAsync(CancellationToken cancellationToken)
+    {
+        var barrier = Volatile.Read(ref _failedAccessBarrier);
+        if (barrier is null) return;
+        if (Interlocked.Increment(ref _failedAccessBarrierArrivals) >= _failedAccessBarrierParticipants) barrier.TrySetResult();
+        await barrier.Task.WaitAsync(TimeSpan.FromSeconds(30), cancellationToken);
+    }
 
     public static void ForceSessionRevokePersistenceFailure() => _forceSessionRevokePersistenceFailure = true;
 
@@ -255,7 +317,11 @@ public static class TestApp
         _concurrentSessionTouchStage = null;
         _concurrentSessionClear = false;
         _concurrentSessionRevokeStage = null;
+        lock (_concurrentSessionSelections) _concurrentSessionSelections.Clear();
         Interlocked.Exchange(ref _concurrentFailedAccessCount, 0);
+        _failedAccessBarrier = null;
+        _failedAccessBarrierParticipants = 0;
+        Interlocked.Exchange(ref _failedAccessBarrierArrivals, 0);
         _optionalSessionIdentityId = null;
         _optionalSessionEmail = null;
         _optionalSessionIsInvalid = false;
@@ -351,4 +417,7 @@ internal sealed class TestValidatedOptionalSession(Guid? identityId, string? ema
 }
 
 /// <summary>The persistence step of a session request that a test wants a competing writer to race against.</summary>
-public enum SessionWriteStage { Validation, Revocation, TenantSelection, TenantClearing }
+public enum SessionWriteStage { Validation, Revocation, TenantSelection, TenantClearing, Supersession }
+
+/// <summary>A competing tenant selection, and optionally a membership suspension, armed for one session write.</summary>
+public sealed record ConcurrentSessionSelection(SessionWriteStage Stage, TenantId TenantId, TenantId? SuspendMembershipOf);

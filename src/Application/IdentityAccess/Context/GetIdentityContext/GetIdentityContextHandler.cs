@@ -1,5 +1,6 @@
 using CleanArchitecture.Application.Common.Interfaces;
 using CleanArchitecture.Application.Common.Models;
+using CleanArchitecture.Application.IdentityAccess.Authorization;
 using CleanArchitecture.Application.IdentityAccess.Common;
 using CleanArchitecture.Application.IdentityAccess.Organizations;
 using CleanArchitecture.Application.IdentityAccess.Sessions;
@@ -9,7 +10,11 @@ using Microsoft.EntityFrameworkCore;
 
 namespace CleanArchitecture.Application.IdentityAccess.Context.GetIdentityContext;
 
-public sealed class GetIdentityContextQueryHandler(IApplicationDbContext context, ICurrentSession currentSession, IIdentityAccountService identities) : IRequestHandler<GetIdentityContextQuery, Result<IdentityContext>>
+public sealed class GetIdentityContextQueryHandler(
+    IApplicationDbContext context,
+    ICurrentSession currentSession,
+    IIdentityAccountService identities,
+    IEffectivePermissionReader permissions) : IRequestHandler<GetIdentityContextQuery, Result<IdentityContext>>
 {
     public async Task<Result<IdentityContext>> Handle(GetIdentityContextQuery request, CancellationToken cancellationToken)
     {
@@ -28,6 +33,12 @@ public sealed class GetIdentityContextQueryHandler(IApplicationDbContext context
         var activeTenant = session.ActiveTenantId is { } selected
             ? tenants.SingleOrDefault(tenant => tenant.Id == selected.Value)
             : null;
-        return Result<IdentityContext>.Success(new IdentityContext(identity.Id, identity.Email, identity.IsActive, activeTenant, tenants, [], session.AbsoluteExpiresAt, false));
+
+        // Permissions belong to exactly one membership. Without a validated active tenant there is no membership
+        // to project, so the client receives none rather than an accumulation across its tenants (IA-REQ-007).
+        IReadOnlyList<string> effectivePermissions = activeTenant is null
+            ? []
+            : await permissions.GetEffectivePermissionsAsync(identity.Id, TenantId.From(activeTenant.Id), cancellationToken);
+        return Result<IdentityContext>.Success(new IdentityContext(identity.Id, identity.Email, identity.IsActive, activeTenant, tenants, effectivePermissions, session.AbsoluteExpiresAt, false));
     }
 }

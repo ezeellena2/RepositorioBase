@@ -27,7 +27,7 @@
 | IA-REQ-031 | target stack and same-origin policy | IA-002, IA-007 | architecture/configuration and cookie-session tests | IA-002 complete: PostgreSQL-only target and real PostgreSQL harness |
 | IA-REQ-032 | no seed or destructive startup | IA-003 | restart/sentinel/no-user test | IA-003 complete: baseline migration, restart/sentinel preservation, and no-user test |
 | IA-REQ-033..034, IA-REQ-036 | PostgreSQL uniqueness, composite FKs, deletes | IA-004 | metadata plus real-PostgreSQL constraint tests | Pending |
-| IA-REQ-035 | lost-update protection | IA-004 | Task 4 real-PostgreSQL stale `UpdateTodoItemDetailCommand` proof; Task 6 typed `todo_item_concurrency_conflict` RFC 9457 `409`/`traceId` evidence | Pending |
+| IA-REQ-035 | lost-update protection | IA-004 | Task 4 real-PostgreSQL stale `UpdateTodoItemDetailCommand` proof; Task 6 typed `todo_item_concurrency_conflict` RFC 9457 `409`/`traceId` evidence; Task 8 session mutations reload, revalidate and answer `401` `invalid_session` or typed `session_concurrency_conflict` `409`, with sign-in supersession made conflict-free by a conditional update | Pending |
 | IA-REQ-037 | current-template baseline | IA-003 | empty-to-baseline and restart preservation | IA-003 complete: `BaselinePostgreSql` migration and restart preservation |
 | IA-REQ-037 | identity-access upgrade | IA-004 | empty-to-latest and baseline-to-latest sentinel preservation | Pending |
 | IA-REQ-038 | shared Result types, HTTP mapping/writer, and OpenAPI contract | IA-005 | model, runtime, media-type, status/header/code, safe-500, and drift tests | Pending |

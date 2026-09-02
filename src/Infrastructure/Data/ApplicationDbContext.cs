@@ -47,6 +47,9 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
 
     public DbSet<MembershipRole> MembershipRoles => Set<MembershipRole>();
 
+    public Task ReloadAsync<TEntity>(TEntity entity, CancellationToken cancellationToken) where TEntity : class =>
+        Entry(entity).ReloadAsync(cancellationToken);
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);

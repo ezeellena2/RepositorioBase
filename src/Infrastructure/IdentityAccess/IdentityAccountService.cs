@@ -3,6 +3,7 @@ using CleanArchitecture.Application.IdentityAccess.Organizations;
 using CleanArchitecture.Infrastructure.Data;
 using CleanArchitecture.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 namespace CleanArchitecture.Infrastructure.IdentityAccess;
@@ -16,13 +17,6 @@ public sealed class IdentityAccountService(
     ApplicationDbContext context,
     TimeProvider timeProvider) : IIdentityAccountService
 {
-    /// <summary>
-    /// A precomputed hash keeps unknown, unconfirmed and locked accounts on the same password-hashing cost as a real
-    /// check, so the dominant cost of a sign-in does not reveal whether an account exists or its state (IA-REQ-019/029).
-    /// Persisting a failed attempt still adds one database write for confirmed accounts.
-    /// </summary>
-    private const int FailedAccessPersistenceAttempts = 3;
-
     private static readonly ApplicationUser DecoyUser = new();
     private static string? _decoyPasswordHash;
 
@@ -50,7 +44,7 @@ public sealed class IdentityAccountService(
 
         if (!await userManager.CheckPasswordAsync(user, password))
         {
-            await RecordFailedAccessAsync(user, now);
+            await RecordFailedAccessAsync(user, now, cancellationToken);
             return null;
         }
 
@@ -99,34 +93,37 @@ public sealed class IdentityAccountService(
     /// <summary>
     /// Mirrors <see cref="UserManager{TUser}.AccessFailedAsync"/> with the injected clock instead of the system
     /// clock: reaching the configured number of failures locks the account for the configured duration and starts
-    /// a fresh failure window. The count and lockout end are persisted through the <see cref="UserManager{TUser}"/>.
-    /// When a parallel failed attempt wins the concurrency check, the committed row is reloaded and the attempt is
-    /// re-applied. Losing every retry is never surfaced: the response must stay identical to the one an unknown
-    /// account receives, or its status alone would reveal that the account exists (IA-REQ-019/029). The competing
-    /// writers that won have already counted their own attempts, so the lockout still advances.
+    /// a fresh failure window.
+    /// <para>
+    /// It is one conditional statement rather than a read-modify-write, so the row lock PostgreSQL takes for the
+    /// UPDATE serializes competing failures of the same account and re-evaluates the increment against the row
+    /// that actually won. No attempt can be dropped by a lost update, which is what makes the configured attempt
+    /// exactly the one that locks the account (IA-REQ-019). The response stays the neutral one an unknown account
+    /// receives, so neither existence nor lockout is ever revealed (IA-REQ-029).
+    /// </para>
+    /// <para>
+    /// The re-evaluation this relies on is PostgreSQL's READ COMMITTED behaviour, which is the connection default
+    /// and is never raised anywhere in this project. Sign-in deliberately validates credentials outside
+    /// <c>IApplicationTransaction</c>, so this statement holds its row lock for its own duration only.
+    /// </para>
     /// </summary>
-    private async Task RecordFailedAccessAsync(ApplicationUser user, DateTimeOffset now)
-    {
-        for (var attempt = 0; attempt < FailedAccessPersistenceAttempts; attempt++)
-        {
-            if (attempt > 0) await context.Entry(user).ReloadAsync();
-            ApplyFailedAccess(user, now);
-            if ((await userManager.UpdateAsync(user)).Succeeded) return;
-        }
-
-        // Leave the tracked entity on the committed values so nothing else in this request tries to flush it.
-        await context.Entry(user).ReloadAsync();
-    }
-
-    private void ApplyFailedAccess(ApplicationUser user, DateTimeOffset now)
+    private async Task RecordFailedAccessAsync(ApplicationUser user, DateTimeOffset now, CancellationToken cancellationToken)
     {
         var lockout = identityOptions.Value.Lockout;
-        user.AccessFailedCount++;
-        if (user.AccessFailedCount >= lockout.MaxFailedAccessAttempts)
-        {
-            user.LockoutEnd = now.Add(lockout.DefaultLockoutTimeSpan);
-            user.AccessFailedCount = 0;
-        }
+        var maxFailedAccessAttempts = lockout.MaxFailedAccessAttempts;
+        DateTimeOffset? lockoutEnd = now.Add(lockout.DefaultLockoutTimeSpan);
+        var concurrencyStamp = Guid.NewGuid().ToString();
+
+        await context.Users
+            .Where(candidate => candidate.Id == user.Id)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(candidate => candidate.AccessFailedCount, candidate => candidate.AccessFailedCount + 1 >= maxFailedAccessAttempts ? 0 : candidate.AccessFailedCount + 1)
+                .SetProperty(candidate => candidate.LockoutEnd, candidate => candidate.AccessFailedCount + 1 >= maxFailedAccessAttempts ? lockoutEnd : candidate.LockoutEnd)
+                .SetProperty(candidate => candidate.ConcurrencyStamp, concurrencyStamp), cancellationToken);
+
+        // Bring the tracked entity back onto the committed row so nothing later in this request flushes the
+        // pre-update values it still holds.
+        await context.Entry(user).ReloadAsync(cancellationToken);
     }
 
     private void VerifyDecoyPassword(string password)

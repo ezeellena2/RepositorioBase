@@ -23,7 +23,7 @@ internal static class SessionEndpoints
         group.MapDelete("/sessions/current", Revoke)
             .RequireAuthorization()
             .Produces(StatusCodes.Status204NoContent)
-            .WithApiProblemDetails(ApiProblemMetadata.AntiforgeryValidationFailed, ApiProblemMetadata.AuthenticationRequired, ApiProblemMetadata.InvalidSession, ApiProblemMetadata.InternalServerError);
+            .WithApiProblemDetails(ApiProblemMetadata.AntiforgeryValidationFailed, ApiProblemMetadata.AuthenticationRequired, ApiProblemMetadata.InvalidSession, ApiProblemMetadata.SessionConcurrencyConflict, ApiProblemMetadata.InternalServerError);
     }
 
     private static async Task<IResult> Create(HttpContext context, IAntiforgery antiforgery, ApiProblemDetailsMapper problems, ISender sender, CreateSessionCommand command)
@@ -51,7 +51,19 @@ internal static class SessionEndpoints
         if (antiforgeryFailure is not null) return antiforgeryFailure;
 
         var result = await sender.Send(new RevokeCurrentSessionCommand(), context.RequestAborted);
-        if (result.IsFailure) return problems.ToHttpResult(result.Error!);
+        if (result.IsFailure)
+        {
+            // A session that another request already revoked, or that expired while this one ran, passed cookie
+            // validation but is dead now. The caller asked to sign out, so the useless cookie is deleted anyway;
+            // only a still-live session that lost its write keeps its cookie for the retry the conflict invites.
+            if (result.Error!.Code == ApiProblemMetadata.InvalidSession.Code)
+            {
+                await context.SignOutAsync(IdentityConstants.ApplicationScheme);
+                Identity.DeleteAntiforgeryCookie(context);
+            }
+
+            return problems.ToHttpResult(result.Error);
+        }
 
         await context.SignOutAsync(IdentityConstants.ApplicationScheme);
         Identity.DeleteAntiforgeryCookie(context);

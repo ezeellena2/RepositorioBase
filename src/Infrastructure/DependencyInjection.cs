@@ -108,6 +108,7 @@ public static class DependencyInjection
         builder.Services.AddScoped<SessionCookieEvents>();
         builder.Services.AddDataProtection();
         builder.Services.AddScoped<IPermissionEvaluator, PermissionEvaluator>();
+        builder.Services.AddScoped<IEffectivePermissionReader, EffectivePermissionReader>();
         builder.Services.AddScoped<ICurrentTenant, CurrentTenant>();
         builder.Services.AddScoped<ISecurityDenialAuditWriter, SecurityDenialAuditWriter>();
     }

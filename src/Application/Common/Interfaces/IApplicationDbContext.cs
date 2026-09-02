@@ -32,4 +32,10 @@ public interface IApplicationDbContext
     DbSet<UserSession> UserSessions { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Replaces a tracked entity's values with the committed row so a handler that lost an optimistic update can
+    /// re-decide against the state that actually won, instead of retrying stale values.
+    /// </summary>
+    Task ReloadAsync<TEntity>(TEntity entity, CancellationToken cancellationToken) where TEntity : class;
 }

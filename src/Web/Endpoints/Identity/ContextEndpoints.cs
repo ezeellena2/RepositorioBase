@@ -19,7 +19,7 @@ internal static class ContextEndpoints
         group.MapPut("/context/tenant", SelectTenant)
             .RequireAuthorization()
             .Produces<IdentityContextResponse>(StatusCodes.Status200OK)
-            .WithApiProblemDetails(ApiProblemMetadata.AntiforgeryValidationFailed, ApiProblemMetadata.InvalidRequest, ApiProblemMetadata.AuthenticationRequired, ApiProblemMetadata.InvalidSession, ApiProblemMetadata.PermissionDenied, ApiProblemMetadata.InternalServerError);
+            .WithApiProblemDetails(ApiProblemMetadata.AntiforgeryValidationFailed, ApiProblemMetadata.InvalidRequest, ApiProblemMetadata.AuthenticationRequired, ApiProblemMetadata.InvalidSession, ApiProblemMetadata.PermissionDenied, ApiProblemMetadata.SessionConcurrencyConflict, ApiProblemMetadata.InternalServerError);
     }
 
     private static async Task<IResult> Get(ISender sender, ApiProblemDetailsMapper problems, HttpContext context)

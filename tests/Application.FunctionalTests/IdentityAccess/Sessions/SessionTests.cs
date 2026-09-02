@@ -15,6 +15,7 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using static CleanArchitecture.Application.FunctionalTests.Infrastructure.IdentityHttpHarness;
 
 namespace CleanArchitecture.Application.FunctionalTests.IdentityAccess.Sessions;
 
@@ -889,13 +890,6 @@ public sealed class SessionTests : TestBase
         response.Headers.TryGetValues("Set-Cookie", out _).ShouldBeFalse();
     }
 
-    private static async Task<System.Text.Json.JsonElement> ReadJsonAsync(HttpResponseMessage response)
-    {
-        response.Content.Headers.ContentType!.MediaType.ShouldBe("application/json");
-        using var document = System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        return document.RootElement.Clone();
-    }
-
     [Test]
     public async Task Continuous_activity_never_extends_a_session_past_its_absolute_lifetime()
     {
@@ -1301,56 +1295,10 @@ public sealed class SessionTests : TestBase
         return request;
     }
 
-    [Test]
-    [Category("LoginControls")]
-    public async Task A_failed_sign_in_that_repeatedly_loses_the_failure_update_stays_neutral_and_never_reveals_the_account()
-    {
-        using var harness = CreateProductionHarness();
-        var client = harness.Client;
-        const string host = "https://login-repeated-failure-loss.localhost";
-        var identityId = await SeedConfirmedUserAsync("repeated-loss@example.test", "Testing1234!");
-        var antiforgery = await GetAntiforgeryAsync(client, host);
-        TestApp.EnableConcurrentFailedAccess(times: 3);
-        using var request = LoginRequest(host, "repeated-loss@example.test", "wrong-password", antiforgery, "203.0.113.90");
-
-        var response = await client.SendAsync(request);
-
-        // The neutral response is the whole point: an unknown account answers 204, so an existing one must too.
-        response.StatusCode.ShouldBe(HttpStatusCode.NoContent);
-        (await response.Content.ReadAsStringAsync()).ShouldBeEmpty();
-        response.Headers.TryGetValues("Set-Cookie", out _).ShouldBeFalse();
-        (await CountAsync<UserSession>()).ShouldBe(0);
-        (await ListAsync<AuditEvent>()).Count(item => item.EventType == "signin.failed").ShouldBe(1, "the attempt is still audited");
-        (await GetUserAsync(identityId)).AccessFailedCount.ShouldBeGreaterThanOrEqualTo(3, "every competing attempt was counted");
-    }
-
-    private static ProductionHarness CreateProductionHarness(TimeProvider? timeProvider = null)
-    {
-        var factory = new WebApiFactory(
-            FunctionalTestSetup.ConnectionString,
-            Microsoft.Extensions.Hosting.Environments.Production,
-            useTestAuthentication: false,
-            useTestIdentityAccessDoubles: false,
-            timeProvider: timeProvider);
-        return new ProductionHarness(factory, factory.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions { HandleCookies = true, AllowAutoRedirect = false }));
-    }
-
-    private static async Task<string> SignInAsync(HttpClient client, string host, string email, string password)
-    {
-        var antiforgery = await GetAntiforgeryAsync(client, host);
-        using var request = JsonRequest(HttpMethod.Post, $"{host}/api/identity/sessions", new { email, password }, antiforgery);
-        var response = await client.SendAsync(request);
-        response.StatusCode.ShouldBe(HttpStatusCode.NoContent);
-        return response.Headers.GetValues("Set-Cookie").Single(value => value.StartsWith("__Host-ia-auth=", StringComparison.Ordinal)).Split(';')[0];
-    }
-
-    private static async Task<string> GetAntiforgeryAsync(HttpClient client, string host)
-    {
-        using var request = new HttpRequestMessage(HttpMethod.Get, $"{host}/api/identity/antiforgery");
-        var response = await client.SendAsync(request);
-        response.StatusCode.ShouldBe(HttpStatusCode.OK);
-        return (await response.Content.ReadFromJsonAsync<CleanArchitecture.Web.Endpoints.AntiforgeryResponse>())!.RequestToken;
-    }
+    // A former test armed three competing failures against the old three-attempt optimistic loop and asserted
+    // only `AccessFailedCount >= 3`. That threshold was satisfiable by the very defect it was meant to catch, and
+    // the atomic conditional update has no "lost attempt" to reproduce at all. Its evidence now lives in
+    // LoginLockoutConcurrencyTests, which races five real requests through a barrier onto the same account row.
 
     private static async Task<AntiforgeryPair> GetAntiforgeryPairAsync(HttpClient client, string host)
     {
@@ -1360,24 +1308,6 @@ public sealed class SessionTests : TestBase
         return new AntiforgeryPair(
             (await response.Content.ReadFromJsonAsync<CleanArchitecture.Web.Endpoints.AntiforgeryResponse>())!.RequestToken,
             response.Headers.GetValues("Set-Cookie").Single(value => value.StartsWith("__Host-XSRF-TOKEN=", StringComparison.Ordinal)).Split(';')[0]);
-    }
-
-    private static HttpRequestMessage JsonRequest(HttpMethod method, string uri, object? body, string antiforgery)
-    {
-        var request = new HttpRequestMessage(method, uri);
-        if (body is not null) request.Content = JsonContent.Create(body);
-        request.Headers.Add("Origin", new Uri(uri).GetLeftPart(UriPartial.Authority));
-        request.Headers.Add("X-CSRF-TOKEN", antiforgery);
-        return request;
-    }
-
-    private static async Task<Guid> SeedConfirmedUserAsync(string email, string password)
-    {
-        using var scope = FunctionalTestSetup.ScopeFactory.CreateScope();
-        var users = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
-        var user = new ApplicationUser { UserName = email, Email = email, EmailConfirmed = true };
-        (await users.CreateAsync(user, password)).Succeeded.ShouldBeTrue();
-        return user.Id;
     }
 
     private static async Task SetAccountStateAsync(Guid identityId, bool emailConfirmed, bool lockedOut)
@@ -1390,37 +1320,6 @@ public sealed class SessionTests : TestBase
         await scope.ServiceProvider.GetRequiredService<ApplicationDbContext>().SaveChangesAsync();
     }
 
-    private static async Task<TenantId> SeedActiveMembershipAsync(Guid userId)
-    {
-        using var scope = FunctionalTestSetup.ScopeFactory.CreateScope();
-        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        var tenant = Tenant.CreateOrganization(TenantSlug.From($"session-{Guid.NewGuid():N}"));
-        tenant.Activate();
-        var membership = TenantMembership.CreateResponsible(tenant, userId);
-        membership.Activate(tenant);
-        context.AddRange(tenant, membership);
-        await context.SaveChangesAsync();
-        return tenant.Id;
-    }
-
-    private static async Task<int> CountAsync<TEntity>() where TEntity : class
-    {
-        using var scope = FunctionalTestSetup.ScopeFactory.CreateScope();
-        return await scope.ServiceProvider.GetRequiredService<ApplicationDbContext>().Set<TEntity>().CountAsync();
-    }
-
-    private static async Task<List<TEntity>> ListAsync<TEntity>() where TEntity : class
-    {
-        using var scope = FunctionalTestSetup.ScopeFactory.CreateScope();
-        return await scope.ServiceProvider.GetRequiredService<ApplicationDbContext>().Set<TEntity>().ToListAsync();
-    }
-
-    private static async Task<UserSession> GetOnlySessionAsync()
-    {
-        using var scope = FunctionalTestSetup.ScopeFactory.CreateScope();
-        return await scope.ServiceProvider.GetRequiredService<ApplicationDbContext>().UserSessions.SingleAsync();
-    }
-
     private static async Task<UserSession> CreateDetachedSessionAsync(Guid identityId)
     {
         using var scope = FunctionalTestSetup.ScopeFactory.CreateScope();
@@ -1429,25 +1328,6 @@ public sealed class SessionTests : TestBase
         database.UserSessions.Add(session);
         await database.SaveChangesAsync();
         return session;
-    }
-
-    private static async Task SuspendTenantAsync(TenantId tenantId)
-    {
-        using var scope = FunctionalTestSetup.ScopeFactory.CreateScope();
-        var database = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        var tenant = await database.Tenants.SingleAsync(candidate => candidate.Id == tenantId);
-        tenant.Suspend();
-        await database.SaveChangesAsync();
-    }
-
-    private static async Task SuspendMembershipAsync(TenantId tenantId)
-    {
-        using var scope = FunctionalTestSetup.ScopeFactory.CreateScope();
-        var database = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        var tenant = await database.Tenants.SingleAsync(candidate => candidate.Id == tenantId);
-        var membership = await database.TenantMemberships.SingleAsync(candidate => candidate.TenantId == tenantId);
-        membership.Suspend(tenant);
-        await database.SaveChangesAsync();
     }
 
     private static async Task ApplyFailureStateAsync(Guid userId, SessionFailure failure, ControlledTimeProvider clock)
@@ -1496,14 +1376,6 @@ public sealed class SessionTests : TestBase
         return $"__Host-ia-auth={options.TicketDataFormat.Protect(new AuthenticationTicket(principal, new AuthenticationProperties(), IdentityConstants.ApplicationScheme))}";
     }
 
-    private static HttpRequestMessage LoginRequest(string host, string email, string password, string antiforgery, string? forwardedFor)
-    {
-        var request = JsonRequest(HttpMethod.Post, $"{host}/api/identity/sessions", new { email, password }, antiforgery);
-        // TestServer reports no remote address; the trusted first hop of X-Forwarded-For simulates the client address.
-        if (forwardedFor is not null) request.Headers.Add("X-Forwarded-For", forwardedFor);
-        return request;
-    }
-
     private static async Task AssertRateLimitedAsync(HttpResponseMessage response, int maxRetryAfterSeconds, params string[] secrets)
     {
         response.StatusCode.ShouldBe(HttpStatusCode.TooManyRequests);
@@ -1528,33 +1400,9 @@ public sealed class SessionTests : TestBase
         }
     }
 
-    private static async Task<ApplicationUser> GetUserAsync(Guid identityId)
-    {
-        using var scope = FunctionalTestSetup.ScopeFactory.CreateScope();
-        return await scope.ServiceProvider.GetRequiredService<ApplicationDbContext>().Users.AsNoTracking().SingleAsync(user => user.Id == identityId);
-    }
-
     public enum NeutralOutcome { UnknownAccount, UnconfirmedAccount, LockedAccount, WrongPassword, ValidCredentials }
     public enum SessionFailure { Revoked, IdleExpired, AbsoluteExpired, Unconfirmed, LockedOut }
     public enum CookieReferenceFailure { DeletedSession, DeletedUser, MismatchedIdentityAndSession }
     public enum EmptyClaim { Sid, NameIdentifier, Both }
     private sealed record AntiforgeryPair(string RequestToken, string Cookie);
-
-    private sealed class ControlledTimeProvider(DateTimeOffset now) : TimeProvider
-    {
-        private DateTimeOffset _now = now;
-        public override DateTimeOffset GetUtcNow() => _now;
-        public void Advance(TimeSpan value) => _now = _now.Add(value);
-    }
-
-    private sealed class ProductionHarness(WebApiFactory factory, HttpClient client) : IDisposable
-    {
-        public WebApiFactory Factory { get; } = factory;
-        public HttpClient Client { get; } = client;
-        public void Dispose()
-        {
-            Client.Dispose();
-            Factory.Dispose();
-        }
-    }
 }

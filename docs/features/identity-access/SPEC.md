@@ -186,9 +186,9 @@ Routes are contractual drafts; generated OpenAPI becomes the implementation sour
 | `POST /api/identity/organizations/register` | Public or authenticated + antiforgery | neutral bodyless `202` |
 | `POST /api/identity/confirm-email` | Public + token + antiforgery | idempotent bodyless `204` |
 | `POST /api/identity/sessions` | Public + antiforgery | bodyless `204` + cookie or Problem Details |
-| `DELETE /api/identity/sessions/current` | Authenticated + antiforgery | bodyless `204` |
+| `DELETE /api/identity/sessions/current` | Authenticated + antiforgery | bodyless `204`; a session already revoked by a parallel request is `401` `invalid_session` and still deletes the cookie; a lost update that never settles is `409` `session_concurrency_conflict` |
 | `GET /api/identity/context` | Authenticated | `200` identity-context DTO |
-| `PUT /api/identity/context/tenant` | Authenticated + antiforgery | `200` updated identity-context DTO |
+| `PUT /api/identity/context/tenant` | Authenticated + antiforgery | `200` updated identity-context DTO; a lost update that never settles is `409` `session_concurrency_conflict` |
 | `POST /api/tenants/{tenantId}/invitations` | `members.invite` + antiforgery | `201` invitation DTO + `Location` |
 | `POST /api/invitations/register` | Public + invitation token + antiforgery | neutral bodyless `202`; registration/confirmation only |
 | `POST /api/invitations/accept` | Authenticated + token + antiforgery | idempotent `200` acceptance DTO |
