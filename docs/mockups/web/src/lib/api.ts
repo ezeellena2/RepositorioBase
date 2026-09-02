@@ -2,17 +2,60 @@ export interface Health {
   ok: true;
 }
 
-export interface Tenant {
+export type Scope = "platform" | "tenant";
+export type FiscalType = "persona" | "empresa";
+export type Role = "owner" | "admin" | "member" | "operator";
+
+export interface Degraded {
+  code: string;
+  severity: "warn" | "error";
+  text: string;
+}
+
+export interface TenantSummary {
   id: string;
-  type: "persona" | "empresa";
   name: string;
+  scope: Scope;
+  type: FiscalType | null;
+  cuit: string | null; // ya formateado: "30-71234567-1"
+  role: Role;
+  hasDegraded: boolean;
+}
+
+export interface ActiveTenant {
+  id: string;
+  name: string;
+  scope: Scope;
+  type: FiscalType | null;
+  cuit: string | null;
+  role: Role;
+  permissions: string[];
+  degraded: Degraded[];
 }
 
 export interface Me {
-  user: { id: string; name: string; email: string };
-  activeTenant: (Tenant & { cuit: string }) | null;
-  tenants: Tenant[];
+  user: { id: string; name: string; email: string; mfa: boolean };
+  activeTenant: ActiveTenant | null;
+  tenants: TenantSummary[];
 }
+
+export type ModuleStatus = "vigente" | "sin_configurar" | "vence";
+
+export interface TenantResumen {
+  scope: "tenant";
+  whatsapp: { phone: string; linkedAt: string } | null;
+  modules: { code: string; name: string; status: ModuleStatus; daysLeft?: number }[];
+  capabilities: string[];
+}
+
+export interface PlatformResumen {
+  scope: "platform";
+  channel: { status: "verificado" | "sin_verificar"; lastCheckAt: string };
+  onboarding: { done: number; total: number; items: { code: string; label: string; done: boolean }[]; appSubscriptionDone: boolean };
+  last24h: { conversations: number; delivered: number; failed: number };
+}
+
+export type Resumen = TenantResumen | PlatformResumen;
 
 /** Error devuelto por la API con { error: { code, message } }. */
 export class ApiError extends Error {
@@ -74,4 +117,5 @@ export const api = {
   logout: () => request<void>("POST", "/api/auth/logout"),
   me: () => request<Me>("GET", "/api/me"),
   selectTenant: (tenantId: string) => request<Me>("PUT", "/api/me/tenant", { tenantId }),
+  resumen: () => request<Resumen>("GET", "/api/me/resumen"),
 };

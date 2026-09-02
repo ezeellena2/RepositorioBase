@@ -6,10 +6,14 @@
     "web"
   ],
   "scripts": {
+    "install:all": "npm install",
     "dev": "concurrently -k -n api,web -c cyan,magenta \"npm run dev -w api\" \"npm run dev -w web\"",
-    "build": "npm run build -w web"
+    "build": "npm run build -w web",
+    "test": "npm test -w api",
+    "demo": "node demo.mjs"
   },
   "devDependencies": {
-    "concurrently": "^9.1.2"
+    "concurrently": "^9.1.2",
+    "playwright": "1.56.1"
   }
 }

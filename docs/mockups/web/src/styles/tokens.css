@@ -2,6 +2,7 @@
   --bg: #F4F6F8;
   --bg-glow: radial-gradient(ellipse 60% 50% at 50% 0%, #E3ECF0 0%, transparent 70%);
   --surface: #FFFFFF;
+  --surface-2: #f8fafb;
   --ink: #16212B;
   --ink-2: #4A5B66;
   --muted: #7A8B95;
@@ -20,5 +21,34 @@
 
   --font-display: "Manrope", sans-serif;
   --font-text: "Source Sans 3", sans-serif;
-  --transition: 120ms ease;
+  --dur: 120ms;
+  --ease: cubic-bezier(.2, .7, .3, 1);
+
+  /* shell */
+  --header-h: 60px;          /* a 56px por debajo de 768px */
+  --sidebar-w: 264px;
+  --sidebar-w-min: 68px;
+
+  /* acento por contexto */
+  --ctx-empresa: var(--primary);
+  --ctx-empresa-soft: var(--primary-soft);
+  --ctx-persona: #4c4a8c;         /* índigo apagado */
+  --ctx-persona-soft: #eceaf4;
+  --ctx-platform: var(--ink);     /* tinta, no color de marca */
+  --ctx-platform-soft: #e8ebed;
+
+  --ctx-accent: var(--ctx-empresa);          /* reasignado por [data-context] */
+  --ctx-accent-soft: var(--ctx-empresa-soft);
+
+  /* tercer color semántico */
+  --warn: #8a5a12;
+  --warn-soft: #fbf1de;
+
+  --nav-hover: var(--surface-2);
+  --shadow-pop: 0 2px 6px rgba(22, 33, 43, .06), 0 12px 28px -8px rgba(22, 33, 43, .22);
+
+  --z-header: 40;
+  --z-drawer: 50;
+  --z-pop: 60;
+  --z-flash: 70;
 }

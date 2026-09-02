@@ -2,6 +2,7 @@ import express, { type NextFunction, type Request, type Response } from "express
 import { format, isValid, kind, normalize } from "./cuit.js";
 import {
   db,
+  degradedOf,
   findSession,
   findTenantByCuit,
   findUserByEmail,
@@ -12,7 +13,10 @@ import {
   pushMail,
   seed,
   tenantById,
+  PERMISSIONS_BY_ROLE,
+  type Membership,
   type Session,
+  type Tenant,
   type User,
 } from "./store.js";
 
@@ -57,15 +61,32 @@ function requireSession(req: Request, res: Response, next: NextFunction): void {
   next();
 }
 
-function meDto(user: User, session: Session) {
-  const tenants = membershipsOf(user.id)
-    .map((m) => tenantById(m.tenantId))
-    .filter((t): t is NonNullable<typeof t> => Boolean(t));
-  const active = tenants.find((t) => t.id === session.activeTenantId) ?? null;
+function tenantBase(t: Tenant, m: Membership) {
   return {
-    user: { id: user.id, name: user.name, email: user.email },
-    activeTenant: active ? { id: active.id, type: active.type, name: active.name, cuit: format(active.cuit) } : null,
-    tenants: tenants.map((t) => ({ id: t.id, type: t.type, name: t.name })),
+    id: t.id,
+    name: t.name,
+    scope: t.scope,
+    type: t.type,
+    cuit: t.cuit ? format(t.cuit) : null,
+    role: m.role,
+  };
+}
+
+function meDto(user: User, session: Session) {
+  const rows = membershipsOf(user.id)
+    .map((m) => ({ m, t: tenantById(m.tenantId) }))
+    .filter((x): x is { m: Membership; t: Tenant } => Boolean(x.t));
+  const active = rows.find((x) => x.t.id === session.activeTenantId) ?? null;
+  return {
+    user: { id: user.id, name: user.name, email: user.email, mfa: user.mfa },
+    activeTenant: active
+      ? {
+          ...tenantBase(active.t, active.m),
+          permissions: PERMISSIONS_BY_ROLE[active.m.role],
+          degraded: degradedOf(active.t.id),
+        }
+      : null,
+    tenants: rows.map((x) => ({ ...tenantBase(x.t, x.m), hasDegraded: degradedOf(x.t.id).length > 0 })),
   };
 }
 
@@ -129,8 +150,8 @@ app.post("/api/auth/register", (req, res) => {
     return;
   }
 
-  const user: User = { id: newId(), email, password, name, confirmed: false, createdAt: now() };
-  const tenant = { id: newId(), type, name, cuit };
+  const user: User = { id: newId(), email, password, name, confirmed: false, mfa: false, createdAt: now() };
+  const tenant: Tenant = { id: newId(), scope: "tenant", type, name, cuit };
   db.users.push(user);
   db.tenants.push(tenant);
   db.memberships.push({ userId: user.id, tenantId: tenant.id, role: "owner" });
@@ -211,6 +232,23 @@ app.put("/api/me/tenant", requireSession, (req, res) => {
   }
   session.activeTenantId = tenantId;
   res.json(meDto(user, session));
+});
+
+app.get("/api/me/resumen", requireSession, (req, res) => {
+  const { user, session } = req as AuthedRequest;
+  const tenant = session.activeTenantId ? tenantById(session.activeTenantId) : undefined;
+  if (!tenant) {
+    fail(res, 404, "no_active_tenant", "Todavía no elegiste con quién operar.");
+    return;
+  }
+  if (tenant.scope === "platform") {
+    const p = db.platformResumen.get(tenant.id);
+    res.json({ scope: "platform", ...p });
+    return;
+  }
+  const t = db.tenantResumen.get(tenant.id) ?? { modules: [], capabilities: [] };
+  const whatsapp = db.whatsappLinks.get(`${user.id}:${tenant.id}`) ?? null;
+  res.json({ scope: "tenant", whatsapp, modules: t.modules, capabilities: t.capabilities });
 });
 
 // --- dev -------------------------------------------------------------------
