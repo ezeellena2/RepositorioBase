@@ -1301,6 +1301,29 @@ public sealed class SessionTests : TestBase
         return request;
     }
 
+    [Test]
+    [Category("LoginControls")]
+    public async Task A_failed_sign_in_that_repeatedly_loses_the_failure_update_stays_neutral_and_never_reveals_the_account()
+    {
+        using var harness = CreateProductionHarness();
+        var client = harness.Client;
+        const string host = "https://login-repeated-failure-loss.localhost";
+        var identityId = await SeedConfirmedUserAsync("repeated-loss@example.test", "Testing1234!");
+        var antiforgery = await GetAntiforgeryAsync(client, host);
+        TestApp.EnableConcurrentFailedAccess(times: 3);
+        using var request = LoginRequest(host, "repeated-loss@example.test", "wrong-password", antiforgery, "203.0.113.90");
+
+        var response = await client.SendAsync(request);
+
+        // The neutral response is the whole point: an unknown account answers 204, so an existing one must too.
+        response.StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        (await response.Content.ReadAsStringAsync()).ShouldBeEmpty();
+        response.Headers.TryGetValues("Set-Cookie", out _).ShouldBeFalse();
+        (await CountAsync<UserSession>()).ShouldBe(0);
+        (await ListAsync<AuditEvent>()).Count(item => item.EventType == "signin.failed").ShouldBe(1, "the attempt is still audited");
+        (await GetUserAsync(identityId)).AccessFailedCount.ShouldBeGreaterThanOrEqualTo(3, "every competing attempt was counted");
+    }
+
     private static ProductionHarness CreateProductionHarness(TimeProvider? timeProvider = null)
     {
         var factory = new WebApiFactory(

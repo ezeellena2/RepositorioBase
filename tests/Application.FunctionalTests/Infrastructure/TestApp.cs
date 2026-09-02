@@ -29,7 +29,7 @@ public static class TestApp
     private static SessionWriteStage? _concurrentSessionTouchStage;
     private static bool _concurrentSessionClear;
     private static SessionWriteStage? _concurrentSessionRevokeStage;
-    private static bool _concurrentFailedAccess;
+    private static int _concurrentFailedAccessCount;
     private static Guid? _optionalSessionIdentityId;
     private static string? _optionalSessionEmail;
     private static bool _optionalSessionIsInvalid;
@@ -90,9 +90,17 @@ public static class TestApp
 
     public static bool HasPendingConcurrentSessionRevoke => _concurrentSessionRevokeStage is not null;
 
-    public static bool HasPendingConcurrentFailedAccess => _concurrentFailedAccess;
+    public static bool HasPendingConcurrentFailedAccess => Volatile.Read(ref _concurrentFailedAccessCount) > 0;
 
-    public static bool ConsumeConcurrentFailedAccess() => Interlocked.Exchange(ref _concurrentFailedAccess, false);
+    public static bool ConsumeConcurrentFailedAccess()
+    {
+        while (true)
+        {
+            var remaining = Volatile.Read(ref _concurrentFailedAccessCount);
+            if (remaining <= 0) return false;
+            if (Interlocked.CompareExchange(ref _concurrentFailedAccessCount, remaining - 1, remaining) == remaining) return true;
+        }
+    }
 
     public static bool ConsumeConcurrentSessionRevoke(SessionWriteStage stage)
     {
@@ -161,7 +169,7 @@ public static class TestApp
 
     public static void EnableConcurrentSessionRevoke(SessionWriteStage stage) => _concurrentSessionRevokeStage = stage;
 
-    public static void EnableConcurrentFailedAccess() => _concurrentFailedAccess = true;
+    public static void EnableConcurrentFailedAccess(int times = 1) => Interlocked.Exchange(ref _concurrentFailedAccessCount, times);
 
     public static void ForceSessionRevokePersistenceFailure() => _forceSessionRevokePersistenceFailure = true;
 
@@ -247,7 +255,7 @@ public static class TestApp
         _concurrentSessionTouchStage = null;
         _concurrentSessionClear = false;
         _concurrentSessionRevokeStage = null;
-        _concurrentFailedAccess = false;
+        Interlocked.Exchange(ref _concurrentFailedAccessCount, 0);
         _optionalSessionIdentityId = null;
         _optionalSessionEmail = null;
         _optionalSessionIsInvalid = false;

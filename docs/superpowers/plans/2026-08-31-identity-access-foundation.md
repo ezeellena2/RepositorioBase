@@ -112,7 +112,7 @@ dotnet build "$env:TEMP\ca-identity-smoke\CleanArchitecture.slnx" -v minimal
 
 Expected: PASS.
 
-- [ ] **Step 4: REFACTOR and commit**
+- [x] **Step 4: REFACTOR and commit**
 
 ```bash
 git add .template.config Directory.Build.props src tests
@@ -271,14 +271,14 @@ Expected: PASS.
 - Create: `tests/Infrastructure.IntegrationTests/IdentityAccess/ConcurrencyTests.cs`
 - Create: `tests/Infrastructure.IntegrationTests/Data/MigrationUpgradeTests.cs`
 
-- [ ] **Step 1: Metadata RED**
+- [x] **Step 1: Metadata RED**
 
 Inspect EF metadata by entity/property name for core entities, unique normalized email/slug/CUIT, membership uniqueness, composite tenant FKs, explicit deletes, concurrency tokens (including `TodoItem`), `Guid?` audit actors, and append-only audit mapping.
 
 Run: `dotnet test tests/Infrastructure.IntegrationTests/Infrastructure.IntegrationTests.csproj --filter "IdentityAccessMappingTests|AuditPersistenceTests"`  
 Expected: FAIL at runtime because entities/constraints are absent and actor IDs are strings.
 
-- [ ] **Step 2: GREEN - complete Guid conversion and persistence**
+- [x] **Step 2: GREEN - complete Guid conversion and persistence**
 
 Use `IdentityUser<Guid>`, `IdentityRole<Guid>`, and `IdentityDbContext<ApplicationUser, IdentityRole<Guid>, Guid>`. Change `IUser.Id`, every `IIdentityService` input/result, behavior caller, `CurrentUser`, functional helper/mock, logger test, `BaseAuditableEntity.CreatedBy/LastModifiedBy`, interceptor assignment, and Todo audit assertion to `Guid`/`Guid?`. The Task 2 initializer must already contain no `RoleManager`; no integer-key or non-generic Identity role survives.
 
@@ -291,7 +291,7 @@ dotnet build CleanArchitecture.slnx -v minimal
 
 Expected: the scan returns no stale declarations; build PASS.
 
-- [ ] **Step 3: Create the second migration**
+- [x] **Step 3: Create the second migration**
 
 ```powershell
 dotnet ef migrations add IdentityAccess --project src/Infrastructure/Infrastructure.csproj --startup-project src/Web/Web.csproj --output-dir Data/Migrations
@@ -300,14 +300,14 @@ dotnet ef migrations script BaselinePostgreSql IdentityAccess --project src/Infr
 
 Review conversion of baseline string Identity/audit actor IDs to UUID using validated explicit casts, then safely recreate affected PK/FK/index constraints. This is the second migration, never “initial.”
 
-- [ ] **Step 4: RED/GREEN migration and audit proof**
+- [x] **Step 4: RED/GREEN migration and audit proof**
 
 `MigrationUpgradeTests` migrates (a) empty -> latest and (b) `BaselinePostgreSql` -> latest after inserting a Todo sentinel and parseable GUID-string Identity row. Assert sentinel preservation, UUID columns, core constraints, no pending migrations, and raw/tracked `AuditEvent` update/delete rejection. `ConcurrencyTests` uses two real PostgreSQL DbContexts reading one `TodoItem`; the first `UpdateTodoItemDetailCommand` write persists and the stale second conditional write fails.
 
 Run: `dotnet test tests/Infrastructure.IntegrationTests/Infrastructure.IntegrationTests.csproj --filter "IdentityAccessMappingTests|AuditPersistenceTests|ConcurrencyTests|MigrationUpgradeTests"`
 Expected initial RED: missing mapping/migration/append-only runtime assertions; after GREEN: both upgrade paths PASS.
 
-- [ ] **Step 5: REFACTOR and commit**
+- [x] **Step 5: REFACTOR and commit**
 
 ```bash
 git add src tests
@@ -340,13 +340,13 @@ git commit -m "feat: persist core identity access"
 - Create: `tests/Infrastructure.IntegrationTests/IdentityAccess/RolePermissionMappingTests.cs`
 - Create: `tests/Application.FunctionalTests/IdentityAccess/Auditing/RoleMembershipAuditTests.cs`
 
-- [ ] **Step 1: Shape RED, then shells**
+- [x] **Step 1: Shape RED, then shells**
 
 Reflect for all five domain types and evaluator.  
 Run: `dotnet test tests/Domain.UnitTests/Domain.UnitTests.csproj --filter IdentityAccessContractShapeTests`  
 Expected RED: runtime missing-type assertion. Add only shells; rerun PASS.
 
-- [ ] **Step 2: Behavioral RED**
+- [x] **Step 2: Behavioral RED**
 
 Test immutable `resource.action` codes, including distinct `platform.admins.read` and `platform.admins.manage`; system-role protection, normalized tenant-local names, allowed tenant types, one active membership as evaluator input, cross-tenant role/permission rejection, authorization-version increments, and exact `membership.changed`/`role.changed` audit events with correlation and allowlisted payload.
 
@@ -357,7 +357,7 @@ dotnet test tests/Application.FunctionalTests/Application.FunctionalTests.csproj
 
 Expected: FAIL at runtime on shell behavior/missing audit rows.
 
-- [ ] **Step 3: GREEN - persistence and incremental migration**
+- [x] **Step 3: GREEN - persistence and incremental migration**
 
 Implement catalog synchronization that seeds `platform.admins.read` separately from `platform.admins.manage`, evaluator over explicit identity/tenant inputs, composite membership-role/role-permission FKs, version updates, and transactional audits. Do not add `UserSession`.
 
@@ -370,7 +370,7 @@ dotnet test tests/Application.FunctionalTests/Application.FunctionalTests.csproj
 
 Expected: empty-to-latest and baseline-to-latest preserve the sentinel, report no pending migrations, and all focused tests PASS.
 
-- [ ] **Step 4: REFACTOR and commit**
+- [x] **Step 4: REFACTOR and commit**
 
 ```bash
 git add src tests
@@ -426,7 +426,7 @@ git commit -m "feat: add tenant authorization model"
 - Create: `tests/Application.FunctionalTests/IdentityAccess/Api/ProblemDetailsContractTests.cs`
 - Create: `tests/Application.FunctionalTests/IdentityAccess/Api/OpenApiContractTests.cs`
 
-- [ ] **Step 1: Compile-safe shape RED**
+- [x] **Step 1: Compile-safe shape RED**
 
 Reflect by name for `IPublicRequest`, `AuthorizationMetadataMissingException`, `ApplicationErrorCategory`, `ApplicationError`, generic `Result<T>`, and `AuthorizeAttribute.Permission/RequiresTenant`; check Web contract files by path without importing missing types. `ExistingApplicationRequestAuthorizationTests` asserts this current inventory; every row is `[Authorize]` with `RequiresTenant=false`, because its sole endpoint group calls `RequireAuthorization()` and current Todo entities have no `TenantId`. No existing request is public.
 
@@ -447,7 +447,7 @@ The same future-request guard classifies `RegisterPlatformInvitee`, `ConfirmPlat
 Run: `dotnet test tests/Application.UnitTests/Application.UnitTests.csproj --filter "RequestAuthorizationMetadataTests|ExistingApplicationRequestAuthorizationTests|ResultContractShapeTests"`
 Expected: FAIL at runtime with missing type/member/file assertions, never compilation failure.
 
-- [ ] **Step 2: Add shells and migrate current Result atomically**
+- [x] **Step 2: Add shells and migrate current Result atomically**
 
 Add the marker/exception/error/Result/Web shells. `ApplicationErrorCategory` contains only expected mappings (`Validation`, `Authentication`, `Authorization`, `NotFound`, `Conflict`, `RateLimited`); there is no `Unexpected` category. `ApplicationError` carries stable code/category, optional safe detail, and validation fields. `Result` and `Result<T>` carry success/value or one typed error.
 
@@ -460,7 +460,7 @@ dotnet test tests/Application.UnitTests/Application.UnitTests.csproj --filter "R
 
 Expected: build and shape tests PASS; behavior remains deliberately unimplemented.
 
-- [ ] **Step 3: Behavioral RED - authorization and Result semantics**
+- [x] **Step 3: Behavioral RED - authorization and Result semantics**
 
 Test unmarked rejection before handler, invalid dual marking, anonymous public request, `401` invalid identity, `403` missing permission, suspended tenant/membership, one-membership isolation, cross-tenant `404`, and header/route spoof rejection. The architecture guard scans every `IRequest` in Application so present and future requests have exactly one marker; the inventory test proves the nine existing request classifications. Use a fake validated `ICurrentTenant`; its persisted-session adapter belongs to IA-007.
 
@@ -475,7 +475,7 @@ dotnet test tests/Application.FunctionalTests/Application.FunctionalTests.csproj
 
 Expected: runtime assertions fail on shell Result behavior, authorization fall-through, or missing denial audit.
 
-- [ ] **Step 4: Behavioral RED - runtime and OpenAPI**
+- [x] **Step 4: Behavioral RED - runtime and OpenAPI**
 
 `ProblemDetailsContractTests`, through `FunctionalTestSetup.HttpClient`, cover semantic `200` DTO, existing `201` plus `Location`, empty `204`, and runtime `400/401/403/404/409/500`. Map the Task 4 stale `UpdateTodoItemDetailCommand` write to typed `Conflict` code `todo_item_concurrency_conflict`; its endpoint is RFC 9457 `409` with that stable code and opaque `traceId`. Every failure must be `application/problem+json` with matching status, stable `code`, opaque `traceId`, safe optional `detail`, validation-only field-indexed `errors`, and no stack, exception, provider, PII, or secret data. The generic `500` comes only from an unexpected exception. Assert neither internal Result fields nor universal `success/data/error` fields appear.
 
@@ -484,7 +484,7 @@ Expected: runtime assertions fail on shell Result behavior, authorization fall-t
 Run: `dotnet test tests/Application.FunctionalTests/Application.FunctionalTests.csproj --filter "ProblemDetailsContractTests|OpenApiContractTests"`  
 Expected: FAIL at runtime because current responses omit `code`/`traceId`, unexpected failures fall through, media types/metadata are incomplete, or internal/universal shapes leak.
 
-- [ ] **Step 5: GREEN - shared mapping, writer, and metadata**
+- [x] **Step 5: GREEN - shared mapping, writer, and metadata**
 
 Enforce exactly one of `IPublicRequest` or `[Authorize]`; remove role-name authorization; persist denial audit independently. Map expected Result categories to HTTP only in `ResultHttpExtensions`. `ApiProblemDetailsMapper` and `IProblemDetailsService` own RFC 9457 output. `ProblemDetailsExceptionHandler` uses them for known exceptions and a redacted generic `500`; `ApiAuthorizationMiddlewareResultHandler` uses the same writer for generated `401/403`. `ApiProblemMetadata` and `ApiExceptionOperationTransformer` publish endpoint-specific status/schema/header/code contracts. Never serialize Result.
 
@@ -496,7 +496,7 @@ dotnet build CleanArchitecture.slnx -v minimal
 
 Expected: PASS; `401/403` and safe `500` use the shared writer. IA-REQ-030 and IA-REQ-038 remain owned only by IA-005.
 
-- [ ] **Step 6: REFACTOR and commit**
+- [x] **Step 6: REFACTOR and commit**
 
 ```bash
 git add src tests
@@ -674,7 +674,7 @@ dotnet test tests/Application.FunctionalTests/Application.FunctionalTests.csproj
 
 Expected: all focused tests and both migration paths PASS; no pending migrations.
 
-- [ ] **Step 5: REFACTOR and commit**
+- [x] **Step 5: REFACTOR and commit**
 
 ```bash
 git add src tests

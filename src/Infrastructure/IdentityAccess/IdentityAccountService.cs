@@ -21,6 +21,8 @@ public sealed class IdentityAccountService(
     /// check, so the dominant cost of a sign-in does not reveal whether an account exists or its state (IA-REQ-019/029).
     /// Persisting a failed attempt still adds one database write for confirmed accounts.
     /// </summary>
+    private const int FailedAccessPersistenceAttempts = 3;
+
     private static readonly ApplicationUser DecoyUser = new();
     private static string? _decoyPasswordHash;
 
@@ -98,18 +100,22 @@ public sealed class IdentityAccountService(
     /// Mirrors <see cref="UserManager{TUser}.AccessFailedAsync"/> with the injected clock instead of the system
     /// clock: reaching the configured number of failures locks the account for the configured duration and starts
     /// a fresh failure window. The count and lockout end are persisted through the <see cref="UserManager{TUser}"/>.
+    /// When a parallel failed attempt wins the concurrency check, the committed row is reloaded and the attempt is
+    /// re-applied. Losing every retry is never surfaced: the response must stay identical to the one an unknown
+    /// account receives, or its status alone would reveal that the account exists (IA-REQ-019/029). The competing
+    /// writers that won have already counted their own attempts, so the lockout still advances.
     /// </summary>
     private async Task RecordFailedAccessAsync(ApplicationUser user, DateTimeOffset now)
     {
-        ApplyFailedAccess(user, now);
-        if ((await userManager.UpdateAsync(user)).Succeeded) return;
+        for (var attempt = 0; attempt < FailedAccessPersistenceAttempts; attempt++)
+        {
+            if (attempt > 0) await context.Entry(user).ReloadAsync();
+            ApplyFailedAccess(user, now);
+            if ((await userManager.UpdateAsync(user)).Succeeded) return;
+        }
 
-        // A parallel failed attempt won the concurrency check. Count this attempt on the committed row instead of
-        // losing it; a second loss is an unexpected persistence failure and must not look like a normal response.
+        // Leave the tracked entity on the committed values so nothing else in this request tries to flush it.
         await context.Entry(user).ReloadAsync();
-        ApplyFailedAccess(user, now);
-        var retry = await userManager.UpdateAsync(user);
-        if (!retry.Succeeded) throw new InvalidOperationException("identity_failed_access_persistence_failed");
     }
 
     private void ApplyFailedAccess(ApplicationUser user, DateTimeOffset now)
