@@ -24,6 +24,12 @@ public static class TestApp
     private static bool _forceUnexpectedFailure;
     private static bool _forceRegistrationRollbackAfterPersistedEffects;
     private static bool _forceConfirmationRollbackAfterPersistedEffects;
+    private static bool _forceSessionValidationConcurrentRevoke;
+    private static bool _forceSessionRevokePersistenceFailure;
+    private static SessionWriteStage? _concurrentSessionTouchStage;
+    private static bool _concurrentSessionClear;
+    private static SessionWriteStage? _concurrentSessionRevokeStage;
+    private static bool _concurrentFailedAccess;
     private static Guid? _optionalSessionIdentityId;
     private static string? _optionalSessionEmail;
     private static bool _optionalSessionIsInvalid;
@@ -31,6 +37,8 @@ public static class TestApp
     private static int _confirmationTokenHashInvocationCount;
     private static TaskCompletionSource? _confirmationSecretLockBarrier;
     private static int _confirmationSecretLockBarrierArrivals;
+    private static int _passwordVerificationCount;
+    private static readonly System.Collections.Concurrent.ConcurrentQueue<string> _capturedLogs = new();
 
     public static async Task<TResponse> SendAsync<TResponse>(IRequest<TResponse> request)
     {
@@ -70,6 +78,36 @@ public static class TestApp
 
     public static bool ConsumeForcedConfirmationRollbackAfterPersistedEffects() => Interlocked.Exchange(ref _forceConfirmationRollbackAfterPersistedEffects, false);
 
+    public static bool ConsumeSessionValidationConcurrentRevoke() => Interlocked.Exchange(ref _forceSessionValidationConcurrentRevoke, false);
+
+    public static bool ConsumeSessionRevokePersistenceFailure() => Interlocked.Exchange(ref _forceSessionRevokePersistenceFailure, false);
+
+    public static bool HasPendingConcurrentSessionTouch => _concurrentSessionTouchStage is not null;
+
+    public static bool HasPendingConcurrentSessionClear => _concurrentSessionClear;
+
+    public static bool ConsumeConcurrentSessionClear() => Interlocked.Exchange(ref _concurrentSessionClear, false);
+
+    public static bool HasPendingConcurrentSessionRevoke => _concurrentSessionRevokeStage is not null;
+
+    public static bool HasPendingConcurrentFailedAccess => _concurrentFailedAccess;
+
+    public static bool ConsumeConcurrentFailedAccess() => Interlocked.Exchange(ref _concurrentFailedAccess, false);
+
+    public static bool ConsumeConcurrentSessionRevoke(SessionWriteStage stage)
+    {
+        if (_concurrentSessionRevokeStage != stage) return false;
+        _concurrentSessionRevokeStage = null;
+        return true;
+    }
+
+    public static bool ConsumeConcurrentSessionTouch(SessionWriteStage stage)
+    {
+        if (_concurrentSessionTouchStage != stage) return false;
+        _concurrentSessionTouchStage = null;
+        return true;
+    }
+
     public static IValidatedOptionalSession GetValidatedOptionalSession() =>
         new TestValidatedOptionalSession(_optionalSessionIdentityId, _optionalSessionEmail, _optionalSessionIsInvalid);
 
@@ -82,6 +120,18 @@ public static class TestApp
     public static void RecordConfirmationTokenHash() => Interlocked.Increment(ref _confirmationTokenHashInvocationCount);
 
     public static void ResetConfirmationTokenHashInvocationCount() => Interlocked.Exchange(ref _confirmationTokenHashInvocationCount, 0);
+
+    public static int PasswordVerificationCount => Volatile.Read(ref _passwordVerificationCount);
+
+    public static void RecordPasswordVerification() => Interlocked.Increment(ref _passwordVerificationCount);
+
+    public static void ResetPasswordVerificationCount() => Interlocked.Exchange(ref _passwordVerificationCount, 0);
+
+    public static string[] CapturedLogs => _capturedLogs.ToArray();
+
+    public static void RecordLog(string entry) => _capturedLogs.Enqueue(entry);
+
+    public static void ResetCapturedLogs() => _capturedLogs.Clear();
 
     public static void EnableConfirmationSecretLockBarrier()
     {
@@ -102,6 +152,18 @@ public static class TestApp
     public static void SetHttpAuthorizationGranted(bool granted) => _httpAuthorizationGranted = granted;
 
     public static void SetApplicationPermissionGranted(bool granted) => _applicationPermissionGranted = granted;
+
+    public static void EnableSessionValidationConcurrentRevoke() => _forceSessionValidationConcurrentRevoke = true;
+
+    public static void EnableConcurrentSessionTouch(SessionWriteStage stage) => _concurrentSessionTouchStage = stage;
+
+    public static void EnableConcurrentSessionClear() => _concurrentSessionClear = true;
+
+    public static void EnableConcurrentSessionRevoke(SessionWriteStage stage) => _concurrentSessionRevokeStage = stage;
+
+    public static void EnableConcurrentFailedAccess() => _concurrentFailedAccess = true;
+
+    public static void ForceSessionRevokePersistenceFailure() => _forceSessionRevokePersistenceFailure = true;
 
     public static void ForceTodoItemConcurrencyConflict() => _forceTodoItemConcurrencyConflict = true;
 
@@ -180,12 +242,20 @@ public static class TestApp
         _forceUnexpectedFailure = false;
         _forceRegistrationRollbackAfterPersistedEffects = false;
         _forceConfirmationRollbackAfterPersistedEffects = false;
+        _forceSessionValidationConcurrentRevoke = false;
+        _forceSessionRevokePersistenceFailure = false;
+        _concurrentSessionTouchStage = null;
+        _concurrentSessionClear = false;
+        _concurrentSessionRevokeStage = null;
+        _concurrentFailedAccess = false;
         _optionalSessionIdentityId = null;
         _optionalSessionEmail = null;
         _optionalSessionIsInvalid = false;
         _confirmationSecretLockBarrier = null;
         Interlocked.Exchange(ref _confirmationSecretLockBarrierArrivals, 0);
         ResetConfirmationTokenHashInvocationCount();
+        ResetPasswordVerificationCount();
+        ResetCapturedLogs();
     }
 
     public static async Task<TEntity?> FindAsync<TEntity>(params object[] keyValues)
@@ -271,3 +341,6 @@ internal sealed class TestValidatedOptionalSession(Guid? identityId, string? ema
     public string? Email { get; } = email;
     public bool IsInvalid { get; } = isInvalid;
 }
+
+/// <summary>The persistence step of a session request that a test wants a competing writer to race against.</summary>
+public enum SessionWriteStage { Validation, Revocation, TenantSelection, TenantClearing }

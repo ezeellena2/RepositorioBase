@@ -29,6 +29,53 @@ public sealed class OpenApiContractTests : TestBase
     }
 
     [Test]
+    public async Task Identity_context_contracts_declare_exact_success_and_problem_code_arrays()
+    {
+        var response = await FunctionalTestSetup.HttpClient.GetAsync("/openapi/v1.json");
+        response.EnsureSuccessStatusCode();
+        var paths = JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement.GetProperty("paths");
+
+        var context = paths.GetProperty("/api/identity/context").GetProperty("get").GetProperty("responses");
+        context.GetProperty("200").GetProperty("content").TryGetProperty("application/json", out _).ShouldBeTrue();
+        AssertProblemCodes(context, "401", "authentication_required", "invalid_session");
+        AssertProblemCodes(context, "500", "internal_server_error");
+        foreach (var status in new[] { "400", "403", "404", "409", "429" }) context.TryGetProperty(status, out _).ShouldBeFalse();
+
+        var select = paths.GetProperty("/api/identity/context/tenant").GetProperty("put").GetProperty("responses");
+        select.GetProperty("200").GetProperty("content").TryGetProperty("application/json", out _).ShouldBeTrue();
+        AssertProblemCodes(select, "400", "antiforgery_validation_failed", "invalid_request");
+        AssertProblemCodes(select, "401", "authentication_required", "invalid_session");
+        AssertProblemCodes(select, "403", "permission_denied");
+        AssertProblemCodes(select, "500", "internal_server_error");
+        foreach (var status in new[] { "404", "409", "429" }) select.TryGetProperty(status, out _).ShouldBeFalse();
+    }
+
+    [Test]
+    public async Task Identity_session_contracts_declare_bodyless_success_and_exact_problem_codes()
+    {
+        var response = await FunctionalTestSetup.HttpClient.GetAsync("/openapi/v1.json");
+        response.EnsureSuccessStatusCode();
+        var paths = JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement.GetProperty("paths");
+
+        var create = paths.GetProperty("/api/identity/sessions").GetProperty("post").GetProperty("responses");
+        create.TryGetProperty("204", out _).ShouldBeTrue();
+        create.GetProperty("204").TryGetProperty("content", out _).ShouldBeFalse();
+        AssertProblemCodes(create, "400", "antiforgery_validation_failed", "invalid_request");
+        AssertProblemCodes(create, "429", "rate_limit_exceeded");
+        create.GetProperty("429").GetProperty("headers").TryGetProperty("Retry-After", out _).ShouldBeTrue("the login 429 must advertise Retry-After");
+        AssertProblemCodes(create, "500", "internal_server_error");
+        foreach (var status in new[] { "401", "403", "404", "409" }) create.TryGetProperty(status, out _).ShouldBeFalse($"POST sessions must not advertise {status}.");
+
+        var revoke = paths.GetProperty("/api/identity/sessions/current").GetProperty("delete").GetProperty("responses");
+        revoke.TryGetProperty("204", out _).ShouldBeTrue();
+        revoke.GetProperty("204").TryGetProperty("content", out _).ShouldBeFalse();
+        AssertProblemCodes(revoke, "400", "antiforgery_validation_failed");
+        AssertProblemCodes(revoke, "401", "authentication_required", "invalid_session");
+        AssertProblemCodes(revoke, "500", "internal_server_error");
+        foreach (var status in new[] { "403", "404", "409", "429" }) revoke.TryGetProperty(status, out _).ShouldBeFalse($"DELETE sessions/current must not advertise {status}.");
+    }
+
+    [Test]
     public async Task Todo_item_detail_update_declares_204_and_problem_details_contracts()
     {
         var response = await FunctionalTestSetup.HttpClient.GetAsync("/openapi/v1.json");

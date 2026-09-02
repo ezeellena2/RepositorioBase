@@ -1,6 +1,6 @@
 namespace CleanArchitecture.Application.IdentityAccess.Sessions;
 
-/// <summary>Trusted optional session input. Production supplies no session until Task 8.</summary>
+/// <summary>Optional trusted session input for public flows; only a validated persisted session is ever exposed.</summary>
 public interface IValidatedOptionalSession
 {
     Guid? IdentityId { get; }

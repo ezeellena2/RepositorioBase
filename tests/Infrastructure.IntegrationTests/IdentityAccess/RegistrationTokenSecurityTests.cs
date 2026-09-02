@@ -34,10 +34,10 @@ public sealed class RegistrationTokenSecurityTests
     }
 
     [Test]
-    public void Supplied_production_identity_cookie_fails_closed_until_session_validation_exists()
+    public void Supplied_unvalidated_task8_authentication_cookie_fails_closed()
     {
         var context = new DefaultHttpContext();
-        context.Request.Headers.Cookie = ".AspNetCore.Identity.Application=untrusted";
+        context.Request.Headers.Cookie = "__Host-ia-auth=untrusted";
         var accessor = new HttpContextAccessor { HttpContext = context };
 
         var session = new ValidatedOptionalSession(accessor);

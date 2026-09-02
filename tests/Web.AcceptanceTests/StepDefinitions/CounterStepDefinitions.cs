@@ -3,20 +3,26 @@ namespace CleanArchitecture.Web.AcceptanceTests.StepDefinitions;
 [Binding]
 public sealed class CounterStepDefinitions(CounterPage counterPage)
 {
+    private static IBrowserContext? featureContext;
+
     [BeforeFeature("Counter")]
     public static async Task BeforeCounterFeature(IObjectContainer container)
     {
         var context = await PlaywrightSetup.Browser.NewContextAsync();
+        featureContext = context;
         var page = await context.NewPageAsync();
         container.RegisterInstanceAs(context);
         container.RegisterInstanceAs(new CounterPage(page));
     }
 
-    [AfterFeature]
-    public static async Task AfterCounterFeature(IObjectContainer container)
+    [AfterFeature("Counter")]
+    public static async Task AfterCounterFeature()
     {
-        var context = container.Resolve<IBrowserContext>();
-        await context.DisposeAsync();
+        if (featureContext is not null)
+        {
+            await featureContext.DisposeAsync();
+            featureContext = null;
+        }
     }
 
     [Given("a user visits the counter page")]

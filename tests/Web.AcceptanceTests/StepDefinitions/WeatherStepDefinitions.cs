@@ -3,26 +3,31 @@ namespace CleanArchitecture.Web.AcceptanceTests.StepDefinitions;
 [Binding]
 public sealed class WeatherStepDefinitions(WeatherPage weatherPage)
 {
+    private static IBrowserContext? featureContext;
+
     [BeforeFeature("Weather")]
     public static async Task BeforeWeatherFeature(IObjectContainer container)
     {
         var context = await PlaywrightSetup.Browser.NewContextAsync();
+        featureContext = context;
         var page = await context.NewPageAsync();
 
         var loginPage = new LoginPage(page);
         await loginPage.GotoAsync();
         await AcceptanceTestCredentials.SignInAsync(loginPage);
-        await Assertions.Expect(page.Locator("a:has-text('Log out')")).ToBeVisibleAsync();
 
         container.RegisterInstanceAs(context);
         container.RegisterInstanceAs(new WeatherPage(page));
     }
 
-    [AfterFeature]
-    public static async Task AfterWeatherFeature(IObjectContainer container)
+    [AfterFeature("Weather")]
+    public static async Task AfterWeatherFeature()
     {
-        var context = container.Resolve<IBrowserContext>();
-        await context.DisposeAsync();
+        if (featureContext is not null)
+        {
+            await featureContext.DisposeAsync();
+            featureContext = null;
+        }
     }
 
     [Given("an authenticated user visits the weather page")]

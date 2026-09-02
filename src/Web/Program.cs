@@ -1,3 +1,4 @@
+using CleanArchitecture.Web.Infrastructure.Identity;
 using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -25,6 +26,9 @@ app.MapOpenApi();
 app.MapScalarApiReference();
 
 app.UseExceptionHandler(options => { });
+// Login partition keys must exist before the limiter runs; only POST /api/identity/sessions carries a policy.
+app.UseLoginRateLimitKeys();
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 

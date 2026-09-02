@@ -1,31 +1,54 @@
 import { createContext, useContext, useState, useEffect } from 'react';
-import { UsersClient, LoginRequest, RegisterRequest } from '../../web-api-client';
+import { IdentityClient } from '../../web-api-client';
 
 const AuthContext = createContext(null);
 
-const client = new UsersClient();
+const client = new IdentityClient();
+
+async function antiforgeryToken() {
+  const response = await fetch('/api/identity/antiforgery', { credentials: 'same-origin' });
+  if (!response.ok) throw new Error('Unable to establish the session request.');
+  return (await response.json()).requestToken;
+}
 
 export function AuthProvider({ children }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    client.infoGET()
+    client.context()
       .then(() => setIsAuthenticated(true))
       .catch(() => setIsAuthenticated(false))
       .finally(() => setIsLoading(false));
   }, []);
 
-  const login = (email, password) =>
-    client.login(true, undefined, new LoginRequest({ email, password }))
-      .then(() => setIsAuthenticated(true));
+  const login = async (email, password) => {
+    const requestToken = await antiforgeryToken();
+    const response = await fetch('/api/identity/sessions', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': requestToken },
+      body: JSON.stringify({ email, password }),
+    });
+    if (response.status !== 204) throw new Error('Unable to sign in.');
+    await client.context();
+    setIsAuthenticated(true);
+  };
 
-  const register = (email, password) =>
-    client.register(new RegisterRequest({ email, password }));
+  const register = async () => {
+    throw new Error('Organization registration is not available from this client yet.');
+  };
 
-  const logout = () =>
-    client.logout({})
-      .then(() => setIsAuthenticated(false));
+  const logout = async () => {
+    const requestToken = await antiforgeryToken();
+    const response = await fetch('/api/identity/sessions/current', {
+      method: 'DELETE',
+      credentials: 'same-origin',
+      headers: { 'X-CSRF-TOKEN': requestToken },
+    });
+    if (response.status !== 204) throw new Error('Unable to sign out.');
+    setIsAuthenticated(false);
+  };
 
   return (
     <AuthContext.Provider value={{ isAuthenticated, isLoading, login, register, logout }}>

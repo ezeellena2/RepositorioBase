@@ -17,6 +17,7 @@ public sealed class MigrationUpgradeTests
 {
     private const string BaselineMigration = "20260831183429_BaselinePostgreSql";
     private const string RegistrationMessagingPredecessor = "20260901024500_AuthorizationDenialAudit";
+    private const string UserSessionsPredecessor = "20260901050000_RegistrationMessaging";
 
     [Test]
     public async Task TenantAuthorization_empty_database_upgrades_to_latest_without_pending_migrations()
@@ -130,6 +131,58 @@ public sealed class MigrationUpgradeTests
             }
 
             await AssertTaskSevenSchemaIsAbsent(connectionString!);
+            await AssertPreexistingSentinelsAndAuditTrigger(connectionString!, userId, todoId);
+
+            await using var reupgradedContext = new ApplicationDbContext(options);
+            await reupgradedContext.Database.GetService<IMigrator>().MigrateAsync();
+            (await reupgradedContext.Database.GetPendingMigrationsAsync()).ShouldBeEmpty();
+        }
+        finally
+        {
+            if (connectionString is not null)
+            {
+                await DropDatabase(databaseName, connectionString);
+            }
+        }
+    }
+
+    [Test]
+    public async Task UserSessions_round_trip_preserves_preexisting_sentinels_and_removes_only_session_schema()
+    {
+        var databaseName = $"user_sessions_round_trip_{Guid.NewGuid():N}";
+        string? connectionString = null;
+
+        try
+        {
+            using (var scope = TestServices.CreateScope())
+            {
+                var sharedContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                var sharedConnectionString = sharedContext.Database.GetConnectionString() ?? throw new InvalidOperationException("The test PostgreSQL connection string is required.");
+                connectionString = new NpgsqlConnectionStringBuilder(sharedConnectionString) { Database = databaseName }.ConnectionString;
+                await CreateDatabase(databaseName, sharedConnectionString);
+            }
+
+            var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseNpgsql(connectionString).Options;
+            var userId = Guid.NewGuid();
+            var roleId = Guid.NewGuid();
+            var todoId = await SeedPreRegistrationMessagingData(options, userId, roleId);
+
+            await using (var upgradedContext = new ApplicationDbContext(options))
+            {
+                await upgradedContext.Database.GetService<IMigrator>().MigrateAsync();
+                (await upgradedContext.Users.SingleAsync(user => user.Id == userId)).NormalizedEmail.ShouldBe("ROUNDTRIP@EXAMPLE.TEST");
+                (await upgradedContext.TodoItems.SingleAsync(todo => todo.Id == todoId)).CreatedBy.ShouldBe(userId);
+            }
+
+            await AssertUserSessionSchema(connectionString!);
+            await AssertAuditTriggerRejectsMutation(connectionString!);
+
+            await using (var downgradedContext = new ApplicationDbContext(options))
+            {
+                await downgradedContext.Database.GetService<IMigrator>().MigrateAsync(UserSessionsPredecessor);
+            }
+
+            await AssertUserSessionSchemaIsAbsent(connectionString!);
             await AssertPreexistingSentinelsAndAuditTrigger(connectionString!, userId, todoId);
 
             await using var reupgradedContext = new ApplicationDbContext(options);
@@ -271,6 +324,39 @@ public sealed class MigrationUpgradeTests
         (await Scalar<bool>(connection, "SELECT to_regclass('public.outbox_messages') IS NULL;")).ShouldBeTrue();
         (await Scalar<bool>(connection, "SELECT to_regclass('public.outbox_secrets') IS NULL;")).ShouldBeTrue();
         (await Scalar<bool>(connection, "SELECT to_regclass('public.registration_submissions') IS NULL;")).ShouldBeTrue();
+    }
+
+    private static async Task AssertUserSessionSchemaIsAbsent(string connectionString)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+
+        (await Scalar<bool>(connection, "SELECT to_regclass('public.\"UserSessions\"') IS NULL;")).ShouldBeTrue();
+    }
+
+    private static async Task AssertUserSessionSchema(string connectionString)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+
+        (await Scalar<bool>(connection, "SELECT to_regclass('public.\"UserSessions\"') IS NOT NULL;")).ShouldBeTrue();
+        (await Scalar<bool>(connection, "SELECT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CK_UserSessions_Lifecycle' AND contype = 'c');")).ShouldBeTrue();
+        (await Scalar<bool>(connection, "SELECT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'FK_UserSessions_AspNetUsers_IdentityId' AND contype = 'f');")).ShouldBeTrue();
+        (await Scalar<bool>(connection, "SELECT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'FK_UserSessions_Tenants_ActiveTenantId' AND contype = 'f');")).ShouldBeTrue();
+        foreach (var index in new[] { "IX_UserSessions_IdentityId", "IX_UserSessions_IdentityId_RevokedAt_AbsoluteExpiresAt" })
+        {
+            (await Scalar<bool>(connection, $"SELECT EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND indexname = '{index}');")).ShouldBeTrue();
+        }
+        await AssertUserSessionChronologyConstraint(connection);
+    }
+
+    private static async Task AssertUserSessionChronologyConstraint(NpgsqlConnection connection)
+    {
+        var userId = Guid.NewGuid();
+        await Execute(connection, $"INSERT INTO \"AspNetUsers\" (\"Id\", \"UserName\", \"NormalizedUserName\", \"Email\", \"NormalizedEmail\", \"EmailConfirmed\", \"PhoneNumberConfirmed\", \"TwoFactorEnabled\", \"LockoutEnabled\", \"AccessFailedCount\") VALUES ('{userId}', 'session-chronology@example.test', 'SESSION-CHRONOLOGY@EXAMPLE.TEST', 'session-chronology@example.test', 'SESSION-CHRONOLOGY@EXAMPLE.TEST', FALSE, FALSE, FALSE, FALSE, 0);");
+        var createdAt = DateTimeOffset.UtcNow;
+        var invalid = await Should.ThrowAsync<PostgresException>(() => Execute(connection, $"INSERT INTO \"UserSessions\" (\"Id\", \"IdentityId\", \"CreatedAt\", \"LastSeenAt\", \"IdleExpiresAt\", \"AbsoluteExpiresAt\", \"RevokedAt\", \"Version\") VALUES ('{Guid.NewGuid()}', '{userId}', '{createdAt:O}', '{createdAt:O}', '{createdAt.AddMinutes(1):O}', '{createdAt.AddHours(1):O}', '{createdAt.AddMicroseconds(-1):O}', 1);"));
+        invalid.SqlState.ShouldBe(PostgresErrorCodes.CheckViolation);
     }
 
     private static async Task AssertPreexistingSentinelsAndAuditTrigger(string connectionString, Guid userId, int todoId)

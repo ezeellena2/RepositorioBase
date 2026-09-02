@@ -106,6 +106,27 @@ public sealed class AuditEvent : BaseEntity<Guid>
             ["outcome"] = outcome
         });
 
+    public static AuditEvent CreateSessionEvent(Guid? actorId, Guid? sessionId, string eventType, string correlationId, string outcome)
+    {
+        if (actorId == Guid.Empty || sessionId == Guid.Empty || string.IsNullOrWhiteSpace(eventType) || string.IsNullOrWhiteSpace(correlationId) || !IsStableMachineIdentifier(eventType) || !IsStableMachineIdentifier(outcome))
+            throw new ArgumentException("Session audit evidence is invalid.");
+
+        return new AuditEvent
+        {
+            Id = Guid.NewGuid(),
+            ActorId = actorId,
+            SessionId = sessionId,
+            OccurredAt = DateTimeOffset.UtcNow,
+            EventType = eventType,
+            CorrelationId = correlationId,
+            Metadata = new ReadOnlyDictionary<string, string>(new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["code"] = eventType,
+                ["outcome"] = outcome
+            })
+        };
+    }
+
     public static AuditEvent CreateRoleChanged(TenantId tenantId, Guid? actorId, string correlationId, string outcome = "changed") =>
         Create(tenantId, actorId, "role.changed", correlationId, new Dictionary<string, string>(StringComparer.Ordinal)
         {

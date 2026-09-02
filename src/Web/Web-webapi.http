@@ -1,13 +1,23 @@
 ﻿# For more info on HTTP files go to https://aka.ms/vs/httpfile
 @Web_HostAddress = https://localhost:5001
 
-# Supply credentials for an existing account. The template does not seed a default administrator.
+# Supply credentials for an existing confirmed account. The template does not seed a default administrator.
 @Email=<ExistingAccountEmail>
 @Password=<ExistingAccountPassword>
-@BearerToken=<YourToken>
+@AntiforgeryToken=<RequestTokenFromBootstrap>
+@AntiforgeryCookie=<HostXsrfCookieValue>
+@SessionCookie=<HostSessionCookieValue>
 
-# POST Users Register
-POST {{Web_HostAddress}}/api/Users/Register
+# GET antiforgery bootstrap. Copy the JSON requestToken and __Host-XSRF-TOKEN response cookie.
+GET {{Web_HostAddress}}/api/identity/antiforgery
+
+###
+
+# POST session. Use the bootstrap request token/cookie and the exact HTTPS origin.
+POST {{Web_HostAddress}}/api/identity/sessions
+Origin: {{Web_HostAddress}}
+X-CSRF-TOKEN: {{AntiforgeryToken}}
+Cookie: __Host-XSRF-TOKEN={{AntiforgeryCookie}}
 Content-Type: application/json
 
 {
@@ -17,43 +27,21 @@ Content-Type: application/json
 
 ###
 
-# POST Users Login
-POST {{Web_HostAddress}}/api/Users/Login
-Content-Type: application/json
-
-{
-  "email": "{{Email}}",
-  "password": "{{Password}}"
-}
-
-###
-
-# POST Users Refresh
-POST {{Web_HostAddress}}/api/Users/Refresh
-Authorization: Bearer {{BearerToken}}
-Content-Type: application/json
-
-{
-  "refreshToken": ""
-}
+# GET current identity context after copying the issued __Host-ia-auth cookie.
+GET {{Web_HostAddress}}/api/identity/context
+Cookie: __Host-ia-auth={{SessionCookie}}
 
 ###
 
 # GET WeatherForecast
 GET {{Web_HostAddress}}/api/WeatherForecasts
-Authorization: Bearer {{BearerToken}}
-
-###
-
-# GET TodoLists
-GET {{Web_HostAddress}}/api/TodoLists
-Authorization: Bearer {{BearerToken}}
+Cookie: __Host-ia-auth={{SessionCookie}}
 
 ###
 
 # POST TodoLists
 POST {{Web_HostAddress}}/api/TodoLists
-Authorization: Bearer {{BearerToken}}
+Cookie: __Host-ia-auth={{SessionCookie}}
 Content-Type: application/json
 
 // CreateTodoListCommand
@@ -65,7 +53,7 @@ Content-Type: application/json
 
 # PUT TodoLists
 PUT {{Web_HostAddress}}/api/TodoLists/1
-Authorization: Bearer {{BearerToken}}
+Cookie: __Host-ia-auth={{SessionCookie}}
 Content-Type: application/json
 
 // UpdateTodoListCommand
@@ -78,7 +66,7 @@ Content-Type: application/json
 
 # DELETE TodoLists
 DELETE {{Web_HostAddress}}/api/TodoLists/1
-Authorization: Bearer {{BearerToken}}
+Cookie: __Host-ia-auth={{SessionCookie}}
 
 ###
 
@@ -87,13 +75,13 @@ Authorization: Bearer {{BearerToken}}
 @PageSize = 10
 GET {{Web_HostAddress}}/api/TodoItems?ListId=1&PageNumber={{PageNumber}}&PageSize={{PageSize}}
 
-Authorization: Bearer {{BearerToken}}
+Cookie: __Host-ia-auth={{SessionCookie}}
 
 ###
 
 # POST TodoItems
 POST {{Web_HostAddress}}/api/TodoItems
-Authorization: Bearer {{BearerToken}}
+Cookie: __Host-ia-auth={{SessionCookie}}
 Content-Type: application/json
 
 // CreateTodoItemCommand
@@ -106,7 +94,7 @@ Content-Type: application/json
 
 #PUT TodoItems UpdateItemDetails
 PUT {{Web_HostAddress}}/api/TodoItems/UpdateItemDetails?Id=1
-Authorization: Bearer {{BearerToken}}
+Cookie: __Host-ia-auth={{SessionCookie}}
 Content-Type: application/json
 
 // UpdateTodoItemDetailCommand
@@ -121,7 +109,7 @@ Content-Type: application/json
 
 # PUT TodoItems
 PUT {{Web_HostAddress}}/api/TodoItems/1
-Authorization: Bearer {{BearerToken}}
+Cookie: __Host-ia-auth={{SessionCookie}}
 Content-Type: application/json
 
 // UpdateTodoItemCommand
@@ -135,6 +123,6 @@ Content-Type: application/json
 
 # DELETE TodoItem
 DELETE {{Web_HostAddress}}/api/TodoItems/1
-Authorization: Bearer {{BearerToken}}
+Cookie: __Host-ia-auth={{SessionCookie}}
 
 ###

@@ -10,6 +10,7 @@ using CleanArchitecture.Application.IdentityAccess.Organizations.RegisterOrganiz
 using CleanArchitecture.Application.IdentityAccess.Organizations.ConfirmEmail;
 using CleanArchitecture.Application.IdentityAccess.Sessions;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
@@ -71,9 +72,27 @@ public static class DependencyInjection
             .AddRoles<IdentityRole<Guid>>()
             .AddEntityFrameworkStores<ApplicationDbContext>()
             .AddSignInManager()
-            .AddDefaultTokenProviders()
-            .AddApiEndpoints();
+            .AddDefaultTokenProviders();
+
+        builder.Services.ConfigureApplicationCookie(options =>
+        {
+            options.Cookie.Name = SessionCookieEvents.CookieName;
+            options.Cookie.Path = "/";
+            options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+            options.Cookie.HttpOnly = true;
+            options.Cookie.SameSite = SameSiteMode.Lax;
+            // The persisted session is the authority for idle and absolute expiry. The ticket is a browser session
+            // cookie (no remember-me) that never slides on its own and deliberately outlives the 12-hour absolute
+            // lifetime, so expiry is always decided by the persisted row (401 invalid_session), never by the ticket.
+            options.ExpireTimeSpan = TimeSpan.FromDays(1);
+            options.SlidingExpiration = false;
+            // EventsType makes the handler resolve SessionCookieEvents from DI; it validates the persisted session
+            // and turns login/access-denied redirects into 401/403 API responses.
+            options.EventsType = typeof(SessionCookieEvents);
+        });
 #endif
+
+        builder.Services.Configure<IdentityOptions>(ConfigureIdentityOptions);
 
         builder.Services.AddSingleton(TimeProvider.System);
         builder.Services.AddTransient<IIdentityService, IdentityService>();
@@ -85,9 +104,31 @@ public static class DependencyInjection
         builder.Services.AddSingleton<ITokenHasher, VersionedTokenHasher>();
         builder.Services.AddSingleton<IOutboxSecretWriter, OutboxSecretWriter>();
         builder.Services.AddScoped<IValidatedOptionalSession, ValidatedOptionalSession>();
+        builder.Services.AddScoped<ICurrentSession, CurrentSession>();
+        builder.Services.AddScoped<SessionCookieEvents>();
         builder.Services.AddDataProtection();
         builder.Services.AddScoped<IPermissionEvaluator, PermissionEvaluator>();
         builder.Services.AddScoped<ICurrentTenant, CurrentTenant>();
         builder.Services.AddScoped<ISecurityDenialAuditWriter, SecurityDenialAuditWriter>();
+    }
+
+    /// <summary>
+    /// Exact credential policy (IA-REQ-019/020): strong passwords, confirmed email before any session, and a
+    /// five-failure 15-minute lockout that <see cref="IdentityAccountService"/> enforces with the injected clock.
+    /// </summary>
+    private static void ConfigureIdentityOptions(IdentityOptions options)
+    {
+        options.Password.RequiredLength = 12;
+        options.Password.RequireUppercase = true;
+        options.Password.RequireLowercase = true;
+        options.Password.RequireDigit = true;
+        options.Password.RequireNonAlphanumeric = true;
+        options.Password.RequiredUniqueChars = 4;
+
+        options.SignIn.RequireConfirmedEmail = true;
+
+        options.Lockout.AllowedForNewUsers = true;
+        options.Lockout.MaxFailedAccessAttempts = 5;
+        options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
     }
 }

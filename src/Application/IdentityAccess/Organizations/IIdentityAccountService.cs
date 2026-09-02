@@ -9,6 +9,10 @@ public interface IIdentityAccountService
 {
     Task<IdentityAccount?> FindByEmailAsync(string normalizedEmail, CancellationToken cancellationToken);
 
+    Task<IdentityAccount?> FindByIdAsync(Guid identityId, CancellationToken cancellationToken);
+
+    Task<IdentityAccount?> ValidateCredentialsAsync(string normalizedEmail, string password, CancellationToken cancellationToken);
+
     Task<IdentityAccountValidationResult> ValidatePendingRegistrationAsync(string normalizedEmail, string password, CancellationToken cancellationToken);
 
     Task<IdentityAccountCreationResult> CreatePendingAsync(string normalizedEmail, string password, CancellationToken cancellationToken);

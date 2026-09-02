@@ -3,24 +3,34 @@ namespace CleanArchitecture.Web.AcceptanceTests.StepDefinitions;
 [Binding]
 public sealed class LoginStepDefinitions(LoginPage loginPage)
 {
+    private static IBrowserContext? featureContext;
+
     [BeforeFeature("Login")]
     public static async Task BeforeLoginFeature(IObjectContainer container)
     {
         var context = await PlaywrightSetup.Browser.NewContextAsync();
+        featureContext = context;
         var page = await context.NewPageAsync();
         container.RegisterInstanceAs(context);
         container.RegisterInstanceAs(new LoginPage(page));
     }
 
-    [AfterFeature]
-    public static async Task AfterLoginFeature(IObjectContainer container)
+    [AfterFeature("Login")]
+    public static async Task AfterLoginFeature()
     {
-        var context = container.Resolve<IBrowserContext>();
-        await context.DisposeAsync();
+        if (featureContext is not null)
+        {
+            await featureContext.DisposeAsync();
+            featureContext = null;
+        }
     }
 
     [Given("a logged out user")]
-    public Task GivenALoggedOutUser() => loginPage.GotoAsync();
+    public async Task GivenALoggedOutUser()
+    {
+        await loginPage.ClearAuthenticationAsync();
+        await loginPage.GotoAsync();
+    }
 
     [When("the user logs in with valid credentials")]
     public async Task TheUserLogsInWithValidCredentials()
@@ -29,22 +39,14 @@ public sealed class LoginStepDefinitions(LoginPage loginPage)
     }
 
     [Then("they log in successfully")]
-    public async Task TheyLogInSuccessfully()
-    {
-        var logoutButtonText = await loginPage.LogoutButtonText();
-
-        logoutButtonText.ShouldNotBeNull();
-        logoutButtonText.ShouldBe("Log out");
-    }
+    public Task TheyLogInSuccessfully() => AcceptanceTestCredentials.AssertAuthenticatedAsync(loginPage);
 
     [When("the user logs in with invalid credentials")]
-    public async Task TheUserLogsInWithInvalidCredentials()
-    {
-        await loginPage.SetEmail("hacker@localhost");
-        await loginPage.SetPassword("l337hax!");
-        await loginPage.ClickLogin();
-    }
+    public Task TheUserLogsInWithInvalidCredentials() => AcceptanceTestCredentials.SignInWithInvalidCredentialsAsync(loginPage);
 
-    [Then("an error is displayed")]
-    public Task AnErrorIsDisplayed() => loginPage.AssertErrorVisible();
+    [Then("no authenticated session is established")]
+    public async Task NoAuthenticatedSessionIsEstablished()
+    {
+        (await loginPage.HasAuthenticationCookieAsync()).ShouldBeFalse();
+    }
 }

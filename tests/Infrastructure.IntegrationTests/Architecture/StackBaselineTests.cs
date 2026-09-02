@@ -86,7 +86,7 @@ public sealed class StackBaselineTests
     }
 
     [Test]
-    public void Acceptance_harness_provisions_an_in_memory_account_through_the_public_registration_endpoint()
+    public void Acceptance_harness_provisions_an_in_memory_confirmed_account_and_signs_in_through_the_identity_session_endpoint()
     {
         var setup = File.ReadAllText(GetRepositoryPath("tests/Web.AcceptanceTests/AspireSetup.cs"));
         var credentials = File.ReadAllText(GetRepositoryPath("tests/Web.AcceptanceTests/AcceptanceTestCredentials.cs"));
@@ -94,7 +94,10 @@ public sealed class StackBaselineTests
         var weatherSteps = File.ReadAllText(GetRepositoryPath("tests/Web.AcceptanceTests/StepDefinitions/WeatherStepDefinitions.cs"));
 
         setup.ShouldContain("AcceptanceTestCredentials.CreateAsync(App, cancellationToken)");
-        credentials.ShouldContain("/api/Users/register");
+        credentials.ShouldContain("/api/identity/antiforgery");
+        credentials.ShouldContain("/api/identity/sessions");
+        credentials.ShouldContain("EmailConfirmed");
+        credentials.ShouldNotContain("/api/Users/");
         credentials.ShouldNotContain("Environment.GetEnvironmentVariable");
         credentials.ShouldNotContain("CLEANARCHITECTURE_ACCEPTANCE_TEST_");
         credentials.ShouldNotContain("administrator@localhost");

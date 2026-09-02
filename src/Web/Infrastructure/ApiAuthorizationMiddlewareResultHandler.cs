@@ -16,7 +16,8 @@ public sealed class ApiAuthorizationMiddlewareResultHandler : IAuthorizationMidd
         if (authorizeResult.Challenged)
         {
             await ApiAuthenticationChallenge.ChallengeAsync(context);
-            await WriteDeniedAsync(context, new ApplicationError("authentication_required", ApplicationErrorCategory.Authentication), "identity_missing_or_invalid");
+            var invalidSession = context.Items.ContainsKey(CleanArchitecture.Infrastructure.Identity.SessionCookieEvents.InvalidSessionKey);
+            await WriteDeniedAsync(context, new ApplicationError(invalidSession ? "invalid_session" : "authentication_required", ApplicationErrorCategory.Authentication), invalidSession ? "session_invalid" : "identity_missing_or_invalid");
             return;
         }
 

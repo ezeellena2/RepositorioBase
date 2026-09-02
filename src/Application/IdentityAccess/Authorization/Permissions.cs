@@ -15,6 +15,9 @@ public static class Permissions
     public const string RolesManage = "roles.manage";
     public const string TenantRead = "tenant.read";
     public const string TenantManage = "tenant.manage";
+    public const string IdentitySessionManage = "identity.sessions.manage";
+    public const string IdentityContextRead = "identity.context.read";
+    public const string IdentityContextSelect = "identity.context.select";
     public const string PlatformAdminsRead = "platform.admins.read";
     public const string PlatformAdminsManage = "platform.admins.manage";
 
@@ -35,7 +38,10 @@ public static class Permissions
     {
         TodosRead,
         TodosWrite,
-        WeatherRead
+        WeatherRead,
+        IdentitySessionManage,
+        IdentityContextRead,
+        IdentityContextSelect
     };
 
 }

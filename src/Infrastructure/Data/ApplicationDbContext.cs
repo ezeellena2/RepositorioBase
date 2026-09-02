@@ -6,6 +6,7 @@ using CleanArchitecture.Domain.IdentityAccess.Authorization;
 using CleanArchitecture.Domain.IdentityAccess.Memberships;
 using CleanArchitecture.Domain.IdentityAccess.Organizations;
 using CleanArchitecture.Domain.IdentityAccess.Outbox;
+using CleanArchitecture.Domain.IdentityAccess.Sessions;
 using CleanArchitecture.Domain.IdentityAccess.Tenants;
 using CleanArchitecture.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
@@ -35,6 +36,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
 
     public DbSet<OutboxSecret> OutboxSecrets => Set<OutboxSecret>();
+
+    public DbSet<UserSession> UserSessions => Set<UserSession>();
 
     public DbSet<Role> TenantRoles => Set<Role>();
 

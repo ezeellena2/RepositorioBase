@@ -619,14 +619,14 @@ git commit -m "feat: register and confirm organizations"
 - Modify: `tests/Application.FunctionalTests/IdentityAccess/Api/OpenApiContractTests.cs`
 - Modify: `tests/Application.FunctionalTests/Application.FunctionalTests.csproj`
 
-- [ ] **Step 1: Shape RED, then shells**
+- [x] **Step 1: Shape RED, then shells**
 
 Reflect for `UserSession`, commands, `CurrentTenant`, and exact routes: `POST /api/identity/sessions`, `DELETE /api/identity/sessions/current`, `GET /api/identity/context`, `PUT /api/identity/context/tenant`.
 
 Run: `dotnet test tests/Application.UnitTests/Application.UnitTests.csproj --filter IdentitySessionShapeTests`  
 Expected RED: runtime missing-type/route assertion. Add shells with exact `IPublicRequest`/`[Authorize]`; rerun PASS.
 
-- [ ] **Step 2: Behavioral RED - session and tenant**
+- [x] **Step 2: Behavioral RED - session and tenant**
 
 Test idle/absolute expiry, revoke transition, neutral invalid credentials, confirmed/active account, cookie flags, CSRF/origin, and trusted optional-session registration. Exactly one active membership sets `ActiveTenantId`; zero/multiple leaves null. Selection validates active membership and persists it; revoked/expired session is `401`; headers cannot override it. Emit exact secret-free `signin.succeeded`, `signin.failed`, `session.created`, and `session.revoked` audit events.
 
@@ -635,7 +635,7 @@ Before GREEN, extend shared contract tests: create/revoke session are bodyless `
 Run: `dotnet test tests/Application.FunctionalTests/Application.FunctionalTests.csproj --filter "SessionTests|ProblemDetailsContractTests|OpenApiContractTests"`  
 Expected: runtime state, audit, Problem Details, or OpenAPI drift assertions.
 
-- [ ] **Step 3: RED - exact Identity and transport controls**
+- [x] **Step 3: RED - exact Identity and transport controls**
 
 `IdentityOptionsTests` asserts:
 
@@ -660,7 +660,7 @@ dotnet test tests/Application.FunctionalTests/Application.FunctionalTests.csproj
 
 Expected: runtime option/threshold/recovery assertions fail before configuration.
 
-- [ ] **Step 4: GREEN - options, chained partitions, cookie session**
+- [x] **Step 4: GREEN - options, chained partitions, cookie session**
 
 Configure exact `PasswordOptions`, `SignInOptions`, and `LockoutOptions` in `src/Infrastructure/DependencyInjection.cs`. In Web DI, register named `identity-login` as chained IP and normalized-account fixed-window partitions backed by injectable time. Middleware buffers only the login JSON body, normalizes the email, stores an opaque SHA-256 partition key, restores the body, and never logs IP/email/key. In `Program.cs`, run key extraction before `UseRateLimiter`, apply the named policy only to POST sessions, and write rejected leases through `IProblemDetailsService` with `Retry-After`. Transport throttles and Identity lockout remain distinct; IA-007 owns this `429` normalization.
 

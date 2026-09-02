@@ -10,4 +10,4 @@ Scenario: User can log in with valid credentials
 Scenario: User cannot log in with invalid credentials
     Given a logged out user
     When the user logs in with invalid credentials
-    Then an error is displayed
+    Then no authenticated session is established

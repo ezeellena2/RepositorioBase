@@ -2,6 +2,9 @@ using System.Reflection;
 using CleanArchitecture.Application.Common.Security;
 using CleanArchitecture.Application.IdentityAccess.Organizations.ConfirmEmail;
 using CleanArchitecture.Application.IdentityAccess.Organizations.RegisterOrganization;
+using CleanArchitecture.Application.IdentityAccess.Context.GetIdentityContext;
+using CleanArchitecture.Application.IdentityAccess.Context.SelectTenant;
+using CleanArchitecture.Application.IdentityAccess.Sessions.RevokeCurrentSession;
 using CleanArchitecture.Application.TodoItems.Commands.CreateTodoItem;
 using CleanArchitecture.Application.TodoItems.Commands.DeleteTodoItem;
 using CleanArchitecture.Application.TodoItems.Commands.UpdateTodoItem;
@@ -37,8 +40,19 @@ public class ExistingApplicationRequestAuthorizationTests
         GetRequiredMetadata<bool>(authorizeAttribute, "RequiresTenant").ShouldBeFalse();
     }
 
+    [TestCase(typeof(RevokeCurrentSessionCommand), "identity.sessions.manage")]
+    [TestCase(typeof(GetIdentityContextQuery), "identity.context.read")]
+    [TestCase(typeof(SelectTenantCommand), "identity.context.select")]
+    public void Session_context_requests_are_authorized_without_tenant_requirement(Type requestType, string permission)
+    {
+        var authorizeAttribute = requestType.GetCustomAttributes<AuthorizeAttribute>(false).ShouldHaveSingleItem();
+        ApplicationRequestInventory.IsPublicRequest(requestType).ShouldBeFalse();
+        GetRequiredMetadata<string>(authorizeAttribute, "Permission").ShouldBe(permission);
+        GetRequiredMetadata<bool>(authorizeAttribute, "RequiresTenant").ShouldBeFalse();
+    }
+
     [Test]
-    public void ExistingRequestInventoryContainsExactlyTheKnownElevenRequests()
+    public void ExistingRequestInventoryContainsExactlyTheKnownFifteenRequests()
     {
         var actualRequestTypes = GetConcreteRequestTypes(typeof(AuthorizeAttribute).Assembly);
 
@@ -46,6 +60,10 @@ public class ExistingApplicationRequestAuthorizationTests
         [
             typeof(ConfirmEmailCommand).FullName,
             typeof(RegisterOrganizationCommand).FullName,
+            typeof(CleanArchitecture.Application.IdentityAccess.Sessions.CreateSession.CreateSessionCommand).FullName,
+            typeof(RevokeCurrentSessionCommand).FullName,
+            typeof(GetIdentityContextQuery).FullName,
+            typeof(SelectTenantCommand).FullName,
             typeof(CreateTodoListCommand).FullName,
             typeof(UpdateTodoListCommand).FullName,
             typeof(DeleteTodoListCommand).FullName,

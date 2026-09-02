@@ -8,5 +8,10 @@ public abstract class BasePage(IPage page)
 
     protected IPage Page { get; } = page;
 
-    public Task GotoAsync() => Page.GotoAsync(PagePath);
+    public async Task GotoAsync()
+    {
+        var response = await Page.GotoAsync(PagePath);
+        response.ShouldNotBeNull();
+        response.Ok.ShouldBeTrue($"Navigation to {PagePath} returned HTTP {response.Status}.");
+    }
 }

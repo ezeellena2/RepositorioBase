@@ -9,16 +9,37 @@ namespace CleanArchitecture.Infrastructure.Identity;
 
 public sealed class PermissionEvaluator(ApplicationDbContext context, IHttpContextAccessor httpContextAccessor) : IPermissionEvaluator
 {
-    public Task<bool> HasPermissionAsync(Guid identityId, string permissionCode, CancellationToken cancellationToken = default)
+    public async Task<bool> HasPermissionAsync(Guid identityId, string permissionCode, CancellationToken cancellationToken = default)
     {
         var principal = httpContextAccessor.HttpContext?.User;
         var hasMatchingIdentity = principal?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value == identityId.ToString();
-        return Task.FromResult(
-            identityId != Guid.Empty &&
-            !string.IsNullOrWhiteSpace(permissionCode) &&
-            hasMatchingIdentity &&
-            Permissions.ApplicationScopedCodes.Contains(permissionCode) &&
-            principal!.HasClaim(Permissions.ApplicationPermissionClaimType, permissionCode));
+
+        // Session and context operations are self-service capabilities. Their authenticated
+        // cookie intentionally carries only the identity and session identifiers.
+        var isSelfServiceSessionCapability = permissionCode is Permissions.IdentitySessionManage
+            or Permissions.IdentityContextRead
+            or Permissions.IdentityContextSelect;
+        if (identityId == Guid.Empty ||
+            string.IsNullOrWhiteSpace(permissionCode) ||
+            !hasMatchingIdentity ||
+            !Permissions.ApplicationScopedCodes.Contains(permissionCode))
+        {
+            return false;
+        }
+
+        if (isSelfServiceSessionCapability)
+        {
+            return true;
+        }
+
+        // The protected session ticket deliberately contains only identity and session IDs.
+        // Resolve application permissions from their authoritative persisted claim instead of
+        // broadening the cookie with authorization or PII data.
+        return await context.UserClaims.AsNoTracking().AnyAsync(claim =>
+            claim.UserId == identityId &&
+            claim.ClaimType == Permissions.ApplicationPermissionClaimType &&
+            claim.ClaimValue == permissionCode,
+            cancellationToken);
     }
 
     public async Task<bool> HasPermissionAsync(Guid identityId, TenantId tenantId, string permissionCode, CancellationToken cancellationToken = default)

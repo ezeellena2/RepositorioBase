@@ -14,7 +14,7 @@ public sealed class TestAuthenticationHandler(
     ILoggerFactory logger,
     UrlEncoder encoder) : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
 {
-    public const string SchemeName = "Task6Test";
+    public const string SchemeName = "FunctionalTest";
     public const string PermissionClaim = "task6.permission";
     public const string PermissionValue = "granted";
 

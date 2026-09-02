@@ -2,6 +2,7 @@ using Azure.Identity;
 using System.Net;
 using CleanArchitecture.Application.Common.Interfaces;
 using CleanArchitecture.Infrastructure.Data;
+using CleanArchitecture.Web.Infrastructure.Identity;
 using CleanArchitecture.Web.Services;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.HttpOverrides;
@@ -22,6 +23,7 @@ public static class DependencyInjection
 
         builder.Services.AddExceptionHandler<ProblemDetailsExceptionHandler>();
         builder.Services.AddSingleton<ApiProblemDetailsMapper>();
+        builder.Services.AddSingleton<Microsoft.AspNetCore.Antiforgery.IAntiforgeryAdditionalDataProvider, SessionAntiforgeryAdditionalDataProvider>();
         builder.Services.AddSingleton<CleanArchitecture.Web.Infrastructure.IProblemDetailsService>(provider => provider.GetRequiredService<ApiProblemDetailsMapper>());
         builder.Services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationMiddlewareResultHandler, ApiAuthorizationMiddlewareResultHandler>();
 
@@ -36,7 +38,6 @@ public static class DependencyInjection
         builder.Services.AddOpenApi(options =>
         {
             options.AddOperationTransformer<ApiExceptionOperationTransformer>();
-            options.AddOperationTransformer<IdentityApiOperationTransformer>();
 #if (UseApiOnly)
             options.AddDocumentTransformer<BearerSecuritySchemeTransformer>();
 #endif
@@ -61,6 +62,7 @@ public static class DependencyInjection
             options.Cookie.HttpOnly = true;
             options.Cookie.SameSite = SameSiteMode.Lax;
         });
+        builder.Services.AddLoginRateLimiting();
     }
 
     public static void AddKeyVaultIfConfigured(this IHostApplicationBuilder builder)

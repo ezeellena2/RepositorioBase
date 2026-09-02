@@ -1,7 +1,10 @@
 using CleanArchitecture.Application.IdentityAccess.Organizations.ConfirmEmail;
 using CleanArchitecture.Application.IdentityAccess.Organizations.RegisterOrganization;
+using CleanArchitecture.Infrastructure.Identity;
 using CleanArchitecture.Web.Infrastructure;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Antiforgery;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace CleanArchitecture.Web.Endpoints;
@@ -10,8 +13,13 @@ public sealed class Identity : IEndpointGroup
 {
     public static string? RoutePrefix => "/api/identity";
 
+    internal const string AuthenticationCookieName = CleanArchitecture.Infrastructure.Identity.SessionCookieEvents.CookieName;
+    internal const string AntiforgeryCookieName = "__Host-XSRF-TOKEN";
+
     public static void Map(RouteGroupBuilder group)
     {
+        global::CleanArchitecture.Web.IdentityEndpoints.SessionEndpoints.Map(group);
+        global::CleanArchitecture.Web.IdentityEndpoints.ContextEndpoints.Map(group);
         group.MapGet("/antiforgery", GetAntiforgery)
             .Produces<AntiforgeryResponse>()
             .WithApiProblemDetails(ApiProblemMetadata.InternalServerError);
@@ -25,8 +33,12 @@ public sealed class Identity : IEndpointGroup
             .WithBodyBindingFailureCode(ApiProblemMetadata.InvalidConfirmation.Code);
     }
 
-    private static Ok<AntiforgeryResponse> GetAntiforgery(HttpContext context, IAntiforgery antiforgery)
+    private static async Task<Ok<AntiforgeryResponse>> GetAntiforgery(HttpContext context, IAntiforgery antiforgery)
     {
+        if (context.Request.Cookies.ContainsKey(AuthenticationCookieName))
+        {
+            await context.AuthenticateAsync(IdentityConstants.ApplicationScheme);
+        }
         var tokens = antiforgery.GetAndStoreTokens(context);
         context.Response.Headers.CacheControl = "no-store";
         return TypedResults.Ok(new AntiforgeryResponse(tokens.RequestToken!));
@@ -34,7 +46,7 @@ public sealed class Identity : IEndpointGroup
 
     private static async Task<IResult> Register(HttpContext context, IAntiforgery antiforgery, ISender sender, ApiProblemDetailsMapper problems, RegisterOrganizationCommand command)
     {
-        var antiForgeryFailure = await ValidateAntiforgery(context, antiforgery, problems);
+        var antiForgeryFailure = await ValidateAntiforgery(context, antiforgery, problems, rejectInvalidOptionalSession: true);
         if (antiForgeryFailure is not null) return antiForgeryFailure;
         var result = await sender.Send(command, context.RequestAborted);
         return result.IsSuccess ? Results.StatusCode(StatusCodes.Status202Accepted) : problems.ToHttpResult(result.Error!);
@@ -48,13 +60,36 @@ public sealed class Identity : IEndpointGroup
         return result.IsSuccess ? Results.NoContent() : problems.ToHttpResult(result.Error!);
     }
 
-    private static async Task<IResult?> ValidateAntiforgery(HttpContext context, IAntiforgery antiforgery, ApiProblemDetailsMapper problems)
+    internal static async Task<IResult?> ValidateAntiforgery(HttpContext context, IAntiforgery antiforgery, ApiProblemDetailsMapper problems, bool rejectInvalidOptionalSession = false)
     {
         if (!HasExactSameOrigin(context))
             return AntiforgeryFailure(problems);
+
+        // Public endpoints may still carry the optional session cookie. Authenticate it before
+        // validating the session-bound antiforgery token, while leaving no-cookie callers anonymous.
+        if (context.Request.Cookies.ContainsKey(AuthenticationCookieName))
+        {
+            await context.AuthenticateAsync(IdentityConstants.ApplicationScheme);
+            if (rejectInvalidOptionalSession && context.Items.ContainsKey(SessionCookieEvents.InvalidSessionKey))
+            {
+                return problems.ToHttpResult(new CleanArchitecture.Application.Common.Models.ApplicationError(
+                    "invalid_session",
+                    CleanArchitecture.Application.Common.Models.ApplicationErrorCategory.Authentication));
+            }
+        }
         try { await antiforgery.ValidateRequestAsync(context); return null; }
         catch (AntiforgeryValidationException) { return AntiforgeryFailure(problems); }
     }
+
+    /// <summary>Deletes the antiforgery cookie so the client must bootstrap a pair bound to the new authentication state.</summary>
+    internal static void DeleteAntiforgeryCookie(HttpContext context) =>
+        context.Response.Cookies.Delete(AntiforgeryCookieName, new CookieOptions
+        {
+            Path = "/",
+            Secure = true,
+            HttpOnly = true,
+            SameSite = SameSiteMode.Lax
+        });
 
     private static IResult AntiforgeryFailure(ApiProblemDetailsMapper problems) =>
         problems.ToHttpResult(new CleanArchitecture.Application.Common.Models.ApplicationError("antiforgery_validation_failed", CleanArchitecture.Application.Common.Models.ApplicationErrorCategory.Validation, "The request could not be validated."));

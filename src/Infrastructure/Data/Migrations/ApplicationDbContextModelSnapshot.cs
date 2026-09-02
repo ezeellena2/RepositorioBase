@@ -153,15 +153,6 @@ namespace CleanArchitecture.Infrastructure.Data.Migrations
                         });
                 });
 
-            modelBuilder.Entity("CleanArchitecture.Domain.IdentityAccess.Outbox.OutboxSecret", b =>
-                {
-                    b.HasOne("CleanArchitecture.Domain.IdentityAccess.Outbox.OutboxMessage", null)
-                        .WithOne()
-                        .HasForeignKey("CleanArchitecture.Domain.IdentityAccess.Outbox.OutboxSecret", "OutboxMessageId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-                });
-
             modelBuilder.Entity("CleanArchitecture.Domain.IdentityAccess.Authorization.MembershipRole", b =>
                 {
                     b.Property<Guid>("TenantId")
@@ -408,12 +399,12 @@ namespace CleanArchitecture.Infrastructure.Data.Migrations
                     b.Property<DateTimeOffset?>("CompletedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTimeOffset?>("DeliveredAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("DeliveryReason")
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)");
-
-                    b.Property<DateTimeOffset?>("DeliveredAt")
-                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTimeOffset>("ExpiresAt")
                         .HasColumnType("timestamp with time zone");
@@ -450,7 +441,52 @@ namespace CleanArchitecture.Infrastructure.Data.Migrations
                     b.ToTable("outbox_secrets", null, t =>
                         {
                             t.HasCheckConstraint("CK_outbox_secrets_Ids_NotEmpty", "\"Id\" <> '00000000-0000-0000-0000-000000000000'::uuid AND \"OutboxMessageId\" <> '00000000-0000-0000-0000-000000000000'::uuid");
+
                             t.HasCheckConstraint("CK_outbox_secrets_Lifecycle", "(\"Status\" = 'Pending' AND \"Ciphertext\" IS NOT NULL AND \"DeliveryReason\" IS NULL AND \"DeliveredAt\" IS NULL AND \"TerminalReason\" IS NULL AND \"CompletedAt\" IS NULL AND \"ProviderReceipt\" IS NULL) OR (\"Status\" = 'Delivered' AND \"Ciphertext\" IS NULL AND \"DeliveryReason\" IS NOT NULL AND \"DeliveredAt\" IS NOT NULL AND \"TerminalReason\" IS NULL AND \"CompletedAt\" IS NULL AND \"ProviderReceipt\" IS NOT NULL) OR (\"Status\" = 'Consumed' AND \"Ciphertext\" IS NULL AND \"TerminalReason\" IS NOT NULL AND \"CompletedAt\" IS NOT NULL AND ((\"DeliveryReason\" IS NULL AND \"DeliveredAt\" IS NULL AND \"ProviderReceipt\" IS NULL) OR (\"DeliveryReason\" IS NOT NULL AND \"DeliveredAt\" IS NOT NULL AND \"ProviderReceipt\" IS NOT NULL))) OR (\"Status\" IN ('Expired', 'Failed') AND \"Ciphertext\" IS NULL AND \"TerminalReason\" IS NOT NULL AND \"CompletedAt\" IS NOT NULL AND ((\"DeliveryReason\" IS NULL AND \"DeliveredAt\" IS NULL AND \"ProviderReceipt\" IS NULL) OR (\"DeliveryReason\" IS NOT NULL AND \"DeliveredAt\" IS NOT NULL AND \"ProviderReceipt\" IS NOT NULL)))");
+                        });
+                });
+
+            modelBuilder.Entity("CleanArchitecture.Domain.IdentityAccess.Sessions.UserSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("AbsoluteExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("ActiveTenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("IdentityId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("IdleExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("LastSeenAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ActiveTenantId");
+
+                    b.HasIndex("IdentityId");
+
+                    b.HasIndex("IdentityId", "RevokedAt", "AbsoluteExpiresAt");
+
+                    b.ToTable("UserSessions", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_UserSessions_Lifecycle", "\"Id\" <> '00000000-0000-0000-0000-000000000000'::uuid AND \"IdentityId\" <> '00000000-0000-0000-0000-000000000000'::uuid AND \"Version\" > 0 AND \"CreatedAt\" <= \"LastSeenAt\" AND \"LastSeenAt\" <= \"IdleExpiresAt\" AND \"IdleExpiresAt\" <= \"AbsoluteExpiresAt\" AND (\"RevokedAt\" IS NULL OR \"RevokedAt\" >= \"CreatedAt\")");
                         });
                 });
 
@@ -805,6 +841,29 @@ namespace CleanArchitecture.Infrastructure.Data.Migrations
                     b.HasOne("CleanArchitecture.Domain.IdentityAccess.Tenants.Tenant", null)
                         .WithOne()
                         .HasForeignKey("CleanArchitecture.Domain.IdentityAccess.Organizations.OrganizationProfile", "TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("CleanArchitecture.Domain.IdentityAccess.Outbox.OutboxSecret", b =>
+                {
+                    b.HasOne("CleanArchitecture.Domain.IdentityAccess.Outbox.OutboxMessage", null)
+                        .WithOne()
+                        .HasForeignKey("CleanArchitecture.Domain.IdentityAccess.Outbox.OutboxSecret", "OutboxMessageId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("CleanArchitecture.Domain.IdentityAccess.Sessions.UserSession", b =>
+                {
+                    b.HasOne("CleanArchitecture.Domain.IdentityAccess.Tenants.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("ActiveTenantId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("CleanArchitecture.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("IdentityId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

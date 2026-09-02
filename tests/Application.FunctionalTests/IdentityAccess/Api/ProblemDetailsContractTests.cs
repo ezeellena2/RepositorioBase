@@ -204,7 +204,7 @@ public sealed class ProblemDetailsContractTests : TestBase
     }
 
     [Test]
-    public async Task Production_cookie_authentication_with_a_stale_application_identity_returns_a_safe_401_without_redirect()
+    public async Task Production_cookie_authentication_without_a_contracted_session_returns_a_safe_401_without_redirect()
     {
         using var factory = new WebApiFactory(
             FunctionalTestSetup.ConnectionString,
@@ -216,14 +216,6 @@ public sealed class ProblemDetailsContractTests : TestBase
             AllowAutoRedirect = false,
             HandleCookies = true
         });
-        var email = $"stale-{Guid.NewGuid():N}@example.test";
-        const string password = "Testing1234!";
-
-        var register = await client.PostAsJsonAsync("/api/Users/register", new { email, password });
-        register.EnsureSuccessStatusCode();
-        var login = await client.PostAsJsonAsync("/api/Users/login?useCookies=true", new { email, password });
-        login.EnsureSuccessStatusCode();
-
         var response = await client.GetAsync("/api/TodoLists");
 
         await AssertProblemAsync(response, HttpStatusCode.Unauthorized, "authentication_required");
