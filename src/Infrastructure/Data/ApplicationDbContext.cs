@@ -3,6 +3,7 @@ using CleanArchitecture.Application.Common.Interfaces;
 using CleanArchitecture.Domain.Entities;
 using CleanArchitecture.Domain.IdentityAccess.Auditing;
 using CleanArchitecture.Domain.IdentityAccess.Authorization;
+using CleanArchitecture.Domain.IdentityAccess.Invitations;
 using CleanArchitecture.Domain.IdentityAccess.Memberships;
 using CleanArchitecture.Domain.IdentityAccess.Organizations;
 using CleanArchitecture.Domain.IdentityAccess.Outbox;
@@ -44,6 +45,10 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
     public DbSet<Permission> Permissions => Set<Permission>();
 
     public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
+
+    public DbSet<Invitation> Invitations => Set<Invitation>();
+
+    public DbSet<InvitationRole> InvitationRoles => Set<InvitationRole>();
 
     public DbSet<MembershipRole> MembershipRoles => Set<MembershipRole>();
 

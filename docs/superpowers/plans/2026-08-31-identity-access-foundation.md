@@ -698,13 +698,13 @@ git commit -m "feat: add controlled tenant sessions"
 - Create: `tests/Domain.UnitTests/IdentityAccess/InvitationTests.cs`
 - Create: `tests/Infrastructure.IntegrationTests/IdentityAccess/InvitationMappingTests.cs`
 
-- [ ] **Step 1: Shape RED, then shells**
+- [x] **Step 1: Shape RED, then shells**
 
 Reflect for Invitation types, expiry/state/token-hash members, and tenant-bearing role association.  
 Run: `dotnet test tests/Domain.UnitTests/Domain.UnitTests.csproj --filter IdentityAccessContractShapeTests`  
 Expected RED: runtime missing-type/member assertion. Add shells; rerun PASS.
 
-- [ ] **Step 2: Behavioral RED**
+- [x] **Step 2: Behavioral RED**
 
 Test Organization-only recipient, normalized email, same-tenant initial roles, expiry, cancel, one-shot accept, reissue invalidation, replay idempotency, and concurrency.
 
@@ -715,7 +715,7 @@ dotnet test tests/Infrastructure.IntegrationTests/Infrastructure.IntegrationTest
 
 Expected: runtime shell/constraint failures.
 
-- [ ] **Step 3: GREEN - mapping and migration**
+- [x] **Step 3: GREEN - mapping and migration**
 
 Persist only token hash, concurrency token, explicit deletes, and composite tenant FKs. Add `Invitations`; rerun empty/latest and baseline/latest tests.
 
@@ -727,7 +727,7 @@ dotnet test tests/Domain.UnitTests/Domain.UnitTests.csproj --filter InvitationTe
 
 Expected: PASS with sentinel preserved and no pending migrations.
 
-- [ ] **Step 4: REFACTOR and commit**
+- [x] **Step 4: REFACTOR and commit**
 
 ```bash
 git add src tests

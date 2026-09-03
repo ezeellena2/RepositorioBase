@@ -1,6 +1,7 @@
 ﻿using CleanArchitecture.Domain.Entities;
 
 using CleanArchitecture.Domain.IdentityAccess.Auditing;
+using CleanArchitecture.Domain.IdentityAccess.Invitations;
 using CleanArchitecture.Domain.IdentityAccess.Memberships;
 using CleanArchitecture.Domain.IdentityAccess.Organizations;
 using CleanArchitecture.Domain.IdentityAccess.Outbox;
@@ -30,6 +31,10 @@ public interface IApplicationDbContext
     DbSet<OutboxSecret> OutboxSecrets { get; }
 
     DbSet<UserSession> UserSessions { get; }
+
+    DbSet<Invitation> Invitations { get; }
+
+    DbSet<InvitationRole> InvitationRoles { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken);
 

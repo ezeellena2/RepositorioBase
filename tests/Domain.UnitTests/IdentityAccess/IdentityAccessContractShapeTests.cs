@@ -17,6 +17,10 @@ public class IdentityAccessContractShapeTests
     [TestCase("CleanArchitecture.Domain.IdentityAccess.Authorization.Permission")]
     [TestCase("CleanArchitecture.Domain.IdentityAccess.Authorization.RolePermission")]
     [TestCase("CleanArchitecture.Domain.IdentityAccess.Authorization.MembershipRole")]
+    [TestCase("CleanArchitecture.Domain.IdentityAccess.Invitations.Invitation")]
+    [TestCase("CleanArchitecture.Domain.IdentityAccess.Invitations.InvitationId")]
+    [TestCase("CleanArchitecture.Domain.IdentityAccess.Invitations.InvitationStatus")]
+    [TestCase("CleanArchitecture.Domain.IdentityAccess.Invitations.InvitationRole")]
     public void RequiredAggregateTypeExists(string fullyQualifiedName)
     {
         DomainAssembly.GetType(fullyQualifiedName).ShouldNotBeNull();
@@ -40,4 +44,92 @@ public class IdentityAccessContractShapeTests
         Enum.GetNames(membershipStatus!).ShouldContain("PendingConfirmation");
     }
 
+    [TestCase("Pending")]
+    [TestCase("Accepted")]
+    [TestCase("Cancelled")]
+    public void InvitationStatusExposesItsLifecycleState(string memberName)
+    {
+        var invitationStatus = DomainAssembly.GetType("CleanArchitecture.Domain.IdentityAccess.Invitations.InvitationStatus");
+
+        invitationStatus.ShouldNotBeNull();
+        Enum.GetNames(invitationStatus!).ShouldContain(memberName);
+    }
+
+    /// <summary>Expiry is derived from <c>ExpiresAt</c>, so a stored state nothing ever transitions into would rot.</summary>
+    [Test]
+    public void InvitationStatusHasNoStateWithoutATransition()
+    {
+        var invitationStatus = DomainAssembly.GetType("CleanArchitecture.Domain.IdentityAccess.Invitations.InvitationStatus");
+
+        invitationStatus.ShouldNotBeNull();
+        Enum.GetNames(invitationStatus!).ShouldBe(["Pending", "Accepted", "Cancelled"], ignoreOrder: true);
+    }
+
+    [TestCase("TenantId")]
+    [TestCase("NormalizedEmail")]
+    [TestCase("TokenHash")]
+    [TestCase("ExpiresAt")]
+    [TestCase("Status")]
+    [TestCase("AcceptedByIdentityId")]
+    [TestCase("Roles")]
+    public void InvitationExposesItsRequiredMember(string memberName)
+    {
+        var invitation = DomainAssembly.GetType("CleanArchitecture.Domain.IdentityAccess.Invitations.Invitation");
+
+        invitation.ShouldNotBeNull();
+        invitation!.GetProperty(memberName).ShouldNotBeNull();
+    }
+
+    /// <summary>
+    /// The usable token never reaches the aggregate: only its versioned hash is modelled, so no member can carry
+    /// it into persistence, audit or a log (IA-REQ-015/029).
+    /// <para>
+    /// An allow-list over the shapes secret material realistically takes — text and raw bytes — rather than a
+    /// deny-list of names, which only catches the members someone thought to forbid.
+    /// </para>
+    /// </summary>
+    [Test]
+    public void InvitationExposesNoTextualOrBinaryMemberBeyondItsRecipientAndTokenHash()
+    {
+        var invitation = DomainAssembly.GetType("CleanArchitecture.Domain.IdentityAccess.Invitations.Invitation");
+
+        invitation.ShouldNotBeNull();
+        invitation!.GetProperties()
+            .Where(property => property.PropertyType == typeof(string) || property.PropertyType == typeof(byte[]))
+            .Select(property => property.Name)
+            .ShouldBe(["NormalizedEmail", "TokenHash"], ignoreOrder: true);
+    }
+
+    [Test]
+    public void InvitationStateIsOnlyChangedThroughItsOwnBehaviour()
+    {
+        var invitation = DomainAssembly.GetType("CleanArchitecture.Domain.IdentityAccess.Invitations.Invitation");
+
+        invitation.ShouldNotBeNull();
+        invitation!.GetProperties().ShouldNotContain(property => property.SetMethod != null && property.SetMethod.IsPublic);
+    }
+
+    [TestCase("TenantId")]
+    [TestCase("InvitationId")]
+    [TestCase("RoleId")]
+    public void InvitationRoleCarriesItsTenantAlongsideBothIdentifiers(string memberName)
+    {
+        var invitationRole = DomainAssembly.GetType("CleanArchitecture.Domain.IdentityAccess.Invitations.InvitationRole");
+
+        invitationRole.ShouldNotBeNull();
+        invitationRole!.GetProperty(memberName).ShouldNotBeNull();
+    }
+
+    [TestCase("New")]
+    [TestCase("From")]
+    public void InvitationIdFollowsTheStronglyTypedIdentifierConvention(string factoryName)
+    {
+        var invitationId = DomainAssembly.GetType("CleanArchitecture.Domain.IdentityAccess.Invitations.InvitationId");
+
+        invitationId.ShouldNotBeNull();
+        invitationId!.GetMethod(factoryName).ShouldNotBeNull();
+        invitationId.GetProperty("Value").ShouldNotBeNull();
+        invitationId.GetProperty("IsEmpty").ShouldNotBeNull();
+        invitationId.GetConstructors().ShouldBeEmpty("an identifier is only reachable through New or From");
+    }
 }

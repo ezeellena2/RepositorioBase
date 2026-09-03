@@ -18,6 +18,7 @@ public sealed class MigrationUpgradeTests
     private const string BaselineMigration = "20260831183429_BaselinePostgreSql";
     private const string RegistrationMessagingPredecessor = "20260901024500_AuthorizationDenialAudit";
     private const string UserSessionsPredecessor = "20260901050000_RegistrationMessaging";
+    private const string InvitationsPredecessor = "20260901184054_UserSessions";
 
     [Test]
     public async Task TenantAuthorization_empty_database_upgrades_to_latest_without_pending_migrations()
@@ -199,6 +200,61 @@ public sealed class MigrationUpgradeTests
     }
 
     [Test]
+    public async Task Invitations_round_trip_preserves_preexisting_sentinels_and_removes_only_invitation_schema()
+    {
+        var databaseName = $"invitations_round_trip_{Guid.NewGuid():N}";
+        string? connectionString = null;
+
+        try
+        {
+            using (var scope = TestServices.CreateScope())
+            {
+                var sharedContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                var sharedConnectionString = sharedContext.Database.GetConnectionString() ?? throw new InvalidOperationException("The test PostgreSQL connection string is required.");
+                connectionString = new NpgsqlConnectionStringBuilder(sharedConnectionString) { Database = databaseName }.ConnectionString;
+                await CreateDatabase(databaseName, sharedConnectionString);
+            }
+
+            var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseNpgsql(connectionString).Options;
+            var userId = Guid.NewGuid();
+            var roleId = Guid.NewGuid();
+            var todoId = await SeedPreInvitationData(options, userId, roleId);
+
+            await using (var upgradedContext = new ApplicationDbContext(options))
+            {
+                await upgradedContext.Database.GetService<IMigrator>().MigrateAsync();
+                (await upgradedContext.Users.SingleAsync(user => user.Id == userId)).NormalizedEmail.ShouldBe("ROUNDTRIP@EXAMPLE.TEST");
+                (await upgradedContext.TodoItems.SingleAsync(todo => todo.Id == todoId)).CreatedBy.ShouldBe(userId);
+                (await upgradedContext.Database.GetPendingMigrationsAsync()).ShouldBeEmpty();
+                await SeedInvitation(upgradedContext);
+            }
+
+            await AssertInvitationSchema(connectionString!);
+            await AssertAuditTriggerRejectsMutation(connectionString!);
+
+            await using (var downgradedContext = new ApplicationDbContext(options))
+            {
+                // The invitation rows seeded above are still present, so this also proves Down survives data.
+                await downgradedContext.Database.GetService<IMigrator>().MigrateAsync(InvitationsPredecessor);
+            }
+
+            await AssertInvitationSchemaIsAbsent(connectionString!);
+            await AssertPreexistingSentinelsAndAuditTrigger(connectionString!, userId, todoId);
+
+            await using var reupgradedContext = new ApplicationDbContext(options);
+            await reupgradedContext.Database.GetService<IMigrator>().MigrateAsync();
+            (await reupgradedContext.Database.GetPendingMigrationsAsync()).ShouldBeEmpty();
+        }
+        finally
+        {
+            if (connectionString is not null)
+            {
+                await DropDatabase(databaseName, connectionString);
+            }
+        }
+    }
+
+    [Test]
     public async Task TenantAuthorization_concurrent_catalog_synchronization_is_atomic_and_idempotent()
     {
         var databaseName = $"tenant_authorization_catalog_{Guid.NewGuid():N}";
@@ -316,6 +372,54 @@ public sealed class MigrationUpgradeTests
         return (int)(await todoCommand.ExecuteScalarAsync())!;
     }
 
+    private static async Task<int> SeedPreInvitationData(DbContextOptions<ApplicationDbContext> options, Guid userId, Guid roleId)
+    {
+        await using var context = new ApplicationDbContext(options);
+        await context.Database.GetService<IMigrator>().MigrateAsync(InvitationsPredecessor);
+        await using var connection = (NpgsqlConnection)context.Database.GetDbConnection();
+        await connection.OpenAsync();
+
+        await Execute(connection, $"INSERT INTO \"AspNetUsers\" (\"Id\", \"UserName\", \"NormalizedUserName\", \"Email\", \"NormalizedEmail\", \"EmailConfirmed\", \"PhoneNumberConfirmed\", \"TwoFactorEnabled\", \"LockoutEnabled\", \"AccessFailedCount\") VALUES ('{userId}', 'roundtrip@example.test', 'ROUNDTRIP@EXAMPLE.TEST', 'roundtrip@example.test', 'ROUNDTRIP@EXAMPLE.TEST', FALSE, FALSE, FALSE, FALSE, 0);");
+        await Execute(connection, $"INSERT INTO \"AspNetRoles\" (\"Id\", \"Name\", \"NormalizedName\") VALUES ('{roleId}', 'roundtrip-role', 'ROUNDTRIP-ROLE');");
+        await Execute(connection, $"INSERT INTO \"AspNetUserRoles\" (\"UserId\", \"RoleId\") VALUES ('{userId}', '{roleId}');");
+        await Execute(connection, $"INSERT INTO \"TodoLists\" (\"Title\", \"Colour_Code\", \"Created\", \"CreatedBy\", \"LastModified\", \"LastModifiedBy\") VALUES ('roundtrip list', 'Grey', NOW(), '{userId}', NOW(), '{userId}');");
+        await using var todoCommand = new NpgsqlCommand($"INSERT INTO \"TodoItems\" (\"ListId\", \"Title\", \"Priority\", \"Done\", \"Created\", \"CreatedBy\", \"LastModified\", \"LastModifiedBy\") VALUES (1, 'roundtrip sentinel', 0, FALSE, NOW(), '{userId}', NOW(), '{userId}') RETURNING \"Id\";", connection);
+        return (int)(await todoCommand.ExecuteScalarAsync())!;
+    }
+
+    /// <summary>Leaves a real invitation and its offered role behind, so the downgrade runs against data.</summary>
+    private static async Task SeedInvitation(ApplicationDbContext context)
+    {
+        var tenant = CleanArchitecture.Domain.IdentityAccess.Tenants.Tenant.CreateOrganization(
+            CleanArchitecture.Domain.IdentityAccess.Tenants.TenantSlug.From($"invitation-migration-{Guid.NewGuid():N}"));
+        var role = CleanArchitecture.Domain.IdentityAccess.Authorization.Role.Create(tenant, "Operators");
+        var invitation = CleanArchitecture.Domain.IdentityAccess.Invitations.Invitation.Issue(
+            tenant,
+            $"migration-{Guid.NewGuid():N}@example.test",
+            [role],
+            $"v1:{Convert.ToBase64String(Guid.NewGuid().ToByteArray())}",
+            DateTimeOffset.UtcNow,
+            DateTimeOffset.UtcNow.AddDays(7));
+        // A second, accepted invitation so the down-path also runs against a row carrying the AspNetUsers key.
+        var identityId = Guid.NewGuid();
+        var accepted = CleanArchitecture.Domain.IdentityAccess.Invitations.Invitation.Issue(
+            tenant,
+            $"migration-accepted-{Guid.NewGuid():N}@example.test",
+            [role],
+            $"v1:{Convert.ToBase64String(Guid.NewGuid().ToByteArray())}",
+            DateTimeOffset.UtcNow,
+            DateTimeOffset.UtcNow.AddDays(7));
+        accepted.Accept(tenant, identityId, DateTimeOffset.UtcNow.AddMinutes(1));
+        context.Users.Add(new CleanArchitecture.Infrastructure.Identity.ApplicationUser
+        {
+            Id = identityId,
+            UserName = $"migration-{identityId:N}",
+            Email = $"migration-{identityId:N}@test.invalid"
+        });
+        context.AddRange(tenant, role, invitation, accepted);
+        await context.SaveChangesAsync();
+    }
+
     private static async Task AssertTaskSevenSchemaIsAbsent(string connectionString)
     {
         await using var connection = new NpgsqlConnection(connectionString);
@@ -324,6 +428,61 @@ public sealed class MigrationUpgradeTests
         (await Scalar<bool>(connection, "SELECT to_regclass('public.outbox_messages') IS NULL;")).ShouldBeTrue();
         (await Scalar<bool>(connection, "SELECT to_regclass('public.outbox_secrets') IS NULL;")).ShouldBeTrue();
         (await Scalar<bool>(connection, "SELECT to_regclass('public.registration_submissions') IS NULL;")).ShouldBeTrue();
+
+        // Downgrading this far also unwinds every later migration, so this path must keep proving that each of
+        // them removed what it created.
+        (await Scalar<bool>(connection, "SELECT to_regclass('public.\"UserSessions\"') IS NULL;")).ShouldBeTrue();
+        (await Scalar<bool>(connection, "SELECT to_regclass('public.\"Invitations\"') IS NULL;")).ShouldBeTrue();
+        (await Scalar<bool>(connection, "SELECT to_regclass('public.\"InvitationRoles\"') IS NULL;")).ShouldBeTrue();
+    }
+
+    private static async Task AssertInvitationSchemaIsAbsent(string connectionString)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+
+        (await Scalar<bool>(connection, "SELECT to_regclass('public.\"Invitations\"') IS NULL;")).ShouldBeTrue();
+        (await Scalar<bool>(connection, "SELECT to_regclass('public.\"InvitationRoles\"') IS NULL;")).ShouldBeTrue();
+        (await Scalar<bool>(connection, "SELECT to_regclass('public.\"UserSessions\"') IS NOT NULL;")).ShouldBeTrue("only the invitation schema may be removed");
+    }
+
+    private static async Task AssertInvitationSchema(string connectionString)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+
+        (await Scalar<bool>(connection, "SELECT to_regclass('public.\"Invitations\"') IS NOT NULL;")).ShouldBeTrue();
+        (await Scalar<bool>(connection, "SELECT to_regclass('public.\"InvitationRoles\"') IS NOT NULL;")).ShouldBeTrue();
+        foreach (var constraint in new[] { "CK_Invitations_Ids_NotEmpty", "CK_Invitations_Lifecycle", "CK_InvitationRoles_TenantId_NotEmpty" })
+        {
+            (await Scalar<bool>(connection, $"SELECT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = '{constraint}' AND contype = 'c');")).ShouldBeTrue();
+        }
+
+        foreach (var foreignKey in new[] { "FK_Invitations_Tenants_TenantId", "FK_Invitations_AspNetUsers_AcceptedByIdentityId", "FK_InvitationRoles_Invitations_TenantId_InvitationId", "FK_InvitationRoles_Roles_TenantId_RoleId" })
+        {
+            (await Scalar<bool>(connection, $"SELECT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = '{foreignKey}' AND contype = 'f');")).ShouldBeTrue();
+        }
+
+        (await Scalar<bool>(connection, "SELECT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'AK_Invitations_TenantId_Id' AND contype = 'u');")).ShouldBeTrue();
+        foreach (var index in new[] { "IX_Invitations_TokenHash", "IX_Invitations_TenantId_NormalizedEmail", "IX_Invitations_TenantId_NormalizedEmail_Status", "IX_Invitations_ExpiresAt", "IX_InvitationRoles_TenantId_RoleId" })
+        {
+            (await Scalar<bool>(connection, $"SELECT EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND indexname = '{index}');")).ShouldBeTrue();
+        }
+
+        // PostgreSQL normalises an index predicate, so the stored expression is never the literal that was
+        // written; only its presence and uniqueness are asserted here.
+        (await Scalar<bool>(connection, "SELECT indisunique AND indpred IS NOT NULL FROM pg_index WHERE indexrelid = 'public.\"IX_Invitations_TenantId_NormalizedEmail\"'::regclass;")).ShouldBeTrue();
+        (await Scalar<bool>(connection, "SELECT indisunique AND indpred IS NULL FROM pg_index WHERE indexrelid = 'public.\"IX_Invitations_TokenHash\"'::regclass;")).ShouldBeTrue();
+
+        // The shipped DDL, not the EF model: 'r' is RESTRICT and 'a' is NO ACTION. A future accidental cascade
+        // would silently erase invitation history, so the action itself is asserted (IA-REQ-036).
+        foreach (var restricted in new[] { "FK_Invitations_Tenants_TenantId", "FK_InvitationRoles_Invitations_TenantId_InvitationId", "FK_InvitationRoles_Roles_TenantId_RoleId" })
+        {
+            (await Scalar<string>(connection, $"SELECT confdeltype::text FROM pg_constraint WHERE conname = '{restricted}';")).ShouldBe("r");
+        }
+
+        (await Scalar<string>(connection, "SELECT confdeltype::text FROM pg_constraint WHERE conname = 'FK_Invitations_AspNetUsers_AcceptedByIdentityId';")).ShouldBe("a");
+        (await Scalar<bool>(connection, "SELECT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'TR_Invitations_PreventSettledChange' AND NOT tgisinternal);")).ShouldBeTrue();
     }
 
     private static async Task AssertUserSessionSchemaIsAbsent(string connectionString)
@@ -408,6 +567,7 @@ public sealed class MigrationUpgradeTests
         (await Scalar<bool>(connection, "SELECT EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'EmailIndex' AND indexdef LIKE 'CREATE UNIQUE INDEX%');")).ShouldBeTrue();
         (await Scalar<bool>(connection, "SELECT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'TR_AuditEvents_AppendOnly' AND NOT tgisinternal);")).ShouldBeTrue();
         (await Scalar<bool>(connection, "SELECT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'TR_Roles_PreventSystemDeletion' AND NOT tgisinternal);")).ShouldBeTrue();
+        await AssertInvitationSchema(connectionString);
 
         var zeroIdException = await Should.ThrowAsync<PostgresException>(() => Execute(connection, "INSERT INTO \"AspNetRoles\" (\"Id\") VALUES ('00000000-0000-0000-0000-000000000000');"));
         zeroIdException.SqlState.ShouldBe(PostgresErrorCodes.CheckViolation);
