@@ -111,28 +111,27 @@ public sealed class InviteMemberCommandHandler(
         // Npgsql stores a timestamp to microsecond precision, so a clock reading with sub-microsecond ticks would
         // make the expiry this request reports differ from the expiry the database will actually enforce. The
         // window is truncated before it enters the aggregate, so the answer and the row agree exactly.
-        var now = ToStorablePrecision(timeProvider.GetUtcNow());
-        var expiresAt = ToStorablePrecision(now.Add(Window));
-        var rawToken = tokens.Generate();
-        var tokenHash = VersionedTokenHash.FromPersistedValue(tokenHasher.Hash(rawToken));
-
+        var now = InvitationDelivery.ToStorablePrecision(timeProvider.GetUtcNow());
+        var expiresAt = InvitationDelivery.ToStorablePrecision(now.Add(Window));
+        var minted = InvitationDelivery.Mint(tokens, tokenHasher);
         var standing = await context.Invitations
             .Include(invitation => invitation.Roles)
             .FirstOrDefaultAsync(invitation => invitation.TenantId == tenantId
                 && invitation.NormalizedEmail == recipient
                 && invitation.Status == InvitationStatus.Pending, cancellationToken);
 
-        var invitation = Supersede(standing, tenant, recipient, offer.Roles, tokenHash, now, expiresAt, requestedRoleIds);
+        var invitation = Supersede(standing, tenant, recipient, offer.Roles, minted.Hash, now, expiresAt, requestedRoleIds);
         if (standing is null || !ReferenceEquals(standing, invitation))
         {
             context.Invitations.Add(invitation);
         }
 
-        await TerminalizeSupersededDeliveryAsync(standing, now, cancellationToken);
+        if (standing is not null)
+        {
+            await InvitationDelivery.RetireAsync(context, standing.TokenHash, "invitation.superseded", now, cancellationToken);
+        }
 
-        var outbox = OutboxMessage.Create(MessageType, JsonSerializer.Serialize(new InvitationEnvelope(invitation.Id.Value, tenantId.Value)), now);
-        context.OutboxMessages.Add(outbox);
-        context.OutboxSecrets.Add(OutboxSecret.Create(outbox.Id, tokenHash.Value, secretWriter.Encrypt(rawToken), expiresAt));
+        InvitationDelivery.Deliver(context, secretWriter, minted, invitation.Id, tenantId, now, expiresAt);
         context.AuditEvents.Add(AuditEvent.Create(
             tenantId,
             inviterId,

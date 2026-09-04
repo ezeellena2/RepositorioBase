@@ -3,6 +3,8 @@ using CleanArchitecture.Application.Common.Interfaces;
 using CleanArchitecture.Application.Common.Models;
 using CleanArchitecture.Application.IdentityAccess.Common;
 using CleanArchitecture.Application.IdentityAccess.Organizations;
+using CleanArchitecture.Application.IdentityAccess.Invitations;
+using CleanArchitecture.Application.IdentityAccess.Invitations.RegisterInvitedUser;
 using CleanArchitecture.Application.IdentityAccess.Organizations.RegisterOrganization;
 using CleanArchitecture.Domain.IdentityAccess.Auditing;
 using CleanArchitecture.Domain.IdentityAccess.Memberships;
@@ -35,7 +37,24 @@ public sealed class ConfirmEmailCommandHandler(IApplicationTransaction transacti
             }
 
             var message = await context.OutboxMessages.SingleOrDefaultAsync(item => item.Id == secret.OutboxMessageId, ct);
-            if (message is null || !string.Equals(message.Type, ConfirmationMessageType, StringComparison.Ordinal)) return Result.Failure(IdentityAccessErrors.InvalidConfirmation());
+            if (message is null) return Result.Failure(IdentityAccessErrors.InvalidConfirmation());
+
+            // An invited registration confirms an identity that holds no membership yet, so it writes its own
+            // purpose. Confirming that purpose activates the identity and nothing else: acceptance is a separate
+            // authenticated request and must stay the only thing that creates a membership (IA-REQ-016). The two
+            // purposes are told apart by message type rather than by the shape of the payload, because a shape
+            // test would silently match whichever envelope happened to deserialize.
+            if (string.Equals(message.Type, RegisterInvitedUserCommandHandler.InvitedConfirmationMessageType, StringComparison.Ordinal))
+            {
+                if (!TryReadIdentityEnvelope(message.Payload, out var identityOnly)) return Result.Failure(IdentityAccessErrors.InvalidConfirmation());
+                await identities.ActivateAsync(identityOnly.IdentityId, ct);
+                secret.Consume("confirmation_consumed", now);
+                await context.SaveChangesAsync(ct);
+                return Result.Success();
+            }
+
+            if (!string.Equals(message.Type, ConfirmationMessageType, StringComparison.Ordinal)) return Result.Failure(IdentityAccessErrors.InvalidConfirmation());
+
             if (!TryReadEnvelope(message.Payload, out var envelope)) return Result.Failure(IdentityAccessErrors.InvalidConfirmation());
             var tenant = await context.Tenants.SingleOrDefaultAsync(item => item.Id == TenantId.From(envelope.TenantId), ct);
             var membership = await context.TenantMemberships.SingleOrDefaultAsync(item => item.Id == MembershipId.From(envelope.MembershipId), ct);
@@ -61,6 +80,23 @@ public sealed class ConfirmEmailCommandHandler(IApplicationTransaction transacti
         {
             var value = JsonSerializer.Deserialize<ConfirmationEnvelope>(payload);
             if (value is null || value.IdentityId == Guid.Empty || value.TenantId == Guid.Empty || value.MembershipId == Guid.Empty) return false;
+            envelope = value;
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Reads the identity-only envelope, once its message type has already established the purpose.</summary>
+    private static bool TryReadIdentityEnvelope(string payload, out RegisterInvitedUserCommandHandler.IdentityConfirmationEnvelope envelope)
+    {
+        envelope = default!;
+        try
+        {
+            var value = JsonSerializer.Deserialize<RegisterInvitedUserCommandHandler.IdentityConfirmationEnvelope>(payload);
+            if (value is null || value.IdentityId == Guid.Empty) return false;
             envelope = value;
             return true;
         }

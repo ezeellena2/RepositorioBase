@@ -1,6 +1,7 @@
 using CleanArchitecture.Application.IdentityAccess.Authorization;
 using CleanArchitecture.Application.IdentityAccess.Invitations;
 using CleanArchitecture.Domain.IdentityAccess.Authorization;
+using CleanArchitecture.Domain.IdentityAccess.Memberships;
 using CleanArchitecture.Domain.IdentityAccess.Tenants;
 using CleanArchitecture.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -44,5 +45,17 @@ public sealed class OfferableRoleReader(ApplicationDbContext context, IEffective
 
         var held = await effectivePermissions.GetEffectivePermissionsAsync(inviterId, tenantId, cancellationToken);
         return new OfferableRoles(roles, offered.All(held.Contains));
+    }
+}
+
+/// <summary>Writes the assignments an accepted invitation grants, on the same side of the boundary as the read.</summary>
+public sealed class InvitationRoleAssigner(ApplicationDbContext context) : IInvitationRoleAssigner
+{
+    public void Assign(Tenant tenant, TenantMembership membership, IReadOnlyCollection<Role> roles)
+    {
+        foreach (var role in roles)
+        {
+            context.MembershipRoles.Add(MembershipRole.Create(tenant, membership, role));
+        }
     }
 }

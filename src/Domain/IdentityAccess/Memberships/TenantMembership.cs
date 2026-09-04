@@ -36,6 +36,13 @@ public sealed class TenantMembership : BaseEntity<MembershipId>
         };
     }
 
+    /// <summary>
+    /// The membership an accepted invitation creates. It is the same shape as the responsible member's — pending
+    /// until activated — but it is not the responsible member, and a factory whose name says otherwise would make
+    /// every reader of the acceptance path check whether it meant it.
+    /// </summary>
+    public static TenantMembership CreateInvited(Tenant tenant, Guid identityId) => CreateResponsible(tenant, identityId);
+
     public void Activate(Tenant tenant)
     {
         EnsureTenant(tenant);

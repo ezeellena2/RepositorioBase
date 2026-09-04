@@ -73,7 +73,23 @@ public sealed class Invitation : BaseEntity<InvitationId>
     /// recipient (IA-REQ-016), and that comparison is the same canonicalization question the aggregate already
     /// answers when the invitation is issued — so it is answered here rather than restated by every caller.
     /// </summary>
-    public bool IsAddressedTo(string? email) => throw new NotImplementedException();
+    public bool IsAddressedTo(string? email)
+    {
+        if (email is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            return string.Equals(Normalize(email), NormalizedEmail, StringComparison.Ordinal);
+        }
+        catch (ArgumentException)
+        {
+            // An address the aggregate would refuse to store is an address it can never have been issued to.
+            return false;
+        }
+    }
 
     public void Accept(Tenant tenant, Guid identityId, DateTimeOffset now)
     {

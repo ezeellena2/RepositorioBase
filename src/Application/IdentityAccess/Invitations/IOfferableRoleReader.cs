@@ -1,4 +1,5 @@
 using CleanArchitecture.Domain.IdentityAccess.Authorization;
+using CleanArchitecture.Domain.IdentityAccess.Memberships;
 using CleanArchitecture.Domain.IdentityAccess.Tenants;
 
 namespace CleanArchitecture.Application.IdentityAccess.Invitations;
@@ -16,6 +17,16 @@ namespace CleanArchitecture.Application.IdentityAccess.Invitations;
 public interface IOfferableRoleReader
 {
     Task<OfferableRoles> ResolveAsync(TenantId tenantId, Guid inviterId, IReadOnlyCollection<Guid> roleIds, CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// Writes the role assignments an accepted invitation grants. It is the write counterpart of
+/// <see cref="IOfferableRoleReader"/> and exists for the same reason: assignment rows never cross
+/// <c>IApplicationDbContext</c>, so no use case can grant authority through a bare DbSet.
+/// </summary>
+public interface IInvitationRoleAssigner
+{
+    void Assign(Tenant tenant, TenantMembership membership, IReadOnlyCollection<Role> roles);
 }
 
 /// <summary>

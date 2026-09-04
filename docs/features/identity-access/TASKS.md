@@ -27,7 +27,7 @@ Suggested units: stack/migrations/test harness; domain/persistence; authorizatio
 | IA-005 | Roles, authorization, HTTP contract | IA-REQ-006..013,026,030,038 | Blocked | IA-004 | permission/Problem Details contracts |
 | IA-006 | Organization registration/confirmation | IA-REQ-003..005,026..029; applies 038 | Blocked | IA-005 | atomic, idempotent neutral replay |
 | IA-007 | Sessions, limits, active tenant | IA-REQ-006..008,019..026,029,031; applies 038 | Blocked | IA-006 | revocable sessions and limits |
-| IA-008 | Invitations and reliable outbox | IA-REQ-014..018,026..029,047; applies 038 | Blocked | IA-007 | secure onboarding and delivery |
+| IA-008 | Invitations and reliable outbox | IA-REQ-014..018,026..029,047; applies 038 | Onboarding done (Task 10); dispatch pending (Task 11) | IA-007 | secure onboarding and delivery |
 | IA-012 | Platform invitation persistence, credential onboarding, MFA and recovery codes | IA-REQ-041 | Blocked | IA-008 | persisted invitation, password confirmation, encrypted TOTP, hashed codes, step-up |
 | IA-014 | Platform bootstrap, administration, operations panel | IA-REQ-039..040,042..046; applies 038 | Blocked | IA-012 | cold-start recovery, safe directories, no bypass |
 | IA-009 | React and E2E acceptance evidence | evidence only, including 038 | Blocked | IA-014 | post-Platform verified journeys ready for Review |
@@ -43,7 +43,7 @@ authenticated acceptance, with their audit and their transactional outbox intent
 invalidates a superseded envelope — the request that supersedes an offer terminalizes the previous `OutboxSecret`
 in the same transaction, so no withdrawn or rotated token is left deliverable.
 
-The delivery loop itself is IA-011's: the lease and compare-and-swap worker of IA-REQ-028, and the
+The delivery loop itself belongs to Task 11: the lease and compare-and-swap worker of IA-REQ-028, and the
 lease/decrypt/render/send/terminalize handler of IA-REQ-018. None of it exists yet — no worker, lease columns,
 handler contract, decrypt port, email adapter or test sink — and it is a separate RED. A hosted service added
 naively would also run inside the whole functional suite, because `WebApiFactory` only strips `IHostedService`

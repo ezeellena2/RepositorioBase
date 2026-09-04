@@ -72,6 +72,19 @@ public sealed class IdentityAccountService(
         return new IdentityAccountValidationResult(true);
     }
 
+    public async Task<IdentityAccountValidationResult> ValidatePasswordAsync(string password, CancellationToken cancellationToken)
+    {
+        // Only the password validators. The user validators would read the store to reject a duplicate name, and
+        // running them here would make this answer depend on whether the address exists — exactly the disclosure
+        // this method exists to avoid.
+        foreach (var validator in passwordValidators)
+        {
+            if (!(await validator.ValidateAsync(userManager, DecoyUser, password)).Succeeded) return new IdentityAccountValidationResult(false);
+        }
+
+        return new IdentityAccountValidationResult(true);
+    }
+
     public async Task<IdentityAccountCreationResult> CreatePendingAsync(string normalizedEmail, string password, CancellationToken cancellationToken)
     {
         var user = NewPendingUser(normalizedEmail);

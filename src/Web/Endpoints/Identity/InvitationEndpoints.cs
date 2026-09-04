@@ -1,4 +1,6 @@
+using CleanArchitecture.Application.IdentityAccess.Invitations.AcceptInvitation;
 using CleanArchitecture.Application.IdentityAccess.Invitations.InviteMember;
+using CleanArchitecture.Application.IdentityAccess.Invitations.RegisterInvitedUser;
 using CleanArchitecture.Domain.IdentityAccess.Tenants;
 using CleanArchitecture.Web.Endpoints;
 using CleanArchitecture.Web.Infrastructure;
@@ -79,19 +81,39 @@ internal static class InvitationEndpoints
             new InvitationCreatedResponse(issued.InvitationId, issued.ExpiresAt)));
     }
 
-    private static Task<IResult> Register(
+    /// <summary>
+    /// Neutral by contract: a bodyless <c>202</c> whether the token was live, dead, or already belonged to an
+    /// account. The only failure it can answer with is one decided from the request alone (SPEC section 6).
+    /// </summary>
+    private static async Task<IResult> Register(
         HttpContext context,
         IAntiforgery antiforgery,
         ApiProblemDetailsMapper problems,
         ISender sender,
-        RegisterInvitedUserRequest request) => throw new NotImplementedException();
+        RegisterInvitedUserRequest request)
+    {
+        var antiforgeryFailure = await Identity.ValidateAntiforgery(context, antiforgery, problems);
+        if (antiforgeryFailure is not null) return antiforgeryFailure;
 
-    private static Task<IResult> Accept(
+        var result = await sender.Send(new RegisterInvitedUserCommand(request.Token, request.Password), context.RequestAborted);
+        return result.IsSuccess ? Results.StatusCode(StatusCodes.Status202Accepted) : problems.ToHttpResult(result.Error!);
+    }
+
+    /// <summary>Idempotent by contract: a replay by the accepting identity answers with the same membership.</summary>
+    private static async Task<IResult> Accept(
         HttpContext context,
         IAntiforgery antiforgery,
         ApiProblemDetailsMapper problems,
         ISender sender,
-        AcceptInvitationRequest request) => throw new NotImplementedException();
+        AcceptInvitationRequest request)
+    {
+        var antiforgeryFailure = await Identity.ValidateAntiforgery(context, antiforgery, problems);
+        if (antiforgeryFailure is not null) return antiforgeryFailure;
+
+        var result = await sender.Send(new AcceptInvitationCommand(request.Token), context.RequestAborted);
+        return result.ToHttpResult(context, problems, accepted =>
+            Results.Ok(new InvitationAcceptanceResponse(accepted.TenantId, accepted.MembershipId)));
+    }
 
     internal sealed record InviteMemberRequest(string Email, IReadOnlyList<Guid> RoleIds);
 

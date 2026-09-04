@@ -102,6 +102,7 @@ public static class DependencyInjection
         builder.Services.AddScoped<IConfirmationSecretStore, ConfirmationSecretStore>();
         builder.Services.AddScoped<IRegistrationInitialRoleProvisioner, RegistrationInitialRoleProvisioner>();
         builder.Services.AddScoped<IOfferableRoleReader, OfferableRoleReader>();
+        builder.Services.AddScoped<IInvitationRoleAssigner, InvitationRoleAssigner>();
         builder.Services.AddSingleton<ISecureTokenGenerator, SecureTokenGenerator>();
         builder.Services.AddSingleton<ITokenHasher, VersionedTokenHasher>();
         builder.Services.AddSingleton<IOutboxSecretWriter, OutboxSecretWriter>();

@@ -34,10 +34,12 @@ public sealed class RegisterOrganizationCommandHandler(
         if (session.Email is not null && !string.Equals(session.Email.Trim(), intent.Email, StringComparison.OrdinalIgnoreCase))
             return Result.Failure(IdentityAccessErrors.InvalidRegistration());
 
-        if (session.IdentityId is null && await identities.FindByEmailAsync(intent.Email, cancellationToken) is null)
+        // Password policy depends on the submitted password alone, so it is decided here — before any address is
+        // looked up. Validating it only for a free address made a weak password answer invalid_registration for an
+        // untaken address and neutrally succeed for a taken one, which is an enumeration oracle anyone could probe.
+        if (session.IdentityId is null && !(await identities.ValidatePasswordAsync(request.Password, cancellationToken)).IsValid)
         {
-            var validation = await identities.ValidatePendingRegistrationAsync(intent.Email, request.Password, cancellationToken);
-            if (!validation.IsValid) return Result.Failure(IdentityAccessErrors.InvalidRegistration());
+            return Result.Failure(IdentityAccessErrors.InvalidRegistration());
         }
 
         try

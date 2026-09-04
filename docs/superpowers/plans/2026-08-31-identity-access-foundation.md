@@ -736,7 +736,7 @@ git commit -m "feat: model secure invitations"
 
 ## Task 10: Orchestrate invitation onboarding through exact routes
 
-**Requirements:** IA-REQ-014..018, IA-REQ-026, IA-REQ-027, IA-REQ-029; applies IA-REQ-038  
+**Requirements:** IA-REQ-014..018, IA-REQ-026, IA-REQ-027, IA-REQ-029, IA-REQ-047; applies IA-REQ-038  
 **Tracking:** IA-008
 
 **Files:**
@@ -755,14 +755,14 @@ git commit -m "feat: model secure invitations"
 - Modify: `tests/Application.FunctionalTests/IdentityAccess/Api/ProblemDetailsContractTests.cs`
 - Modify: `tests/Application.FunctionalTests/IdentityAccess/Api/OpenApiContractTests.cs`
 
-- [ ] **Step 1: Shape RED, then shells**
+- [x] **Step 1: Shape RED, then shells**
 
 Reflect for requests and exact routes: `POST /api/tenants/{tenantId}/invitations`, `POST /api/invitations/register`, and `POST /api/invitations/accept`. Assert no preview or `/api/identity/invitations/**` route.
 
 Run: `dotnet test tests/Application.UnitTests/Application.UnitTests.csproj --filter InvitationApplicationShapeTests`  
 Expected RED: runtime missing-type/route assertion. Add shells; public registration and authenticated acceptance carry the correct marker; rerun PASS.
 
-- [ ] **Step 2: Behavioral RED**
+- [x] **Step 2: Behavioral RED**
 
 Test `members.invite`, confirmed inviter, Organization-only, route `tenantId == ActiveTenantId` without establishing context, same-tenant roles, and atomic hash/outbox/secret creation. New invitee registration creates unconfirmed identity plus confirmation intent but no membership; existing identity ignores credential input and receives a generic notice. Only a confirmed, authenticated, matching email accepts once. Emit exact `invitation.issued` and `invitation.accepted` audit rows.
 
@@ -771,7 +771,7 @@ Before GREEN, extend shared contract tests: issue is `201 InvitationCreatedRespo
 Run: `dotnet test tests/Application.FunctionalTests/Application.FunctionalTests.csproj --filter "InvitationTests|InvitationAuditTests|ProblemDetailsContractTests|OpenApiContractTests"`  
 Expected: runtime shell, tenant, audit, status/header/schema, or drift failures.
 
-- [ ] **Step 3: GREEN, REFACTOR, commit**
+- [x] **Step 3: GREEN, REFACTOR, commit**
 
 Tokens arrive only in JSON bodies; email links hold them in browser fragments. Persist raw token only as encrypted expiring `OutboxSecret`; never place it in outbox/audit/logs. Map typed handler Results only at Web, attach exact `ApiProblemMetadata`, and return each declared endpoint DTO/status/header.
 
@@ -782,6 +782,12 @@ git commit -m "feat: add invitation onboarding"
 ```
 
 Expected: PASS.
+
+**Evidence.** `dotnet test tests/Application.FunctionalTests/Application.FunctionalTests.csproj --filter "InvitationTests|InvitationAuditTests|ProblemDetailsContractTests|OpenApiContractTests"` passes, and the whole affected surface passes as regression: Domain 134, Application unit 83, Infrastructure integration 143, Application functional 277, Web acceptance 6. Release build has no errors and the model has no pending migration.
+
+IA-REQ-047 was added to the SPEC during this task and approved by the maintainer: an invitation may offer only roles whose permissions the inviter already holds, enforced on issue, on resend and on replacement.
+
+Task 10 leaves the transactional message, the encrypted envelope and the invalidation of anything it supersedes. It does not dispatch: the worker, leases, CAS and backoff, decryption, rendering, sending, the email adapter and the test sink are Task 11, so IA-008 is not complete.
 
 ## Task 11: Dispatch outbox messages with deterministic backoff
 

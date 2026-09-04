@@ -354,6 +354,107 @@ public sealed class ProblemDetailsContractTests : TestBase
         payload.TryGetProperty("success", out _).ShouldBeFalse();
     }
 
+    /// <summary>
+    /// Every failure the three invitation routes can produce, at the boundary, as RFC 9457 with the code each
+    /// route declares. What this adds over the OpenAPI test is that the runtime agrees with the document: a
+    /// declared code nothing emits, or an emitted code nothing declares, is drift either way (IA-REQ-038).
+    /// </summary>
+    [Test]
+    public async Task Invitation_routes_answer_their_declared_problem_codes_at_runtime()
+    {
+        const string host = "https://invitation-problems.localhost";
+        var antiforgery = (await GetAntiforgeryAsync(host)).RequestToken;
+
+        // Anonymous, on the two authorized routes.
+        await AssertProblemAsync(
+            await SendInvitationAsync(host, "/api/invitations/accept", new { token = TestApp.RawTokenAt(2) }, antiforgery),
+            HttpStatusCode.Unauthorized,
+            "authentication_required");
+        await AssertProblemAsync(
+            await SendInvitationAsync(host, $"/api/tenants/{Guid.NewGuid()}/invitations", new { email = "a@example.test", roleIds = new[] { Guid.NewGuid() } }, antiforgery),
+            HttpStatusCode.Unauthorized,
+            "authentication_required");
+
+        // Authenticated but refused at the endpoint.
+        await TestApp.RunAsDefaultUserAsync();
+        TestApp.SetHttpAuthorizationGranted(false);
+        await AssertProblemAsync(
+            await SendInvitationAsync(host, "/api/invitations/accept", new { token = TestApp.RawTokenAt(2) }, antiforgery),
+            HttpStatusCode.Forbidden,
+            "permission_denied");
+
+        // Missing or mismatched antiforgery, on the public route, before any business decision.
+        TestApp.SetHttpAuthorizationGranted(true);
+        using var withoutAntiforgery = new HttpRequestMessage(HttpMethod.Post, $"{host}/api/invitations/register")
+        {
+            Content = JsonContent.Create(new { token = TestApp.RawTokenAt(2), password = "Testing1234!" })
+        };
+        withoutAntiforgery.Headers.Add("Origin", host);
+        await AssertProblemAsync(
+            await FunctionalTestSetup.HttpClient.SendAsync(withoutAntiforgery),
+            HttpStatusCode.BadRequest,
+            "antiforgery_validation_failed");
+    }
+
+    /// <summary>
+    /// A token that resolves to nothing is refused as <c>invalid_invitation</c>, and an unexpected fault on the
+    /// same route is a sanitized 500 that discloses nothing — including the token the caller submitted.
+    /// </summary>
+    [Test]
+    public async Task An_unusable_invitation_token_is_a_400_and_an_unexpected_fault_is_a_safe_500()
+    {
+        const string host = "https://invitation-faults.localhost";
+        var identityId = await TestApp.RunAsDefaultUserAsync();
+        TestApp.SetUserId(identityId);
+        TestApp.SetHttpAuthorizationGranted(true);
+        TestApp.SetApplicationPermissionGranted(true);
+
+        // The pair is bootstrapped after the authentication state settles: the server rotates it whenever that
+        // state changes, so one fetched earlier would be rejected before the business decision under test.
+        var antiforgery = (await GetAntiforgeryAsync(host)).RequestToken;
+        var token = TestApp.RawTokenAt(2);
+
+        await AssertProblemAsync(
+            await SendInvitationAsync(host, "/api/invitations/accept", new { token }, antiforgery),
+            HttpStatusCode.BadRequest,
+            "invalid_invitation");
+
+        // The fault is armed on a route that actually persists. Acceptance of an unknown token decides and
+        // returns before any save, so arming it there would have proved nothing and read as a passing 400.
+        var organization = await Invitations.InvitationScenario.SeedOrganizationAsync(
+            Application.IdentityAccess.Authorization.Permissions.MembersInvite);
+        TestApp.SetUserId(organization.InviterIdentityId);
+        TestApp.SetCurrentTenant(organization.TenantId);
+        // Switching the acting identity rotates the antiforgery pair, so the second request bootstraps its own.
+        var issuerAntiforgery = (await GetAntiforgeryAsync(host)).RequestToken;
+        TestApp.ForceUnexpectedFailure();
+        var faulted = await SendInvitationAsync(
+            host,
+            $"/api/tenants/{organization.TenantId.Value}/invitations",
+            new { email = $"invitee-{Guid.NewGuid():N}@example.test", roleIds = new[] { organization.RoleId } },
+            issuerAntiforgery);
+
+        var payload = await AssertProblemAsync(faulted, HttpStatusCode.InternalServerError, "internal_server_error");
+        var body = payload.GetRawText();
+        body.ShouldNotContain(token, Case.Insensitive);
+        body.ShouldNotContain("password", Case.Insensitive);
+        // A safe 500 may carry a detail or none at all; what it may never carry is anything about the fault.
+        if (payload.TryGetProperty("detail", out var detail))
+        {
+            var text = detail.GetString() ?? string.Empty;
+            text.ShouldNotContain("Exception", Case.Insensitive);
+            text.ShouldNotContain("password", Case.Insensitive);
+        }
+    }
+
+    private static Task<HttpResponseMessage> SendInvitationAsync(string host, string path, object body, string antiforgeryToken)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, $"{host}{path}") { Content = JsonContent.Create(body) };
+        request.Headers.Add("Origin", host);
+        request.Headers.Add("X-CSRF-TOKEN", antiforgeryToken);
+        return FunctionalTestSetup.HttpClient.SendAsync(request);
+    }
+
     private static async Task<CleanArchitecture.Web.Endpoints.AntiforgeryResponse> GetAntiforgeryAsync(string host)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, $"{host}/api/identity/antiforgery");

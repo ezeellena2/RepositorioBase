@@ -28,6 +28,92 @@ public sealed class OpenApiContractTests : TestBase
         AssertProblemCodes(confirm, "500", "internal_server_error");
     }
 
+    /// <summary>
+    /// The three invitation routes of SPEC section 6. What is asserted is the whole declaration, including the
+    /// statuses each route must NOT advertise: an over-declared contract tells a client to handle an outcome the
+    /// runtime never produces, which is drift in the direction the tests are least likely to notice.
+    /// </summary>
+    [Test]
+    public async Task Invitation_contracts_declare_exact_success_shapes_headers_and_problem_codes()
+    {
+        var response = await FunctionalTestSetup.HttpClient.GetAsync("/openapi/v1.json");
+        response.EnsureSuccessStatusCode();
+        var paths = JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement.GetProperty("paths");
+
+        var issue = paths.GetProperty("/api/tenants/{tenantId}/invitations").GetProperty("post").GetProperty("responses");
+        issue.GetProperty("201").GetProperty("content").TryGetProperty("application/json", out _).ShouldBeTrue();
+        issue.GetProperty("201").GetProperty("headers").TryGetProperty("Location", out _).ShouldBeTrue("a created invitation must advertise where it lives");
+        AssertProblemCodes(issue, "400", "antiforgery_validation_failed", "invalid_invitation");
+        AssertProblemCodes(issue, "401", "authentication_required", "invalid_session");
+        AssertProblemCodes(issue, "403", "permission_denied");
+        AssertProblemCodes(issue, "404", "not_found");
+        AssertProblemCodes(issue, "409", "invitation_conflict");
+        AssertProblemCodes(issue, "500", "internal_server_error");
+        issue.TryGetProperty("429", out _).ShouldBeFalse("issuing is not rate limited in this increment");
+        issue.TryGetProperty("202", out _).ShouldBeFalse();
+
+        // Registration is the neutral half: bodyless, and it advertises no status that would let a caller tell a
+        // live token from a dead one (IA-REQ-016, SPEC section 6).
+        var register = paths.GetProperty("/api/invitations/register").GetProperty("post").GetProperty("responses");
+        register.TryGetProperty("202", out _).ShouldBeTrue();
+        register.GetProperty("202").TryGetProperty("content", out _).ShouldBeFalse("the neutral 202 carries no body");
+        AssertProblemCodes(register, "400", "antiforgery_validation_failed", "invalid_invitation");
+        AssertProblemCodes(register, "500", "internal_server_error");
+        foreach (var status in new[] { "401", "403", "404", "409", "429" })
+        {
+            register.TryGetProperty(status, out _).ShouldBeFalse($"the public registration route must not advertise {status}.");
+        }
+
+        var accept = paths.GetProperty("/api/invitations/accept").GetProperty("post").GetProperty("responses");
+        accept.GetProperty("200").GetProperty("content").TryGetProperty("application/json", out _).ShouldBeTrue();
+        AssertProblemCodes(accept, "400", "antiforgery_validation_failed", "invalid_invitation");
+        AssertProblemCodes(accept, "401", "authentication_required", "invalid_session");
+        AssertProblemCodes(accept, "403", "permission_denied");
+        AssertProblemCodes(accept, "409", "invitation_conflict");
+        AssertProblemCodes(accept, "500", "internal_server_error");
+        foreach (var status in new[] { "404", "429" })
+        {
+            accept.TryGetProperty(status, out _).ShouldBeFalse($"acceptance must not advertise {status}.");
+        }
+    }
+
+    /// <summary>
+    /// The success bodies are endpoint DTOs, not the internal Result and not a universal envelope (IA-REQ-038).
+    /// Reading the declared schema is what makes that checkable without issuing a request.
+    /// </summary>
+    [Test]
+    public async Task Invitation_success_schemas_are_endpoint_dtos_and_never_carry_a_token()
+    {
+        var response = await FunctionalTestSetup.HttpClient.GetAsync("/openapi/v1.json");
+        response.EnsureSuccessStatusCode();
+        var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement;
+        var paths = document.GetProperty("paths");
+
+        var created = SchemaOf(document, paths, "/api/tenants/{tenantId}/invitations", "post", "201");
+        created.Select(property => property.Name).Order(StringComparer.Ordinal).ShouldBe(["expiresAt", "invitationId"]);
+
+        var acceptance = SchemaOf(document, paths, "/api/invitations/accept", "post", "200");
+        acceptance.Select(property => property.Name).Order(StringComparer.Ordinal).ShouldBe(["membershipId", "tenantId"]);
+
+        foreach (var property in created.Concat(acceptance))
+        {
+            property.Name.ShouldNotContain("token", Case.Insensitive);
+            property.Name.ShouldNotContain("secret", Case.Insensitive);
+        }
+    }
+
+    private static JsonProperty[] SchemaOf(JsonElement document, JsonElement paths, string path, string verb, string status)
+    {
+        var schema = paths.GetProperty(path).GetProperty(verb).GetProperty("responses").GetProperty(status)
+            .GetProperty("content").GetProperty("application/json").GetProperty("schema");
+        if (schema.TryGetProperty("$ref", out var reference))
+        {
+            schema = document.GetProperty("components").GetProperty("schemas").GetProperty(reference.GetString()!.Split('/')[^1]);
+        }
+
+        return schema.GetProperty("properties").EnumerateObject().ToArray();
+    }
+
     [Test]
     public async Task Identity_context_contracts_declare_exact_success_and_problem_code_arrays()
     {
