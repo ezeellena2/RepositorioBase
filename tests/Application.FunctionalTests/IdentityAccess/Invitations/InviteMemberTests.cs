@@ -276,6 +276,85 @@ public sealed class InviteMemberTests : TestBase
         (await TestApp.CountAsync<Domain.IdentityAccess.Outbox.OutboxSecret>()).ShouldBe(1);
     }
 
+    /// <summary>
+    /// IA-REQ-047. Without this rule <c>members.invite</c> is a master key: whoever holds it can offer a role that
+    /// carries permissions they do not have — up to and including one that can administer roles — and then hold
+    /// those permissions themselves through a second account they control.
+    /// </summary>
+    [Test]
+    public async Task Offering_a_role_that_grants_more_than_the_inviter_holds_is_refused_and_creates_nothing()
+    {
+        var organization = await InvitationScenario.SeedOrganizationAsync(Permissions.MembersInvite);
+        await GrantAsync(organization.SecondRoleId, Permissions.RolesManage);
+        InvitationScenario.ActAs(organization);
+
+        var result = await TestApp.SendAsync(NewCommand(organization) with { RoleIds = [organization.SecondRoleId] });
+
+        result.IsFailure.ShouldBeTrue("an invitation cannot hand out authority the inviter does not have");
+        result.Error!.Code.ShouldBe("invalid_invitation");
+        await InvitationScenario.AssertNoInvitationEffectsAsync();
+    }
+
+    /// <summary>
+    /// The converse, so the rule is a subset test and not a blanket refusal of any role but the inviter's own: a
+    /// role carrying strictly less than the inviter holds is offerable.
+    /// </summary>
+    [Test]
+    public async Task Offering_a_role_within_what_the_inviter_holds_is_allowed()
+    {
+        var organization = await InvitationScenario.SeedOrganizationAsync(Permissions.MembersInvite, Permissions.MembersRead);
+        await GrantAsync(organization.SecondRoleId, Permissions.MembersRead);
+        InvitationScenario.ActAs(organization);
+
+        var result = await TestApp.SendAsync(NewCommand(organization) with { RoleIds = [organization.SecondRoleId] });
+
+        result.IsSuccess.ShouldBeTrue();
+        (await InvitationScenario.SingleInvitationAsync()).Roles.Select(offered => offered.RoleId.Value).ShouldBe([organization.SecondRoleId]);
+    }
+
+    /// <summary>Reissuing re-offers the same roles, so it is bound by the same rule as the original offer.</summary>
+    [Test]
+    public async Task A_role_that_stops_being_grantable_cannot_be_re_offered()
+    {
+        var organization = await InvitationScenario.SeedOrganizationAsync(Permissions.MembersInvite, Permissions.MembersRead);
+        await GrantAsync(organization.SecondRoleId, Permissions.MembersRead);
+        InvitationScenario.ActAs(organization);
+        var email = $"invitee-{Guid.NewGuid():N}@example.test";
+        (await TestApp.SendAsync(new InviteMemberCommand(organization.TenantId, email, [organization.SecondRoleId]))).IsSuccess.ShouldBeTrue();
+        await RevokeAsync(organization.RoleId, Permissions.MembersRead);
+
+        var result = await TestApp.SendAsync(new InviteMemberCommand(organization.TenantId, email, [organization.SecondRoleId]));
+
+        result.IsFailure.ShouldBeTrue("an offer the inviter can no longer make cannot be renewed either");
+        result.Error!.Code.ShouldBe("invalid_invitation");
+        (await InvitationScenario.SingleInvitationAsync()).TokenHash.Matches(TestApp.RawTokenAt(0)).ShouldBeTrue("a refused reissue does not rotate the token");
+    }
+
+    private static async Task GrantAsync(Guid roleId, string permissionCode)
+    {
+        using var scope = FunctionalTestSetup.ScopeFactory.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var identifier = RoleId.From(roleId);
+        var role = await context.TenantRoles.SingleAsync(candidate => candidate.Id == identifier);
+        var tenant = await context.Tenants.SingleAsync(candidate => candidate.Id == role.TenantId);
+        var permission = await context.Permissions.SingleAsync(candidate => candidate.Code == permissionCode);
+        context.Add(RolePermission.Create(tenant, role, permission));
+        await context.SaveChangesAsync();
+    }
+
+    private static async Task RevokeAsync(Guid roleId, string permissionCode)
+    {
+        using var scope = FunctionalTestSetup.ScopeFactory.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var identifier = RoleId.From(roleId);
+        var assignment = await context.RolePermissions.SingleAsync(
+            candidate => candidate.RoleId == identifier && candidate.PermissionCode == permissionCode);
+        var tenant = await context.Tenants.SingleAsync(candidate => candidate.Id == assignment.TenantId);
+        assignment.Revoke(tenant);
+        context.Remove(assignment);
+        await context.SaveChangesAsync();
+    }
+
     private static InviteMemberCommand NewCommand(InvitationScenario.Organization organization) =>
         new(organization.TenantId, $"invitee-{Guid.NewGuid():N}@example.test", [organization.RoleId]);
 
