@@ -1,5 +1,6 @@
 using CleanArchitecture.Domain.IdentityAccess.Authorization;
 using CleanArchitecture.Domain.IdentityAccess.Invitations;
+using CleanArchitecture.Domain.IdentityAccess.Security;
 using CleanArchitecture.Domain.IdentityAccess.Tenants;
 using CleanArchitecture.Infrastructure.Data;
 using CleanArchitecture.Infrastructure.Identity;
@@ -252,6 +253,33 @@ public sealed class InvitationMappingTests
             Now.AddDays(7)));
     }
 
+    /// <summary>
+    /// The decomposed spelling of an address the aggregate already composed must be refused by the column, or the
+    /// pending-slot index would see two different keys for one recipient.
+    /// </summary>
+    [Test]
+    public async Task Database_rejects_a_recipient_that_is_not_composed()
+    {
+        using var scope = TestServices.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var tenant = Tenant.CreateOrganization(TenantSlug.From($"invitation-nfc-{Guid.NewGuid():N}"));
+        context.Add(tenant);
+        await context.SaveChangesAsync();
+
+        await using var connection = new NpgsqlConnection(context.Database.GetConnectionString());
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            $"INSERT INTO \"Invitations\" (\"Id\", \"TenantId\", \"TokenHash\", \"NormalizedEmail\", \"Status\", \"CreatedAt\", \"ExpiresAt\") " +
+            $"VALUES ('{Guid.NewGuid()}', '{tenant.Id.Value}', '{VersionedHash()}', @recipient, 'Pending', NOW(), NOW() + INTERVAL '7 days');",
+            connection);
+        command.Parameters.AddWithValue("recipient", "josé@example.test");
+
+        var failure = await Should.ThrowAsync<PostgresException>(() => command.ExecuteNonQueryAsync());
+
+        failure.SqlState.ShouldBe(PostgresErrorCodes.CheckViolation);
+        failure.ConstraintName.ShouldBe("CK_Invitations_Lifecycle");
+    }
+
     [TestCaseSource(nameof(IllegalRows))]
     public async Task Database_rejects_a_row_the_aggregate_could_never_produce(string columns, string values)
     {
@@ -367,7 +395,7 @@ public sealed class InvitationMappingTests
         var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var tenant = Tenant.CreateOrganization(TenantSlug.From($"invitation-hasherfit-{Guid.NewGuid():N}"));
         var role = Role.Create(tenant, "Operators");
-        var hash = new VersionedTokenHasher().Hash(new SecureTokenGenerator().Generate());
+        var hash = VersionedTokenHash.Of(new SecureTokenGenerator().Generate());
         var invitation = Invitation.Issue(tenant, $"hasher-{Guid.NewGuid():N}@example.test", [role], hash, Now, Now.AddDays(7));
 
         context.AddRange(tenant, role, invitation);
@@ -454,7 +482,7 @@ public sealed class InvitationMappingTests
         var rawToken = new SecureTokenGenerator().Generate();
         var tenant = Tenant.CreateOrganization(TenantSlug.From($"invitation-secret-{Guid.NewGuid():N}"));
         var role = Role.Create(tenant, "Operators");
-        var invitation = Invitation.Issue(tenant, $"secret-{Guid.NewGuid():N}@example.test", [role], new VersionedTokenHasher().Hash(rawToken), Now, Now.AddDays(7));
+        var invitation = Invitation.Issue(tenant, $"secret-{Guid.NewGuid():N}@example.test", [role], VersionedTokenHash.Of(rawToken), Now, Now.AddDays(7));
         context.AddRange(tenant, role, invitation);
         await context.SaveChangesAsync();
 
@@ -463,9 +491,9 @@ public sealed class InvitationMappingTests
         await using var command = new NpgsqlCommand($"SELECT row.*::text FROM \"Invitations\" row WHERE row.\"Id\" = '{invitation.Id.Value}';", connection);
         var persistedRow = (string)(await command.ExecuteScalarAsync())!;
 
-        persistedRow.ShouldContain(invitation.TokenHash, Case.Sensitive, "the row really is being read as text, so the negative assertion below means something");
+        persistedRow.ShouldContain(invitation.TokenHash.Value, Case.Sensitive, "the row really is being read as text, so the negative assertion below means something");
         persistedRow.ShouldNotContain(rawToken, Case.Insensitive);
-        new VersionedTokenHasher().Verify(rawToken, invitation.TokenHash).ShouldBeTrue("only the hash is stored, and it still resolves the token it was made from");
+        invitation.TokenHash.Matches(rawToken).ShouldBeTrue("only the hash is stored, and it still resolves the token it was made from");
     }
 
     /// <summary>The database also refuses a raw token written straight past the aggregate.</summary>
@@ -538,7 +566,7 @@ public sealed class InvitationMappingTests
         context.Add(tenant);
         await context.SaveChangesAsync();
         await context.Database.ExecuteSqlAsync(
-            $"INSERT INTO \"Invitations\" (\"Id\", \"TenantId\", \"TokenHash\", \"NormalizedEmail\", \"Status\", \"CreatedAt\", \"ExpiresAt\") VALUES ({Guid.NewGuid()}, {tenant.Id.Value}, {VersionedHash()}, {$"restrict-{Guid.NewGuid():N}@example.test"}, {"Pending"}, {Now}, {Now.AddDays(7)})");
+            $"INSERT INTO \"Invitations\" (\"Id\", \"TenantId\", \"TokenHash\", \"NormalizedEmail\", \"Status\", \"CreatedAt\", \"ExpiresAt\") VALUES ({Guid.NewGuid()}, {tenant.Id.Value}, {VersionedHash().Value}, {$"restrict-{Guid.NewGuid():N}@example.test"}, {"Pending"}, {Now}, {Now.AddDays(7)})");
 
         var failure = await Should.ThrowAsync<PostgresException>(() => context.Database.ExecuteSqlAsync(
             $"DELETE FROM \"Tenants\" WHERE \"Id\" = {tenant.Id.Value}"));
@@ -625,8 +653,8 @@ public sealed class InvitationMappingTests
             $"{empty}, @invitation, @role").SetName("an empty tenant on an offered role");
     }
 
-    /// <summary>A digest-shaped value: 32 bytes, exactly what the hasher emits and what the column accepts.</summary>
-    private static string VersionedHash() => $"v1:{Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32))}";
+    /// <summary>A distinct hash per call. Interpolating it yields the stored value, so raw SQL keeps working.</summary>
+    private static VersionedTokenHash VersionedHash() => VersionedTokenHash.Of(Guid.NewGuid().ToString());
 
     private static async Task<Role> RoleOfAsync(ApplicationDbContext context, Tenant tenant) =>
         await context.TenantRoles.FirstAsync(candidate => candidate.TenantId == tenant.Id);

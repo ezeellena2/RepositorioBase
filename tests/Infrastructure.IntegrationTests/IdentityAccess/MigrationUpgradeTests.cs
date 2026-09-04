@@ -10,6 +10,8 @@ using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using System.Data.Common;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace CleanArchitecture.Infrastructure.IntegrationTests.IdentityAccess;
 
@@ -19,6 +21,7 @@ public sealed class MigrationUpgradeTests
     private const string RegistrationMessagingPredecessor = "20260901024500_AuthorizationDenialAudit";
     private const string UserSessionsPredecessor = "20260901050000_RegistrationMessaging";
     private const string InvitationsPredecessor = "20260901184054_UserSessions";
+    private const string CanonicalFormPredecessor = "20260903170351_Invitations";
 
     [Test]
     public async Task TenantAuthorization_empty_database_upgrades_to_latest_without_pending_migrations()
@@ -254,6 +257,120 @@ public sealed class MigrationUpgradeTests
         }
     }
 
+    /// <summary>
+    /// The canonical-form migration tightens a constraint an applied database has already been enforcing, so the
+    /// rows that database is holding were valid under the looser rule and may not be valid under the tighter one.
+    /// A constraint added over such rows fails, and the deployment fails with it. This seeds exactly those rows
+    /// and requires the upgrade to carry them across.
+    /// </summary>
+    [Test]
+    public async Task InvitationCanonicalForm_upgrades_a_database_holding_rows_the_previous_constraint_allowed()
+    {
+        var databaseName = $"invitation_canonical_upgrade_{Guid.NewGuid():N}";
+        string? connectionString = null;
+
+        try
+        {
+            using (var scope = TestServices.CreateScope())
+            {
+                var sharedContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                var sharedConnectionString = sharedContext.Database.GetConnectionString() ?? throw new InvalidOperationException("The test PostgreSQL connection string is required.");
+                connectionString = new NpgsqlConnectionStringBuilder(sharedConnectionString) { Database = databaseName }.ConnectionString;
+                await CreateDatabase(databaseName, sharedConnectionString);
+            }
+
+            var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseNpgsql(connectionString).Options;
+            var tenantId = Guid.NewGuid();
+            await using (var seedContext = new ApplicationDbContext(options))
+            {
+                await seedContext.Database.GetService<IMigrator>().MigrateAsync(CanonicalFormPredecessor);
+            }
+
+            await using (var connection = new NpgsqlConnection(connectionString))
+            {
+                await connection.OpenAsync();
+                await Execute(connection, $"INSERT INTO \"Tenants\" (\"Id\", \"Type\", \"Status\", \"Slug\", \"AuthorizationVersion\") VALUES ('{tenantId}', 'Organization', 'Active', 'canonical-upgrade-{tenantId:N}', 0);");
+
+                // Every one of these satisfied the constraint this migration replaces: it pinned only the "v<n>:"
+                // prefix, and said nothing about composition, casing or whitespace.
+                await SeedLegacyInvitation(connection, tenantId, $"v1:{Digest()}", "ana@example.test");
+                await SeedLegacyInvitation(connection, tenantId, "v7:anything-at-all", "bruno@example.test");
+                await SeedLegacyInvitation(connection, tenantId, $"v1:{Convert.ToBase64String(Guid.NewGuid().ToByteArray())}", "carla@example.test"); // A "v1:" prefix over 16 bytes: the shape of a digest without being one.
+                await SeedLegacyInvitation(connection, tenantId, $"v1:{Digest()}", "АННА@example.test");
+                await SeedLegacyInvitation(connection, tenantId, $"v1:{Digest()}", "josé@example.test");
+                await SeedLegacyInvitation(connection, tenantId, $"v1:{Digest()}", "dario @example.test");
+            }
+
+            await using (var upgradedContext = new ApplicationDbContext(options))
+            {
+                await Should.NotThrowAsync(
+                    () => upgradedContext.Database.GetService<IMigrator>().MigrateAsync(),
+                    "an applied database must be able to reach the tightened constraint.");
+                (await upgradedContext.Database.GetPendingMigrationsAsync()).ShouldBeEmpty();
+            }
+
+            await using (var connection = new NpgsqlConnection(connectionString))
+            {
+                await connection.OpenAsync();
+
+                // Not merely "the migration ran": every row has one defined destination. A recipient the
+                // application can still address is repaired into canonical form and stays pending. A row whose
+                // digest the application cannot read is retired instead, because no token could ever be checked
+                // against it — that covers both the unknown version and the "v1:" prefix over something that was
+                // never a SHA-256 digest, which is precisely what the old prefix-only rule let through.
+                var rows = new List<string>();
+                await using (var command = new NpgsqlCommand($"SELECT \"NormalizedEmail\" || ' ' || \"Status\" FROM \"Invitations\" WHERE \"TenantId\" = '{tenantId}' ORDER BY 1;", connection))
+                await using (var reader = await command.ExecuteReaderAsync())
+                {
+                    while (await reader.ReadAsync())
+                    {
+                        rows.Add(reader.GetString(0));
+                    }
+                }
+
+                rows.ShouldBe(
+                    [
+                        "ana@example.test Pending",
+                        "bruno@example.test Cancelled",
+                        "carla@example.test Cancelled",
+                        "dario@example.test Pending",
+                        "josé@example.test Pending".Normalize(NormalizationForm.FormC).Normalize(NormalizationForm.FormC),
+                        "анна@example.test Pending"
+                    ],
+                    ignoreOrder: true,
+                    "invitation history survives the upgrade; a row is repaired or retired, never deleted.");
+
+                (await Scalar<long>(connection, $"SELECT count(*) FROM \"Invitations\" WHERE \"TenantId\" = '{tenantId}' AND \"TokenHash\" !~ '^v1:[A-Za-z0-9+/]{{43}}=$';"))
+                    .ShouldBe(0, "a retired invitation carries a readable digest, so loading it cannot throw.");
+            }
+
+            await AssertInvitationSchema(connectionString!);
+        }
+        finally
+        {
+            if (connectionString is not null)
+            {
+                await DropDatabase(databaseName, connectionString);
+            }
+        }
+    }
+
+    private static string Digest() => Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+
+    /// <summary>
+    /// Writes the row as the previous schema would have accepted it, bypassing the aggregate entirely: the point
+    /// is the data an already-deployed database is holding, not data this code could still produce.
+    /// </summary>
+    private static async Task SeedLegacyInvitation(NpgsqlConnection connection, Guid tenantId, string tokenHash, string recipient)
+    {
+        await using var command = new NpgsqlCommand(
+            $"INSERT INTO \"Invitations\" (\"Id\", \"TenantId\", \"TokenHash\", \"NormalizedEmail\", \"Status\", \"CreatedAt\", \"ExpiresAt\") VALUES ('{Guid.NewGuid()}', '{tenantId}', @hash, @recipient, 'Pending', NOW(), NOW() + INTERVAL '7 days');",
+            connection);
+        command.Parameters.AddWithValue("hash", tokenHash);
+        command.Parameters.AddWithValue("recipient", recipient);
+        await command.ExecuteNonQueryAsync();
+    }
+
     [Test]
     public async Task TenantAuthorization_concurrent_catalog_synchronization_is_atomic_and_idempotent()
     {
@@ -397,7 +514,7 @@ public sealed class MigrationUpgradeTests
             tenant,
             $"migration-{Guid.NewGuid():N}@example.test",
             [role],
-            $"v1:{Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32))}",
+            CleanArchitecture.Domain.IdentityAccess.Security.VersionedTokenHash.Of(Guid.NewGuid().ToString()),
             DateTimeOffset.UtcNow,
             DateTimeOffset.UtcNow.AddDays(7));
         // A second, accepted invitation so the down-path also runs against a row carrying the AspNetUsers key.
@@ -406,7 +523,7 @@ public sealed class MigrationUpgradeTests
             tenant,
             $"migration-accepted-{Guid.NewGuid():N}@example.test",
             [role],
-            $"v1:{Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32))}",
+            CleanArchitecture.Domain.IdentityAccess.Security.VersionedTokenHash.Of(Guid.NewGuid().ToString()),
             DateTimeOffset.UtcNow,
             DateTimeOffset.UtcNow.AddDays(7));
         accepted.Accept(tenant, identityId, DateTimeOffset.UtcNow.AddMinutes(1));

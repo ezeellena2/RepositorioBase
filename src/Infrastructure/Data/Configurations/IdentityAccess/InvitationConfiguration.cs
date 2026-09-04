@@ -1,4 +1,5 @@
 using CleanArchitecture.Domain.IdentityAccess.Invitations;
+using CleanArchitecture.Domain.IdentityAccess.Security;
 using CleanArchitecture.Domain.IdentityAccess.Tenants;
 using CleanArchitecture.Infrastructure.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -14,7 +15,8 @@ public sealed class InvitationConfiguration : IEntityTypeConfiguration<Invitatio
     /// canonical form, a token in exactly the format the hasher emits, a window that outlives its own creation,
     /// and terminal evidence that matches the status it belongs to.
     /// <para>
-    /// The casing clause is <c>lower()</c> and that is safe only because the aggregate refuses to emit anything
+    /// Composition is verified with <c>normalize(x, NFC)</c>, which PostgreSQL evaluates exactly as .NET does, so
+    /// two spellings of one address cannot each take a pending slot. The casing clause is <c>lower()</c> and that is safe only because the aggregate refuses to emit anything
     /// <c>lower()</c> would change: it rejects uppercase and titlecase categories outright rather than lowering
     /// them and hoping the two case mappings agree. They do not — U+0130 survives .NET's invariant mapping and is
     /// folded by PostgreSQL — so an earlier revision that lowered and then compared turned a legitimate
@@ -42,6 +44,7 @@ public sealed class InvitationConfiguration : IEntityTypeConfiguration<Invitatio
     /// </summary>
     private const string LifecycleConstraint =
         "\"TokenHash\" ~ '^v1:[A-Za-z0-9+/]{43}=$' AND " +
+        "\"NormalizedEmail\" = normalize(\"NormalizedEmail\", NFC) AND " +
         "\"NormalizedEmail\" = lower(\"NormalizedEmail\") AND " +
         "\"NormalizedEmail\" !~ '[[:space:]]' AND position(U&'\\00a0' IN \"NormalizedEmail\") = 0 AND " +
         "strpos(\"NormalizedEmail\", '@') > 0 AND " +
@@ -61,7 +64,10 @@ public sealed class InvitationConfiguration : IEntityTypeConfiguration<Invitatio
         builder.Property(invitation => invitation.Id).HasConversion(id => id.Value, value => InvitationId.From(value)).ValueGeneratedNever();
         builder.Property(invitation => invitation.TenantId).HasConversion(id => id.Value, value => TenantId.From(value)).IsRequired();
         builder.Property(invitation => invitation.NormalizedEmail).HasMaxLength(256).IsRequired();
-        builder.Property(invitation => invitation.TokenHash).HasMaxLength(256).IsRequired();
+        builder.Property(invitation => invitation.TokenHash)
+            .HasConversion(hash => hash.Value, value => VersionedTokenHash.FromPersistedValue(value))
+            .HasMaxLength(256)
+            .IsRequired();
         builder.Property(invitation => invitation.Status).HasConversion<string>().HasMaxLength(32).IsRequired();
         builder.Property(invitation => invitation.CreatedAt).IsRequired();
         builder.Property(invitation => invitation.ExpiresAt).IsRequired();

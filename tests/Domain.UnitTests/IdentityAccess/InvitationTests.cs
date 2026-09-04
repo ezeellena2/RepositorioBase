@@ -1,5 +1,6 @@
 using CleanArchitecture.Domain.IdentityAccess.Authorization;
 using CleanArchitecture.Domain.IdentityAccess.Invitations;
+using CleanArchitecture.Domain.IdentityAccess.Security;
 using CleanArchitecture.Domain.IdentityAccess.Tenants;
 using NUnit.Framework;
 using Shouldly;
@@ -9,8 +10,8 @@ namespace CleanArchitecture.Domain.UnitTests.IdentityAccess;
 public sealed class InvitationTests
 {
     private static readonly DateTimeOffset Now = new(2026, 9, 2, 12, 0, 0, TimeSpan.Zero);
-    private const string Hash = "v1:crGz8gJN0Y2BXmF1x6jFbj1Qh4seDVvGgCoIBAFwCQs=";
-    private const string RotatedHash = "v1:QhXXBtBl/zge0imIHrhyydaFIhqbVUG8mXgzEFbgcuU=";
+    private static readonly VersionedTokenHash Hash = VersionedTokenHash.Of("invitation-test-token");
+    private static readonly VersionedTokenHash RotatedHash = VersionedTokenHash.Of("invitation-test-rotated-token");
 
     [Test]
     public void Issue_binds_the_invitation_to_its_organization_tenant_and_starts_pending()
@@ -69,6 +70,26 @@ public sealed class InvitationTests
         Should.Throw<ArgumentException>(() => Invitation.Issue(tenant, submitted, [Role.Create(tenant, "member")], Hash, Now, Now.AddDays(7)));
     }
 
+    /// <summary>
+    /// The same address written composed and decomposed must reach one canonical form, or each spelling would
+    /// take its own pending slot. NFC is the declared policy and PostgreSQL verifies the same rule.
+    /// </summary>
+    [Test]
+    public void Issue_composes_the_recipient_so_one_address_has_one_canonical_form()
+    {
+        var tenant = Organization();
+        const string composed = "josé@example.test";
+        const string decomposed = "josé@example.test";
+        composed.ShouldNotBe(decomposed, "the two spellings really are different strings before normalization.");
+
+        var first = Invitation.Issue(tenant, composed, [Role.Create(tenant, "member")], Hash, Now, Now.AddDays(7));
+        var second = Invitation.Issue(tenant, decomposed, [Role.Create(tenant, "member")], RotatedHash, Now, Now.AddDays(7));
+
+        first.NormalizedEmail.ShouldBe(second.NormalizedEmail);
+        first.NormalizedEmail.ShouldBe(composed);
+        first.NormalizedEmail.IsNormalized(System.Text.NormalizationForm.FormC).ShouldBeTrue();
+    }
+
     [Test]
     public void Issue_requires_at_least_one_role()
     {
@@ -99,23 +120,6 @@ public sealed class InvitationTests
         invitation.Roles.Select(offered => offered.RoleId).ShouldBe([role.Id, second.Id], ignoreOrder: true);
     }
 
-    [TestCase("", TestName = "an empty hash")]
-    [TestCase("   ", TestName = "a blank hash")]
-    [TestCase("Zm9vYmFyLXJhdy10b2tlbg==", TestName = "a token with no version prefix")]
-    [TestCase("v1:", TestName = "a version prefix with no digest")]
-    [TestCase("1:abc", TestName = "a version without its v")]
-    [TestCase("version1:abc", TestName = "a version that is not numeric")]
-    // The guard is the exact format the hasher emits, version and digest length included, so anything that is
-    // not a real hash is refused - including a correctly shaped digest under a version this project cannot make.
-    [TestCase("v1:raw-secret", TestName = "text that is not a digest")]
-    [TestCase("v2:crGz8gJN0Y2BXmF1x6jFbj1Qh4seDVvGgCoIBAFwCQs=", TestName = "an unsupported hash version")]
-    [TestCase("v1:AAAA", TestName = "a digest that is too short")]
-    public void Issue_requires_a_versioned_token_hash(string tokenHash)
-    {
-        var tenant = Organization();
-
-        Should.Throw<ArgumentException>(() => Invitation.Issue(tenant, "ana@example.test", [Role.Create(tenant, "member")], tokenHash, Now, Now.AddDays(7)));
-    }
 
     [Test]
     public void Issue_rejects_an_expiry_that_does_not_outlive_its_creation()
@@ -331,14 +335,6 @@ public sealed class InvitationTests
         invitation.ExpiresAt.ShouldBe(Now.AddDays(7), "a refused reissue must not extend the window either");
     }
 
-    [Test]
-    public void Reissue_requires_a_versioned_token_hash()
-    {
-        var invitation = Pending(out var tenant);
-
-        Should.Throw<ArgumentException>(() => invitation.Reissue(tenant, "raw-token", Now.AddDays(1), Now.AddDays(8)));
-        invitation.TokenHash.ShouldBe(Hash);
-    }
 
     [Test]
     public void Reissue_rejects_an_expiry_that_does_not_outlive_the_reissue()

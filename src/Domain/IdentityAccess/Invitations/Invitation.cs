@@ -1,5 +1,6 @@
 using CleanArchitecture.Domain.Common;
 using CleanArchitecture.Domain.IdentityAccess.Authorization;
+using CleanArchitecture.Domain.IdentityAccess.Security;
 using CleanArchitecture.Domain.IdentityAccess.Tenants;
 
 namespace CleanArchitecture.Domain.IdentityAccess.Invitations;
@@ -19,7 +20,7 @@ public sealed class Invitation : BaseEntity<InvitationId>
 
     public string NormalizedEmail { get; private set; } = string.Empty;
 
-    public string TokenHash { get; private set; } = string.Empty;
+    public VersionedTokenHash TokenHash { get; private set; }
 
     public InvitationStatus Status { get; private set; }
 
@@ -35,7 +36,7 @@ public sealed class Invitation : BaseEntity<InvitationId>
 
     public IReadOnlyCollection<InvitationRole> Roles => _roles.AsReadOnly();
 
-    public static Invitation Issue(Tenant tenant, string email, IEnumerable<Role> roles, string tokenHash, DateTimeOffset now, DateTimeOffset expiresAt)
+    public static Invitation Issue(Tenant tenant, string email, IEnumerable<Role> roles, VersionedTokenHash tokenHash, DateTimeOffset now, DateTimeOffset expiresAt)
     {
         ArgumentNullException.ThrowIfNull(tenant);
         ArgumentNullException.ThrowIfNull(roles);
@@ -54,7 +55,7 @@ public sealed class Invitation : BaseEntity<InvitationId>
             Id = InvitationId.New(),
             TenantId = tenant.Id,
             NormalizedEmail = Normalize(email),
-            TokenHash = RequireVersionedHash(tokenHash),
+            TokenHash = tokenHash,
             Status = InvitationStatus.Pending,
             CreatedAt = now,
             ExpiresAt = expiresAt
@@ -134,7 +135,7 @@ public sealed class Invitation : BaseEntity<InvitationId>
     /// instant with two usable tokens for one invitation, and a lapsed invitation is revived in place instead of
     /// leaving a second pending row for the same recipient (IA-REQ-017).
     /// </summary>
-    public void Reissue(Tenant tenant, string tokenHash, DateTimeOffset now, DateTimeOffset expiresAt)
+    public void Reissue(Tenant tenant, VersionedTokenHash tokenHash, DateTimeOffset now, DateTimeOffset expiresAt)
     {
         EnsureTenant(tenant);
         if (Status != InvitationStatus.Pending)
@@ -152,15 +153,14 @@ public sealed class Invitation : BaseEntity<InvitationId>
             throw new ArgumentOutOfRangeException(nameof(expiresAt));
         }
 
-        var rotated = RequireVersionedHash(tokenHash);
-        if (string.Equals(rotated, TokenHash, StringComparison.Ordinal))
+        if (tokenHash == TokenHash)
         {
             // Reissuing to the same hash would extend the window while leaving the previous token valid, which
             // is exactly what a reissue exists to prevent.
             throw new ArgumentException("Reissuing an invitation must rotate its token.", nameof(tokenHash));
         }
 
-        TokenHash = rotated;
+        TokenHash = tokenHash;
         ExpiresAt = expiresAt;
     }
 
@@ -194,14 +194,19 @@ public sealed class Invitation : BaseEntity<InvitationId>
 
     /// <summary>
     /// Produces the single canonical form of a recipient, and refuses any address whose canonical form the
-    /// database could not verify for itself.
+    /// database could not verify for itself. The policy is Unicode with NFC, and this method is its authority.
     /// <para>
-    /// PostgreSQL's <c>lower()</c> is locale-aware and .NET's invariant mapping is not, so the two disagree on a
-    /// few real characters — U+0130 survives <c>ToLowerInvariant</c> unchanged but is folded by <c>lower()</c>.
-    /// Rather than ask the database to imitate .NET, which it cannot, the aggregate only emits values both agree
-    /// on: nothing in an uppercase or titlecase category, which is precisely what <c>lower()</c> changes, and no
-    /// whitespace, which <c>btrim</c> only partly removes. The database can then hold the same rule, so two
-    /// spellings of one recipient can never both occupy the pending slot.
+    /// Composition comes first: <c>josé</c> and <c>josé</c> are the same address written two ways, and
+    /// without normalizing they are different bytes and would each take a pending slot. NFC is chosen because
+    /// PostgreSQL can verify it exactly, with <c>normalize(x, NFC)</c>, so the database holds the same rule
+    /// rather than trusting this one.
+    /// </para>
+    /// <para>
+    /// Case comes second, and is a refusal rather than a mapping. PostgreSQL's <c>lower()</c> is locale-aware and
+    /// .NET's invariant mapping is not, so the two disagree on real characters — U+0130 survives
+    /// <c>ToLowerInvariant</c> unchanged but is folded by <c>lower()</c>. Rather than ask the database to imitate
+    /// .NET, which it cannot, the aggregate emits nothing <c>lower()</c> would change: no uppercase or titlecase
+    /// category, and no whitespace of any kind.
     /// </para>
     /// </summary>
     private static string Normalize(string email)
@@ -211,7 +216,7 @@ public sealed class Invitation : BaseEntity<InvitationId>
             throw new ArgumentException("Invitation recipients cannot be empty.", nameof(email));
         }
 
-        var normalized = email.Trim().ToLowerInvariant();
+        var normalized = email.Trim().ToLowerInvariant().Normalize(System.Text.NormalizationForm.FormC);
         if (normalized.Length > 256 || !normalized.Contains('@', StringComparison.Ordinal) || !IsCanonical(normalized))
         {
             throw new ArgumentException("Invitation recipients must be a normalizable email address.", nameof(email));
@@ -227,57 +232,6 @@ public sealed class Invitation : BaseEntity<InvitationId>
             if (char.IsWhiteSpace(character) ||
                 char.IsUpper(character) ||
                 char.GetUnicodeCategory(character) == System.Globalization.UnicodeCategory.TitlecaseLetter)
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    /// <summary>The one hash format the project's token hasher emits: a version tag and a 256-bit Base64 digest.</summary>
-    private const string HashVersion = "v1:";
-
-    /// <summary>Base64 of a 32-byte digest is 44 characters, the last of which is always padding.</summary>
-    private const int HashDigestLength = 44;
-
-    /// <summary>
-    /// Requires the exact format the token hasher produces, version and digest length included, rather than a
-    /// loose shape. A usable token is 32 random bytes in Base64 and therefore the same length as a digest, so a
-    /// length check alone would not separate them — but no token carries the version tag, and a value that is not
-    /// a digest of the right size cannot be one either. Between this and the identical database constraint, the
-    /// only value that can reach the column is something a hasher produced (IA-REQ-015/029).
-    /// <para>
-    /// Introducing a second hash version means changing this constant, the database constraint and a migration
-    /// together; that coupling is deliberate, so a version can never be persisted that half the stack rejects.
-    /// </para>
-    /// </summary>
-    private static string RequireVersionedHash(string tokenHash)
-    {
-        if (string.IsNullOrWhiteSpace(tokenHash) || !IsVersionedHashShaped(tokenHash))
-        {
-            throw new ArgumentException("Invitation tokens are persisted only as a versioned hash.", nameof(tokenHash));
-        }
-
-        return tokenHash;
-    }
-
-    private static bool IsVersionedHashShaped(string tokenHash)
-    {
-        if (!tokenHash.StartsWith(HashVersion, StringComparison.Ordinal))
-        {
-            return false;
-        }
-
-        var digest = tokenHash.AsSpan(HashVersion.Length);
-        if (digest.Length != HashDigestLength || digest[^1] != '=')
-        {
-            return false;
-        }
-
-        foreach (var character in digest[..^1])
-        {
-            if (!char.IsAsciiLetterOrDigit(character) && character != '+' && character != '/')
             {
                 return false;
             }

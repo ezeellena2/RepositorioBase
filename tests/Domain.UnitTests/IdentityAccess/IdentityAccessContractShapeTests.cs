@@ -89,7 +89,7 @@ public class IdentityAccessContractShapeTests
     /// </para>
     /// </summary>
     [Test]
-    public void InvitationExposesNoTextualOrBinaryMemberBeyondItsRecipientAndTokenHash()
+    public void InvitationExposesNoTextualOrBinaryMemberBeyondItsRecipient()
     {
         var invitation = DomainAssembly.GetType("CleanArchitecture.Domain.IdentityAccess.Invitations.Invitation");
 
@@ -97,7 +97,21 @@ public class IdentityAccessContractShapeTests
         invitation!.GetProperties()
             .Where(property => property.PropertyType == typeof(string) || property.PropertyType == typeof(byte[]))
             .Select(property => property.Name)
-            .ShouldBe(["NormalizedEmail", "TokenHash"], ignoreOrder: true);
+            .ShouldBe(["NormalizedEmail"], "the recipient is the only free text an invitation holds.");
+    }
+
+    /// <summary>
+    /// The token hash is a type, not a string. That is what makes storing the token instead of its hash a
+    /// compile error rather than something a format check has to notice after the fact.
+    /// </summary>
+    [Test]
+    public void InvitationHoldsItsTokenHashAsATypeRatherThanText()
+    {
+        var invitation = DomainAssembly.GetType("CleanArchitecture.Domain.IdentityAccess.Invitations.Invitation");
+
+        invitation.ShouldNotBeNull();
+        invitation!.GetProperty("TokenHash").ShouldNotBeNull()
+            .PropertyType.FullName.ShouldBe("CleanArchitecture.Domain.IdentityAccess.Security.VersionedTokenHash");
     }
 
     [Test]
