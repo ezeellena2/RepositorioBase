@@ -24,6 +24,7 @@ public static class TestApp
     private static bool _forceUnexpectedFailure;
     private static bool _forceRegistrationRollbackAfterPersistedEffects;
     private static bool _forceConfirmationRollbackAfterPersistedEffects;
+    private static bool _forceInvitationRollbackAfterPersistedEffects;
     private static bool _forceSessionValidationConcurrentRevoke;
     private static bool _forceSessionRevokePersistenceFailure;
     private static SessionWriteStage? _concurrentSessionTouchStage;
@@ -39,6 +40,7 @@ public static class TestApp
     private static bool _optionalSessionIsInvalid;
     private const string RegistrationRawToken = "MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI=";
     private static int _confirmationTokenHashInvocationCount;
+    private static int _mintedTokenCount;
     private static TaskCompletionSource? _confirmationSecretLockBarrier;
     private static int _confirmationSecretLockBarrierArrivals;
     private static int _passwordVerificationCount;
@@ -81,6 +83,8 @@ public static class TestApp
     public static bool ConsumeForcedRegistrationRollbackAfterPersistedEffects() => Interlocked.Exchange(ref _forceRegistrationRollbackAfterPersistedEffects, false);
 
     public static bool ConsumeForcedConfirmationRollbackAfterPersistedEffects() => Interlocked.Exchange(ref _forceConfirmationRollbackAfterPersistedEffects, false);
+
+    public static bool ConsumeForcedInvitationRollbackAfterPersistedEffects() => Interlocked.Exchange(ref _forceInvitationRollbackAfterPersistedEffects, false);
 
     public static bool ConsumeSessionValidationConcurrentRevoke() => Interlocked.Exchange(ref _forceSessionValidationConcurrentRevoke, false);
 
@@ -141,6 +145,28 @@ public static class TestApp
         new TestValidatedOptionalSession(_optionalSessionIdentityId, _optionalSessionEmail, _optionalSessionIsInvalid);
 
     public static string GetRegistrationRawToken() => RegistrationRawToken;
+
+    /// <summary>
+    /// The next token the injected generator will mint. It was a single constant while one flow minted one token
+    /// per test; an invitation flow mints a second one — issuing after a registration, inviting two recipients,
+    /// or reissuing — and <c>outbox_secrets.VersionedHash</c> and <c>Invitations.TokenHash</c> are both unique, so
+    /// a constant generator makes the second mint a unique-index violation rather than a behaviour under test.
+    /// <para>
+    /// The first token is still <see cref="GetRegistrationRawToken"/>, so every existing test that mints exactly
+    /// one keeps the token it already asserts against. Later ones are derived deterministically, and each is a
+    /// canonical 32-byte Base64 token so a format gate cannot reject them for the wrong reason.
+    /// </para>
+    /// </summary>
+    public static string NextRawToken() => RawTokenAt(Interlocked.Increment(ref _mintedTokenCount) - 1);
+
+    /// <summary>The token the <paramref name="ordinal"/>-th mint of a test produces, counting from zero.</summary>
+    public static string RawTokenAt(int ordinal) => ordinal == 0
+        ? RegistrationRawToken
+        : Convert.ToBase64String(System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes($"{RegistrationRawToken}|{ordinal}")));
+
+    /// <summary>How many tokens the generator has minted since the last reset.</summary>
+    public static int MintedTokenCount => Volatile.Read(ref _mintedTokenCount);
 
     public static int ConfirmationTokenHashInvocationCount => Volatile.Read(ref _confirmationTokenHashInvocationCount);
 
@@ -243,12 +269,26 @@ public static class TestApp
 
     public static void ForceConfirmationRollbackAfterPersistedEffects() => _forceConfirmationRollbackAfterPersistedEffects = true;
 
+    /// <summary>
+    /// Fails the next save that carries an invitation, after every effect alongside it has been staged. It proves
+    /// the invitation and what travels with it — its delivery intent, or the membership its acceptance creates —
+    /// are one transaction and not two (IA-REQ-017/033).
+    /// </summary>
+    public static void ForceInvitationRollbackAfterPersistedEffects() => _forceInvitationRollbackAfterPersistedEffects = true;
+
     public static void SetValidatedOptionalSession(Guid? identityId, string? email, bool isInvalid = false)
     {
         _optionalSessionIdentityId = identityId;
         _optionalSessionEmail = email;
         _optionalSessionIsInvalid = isInvalid;
     }
+
+    /// <summary>
+    /// Puts an already-seeded identity behind the request. <see cref="RunAsUserAsync"/> creates the user itself,
+    /// which is the wrong seam when the identity has to be confirmed, or has to hold a membership seeded alongside
+    /// a tenant before the request runs.
+    /// </summary>
+    public static void SetUserId(Guid? identityId) => _userId = identityId;
 
     public static async Task<Guid> RunAsDefaultUserAsync()
     {
@@ -312,6 +352,7 @@ public static class TestApp
         _forceUnexpectedFailure = false;
         _forceRegistrationRollbackAfterPersistedEffects = false;
         _forceConfirmationRollbackAfterPersistedEffects = false;
+        _forceInvitationRollbackAfterPersistedEffects = false;
         _forceSessionValidationConcurrentRevoke = false;
         _forceSessionRevokePersistenceFailure = false;
         _concurrentSessionTouchStage = null;
@@ -327,6 +368,7 @@ public static class TestApp
         _optionalSessionIsInvalid = false;
         _confirmationSecretLockBarrier = null;
         Interlocked.Exchange(ref _confirmationSecretLockBarrierArrivals, 0);
+        Interlocked.Exchange(ref _mintedTokenCount, 0);
         ResetConfirmationTokenHashInvocationCount();
         ResetPasswordVerificationCount();
         ResetCapturedLogs();

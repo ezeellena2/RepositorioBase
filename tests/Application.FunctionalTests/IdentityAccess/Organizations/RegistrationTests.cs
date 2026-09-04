@@ -215,6 +215,55 @@ public sealed class RegistrationTests : TestBase
         (await TestApp.CountAsync<RegistrationSubmission>()).ShouldBe(1, "a partial supplied email must not fall back to anonymous registration");
     }
 
+    /// <summary>
+    /// Registration is neutral about whether an address is taken — except that today it validates the password
+    /// only when the address is free, so a policy-violating password answers <c>invalid_registration</c> for a
+    /// free address and neutrally succeeds for a taken one. That difference is an enumeration oracle: anyone can
+    /// probe any address with a deliberately weak password and read the answer.
+    /// <para>
+    /// Password policy depends on the submitted password alone, so it is decidable before any address is looked
+    /// up, and deciding it there is what makes the two cases identical. The same rule governs the invited
+    /// registration flow, which has the same shape and the same hazard.
+    /// </para>
+    /// </summary>
+    [Test]
+    public async Task A_password_that_violates_the_policy_is_refused_whether_or_not_the_address_is_taken()
+    {
+        var takenEmail = $"taken-{Guid.NewGuid():N}@example.test";
+        await TestApp.RunAsUserAsync(takenEmail, "Testing1234!", []);
+        var freeEmail = $"free-{Guid.NewGuid():N}@example.test";
+
+        var free = await TestApp.SendAsync(new RegisterOrganizationCommand(freeEmail, "short", "Northwind Free", "30-12345678-9"));
+        var taken = await TestApp.SendAsync(new RegisterOrganizationCommand(takenEmail, "short", "Northwind Taken", "30-87654321-0"));
+
+        free.IsFailure.ShouldBeTrue();
+        free.Error!.Code.ShouldBe("invalid_registration");
+        taken.IsFailure.ShouldBeTrue("a weak password must not double as an address-existence oracle");
+        taken.Error!.Code.ShouldBe(free.Error.Code);
+        taken.Error.Category.ShouldBe(free.Error.Category);
+        (await TestApp.CountAsync<Tenant>()).ShouldBe(0, "neither refusal creates an organization");
+        (await TestApp.CountAsync<ApplicationUser>()).ShouldBe(1, "the only identity is the one seeded before the test");
+    }
+
+    /// <summary>
+    /// The converse case, so the refusal above is not simply "registration always fails": a valid password stays
+    /// neutral across the same two addresses.
+    /// </summary>
+    [Test]
+    public async Task A_valid_password_stays_neutral_whether_or_not_the_address_is_taken()
+    {
+        var takenEmail = $"taken-{Guid.NewGuid():N}@example.test";
+        await TestApp.RunAsUserAsync(takenEmail, "Testing1234!", []);
+        var freeEmail = $"free-{Guid.NewGuid():N}@example.test";
+
+        var free = await TestApp.SendAsync(new RegisterOrganizationCommand(freeEmail, "Testing1234!", "Northwind Free", "30-12345678-9"));
+        var taken = await TestApp.SendAsync(new RegisterOrganizationCommand(takenEmail, "Testing1234!", "Northwind Taken", "30-87654321-0"));
+
+        free.IsSuccess.ShouldBeTrue();
+        taken.IsSuccess.ShouldBeTrue();
+        (await TestApp.CountAsync<Tenant>()).ShouldBe(1, "only the free address produces an organization graph");
+    }
+
     private static RegisterOrganizationCommand NewCommand()
     {
         var suffix = Guid.NewGuid().ToString("N");

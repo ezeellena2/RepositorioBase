@@ -67,6 +67,14 @@ public sealed class Invitation : BaseEntity<InvitationId>
     /// <summary>Expiry is derived, never stored, so a lapsed invitation stays reissuable in place.</summary>
     public bool IsPendingAt(DateTimeOffset now) => Status == InvitationStatus.Pending && now < ExpiresAt;
 
+    /// <summary>
+    /// Whether <paramref name="email"/> is this invitation's recipient, compared in the one canonical form
+    /// <see cref="Normalize"/> defines. Acceptance requires an identity whose confirmed email matches the
+    /// recipient (IA-REQ-016), and that comparison is the same canonicalization question the aggregate already
+    /// answers when the invitation is issued — so it is answered here rather than restated by every caller.
+    /// </summary>
+    public bool IsAddressedTo(string? email) => throw new NotImplementedException();
+
     public void Accept(Tenant tenant, Guid identityId, DateTimeOffset now)
     {
         EnsureTenant(tenant);

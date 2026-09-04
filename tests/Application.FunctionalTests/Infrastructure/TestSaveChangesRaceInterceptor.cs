@@ -32,6 +32,15 @@ public sealed class TestSaveChangesRaceInterceptor : SaveChangesInterceptor
             throw new InvalidOperationException("confirmation rollback after identity activation");
         }
 
+        // Invitations reach persistence either as a new row (issue) or as a transition (accept, resend, cancel),
+        // and both must be atomic with the effects written alongside them, so one arm covers either shape.
+        if (eventData.Context?.ChangeTracker.Entries<CleanArchitecture.Domain.IdentityAccess.Invitations.Invitation>()
+            .Any(entry => entry.State is EntityState.Added or EntityState.Modified) == true &&
+            TestApp.ConsumeForcedInvitationRollbackAfterPersistedEffects())
+        {
+            throw new InvalidOperationException("invitation rollback after persisted effects");
+        }
+
         if (eventData.Context?.ChangeTracker.Entries<CleanArchitecture.Domain.IdentityAccess.Auditing.AuditEvent>()
             .Any(entry => entry.State == EntityState.Added && entry.Entity.EventType == "session.revoked") == true &&
             TestApp.ConsumeSessionRevokePersistenceFailure())

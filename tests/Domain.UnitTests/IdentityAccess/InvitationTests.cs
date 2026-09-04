@@ -377,6 +377,32 @@ public sealed class InvitationTests
         invitation.Status.ShouldBe(InvitationStatus.Pending);
     }
 
+    /// <summary>
+    /// Deciding whether a signed-in caller is the recipient is the same canonicalization question the aggregate
+    /// already answers when it is issued, so it belongs to the aggregate too. Asking the caller to canonicalize
+    /// first would put a second copy of the rule outside the type that owns it, and the two would drift.
+    /// </summary>
+    [TestCase("ana@example.test")]
+    [TestCase("  ANA@Example.Test  ")]
+    public void An_invitation_recognises_its_recipient_however_the_address_is_spelled(string spelling)
+    {
+        var invitation = Pending(out _);
+
+        invitation.IsAddressedTo(spelling).ShouldBeTrue();
+    }
+
+    [TestCase("bruno@example.test")]
+    [TestCase("ana@other.test")]
+    [TestCase("ana")]
+    [TestCase("")]
+    [TestCase(null)]
+    public void An_invitation_does_not_recognise_anyone_else(string? spelling)
+    {
+        var invitation = Pending(out _);
+
+        invitation.IsAddressedTo(spelling).ShouldBeFalse("an address that is not the recipient's is never the recipient's, however malformed");
+    }
+
     private static Tenant Organization() => Tenant.CreateOrganization(TenantSlug.From($"invitation-{Guid.NewGuid():N}"));
 
     private static Invitation Pending(out Tenant tenant)

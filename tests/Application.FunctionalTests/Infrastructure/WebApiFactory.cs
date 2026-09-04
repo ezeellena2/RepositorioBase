@@ -143,7 +143,7 @@ public class WebApiFactory(
 
     private sealed class TestRegistrationTokenGenerator : ISecureTokenGenerator
     {
-        public string Generate() => TestApp.GetRegistrationRawToken();
+        public string Generate() => TestApp.NextRawToken();
     }
 
     private sealed class TestCountingTokenHasher : ITokenHasher
