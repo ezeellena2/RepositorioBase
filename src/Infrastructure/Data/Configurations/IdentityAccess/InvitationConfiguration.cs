@@ -10,16 +10,27 @@ namespace CleanArchitecture.Infrastructure.Data.Configurations.IdentityAccess;
 public sealed class InvitationConfiguration : IEntityTypeConfiguration<Invitation>
 {
     /// <summary>
-    /// Every rule the aggregate enforces, restated where the database can enforce it too: a recipient that is
-    /// present, trimmed and carries no uppercase; a token stored only as a versioned hash; a window that outlives
-    /// its own creation; and terminal evidence that matches the status it belongs to.
+    /// Every rule the aggregate enforces, restated where the database enforces it too: a recipient in exactly one
+    /// canonical form, a token in exactly the format the hasher emits, a window that outlives its own creation,
+    /// and terminal evidence that matches the status it belongs to.
     /// <para>
-    /// The casing clause deliberately does NOT use <c>lower()</c>. PostgreSQL's <c>lower()</c> is locale-aware
-    /// while the aggregate uses .NET's invariant simple case mapping, and the two disagree on real characters —
-    /// U+0130 (Turkish dotted capital I) is valid in an SMTPUTF8 local part, survives <c>ToLowerInvariant</c>
-    /// unchanged, and would then be rejected by <c>lower()</c>, turning a legitimate invitation into an
-    /// unhandled constraint violation. Rejecting ASCII uppercase by explicit enumeration is locale-proof and can
-    /// never reject a value the aggregate produced.
+    /// The casing clause is <c>lower()</c> and that is safe only because the aggregate refuses to emit anything
+    /// <c>lower()</c> would change: it rejects uppercase and titlecase categories outright rather than lowering
+    /// them and hoping the two case mappings agree. They do not — U+0130 survives .NET's invariant mapping and is
+    /// folded by PostgreSQL — so an earlier revision that lowered and then compared turned a legitimate
+    /// invitation into an unhandled constraint violation. Refusing the character upstream lets both sides hold
+    /// the same rule, which is what makes two spellings of one recipient unable to share the pending slot.
+    /// </para>
+    /// <para>
+    /// The token clause pins the version and the digest length, not merely a shape, so nothing but a real hash
+    /// fits the column. Adding a hash version means changing this constraint, the aggregate's constant and a
+    /// migration together.
+    /// </para>
+    /// <para>
+    /// The whitespace clause names U+00A0 separately because <c>[[:space:]]</c> is locale-classified and does not
+    /// match a non-breaking space, which is the realistic way two spellings of one recipient would otherwise both
+    /// reach the pending slot. The aggregate rejects the whole Unicode whitespace set; this is the backstop for
+    /// the part of it that matters to uniqueness.
     /// </para>
     /// <para>
     /// For the same reason <c>AcceptedAt &lt;= ExpiresAt</c> is not strict, even though the aggregate requires
@@ -30,9 +41,9 @@ public sealed class InvitationConfiguration : IEntityTypeConfiguration<Invitatio
     /// </para>
     /// </summary>
     private const string LifecycleConstraint =
-        "\"TokenHash\" ~ '^v[0123456789]+:' AND " +
-        "\"NormalizedEmail\" !~ '[ABCDEFGHIJKLMNOPQRSTUVWXYZ]' AND " +
-        "\"NormalizedEmail\" = btrim(\"NormalizedEmail\") AND " +
+        "\"TokenHash\" ~ '^v1:[A-Za-z0-9+/]{43}=$' AND " +
+        "\"NormalizedEmail\" = lower(\"NormalizedEmail\") AND " +
+        "\"NormalizedEmail\" !~ '[[:space:]]' AND position(U&'\\00a0' IN \"NormalizedEmail\") = 0 AND " +
         "strpos(\"NormalizedEmail\", '@') > 0 AND " +
         "\"ExpiresAt\" > \"CreatedAt\" AND (" +
         "(\"Status\" = 'Pending' AND \"AcceptedByIdentityId\" IS NULL AND \"AcceptedAt\" IS NULL AND \"CancelledAt\" IS NULL) OR " +

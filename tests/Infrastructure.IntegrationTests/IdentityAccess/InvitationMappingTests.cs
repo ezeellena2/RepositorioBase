@@ -204,7 +204,7 @@ public sealed class InvitationMappingTests
     /// recipient the aggregate accepts. PostgreSQL's locale-aware <c>lower()</c> does not, which is why the
     /// constraint rejects ASCII uppercase instead of comparing against it.
     /// </summary>
-    [TestCase("İnfo", TestName = "a Turkish dotted capital I, which ToLowerInvariant leaves unchanged")]
+    [TestCase("ınfo", TestName = "a Turkish dotless i, which is already canonical")]
     [TestCase("Kelvin", TestName = "a leading U+212A Kelvin sign, which only renders like an ASCII K")]
     [TestCase("StraßE", TestName = "a sharp s beside ASCII uppercase")]
     [TestCase("АННА", TestName = "uppercase Cyrillic, which invariant mapping does lower")]
@@ -224,12 +224,12 @@ public sealed class InvitationMappingTests
     }
 
     /// <summary>
-    /// Pins the reason the casing clause is an explicit ASCII rejection rather than a comparison against
-    /// <c>lower()</c>: for a recipient the aggregate accepts and normalizes, the two rules disagree, and using
-    /// <c>lower()</c> would turn a legitimate invitation into an unhandled constraint violation.
+    /// Pins why the aggregate refuses uppercase and titlecase categories outright instead of lowering them: for
+    /// this recipient .NET's invariant mapping and PostgreSQL's <c>lower()</c> disagree, so lowering and then
+    /// storing would put a value in the column that the constraint rejects.
     /// </summary>
     [Test]
-    public async Task The_casing_clause_cannot_compare_against_lower_because_it_disagrees_with_invariant_normalization()
+    public async Task The_aggregate_refuses_the_character_on_which_lower_and_invariant_normalization_disagree()
     {
         using var scope = TestServices.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -242,8 +242,14 @@ public sealed class InvitationMappingTests
         await using var reader = await command.ExecuteReaderAsync();
         (await reader.ReadAsync()).ShouldBeTrue();
 
-        reader.GetBoolean(1).ShouldBeTrue("the clause the constraint uses must accept every value the aggregate can produce");
-        reader.GetBoolean(0).ShouldBeFalse("PostgreSQL lower() disagrees with .NET invariant case mapping here; comparing against it would reject a legitimate recipient");
+        reader.GetBoolean(0).ShouldBeFalse("PostgreSQL lower() disagrees with .NET invariant case mapping here, which is why the aggregate refuses the character instead of lowering it");
+        Should.Throw<ArgumentException>(() => Invitation.Issue(
+            Tenant.CreateOrganization(TenantSlug.From($"invitation-divergent-{Guid.NewGuid():N}")),
+            normalized,
+            [Role.Create(Tenant.CreateOrganization(TenantSlug.From($"invitation-divergent-role-{Guid.NewGuid():N}")), "Operators")],
+            VersionedHash(),
+            Now,
+            Now.AddDays(7)));
     }
 
     [TestCaseSource(nameof(IllegalRows))]
@@ -267,6 +273,106 @@ public sealed class InvitationMappingTests
 
         failure.SqlState.ShouldBe(PostgresErrorCodes.CheckViolation);
         failure.ConstraintName.ShouldBe("CK_Invitations_Lifecycle");
+    }
+
+    /// <summary>
+    /// The canonical form is the thing the pending-slot index is unique over, so two spellings of one recipient
+    /// must be unable to coexist even when the aggregate is bypassed entirely.
+    /// </summary>
+    [Test]
+    public async Task Database_rejects_a_recipient_that_is_not_in_its_canonical_form()
+    {
+        using var scope = TestServices.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var tenant = Tenant.CreateOrganization(TenantSlug.From($"invitation-canonical-{Guid.NewGuid():N}"));
+        context.Add(tenant);
+        await context.SaveChangesAsync();
+
+        await using var connection = new NpgsqlConnection(context.Database.GetConnectionString());
+        await connection.OpenAsync();
+        foreach (var recipient in new[] { "АННА@example.test", "Ä@example.test", "ǅ@example.test", "ana surname@example.test", " ana@example.test" })
+        {
+            await using var command = new NpgsqlCommand(
+                $"INSERT INTO \"Invitations\" (\"Id\", \"TenantId\", \"TokenHash\", \"NormalizedEmail\", \"Status\", \"CreatedAt\", \"ExpiresAt\") " +
+                $"VALUES ('{Guid.NewGuid()}', '{tenant.Id.Value}', '{VersionedHash()}', @recipient, 'Pending', NOW(), NOW() + INTERVAL '7 days');",
+                connection);
+            command.Parameters.AddWithValue("recipient", recipient);
+
+            var failure = await Should.ThrowAsync<PostgresException>(() => command.ExecuteNonQueryAsync());
+
+            failure.SqlState.ShouldBe(PostgresErrorCodes.CheckViolation, $"a non-canonical recipient must never reach the column: {recipient}");
+            failure.ConstraintName.ShouldBe("CK_Invitations_Lifecycle");
+        }
+    }
+
+    /// <summary>
+    /// Two spellings of one recipient would otherwise each take a pending slot, because the unique index compares
+    /// the stored bytes. The canonical-form clause is what closes that, so it is proven end to end here.
+    /// </summary>
+    [Test]
+    public async Task Two_spellings_of_one_recipient_cannot_both_hold_the_pending_slot()
+    {
+        using var scope = TestServices.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var (tenant, invitation) = await SeedPendingAsync(context, "canonical-slot");
+
+        await using var connection = new NpgsqlConnection(context.Database.GetConnectionString());
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            $"INSERT INTO \"Invitations\" (\"Id\", \"TenantId\", \"TokenHash\", \"NormalizedEmail\", \"Status\", \"CreatedAt\", \"ExpiresAt\") " +
+            $"VALUES ('{Guid.NewGuid()}', '{tenant.Id.Value}', '{VersionedHash()}', @recipient, 'Pending', NOW(), NOW() + INTERVAL '7 days');",
+            connection);
+        command.Parameters.AddWithValue("recipient", invitation.NormalizedEmail.ToUpperInvariant());
+
+        var failure = await Should.ThrowAsync<PostgresException>(() => command.ExecuteNonQueryAsync());
+
+        failure.SqlState.ShouldBe(PostgresErrorCodes.CheckViolation, "the uppercase spelling is refused before it can take a second slot");
+    }
+
+    /// <summary>
+    /// The column accepts exactly what the hasher emits. A raw token is the same length as a digest, so only the
+    /// version tag separates them; anything that is not a 256-bit Base64 digest is refused outright.
+    /// </summary>
+    [TestCase("v1:raw-secret", TestName = "text that is not a digest")]
+    [TestCase("v2:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", TestName = "an unsupported hash version")]
+    [TestCase("v1:AAAA", TestName = "a digest that is too short")]
+    [TestCase("v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", TestName = "a digest that is too long")]
+    public async Task Database_rejects_a_token_hash_that_is_not_the_format_the_hasher_emits(string tokenHash)
+    {
+        using var scope = TestServices.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var tenant = Tenant.CreateOrganization(TenantSlug.From($"invitation-hashformat-{Guid.NewGuid():N}"));
+        context.Add(tenant);
+        await context.SaveChangesAsync();
+
+        await using var connection = new NpgsqlConnection(context.Database.GetConnectionString());
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            $"INSERT INTO \"Invitations\" (\"Id\", \"TenantId\", \"TokenHash\", \"NormalizedEmail\", \"Status\", \"CreatedAt\", \"ExpiresAt\") " +
+            $"VALUES ('{Guid.NewGuid()}', '{tenant.Id.Value}', @hash, 'ana@example.test', 'Pending', NOW(), NOW() + INTERVAL '7 days');",
+            connection);
+        command.Parameters.AddWithValue("hash", tokenHash);
+
+        var failure = await Should.ThrowAsync<PostgresException>(() => command.ExecuteNonQueryAsync());
+
+        failure.SqlState.ShouldBe(PostgresErrorCodes.CheckViolation);
+        failure.ConstraintName.ShouldBe("CK_Invitations_Lifecycle");
+    }
+
+    /// <summary>Whatever the hasher really emits must satisfy the column; this pins the two together.</summary>
+    [Test]
+    public async Task The_hasher_output_is_exactly_what_the_column_accepts()
+    {
+        using var scope = TestServices.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var tenant = Tenant.CreateOrganization(TenantSlug.From($"invitation-hasherfit-{Guid.NewGuid():N}"));
+        var role = Role.Create(tenant, "Operators");
+        var hash = new VersionedTokenHasher().Hash(new SecureTokenGenerator().Generate());
+        var invitation = Invitation.Issue(tenant, $"hasher-{Guid.NewGuid():N}@example.test", [role], hash, Now, Now.AddDays(7));
+
+        context.AddRange(tenant, role, invitation);
+
+        await Should.NotThrowAsync(() => context.SaveChangesAsync());
     }
 
     [TestCaseSource(nameof(EmptyIdentifierRows))]
@@ -519,7 +625,8 @@ public sealed class InvitationMappingTests
             $"{empty}, @invitation, @role").SetName("an empty tenant on an offered role");
     }
 
-    private static string VersionedHash() => $"v1:{Convert.ToBase64String(Guid.NewGuid().ToByteArray())}";
+    /// <summary>A digest-shaped value: 32 bytes, exactly what the hasher emits and what the column accepts.</summary>
+    private static string VersionedHash() => $"v1:{Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32))}";
 
     private static async Task<Role> RoleOfAsync(ApplicationDbContext context, Tenant tenant) =>
         await context.TenantRoles.FirstAsync(candidate => candidate.TenantId == tenant.Id);

@@ -192,6 +192,18 @@ public sealed class Invitation : BaseEntity<InvitationId>
         }
     }
 
+    /// <summary>
+    /// Produces the single canonical form of a recipient, and refuses any address whose canonical form the
+    /// database could not verify for itself.
+    /// <para>
+    /// PostgreSQL's <c>lower()</c> is locale-aware and .NET's invariant mapping is not, so the two disagree on a
+    /// few real characters — U+0130 survives <c>ToLowerInvariant</c> unchanged but is folded by <c>lower()</c>.
+    /// Rather than ask the database to imitate .NET, which it cannot, the aggregate only emits values both agree
+    /// on: nothing in an uppercase or titlecase category, which is precisely what <c>lower()</c> changes, and no
+    /// whitespace, which <c>btrim</c> only partly removes. The database can then hold the same rule, so two
+    /// spellings of one recipient can never both occupy the pending slot.
+    /// </para>
+    /// </summary>
     private static string Normalize(string email)
     {
         if (string.IsNullOrWhiteSpace(email))
@@ -200,7 +212,7 @@ public sealed class Invitation : BaseEntity<InvitationId>
         }
 
         var normalized = email.Trim().ToLowerInvariant();
-        if (normalized.Length > 256 || !normalized.Contains('@', StringComparison.Ordinal))
+        if (normalized.Length > 256 || !normalized.Contains('@', StringComparison.Ordinal) || !IsCanonical(normalized))
         {
             throw new ArgumentException("Invitation recipients must be a normalizable email address.", nameof(email));
         }
@@ -208,14 +220,36 @@ public sealed class Invitation : BaseEntity<InvitationId>
         return normalized;
     }
 
+    private static bool IsCanonical(string normalized)
+    {
+        foreach (var character in normalized)
+        {
+            if (char.IsWhiteSpace(character) ||
+                char.IsUpper(character) ||
+                char.GetUnicodeCategory(character) == System.Globalization.UnicodeCategory.TitlecaseLetter)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>The one hash format the project's token hasher emits: a version tag and a 256-bit Base64 digest.</summary>
+    private const string HashVersion = "v1:";
+
+    /// <summary>Base64 of a 32-byte digest is 44 characters, the last of which is always padding.</summary>
+    private const int HashDigestLength = 44;
+
     /// <summary>
-    /// Requires the shape a versioned hash has: a version prefix followed by a Base64 digest. A token the
-    /// generator produced carries no prefix, so it cannot be stored here by mistake (IA-REQ-015/029).
+    /// Requires the exact format the token hasher produces, version and digest length included, rather than a
+    /// loose shape. A usable token is 32 random bytes in Base64 and therefore the same length as a digest, so a
+    /// length check alone would not separate them — but no token carries the version tag, and a value that is not
+    /// a digest of the right size cannot be one either. Between this and the identical database constraint, the
+    /// only value that can reach the column is something a hasher produced (IA-REQ-015/029).
     /// <para>
-    /// This is a shape guard and nothing more. The domain has no hasher, so it cannot tell a genuine digest from
-    /// any other correctly shaped value — a caller that deliberately prefixed a usable token would pass. What
-    /// guarantees the value IS a hash is that the only producer is <c>ITokenHasher.Hash</c>; this guard exists so
-    /// the mistake of passing the raw token straight through is impossible rather than merely unlikely.
+    /// Introducing a second hash version means changing this constant, the database constraint and a migration
+    /// together; that coupling is deliberate, so a version can never be persisted that half the stack rejects.
     /// </para>
     /// </summary>
     private static string RequireVersionedHash(string tokenHash)
@@ -230,27 +264,25 @@ public sealed class Invitation : BaseEntity<InvitationId>
 
     private static bool IsVersionedHashShaped(string tokenHash)
     {
-        if (tokenHash.Length < 4 || tokenHash[0] != 'v')
+        if (!tokenHash.StartsWith(HashVersion, StringComparison.Ordinal))
         {
             return false;
         }
 
-        var separator = tokenHash.IndexOf(':', StringComparison.Ordinal);
-        if (separator < 2 || separator == tokenHash.Length - 1)
+        var digest = tokenHash.AsSpan(HashVersion.Length);
+        if (digest.Length != HashDigestLength || digest[^1] != '=')
         {
             return false;
         }
 
-        for (var index = 1; index < separator; index++)
+        foreach (var character in digest[..^1])
         {
-            if (!char.IsAsciiDigit(tokenHash[index]))
+            if (!char.IsAsciiLetterOrDigit(character) && character != '+' && character != '/')
             {
                 return false;
             }
         }
 
-        // Every versioned hash in this project is Base64, whatever digest produced it. Requiring that rejects
-        // arbitrary text behind a hand-written prefix without pinning the domain to one algorithm's length.
-        return Convert.TryFromBase64String(tokenHash[(separator + 1)..], new byte[tokenHash.Length], out _);
+        return true;
     }
 }

@@ -9,8 +9,8 @@ namespace CleanArchitecture.Domain.UnitTests.IdentityAccess;
 public sealed class InvitationTests
 {
     private static readonly DateTimeOffset Now = new(2026, 9, 2, 12, 0, 0, TimeSpan.Zero);
-    private const string Hash = "v1:Zm9vYmFyLWhhc2gtdmFsdWU=";
-    private const string RotatedHash = "v1:cm90YXRlZC1oYXNoLXZhbHVl";
+    private const string Hash = "v1:crGz8gJN0Y2BXmF1x6jFbj1Qh4seDVvGgCoIBAFwCQs=";
+    private const string RotatedHash = "v1:QhXXBtBl/zge0imIHrhyydaFIhqbVUG8mXgzEFbgcuU=";
 
     [Test]
     public void Issue_binds_the_invitation_to_its_organization_tenant_and_starts_pending()
@@ -60,6 +60,8 @@ public sealed class InvitationTests
     [TestCase("")]
     [TestCase("   ")]
     [TestCase("ana-at-example.test")]
+    [TestCase("İnfo@example.test", TestName = "a recipient whose canonical form the database could not verify")]
+    [TestCase("ana surname@example.test", TestName = "a recipient carrying non-breaking whitespace")]
     public void Issue_rejects_a_recipient_without_a_plausible_address(string submitted)
     {
         var tenant = Organization();
@@ -103,10 +105,11 @@ public sealed class InvitationTests
     [TestCase("v1:", TestName = "a version prefix with no digest")]
     [TestCase("1:abc", TestName = "a version without its v")]
     [TestCase("version1:abc", TestName = "a version that is not numeric")]
-    // The guard is shape-only: text that happens to be Base64-shaped passes whatever version it claims, because
-    // the domain has no hasher to check it against. These pin what it does reject, not more.
-    [TestCase("v1:raw-secret", TestName = "non-Base64 text behind a hand-written prefix")]
-    [TestCase("v999:not base64!", TestName = "non-Base64 text behind an unknown version")]
+    // The guard is the exact format the hasher emits, version and digest length included, so anything that is
+    // not a real hash is refused - including a correctly shaped digest under a version this project cannot make.
+    [TestCase("v1:raw-secret", TestName = "text that is not a digest")]
+    [TestCase("v2:crGz8gJN0Y2BXmF1x6jFbj1Qh4seDVvGgCoIBAFwCQs=", TestName = "an unsupported hash version")]
+    [TestCase("v1:AAAA", TestName = "a digest that is too short")]
     public void Issue_requires_a_versioned_token_hash(string tokenHash)
     {
         var tenant = Organization();
@@ -236,20 +239,21 @@ public sealed class InvitationTests
     }
 
     /// <summary>
-    /// .NET invariant case mapping leaves U+0130 alone, so the normalized value keeps it. This pins the exact
-    /// output the database constraint has to agree with; see the matching integration test.
+    /// Normalization emits one canonical form and refuses anything it cannot canonicalize in a way PostgreSQL
+    /// can verify for itself. U+0130 is the concrete case: .NET's invariant mapping leaves it, PostgreSQL folds
+    /// it, so accepting it would either bypass the database check or make a legitimate address fail it.
     /// </summary>
     [Test]
-    public void Normalization_uses_invariant_case_mapping_and_leaves_characters_it_does_not_lower()
+    public void Normalization_emits_a_canonical_form_and_refuses_what_it_cannot_canonicalize()
     {
         var tenant = Organization();
 
-        var invitation = Invitation.Issue(tenant, "  İNFO@Example.Test  ", [Role.Create(tenant, "member")], Hash, Now, Now.AddDays(7));
+        var invitation = Invitation.Issue(tenant, "  ANA@Example.Test  ", [Role.Create(tenant, "member")], Hash, Now, Now.AddDays(7));
 
-        invitation.NormalizedEmail.ShouldBe("İnfo@example.test", "invariant case mapping leaves U+0130 alone, and the database constraint has to agree");
-        invitation.NormalizedEmail.ShouldBe(invitation.NormalizedEmail.Trim());
-        invitation.NormalizedEmail.Any(character => character is >= 'A' and <= 'Z')
-            .ShouldBeFalse("the database rejects ASCII uppercase, so normalization must never leave any");
+        invitation.NormalizedEmail.ShouldBe("ana@example.test");
+        invitation.NormalizedEmail.Any(char.IsUpper).ShouldBeFalse("PostgreSQL lower() would change any that remained");
+        invitation.NormalizedEmail.Any(char.IsWhiteSpace).ShouldBeFalse("btrim only removes spaces, so none may survive normalization");
+        Should.Throw<ArgumentException>(() => Invitation.Issue(tenant, "İnfo@example.test", [Role.Create(tenant, "member")], RotatedHash, Now, Now.AddDays(7)));
     }
 
     [Test]

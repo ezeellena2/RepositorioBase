@@ -397,7 +397,7 @@ public sealed class MigrationUpgradeTests
             tenant,
             $"migration-{Guid.NewGuid():N}@example.test",
             [role],
-            $"v1:{Convert.ToBase64String(Guid.NewGuid().ToByteArray())}",
+            $"v1:{Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32))}",
             DateTimeOffset.UtcNow,
             DateTimeOffset.UtcNow.AddDays(7));
         // A second, accepted invitation so the down-path also runs against a row carrying the AspNetUsers key.
@@ -406,7 +406,7 @@ public sealed class MigrationUpgradeTests
             tenant,
             $"migration-accepted-{Guid.NewGuid():N}@example.test",
             [role],
-            $"v1:{Convert.ToBase64String(Guid.NewGuid().ToByteArray())}",
+            $"v1:{Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32))}",
             DateTimeOffset.UtcNow,
             DateTimeOffset.UtcNow.AddDays(7));
         accepted.Accept(tenant, identityId, DateTimeOffset.UtcNow.AddMinutes(1));
