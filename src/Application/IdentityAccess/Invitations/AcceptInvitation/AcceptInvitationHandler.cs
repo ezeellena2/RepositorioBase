@@ -47,6 +47,12 @@ public sealed class AcceptInvitationCommandHandler(
         {
             return await transaction.ExecuteAsync(ct => AcceptAsync(request, identityId, identity.Email, ct), cancellationToken);
         }
+        catch (DbUpdateConcurrencyException)
+        {
+            // The xmin token says another request settled this row first. That is the declared retryable
+            // conflict (IA-REQ-035), not an unexpected failure.
+            return Result<AcceptedInvitation>.Failure(IdentityAccessErrors.InvitationConflict());
+        }
         catch (DbUpdateException exception) when (IsUniqueViolation(exception))
         {
             // The membership uniqueness index is the arbiter when two acceptances race; the loser is a conflict,

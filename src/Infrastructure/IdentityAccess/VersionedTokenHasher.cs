@@ -11,6 +11,8 @@ public sealed class VersionedTokenHasher : ITokenHasher
 {
     public string Hash(string token) => VersionedTokenHash.Of(token).Value;
 
+    public VersionedTokenHash Of(string token) => VersionedTokenHash.Of(token);
+
     public bool Verify(string token, string versionedHash)
     {
         if (string.IsNullOrWhiteSpace(token) || string.IsNullOrWhiteSpace(versionedHash))

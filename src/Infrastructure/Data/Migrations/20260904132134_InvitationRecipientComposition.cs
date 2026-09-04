@@ -10,6 +10,12 @@ namespace CleanArchitecture.Infrastructure.Data.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            // Every statement below rewrites rows this table's own trigger freezes once they settle, and the
+            // canonicalization pass also touches the losers it just cancelled. The trigger is therefore lifted for
+            // the duration of the migration and restored immediately after: a data migration is precisely the
+            // operation that must reach settled history, and leaving it in place aborts the upgrade instead.
+            migrationBuilder.Sql("ALTER TABLE \"Invitations\" DISABLE TRIGGER \"TR_Invitations_PreventSettledChange\";");
+
             // Composition is new, so an applied database may hold a recipient spelled with combining marks. As in
             // the migration before it, composing can collide with a row already holding the pending slot for that
             // recipient; the earliest invitation keeps it and the rest are cancelled rather than deleted.
@@ -34,6 +40,8 @@ namespace CleanArchitecture.Infrastructure.Data.Migrations
                 SET "NormalizedEmail" = normalize("NormalizedEmail", NFC)
                 WHERE "NormalizedEmail" <> normalize("NormalizedEmail", NFC);
                 """);
+
+            migrationBuilder.Sql("ALTER TABLE \"Invitations\" ENABLE TRIGGER \"TR_Invitations_PreventSettledChange\";");
 
             migrationBuilder.DropCheckConstraint(
                 name: "CK_Invitations_Lifecycle",

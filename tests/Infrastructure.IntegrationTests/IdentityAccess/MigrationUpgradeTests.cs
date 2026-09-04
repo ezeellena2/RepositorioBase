@@ -355,6 +355,105 @@ public sealed class MigrationUpgradeTests
         }
     }
 
+    /// <summary>
+    /// A settled invitation is frozen by <c>TR_Invitations_PreventSettledChange</c>, and the canonicalization
+    /// migrations rewrite exactly those rows. They also rewrite the collision losers they cancelled a statement
+    /// earlier, so the trigger fires against the migration's own work. This seeds every shape at once — settled
+    /// accepted, settled cancelled, an unreadable hash, a casing collision and a composition collision — and
+    /// requires the upgrade to carry them across with the guard operative afterwards.
+    /// </summary>
+    [Test]
+    public async Task Invitation_canonicalization_upgrades_settled_and_colliding_rows_and_leaves_the_trigger_operative()
+    {
+        var databaseName = $"invitation_settled_upgrade_{Guid.NewGuid():N}";
+        string? connectionString = null;
+
+        try
+        {
+            using (var scope = TestServices.CreateScope())
+            {
+                var sharedContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                var shared = sharedContext.Database.GetConnectionString() ?? throw new InvalidOperationException("The test PostgreSQL connection string is required.");
+                connectionString = new NpgsqlConnectionStringBuilder(shared) { Database = databaseName }.ConnectionString;
+                await CreateDatabase(databaseName, shared);
+            }
+
+            var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseNpgsql(connectionString).Options;
+            var tenantId = Guid.NewGuid();
+            var identityId = Guid.NewGuid();
+            await using (var seedContext = new ApplicationDbContext(options))
+            {
+                await seedContext.Database.GetService<IMigrator>().MigrateAsync(CanonicalFormPredecessor);
+            }
+
+            await using (var connection = new NpgsqlConnection(connectionString))
+            {
+                await connection.OpenAsync();
+                await Execute(connection, $"INSERT INTO \"Tenants\" (\"Id\", \"Type\", \"Status\", \"Slug\", \"AuthorizationVersion\") VALUES ('{tenantId}', 'Organization', 'Active', 'settled-{tenantId:N}', 0);");
+                await SeedIdentity(connection, identityId);
+
+                await SeedSettledInvitation(connection, tenantId, "v7:unreadable-legacy-digest", "accepted@example.test", "Accepted", identityId);
+                await SeedSettledInvitation(connection, tenantId, $"v1:{Digest()}", "cancelled@example.test", "Cancelled", null);
+                await SeedLegacyInvitation(connection, tenantId, "v9:also-unreadable", "pending@example.test");
+                await SeedLegacyInvitation(connection, tenantId, $"v1:{Digest()}", "АННА@example.test");
+                await SeedLegacyInvitation(connection, tenantId, $"v1:{Digest()}", "анна@example.test");
+                await SeedLegacyInvitation(connection, tenantId, $"v1:{Digest()}", "josé@example.test");
+                await SeedLegacyInvitation(connection, tenantId, $"v1:{Digest()}", "josé@example.test");
+            }
+
+            await using (var upgradedContext = new ApplicationDbContext(options))
+            {
+                await Should.NotThrowAsync(
+                    () => upgradedContext.Database.GetService<IMigrator>().MigrateAsync(),
+                    "a settled invitation and a collision loser must not abort the upgrade.");
+                (await upgradedContext.Database.GetPendingMigrationsAsync()).ShouldBeEmpty();
+            }
+
+            await using (var connection = new NpgsqlConnection(connectionString))
+            {
+                await connection.OpenAsync();
+                (await Scalar<long>(connection, $"SELECT count(*) FROM \"Invitations\" WHERE \"TenantId\" = '{tenantId}';"))
+                    .ShouldBe(7, "invitation history survives the upgrade, settled rows included.");
+                (await Scalar<long>(connection, "SELECT count(*) FROM \"Invitations\" WHERE \"NormalizedEmail\" <> lower(normalize(\"NormalizedEmail\", NFC));"))
+                    .ShouldBe(0, "every recipient reaches one canonical form.");
+                (await Scalar<long>(connection, $"SELECT count(*) FROM \"Invitations\" WHERE \"TenantId\" = '{tenantId}' AND \"Status\" = 'Pending';"))
+                    .ShouldBe(2, "one live offer survives per canonicalized recipient.");
+
+                (await Scalar<bool>(connection, "SELECT tgenabled = 'O' FROM pg_trigger WHERE tgname = 'TR_Invitations_PreventSettledChange';"))
+                    .ShouldBeTrue("a migration that lifts the trigger must restore it.");
+                var settledChange = await Should.ThrowAsync<PostgresException>(() => Execute(
+                    connection,
+                    $"UPDATE \"Invitations\" SET \"ExpiresAt\" = \"ExpiresAt\" + INTERVAL '1 day' WHERE \"TenantId\" = '{tenantId}' AND \"Status\" = 'Accepted';"));
+                settledChange.MessageText.ShouldContain("settled invitation");
+            }
+        }
+        finally
+        {
+            if (connectionString is not null)
+            {
+                await DropDatabase(databaseName, connectionString);
+            }
+        }
+    }
+
+    private static Task SeedIdentity(NpgsqlConnection connection, Guid identityId) => Execute(
+        connection,
+        "INSERT INTO \"AspNetUsers\" (\"Id\", \"UserName\", \"NormalizedUserName\", \"Email\", \"NormalizedEmail\", \"EmailConfirmed\", \"PasswordHash\", \"SecurityStamp\", \"ConcurrencyStamp\", \"PhoneNumberConfirmed\", \"TwoFactorEnabled\", \"LockoutEnabled\", \"AccessFailedCount\") " +
+        $"VALUES ('{identityId}', 'settled@example.test', 'SETTLED@EXAMPLE.TEST', 'settled@example.test', 'SETTLED@EXAMPLE.TEST', true, 'x', 'x', 'x', false, false, true, 0);");
+
+    /// <summary>Writes a terminal row the way a settled invitation looks once the trigger has frozen it.</summary>
+    private static async Task SeedSettledInvitation(NpgsqlConnection connection, Guid tenantId, string tokenHash, string recipient, string status, Guid? acceptedBy)
+    {
+        var terminal = status == "Accepted" ? $"NOW(), '{acceptedBy}', NULL" : "NULL, NULL, NOW()";
+        await using var command = new NpgsqlCommand(
+            "INSERT INTO \"Invitations\" (\"Id\", \"TenantId\", \"TokenHash\", \"NormalizedEmail\", \"Status\", \"CreatedAt\", \"ExpiresAt\", \"AcceptedAt\", \"AcceptedByIdentityId\", \"CancelledAt\") " +
+            $"VALUES ('{Guid.NewGuid()}', '{tenantId}', @hash, @recipient, '{status}', NOW() - INTERVAL '1 day', NOW() + INTERVAL '7 days', {terminal});",
+            connection);
+        command.Parameters.AddWithValue("hash", tokenHash);
+        command.Parameters.AddWithValue("recipient", recipient);
+        await command.ExecuteNonQueryAsync();
+    }
+
     private static string Digest() => Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
 
     /// <summary>

@@ -1,3 +1,4 @@
+using System.Reflection;
 using CleanArchitecture.Domain.IdentityAccess.Security;
 using NUnit.Framework;
 using Shouldly;
@@ -66,5 +67,48 @@ public sealed class VersionedTokenHashTests
         Should.Throw<ArgumentException>(() => VersionedTokenHash.Of(""));
         Should.Throw<ArgumentException>(() => VersionedTokenHash.Of("   "));
         VersionedTokenHash.Of("token").Matches("").ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// The one public way in is <see cref="VersionedTokenHash.Of"/>, which takes the token. Any public entry that
+    /// accepted a precomputed string would put back the door the type exists to close: a caller holding a token
+    /// could tag it and present it as its own hash.
+    /// </summary>
+    [Test]
+    public void The_only_public_way_to_obtain_a_hash_is_to_hash_a_token()
+    {
+        typeof(VersionedTokenHash)
+            .GetMethods(BindingFlags.Public | BindingFlags.Static | BindingFlags.DeclaredOnly)
+            .Where(method => method.ReturnType == typeof(VersionedTokenHash))
+            .Select(method => method.Name)
+            .ShouldBe([nameof(VersionedTokenHash.Of)]);
+
+        typeof(VersionedTokenHash).GetConstructors(BindingFlags.Public | BindingFlags.Instance)
+            .ShouldBeEmpty("a hash is never constructed from a value the caller already holds");
+    }
+
+    /// <summary>
+    /// A length-and-charset check still admits a non-canonical encoding, and several distinct strings would then
+    /// name one digest — so the unique index would stop meaning one token per row.
+    /// </summary>
+    [TestCase("v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB=")]
+    [TestCase("v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP=")]
+    public void A_non_canonical_encoding_is_not_a_persisted_hash(string value)
+    {
+        VersionedTokenHash.IsPersistable(value).ShouldBeFalse("the digest must survive a decode and re-encode unchanged");
+    }
+
+    [Test]
+    public void The_canonical_encoding_of_a_real_digest_is_persistable()
+    {
+        VersionedTokenHash.IsPersistable(VersionedTokenHash.Of("a-token").Value).ShouldBeTrue();
+    }
+
+    /// <summary>The uninitialized value carries no digest, and no invitation may hold one.</summary>
+    [Test]
+    public void The_default_value_is_empty()
+    {
+        default(VersionedTokenHash).IsEmpty.ShouldBeTrue();
+        VersionedTokenHash.Of("a-token").IsEmpty.ShouldBeFalse();
     }
 }

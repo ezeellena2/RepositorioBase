@@ -24,9 +24,11 @@ public sealed class InvitationConfiguration : IEntityTypeConfiguration<Invitatio
     /// the same rule, which is what makes two spellings of one recipient unable to share the pending slot.
     /// </para>
     /// <para>
-    /// The token clause pins the version and the digest length, not merely a shape, so nothing but a real hash
-    /// fits the column. Adding a hash version means changing this constraint, the aggregate's constant and a
-    /// migration together.
+    /// The token clause pins the version, the digest length and the encoding's canonical form, so nothing but a
+    /// real hash fits the column. The final data character is restricted to the sixteen whose low bits a 32-byte
+    /// payload leaves unused, which is Base64 canonicality expressed as a pattern: without it several distinct
+    /// strings decode to one digest, and the unique index would stop meaning one token per row. Adding a hash
+    /// version means changing this constraint, the aggregate's constant and a migration together.
     /// </para>
     /// <para>
     /// The whitespace clause names U+00A0 separately because <c>[[:space:]]</c> is locale-classified and does not
@@ -43,7 +45,7 @@ public sealed class InvitationConfiguration : IEntityTypeConfiguration<Invitatio
     /// </para>
     /// </summary>
     private const string LifecycleConstraint =
-        "\"TokenHash\" ~ '^v1:[A-Za-z0-9+/]{43}=$' AND " +
+        "\"TokenHash\" ~ '^v1:[A-Za-z0-9+/]{42}[AEIMQUYcgkosw048]=$' AND " +
         "\"NormalizedEmail\" = normalize(\"NormalizedEmail\", NFC) AND " +
         "\"NormalizedEmail\" = lower(\"NormalizedEmail\") AND " +
         "\"NormalizedEmail\" !~ '[[:space:]]' AND position(U&'\\00a0' IN \"NormalizedEmail\") = 0 AND " +

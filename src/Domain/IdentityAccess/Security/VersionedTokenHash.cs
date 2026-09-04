@@ -32,11 +32,15 @@ public readonly record struct VersionedTokenHash
         return new VersionedTokenHash(Version + Convert.ToBase64String(SHA256.HashData(Encoding.UTF8.GetBytes(token))));
     }
 
+    /// <summary>True for the uninitialized value, which no aggregate may ever store.</summary>
+    public bool IsEmpty => string.IsNullOrEmpty(Value);
+
     /// <summary>
-    /// Rehydrates a value this type previously produced. It belongs to persistence, not to callers holding a
-    /// token: anything reaching it has already been through <see cref="Of"/> once.
+    /// Rehydrates a value this type previously produced. It is internal because it is the one entry that accepts
+    /// a precomputed string: leaving it public would put back exactly the door <see cref="Of"/> exists to close,
+    /// since a caller holding a token could tag it and present it as a hash. Only persistence needs it.
     /// </summary>
-    public static VersionedTokenHash FromPersistedValue(string value)
+    internal static VersionedTokenHash FromPersistedValue(string value)
     {
         if (string.IsNullOrWhiteSpace(value) || !IsWellFormed(value))
         {
@@ -53,6 +57,12 @@ public readonly record struct VersionedTokenHash
             Encoding.UTF8.GetBytes(Of(token).Value),
             Encoding.UTF8.GetBytes(Value));
 
+    /// <summary>
+    /// Whether a stored value is one this type could have produced. It answers about a string without
+    /// returning a hash, so persistence and its tests can check the rule without a way to bypass it.
+    /// </summary>
+    public static bool IsPersistable(string? value) => !string.IsNullOrWhiteSpace(value) && IsWellFormed(value);
+
     public override string ToString() => Value;
 
     private static bool IsWellFormed(string value)
@@ -62,20 +72,18 @@ public readonly record struct VersionedTokenHash
             return false;
         }
 
-        var digest = value.AsSpan(Version.Length);
+        var digest = value[Version.Length..];
         if (digest.Length != DigestLength || digest[^1] != '=')
         {
             return false;
         }
 
-        foreach (var character in digest[..^1])
-        {
-            if (!char.IsAsciiLetterOrDigit(character) && character != '+' && character != '/')
-            {
-                return false;
-            }
-        }
-
-        return true;
+        // Decode and re-encode. A length-and-charset check still admits a non-canonical encoding — one whose
+        // final character carries bits the 32-byte payload does not use — and several distinct strings would then
+        // name the same digest, so the unique index would stop meaning one token per row.
+        Span<byte> bytes = stackalloc byte[32];
+        return Convert.TryFromBase64String(digest, bytes, out var written) &&
+            written == bytes.Length &&
+            string.Equals(digest, Convert.ToBase64String(bytes), StringComparison.Ordinal);
     }
 }

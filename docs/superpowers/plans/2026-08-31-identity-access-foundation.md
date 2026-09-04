@@ -736,7 +736,7 @@ git commit -m "feat: model secure invitations"
 
 ## Task 10: Orchestrate invitation onboarding through exact routes
 
-**Requirements:** IA-REQ-014..018, IA-REQ-026, IA-REQ-027, IA-REQ-029, IA-REQ-047; applies IA-REQ-038  
+**Requirements:** IA-REQ-014..018, IA-REQ-026, IA-REQ-027, IA-REQ-029, IA-REQ-047; applies IA-REQ-038\r
 **Tracking:** IA-008
 
 **Files:**

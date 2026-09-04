@@ -33,57 +33,66 @@ public sealed class ResendInvitationCommandHandler(
 
     public async Task<Result> Handle(ResendInvitationCommand request, CancellationToken cancellationToken)
     {
-        if (currentTenant.TenantId is not { } activeTenantId || activeTenantId != request.TenantId ||
+        if (request.TenantId.IsEmpty || request.InvitationId == Guid.Empty ||
+            currentTenant.TenantId is not { } activeTenantId || activeTenantId != request.TenantId ||
             user.Id is not { } actorId || actorId == Guid.Empty)
         {
             return Result.Failure(IdentityAccessErrors.InvalidInvitation());
         }
 
-        return await transaction.ExecuteAsync(async ct =>
+        try
         {
-            var now = InvitationDelivery.ToStorablePrecision(timeProvider.GetUtcNow());
-            var invitationId = InvitationId.From(request.InvitationId);
-            var invitation = await context.Invitations
-                .Include(candidate => candidate.Roles)
-                .FirstOrDefaultAsync(candidate => candidate.Id == invitationId && candidate.TenantId == activeTenantId, ct);
-
-            if (invitation is null)
+            return await transaction.ExecuteAsync(async ct =>
             {
-                return Result.Failure(IdentityAccessErrors.InvalidInvitation());
-            }
+                var now = InvitationDelivery.ToStorablePrecision(timeProvider.GetUtcNow());
+                var invitationId = InvitationId.From(request.InvitationId);
+                var invitation = await context.Invitations
+                    .Include(candidate => candidate.Roles)
+                    .FirstOrDefaultAsync(candidate => candidate.Id == invitationId && candidate.TenantId == activeTenantId, ct);
 
-            if (invitation.Status != InvitationStatus.Pending)
-            {
-                // A settled offer is not revivable: reviving it would resurrect a decision the tenant already made.
-                return Result.Failure(IdentityAccessErrors.InvitationConflict());
-            }
+                if (invitation is null)
+                {
+                    return Result.Failure(IdentityAccessErrors.InvalidInvitation());
+                }
 
-            var offer = await offerableRoles.ResolveAsync(
-                activeTenantId,
-                actorId,
-                invitation.Roles.Select(role => role.RoleId.Value).ToArray(),
-                ct);
-            if (!offer.IsOfferable)
-            {
-                return Result.Failure(IdentityAccessErrors.InvalidInvitation());
-            }
+                if (invitation.Status != InvitationStatus.Pending)
+                {
+                    // A settled offer is not revivable: reviving it would resurrect a decision the tenant already made.
+                    return Result.Failure(IdentityAccessErrors.InvitationConflict());
+                }
 
-            var tenant = await context.Tenants.SingleAsync(candidate => candidate.Id == activeTenantId, ct);
-            var superseded = invitation.TokenHash;
-            var expiresAt = InvitationDelivery.ToStorablePrecision(now.Add(Window));
-            var minted = InvitationDelivery.Mint(tokens, tokenHasher);
-            InvitationDelivery.Deliver(context, secretWriter, minted, invitation.Id, activeTenantId, now, expiresAt);
+                var offer = await offerableRoles.ResolveAsync(
+                    activeTenantId,
+                    actorId,
+                    invitation.Roles.Select(role => role.RoleId.Value).ToArray(),
+                    ct);
+                if (!offer.IsOfferable)
+                {
+                    return Result.Failure(IdentityAccessErrors.InvalidInvitation());
+                }
 
-            invitation.Reissue(tenant, minted.Hash, now, expiresAt);
-            await InvitationDelivery.RetireAsync(context, superseded, "invitation.superseded", now, ct);
-            context.AuditEvents.Add(AuditEvent.Create(
-                activeTenantId,
-                actorId,
-                "invitation.issued",
-                $"invitation-{invitation.Id.Value:N}",
-                new Dictionary<string, string> { ["code"] = "invitation.issued", ["outcome"] = "resent" }));
-            await context.SaveChangesAsync(ct);
-            return Result.Success();
-        }, cancellationToken);
+                var tenant = await context.Tenants.SingleAsync(candidate => candidate.Id == activeTenantId, ct);
+                var superseded = invitation.TokenHash;
+                var expiresAt = InvitationDelivery.ToStorablePrecision(now.Add(Window));
+                var minted = InvitationDelivery.Mint(tokens, tokenHasher);
+                InvitationDelivery.Deliver(context, secretWriter, minted, invitation.Id, activeTenantId, now, expiresAt);
+
+                invitation.Reissue(tenant, minted.Hash, now, expiresAt);
+                await InvitationDelivery.RetireAsync(context, superseded, "invitation.superseded", now, ct);
+                context.AuditEvents.Add(AuditEvent.Create(
+                    activeTenantId,
+                    actorId,
+                    "invitation.issued",
+                    $"invitation-{invitation.Id.Value:N}",
+                    new Dictionary<string, string> { ["code"] = "invitation.issued", ["outcome"] = "resent" }));
+                await context.SaveChangesAsync(ct);
+                return Result.Success();
+            }, cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // A lost optimistic update is the declared retryable conflict, never an unexpected failure.
+            return Result.Failure(IdentityAccessErrors.InvitationConflict());
+        }
     }
 }

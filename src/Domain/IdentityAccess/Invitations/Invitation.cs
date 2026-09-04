@@ -50,6 +50,14 @@ public sealed class Invitation : BaseEntity<InvitationId>
             throw new ArgumentOutOfRangeException(nameof(expiresAt));
         }
 
+        // The uninitialized struct carries no digest at all. It is the one value the type cannot refuse at its
+        // own factory, so the aggregate refuses it here: an invitation holding it would be one whose token can
+        // never be verified and whose row would collide with every other such row on the unique index.
+        if (tokenHash.IsEmpty)
+        {
+            throw new ArgumentException("An invitation must carry a token hash.", nameof(tokenHash));
+        }
+
         var invitation = new Invitation
         {
             Id = InvitationId.New(),
@@ -175,6 +183,11 @@ public sealed class Invitation : BaseEntity<InvitationId>
         if (expiresAt <= now)
         {
             throw new ArgumentOutOfRangeException(nameof(expiresAt));
+        }
+
+        if (tokenHash.IsEmpty)
+        {
+            throw new ArgumentException("An invitation must carry a token hash.", nameof(tokenHash));
         }
 
         if (tokenHash == TokenHash)

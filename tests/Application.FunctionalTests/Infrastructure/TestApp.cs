@@ -25,6 +25,7 @@ public static class TestApp
     private static bool _forceRegistrationRollbackAfterPersistedEffects;
     private static bool _forceConfirmationRollbackAfterPersistedEffects;
     private static bool _forceInvitationRollbackAfterPersistedEffects;
+    private static bool _forceInvitationConcurrencyConflict;
     private static bool _forceSessionValidationConcurrentRevoke;
     private static bool _forceSessionRevokePersistenceFailure;
     private static SessionWriteStage? _concurrentSessionTouchStage;
@@ -85,6 +86,11 @@ public static class TestApp
     public static bool ConsumeForcedRegistrationRollbackAfterPersistedEffects() => Interlocked.Exchange(ref _forceRegistrationRollbackAfterPersistedEffects, false);
 
     public static bool ConsumeForcedConfirmationRollbackAfterPersistedEffects() => Interlocked.Exchange(ref _forceConfirmationRollbackAfterPersistedEffects, false);
+
+    /// <summary>Arms a competing write against the invitation's row version, so the next save loses it.</summary>
+    public static void EnableInvitationConcurrencyConflict() => _forceInvitationConcurrencyConflict = true;
+
+    public static bool ConsumeInvitationConcurrencyConflict() => Interlocked.Exchange(ref _forceInvitationConcurrencyConflict, false);
 
     public static bool HasPendingInvitationRollback => Volatile.Read(ref _forceInvitationRollbackAfterPersistedEffects);
 
@@ -402,6 +408,7 @@ public static class TestApp
         _forceRegistrationRollbackAfterPersistedEffects = false;
         _forceConfirmationRollbackAfterPersistedEffects = false;
         _forceInvitationRollbackAfterPersistedEffects = false;
+        _forceInvitationConcurrencyConflict = false;
         _forceSessionValidationConcurrentRevoke = false;
         _forceSessionRevokePersistenceFailure = false;
         _concurrentSessionTouchStage = null;

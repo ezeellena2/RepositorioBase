@@ -10,6 +10,12 @@ namespace CleanArchitecture.Infrastructure.Data.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            // Every statement below rewrites rows this table's own trigger freezes once they settle, and the
+            // canonicalization pass also touches the losers it just cancelled. The trigger is therefore lifted for
+            // the duration of the migration and restored immediately after: a data migration is precisely the
+            // operation that must reach settled history, and leaving it in place aborts the upgrade instead.
+            migrationBuilder.Sql("ALTER TABLE \"Invitations\" DISABLE TRIGGER \"TR_Invitations_PreventSettledChange\";");
+
             // An applied database is holding rows the constraint below would reject: the previous one pinned only
             // the "v<n>:" prefix, banned ASCII uppercase alone, and trimmed only the ends of a recipient. Adding a
             // constraint over such a row fails, and the deployment fails with it, so they are carried across first.
@@ -50,6 +56,8 @@ namespace CleanArchitecture.Infrastructure.Data.Migrations
                 SET "NormalizedEmail" = regexp_replace(lower("NormalizedEmail"), '[[:space:]]|' || U&'\00a0', '', 'g')
                 WHERE "NormalizedEmail" <> regexp_replace(lower("NormalizedEmail"), '[[:space:]]|' || U&'\00a0', '', 'g');
                 """);
+
+            migrationBuilder.Sql("ALTER TABLE \"Invitations\" ENABLE TRIGGER \"TR_Invitations_PreventSettledChange\";");
 
             migrationBuilder.DropCheckConstraint(
                 name: "CK_Invitations_Lifecycle",

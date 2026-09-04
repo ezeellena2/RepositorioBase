@@ -157,6 +157,12 @@ public class WebApiFactory(
             return _inner.Hash(token);
         }
 
+        public CleanArchitecture.Domain.IdentityAccess.Security.VersionedTokenHash Of(string token)
+        {
+            TestApp.RecordConfirmationTokenHash();
+            return _inner.Of(token);
+        }
+
         public bool Verify(string token, string versionedHash) => _inner.Verify(token, versionedHash);
     }
 

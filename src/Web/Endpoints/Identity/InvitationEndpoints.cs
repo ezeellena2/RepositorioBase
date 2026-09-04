@@ -1,3 +1,4 @@
+using CleanArchitecture.Application.IdentityAccess.Common;
 using CleanArchitecture.Application.IdentityAccess.Invitations.AcceptInvitation;
 using CleanArchitecture.Application.IdentityAccess.Invitations.InviteMember;
 using CleanArchitecture.Application.IdentityAccess.Invitations.RegisterInvitedUser;
@@ -71,6 +72,10 @@ internal static class InvitationEndpoints
     {
         var antiforgeryFailure = await Identity.ValidateAntiforgery(context, antiforgery, problems);
         if (antiforgeryFailure is not null) return antiforgeryFailure;
+
+        // The strongly-typed identifier refuses an empty value by throwing, which the caller would read as a
+        // sanitized 500. An empty route tenant is decidable from the request alone, so it is refused as input.
+        if (tenantId == Guid.Empty) return problems.ToHttpResult(IdentityAccessErrors.InvalidInvitation());
 
         var result = await sender.Send(
             new InviteMemberCommand(TenantId.From(tenantId), request.Email, request.RoleIds ?? []),

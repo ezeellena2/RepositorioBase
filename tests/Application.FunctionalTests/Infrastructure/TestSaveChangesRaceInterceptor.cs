@@ -39,6 +39,19 @@ public sealed class TestSaveChangesRaceInterceptor : SaveChangesInterceptor
             throw new InvalidOperationException("session revocation rollback after state transition");
         }
 
+        // A real competing UPDATE against the invitation row, so the save under test loses its xmin token the
+        // way a second request would make it lose it.
+        if (eventData.Context?.ChangeTracker.Entries<CleanArchitecture.Domain.IdentityAccess.Invitations.Invitation>()
+            .Any(entry => entry.State == EntityState.Modified) == true &&
+            TestApp.ConsumeInvitationConcurrencyConflict())
+        {
+            var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+                .UseNpgsql(eventData.Context.Database.GetConnectionString())
+                .Options;
+            await using var competing = new ApplicationDbContext(options);
+            await competing.Database.ExecuteSqlRawAsync("UPDATE \"Invitations\" SET \"ExpiresAt\" = \"ExpiresAt\" + INTERVAL '1 second';", cancellationToken);
+        }
+
         var context = eventData.Context;
         var staleItem = context?.ChangeTracker.Entries<TodoItem>()
             .Select(entry => entry.Entity)

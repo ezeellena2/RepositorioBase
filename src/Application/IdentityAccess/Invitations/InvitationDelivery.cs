@@ -33,7 +33,7 @@ internal static class InvitationDelivery
     internal static MintedToken Mint(ISecureTokenGenerator tokens, ITokenHasher tokenHasher)
     {
         var rawToken = tokens.Generate();
-        return new MintedToken(rawToken, VersionedTokenHash.FromPersistedValue(tokenHasher.Hash(rawToken)));
+        return new MintedToken(rawToken, tokenHasher.Of(rawToken));
     }
 
     /// <summary>
@@ -76,10 +76,10 @@ internal static class InvitationDelivery
             return null;
         }
 
-        var hash = tokenHasher.Hash(token);
+        var hash = tokenHasher.Of(token);
         var invitation = await context.Invitations
             .Include(candidate => candidate.Roles)
-            .FirstOrDefaultAsync(candidate => candidate.TokenHash == VersionedTokenHash.FromPersistedValue(hash), cancellationToken);
+            .FirstOrDefaultAsync(candidate => candidate.TokenHash == hash, cancellationToken);
 
         // The stored hash is compared again in constant time, so a lookup that matched only by index equality
         // cannot stand in for verifying the token itself.

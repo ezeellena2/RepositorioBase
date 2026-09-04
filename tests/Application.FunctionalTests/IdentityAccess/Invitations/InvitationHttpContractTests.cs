@@ -4,6 +4,7 @@ using System.Text.Json;
 using CleanArchitecture.Application.FunctionalTests.Infrastructure;
 using CleanArchitecture.Application.IdentityAccess.Authorization;
 using CleanArchitecture.Web.Endpoints;
+using Microsoft.AspNetCore.Http;
 
 namespace CleanArchitecture.Application.FunctionalTests.IdentityAccess.Invitations;
 
@@ -126,6 +127,55 @@ public sealed class InvitationHttpContractTests : TestBase
         response.StatusCode.ShouldBeOneOf(HttpStatusCode.BadRequest, HttpStatusCode.Forbidden, HttpStatusCode.NotFound);
         response.Content.Headers.ContentType!.MediaType.ShouldBe("application/problem+json");
         (await TestApp.CountAsync<Domain.IdentityAccess.Invitations.Invitation>()).ShouldBe(0);
+    }
+
+    /// <summary>
+    /// An empty identifier is decidable from the request alone, so it is a 400 with the declared code. Reaching
+    /// the strongly-typed identifier factory with it throws, and the caller would read <c>internal_server_error</c>
+    /// for input the boundary could have refused.
+    /// </summary>
+    [TestCase("00000000-0000-0000-0000-000000000000", "role")]
+    [TestCase("tenant", "00000000-0000-0000-0000-000000000000")]
+    public async Task An_empty_identifier_is_a_declared_400_and_never_an_internal_error(string emptyTenant, string emptyRole)
+    {
+        var organization = await InvitationScenario.SeedOrganizationAsync(Permissions.MembersInvite);
+        await AuthenticateAsync(organization.InviterIdentityId, organization);
+        var antiforgery = await AntiforgeryAsync();
+        var tenantId = emptyTenant == "tenant" ? organization.TenantId.Value : Guid.Empty;
+        var roleId = emptyRole == "role" ? organization.RoleId : Guid.Empty;
+
+        var response = await SendAsync(
+            HttpMethod.Post,
+            $"/api/tenants/{tenantId}/invitations",
+            new { email = $"invitee-{Guid.NewGuid():N}@example.test", roleIds = new[] { roleId } },
+            antiforgery);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        response.Content.Headers.ContentType!.MediaType.ShouldBe("application/problem+json");
+        (await ReadJsonAsync(response)).GetProperty("code").GetString().ShouldBe("invalid_invitation");
+        (await TestApp.CountAsync<Domain.IdentityAccess.Invitations.Invitation>()).ShouldBe(0);
+    }
+
+    /// <summary>
+    /// A lost optimistic update is the declared 409, not a 500. The competing write is armed against the
+    /// invitation's own row version, which is what the handler has to translate.
+    /// </summary>
+    [Test]
+    public async Task A_lost_optimistic_update_answers_the_declared_409()
+    {
+        var organization = await InvitationScenario.SeedOrganizationAsync(Permissions.MembersInvite);
+        InvitationScenario.ActAs(organization);
+        var email = $"invitee-{Guid.NewGuid():N}@example.test";
+        (await TestApp.SendAsync(new Application.IdentityAccess.Invitations.InviteMember.InviteMemberCommand(
+            organization.TenantId, email, [organization.RoleId]))).IsSuccess.ShouldBeTrue();
+
+        TestApp.EnableInvitationConcurrencyConflict();
+        var result = await TestApp.SendAsync(new Application.IdentityAccess.Invitations.ResendInvitation.ResendInvitationCommand(
+            organization.TenantId, (await InvitationScenario.SingleInvitationAsync()).Id.Value));
+
+        result.IsFailure.ShouldBeTrue();
+        result.Error!.Code.ShouldBe("invitation_conflict");
+        Web.Infrastructure.ApiProblemDetailsMapper.GetStatusCode(result.Error.Category).ShouldBe(StatusCodes.Status409Conflict);
     }
 
     private static async Task AuthenticateAsync(Guid identityId, InvitationScenario.Organization? organization)

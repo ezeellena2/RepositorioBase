@@ -42,7 +42,7 @@ public sealed class InviteMemberCommandHandler(
         // The route may name any tenant; only the session decides which one the caller is operating in. The
         // pipeline has already proved members.invite against the session's tenant, so honouring a different one
         // here would be authorizing against A and acting on B.
-        if (currentTenant.TenantId is not { } activeTenantId || activeTenantId != request.TenantId)
+        if (request.TenantId.IsEmpty || currentTenant.TenantId is not { } activeTenantId || activeTenantId != request.TenantId)
         {
             return Invalid();
         }
@@ -58,8 +58,10 @@ public sealed class InviteMemberCommandHandler(
         }
 
         var requestedRoleIds = request.RoleIds?.Distinct().ToArray() ?? [];
-        if (requestedRoleIds.Length == 0)
+        if (requestedRoleIds.Length == 0 || Array.Exists(requestedRoleIds, id => id == Guid.Empty))
         {
+            // An empty identifier is bad input. Letting it through would reach RoleId.From, which throws, and the
+            // caller would read a 500 for something decidable from the request alone.
             return Invalid();
         }
 
@@ -72,6 +74,12 @@ public sealed class InviteMemberCommandHandler(
         try
         {
             return await transaction.ExecuteAsync(ct => IssueAsync(request, activeTenantId, inviterId, recipient, requestedRoleIds, ct), cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // The xmin token says another request settled this row first. That is the declared retryable
+            // conflict (IA-REQ-035), not an unexpected failure.
+            return Result<IssuedInvitation>.Failure(IdentityAccessErrors.InvitationConflict());
         }
         catch (DbUpdateException exception) when (IsUniqueViolation(exception))
         {
@@ -120,15 +128,19 @@ public sealed class InviteMemberCommandHandler(
                 && invitation.NormalizedEmail == recipient
                 && invitation.Status == InvitationStatus.Pending, cancellationToken);
 
+        // Captured BEFORE the aggregate rotates it. Reissue mutates the standing invitation in place, so reading
+        // the hash afterwards would hand the retire step the NEW value and leave the previous envelope pending —
+        // a token that no longer resolves but is still queued for delivery.
+        var supersededHash = standing?.TokenHash;
         var invitation = Supersede(standing, tenant, recipient, offer.Roles, minted.Hash, now, expiresAt, requestedRoleIds);
         if (standing is null || !ReferenceEquals(standing, invitation))
         {
             context.Invitations.Add(invitation);
         }
 
-        if (standing is not null)
+        if (supersededHash is { } superseded)
         {
-            await InvitationDelivery.RetireAsync(context, standing.TokenHash, "invitation.superseded", now, cancellationToken);
+            await InvitationDelivery.RetireAsync(context, superseded, "invitation.superseded", now, cancellationToken);
         }
 
         InvitationDelivery.Deliver(context, secretWriter, minted, invitation.Id, tenantId, now, expiresAt);

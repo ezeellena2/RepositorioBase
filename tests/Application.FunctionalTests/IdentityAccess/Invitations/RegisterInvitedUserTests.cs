@@ -6,6 +6,7 @@ using CleanArchitecture.Domain.IdentityAccess.Invitations;
 using CleanArchitecture.Domain.IdentityAccess.Memberships;
 using CleanArchitecture.Application.IdentityAccess.Organizations.ConfirmEmail;
 using CleanArchitecture.Infrastructure.Identity;
+using Microsoft.Extensions.DependencyInjection;
 using CleanArchitecture.Infrastructure.IdentityAccess;
 
 namespace CleanArchitecture.Application.FunctionalTests.IdentityAccess.Invitations;
@@ -197,6 +198,81 @@ public sealed class RegisterInvitedUserTests : TestBase
         var invitation = await InvitationScenario.SingleInvitationAsync();
         invitation.Status.ShouldBe(InvitationStatus.Pending, "the offer still has to be accepted by the signed-in recipient");
         invitation.AcceptedByIdentityId.ShouldBeNull();
+    }
+
+    /// <summary>
+    /// IA-REQ-016 does not merely say the existing branch stays silent — it says the address receives a generic
+    /// sign-in notice. Without it the branch also does strictly less work than the other, which is the shape a
+    /// timing oracle takes.
+    /// </summary>
+    [Test]
+    public async Task An_address_that_already_has_an_account_receives_a_generic_notice_carrying_no_token()
+    {
+        var (email, token) = await IssuedInvitationAsync();
+        await InvitationScenario.SeedConfirmedRecipientAsync(email);
+        var before = await TestApp.CountAsync<Domain.IdentityAccess.Outbox.OutboxMessage>();
+        ResetToAnonymous();
+
+        (await TestApp.SendAsync(new RegisterInvitedUserCommand(token, "AnotherPassword1!"))).IsSuccess.ShouldBeTrue();
+
+        var messages = await TestApp.ListAsync<Domain.IdentityAccess.Outbox.OutboxMessage>();
+        messages.Count.ShouldBe(before + 1, "the owner of the address is told, generically, that someone tried to register with it");
+        var notice = messages.Single(message => message.Type == "identity.invitation.signin.notice.requested");
+        notice.Payload.ShouldNotContain(token);
+        notice.Payload.ShouldNotContain(email, Case.Insensitive);
+        (await TestApp.ListAsync<Domain.IdentityAccess.Outbox.OutboxSecret>())
+            .ShouldAllBe(secret => secret.OutboxMessageId != notice.Id, "a generic notice carries no secret at all");
+    }
+
+    /// <summary>
+    /// An address the invitation aggregate accepts and ASP.NET Identity refuses. Answering 400 here would say the
+    /// token was real, while an unknown token answers 202 — a token oracle reachable by anyone who can guess an
+    /// address the two rule sets disagree about.
+    /// </summary>
+    [Test]
+    public async Task An_address_identity_refuses_stays_as_neutral_as_an_unknown_token()
+    {
+        var organization = await InvitationScenario.SeedOrganizationAsync(Permissions.MembersInvite);
+        InvitationScenario.ActAs(organization);
+        // Canonical for the aggregate: composed, lowercase, no whitespace. Rejected by the default user validator,
+        // whose allowed set is ASCII letters, digits and a handful of punctuation.
+        (await TestApp.SendAsync(new InviteMemberCommand(organization.TenantId, "josé@example.test", [organization.RoleId]))).IsSuccess.ShouldBeTrue();
+        ResetToAnonymous();
+
+        var real = await TestApp.SendAsync(new RegisterInvitedUserCommand(TestApp.RawTokenAt(0), ValidPassword));
+        var unknown = await TestApp.SendAsync(new RegisterInvitedUserCommand(TestApp.RawTokenAt(8), ValidPassword));
+
+        real.IsSuccess.ShouldBe(unknown.IsSuccess, "a real token must not be distinguishable from an unknown one");
+        real.IsSuccess.ShouldBeTrue();
+        (await TestApp.ListAsync<ApplicationUser>()).ShouldNotContain(user => user.Email == "josé@example.test");
+        (await InvitationScenario.SingleInvitationAsync()).Status.ShouldBe(InvitationStatus.Pending);
+    }
+
+    /// <summary>
+    /// Two invitees submitting the same address concurrently: one creates the identity, the other loses the race
+    /// between the lookup and the create. The loser must stay neutral rather than surface the collision.
+    /// </summary>
+    [Test]
+    public async Task A_lost_race_to_create_the_identity_stays_neutral()
+    {
+        var (email, token) = await IssuedInvitationAsync();
+        ResetToAnonymous();
+        using var barrier = new Barrier(2);
+
+        var results = await Task.WhenAll(
+            Task.Run(() => SendFromIndependentScopeAsync(new RegisterInvitedUserCommand(token, ValidPassword), barrier)),
+            Task.Run(() => SendFromIndependentScopeAsync(new RegisterInvitedUserCommand(token, ValidPassword), barrier)));
+
+        results.ShouldAllBe(result => result.IsSuccess, "the loser of the race is as neutral as the winner");
+        (await TestApp.ListAsync<ApplicationUser>()).Count(user => user.Email == email).ShouldBe(1);
+    }
+
+    private static async Task<Application.Common.Models.Result> SendFromIndependentScopeAsync(RegisterInvitedUserCommand command, Barrier barrier)
+    {
+        using var scope = FunctionalTestSetup.ScopeFactory.CreateScope();
+        var sender = scope.ServiceProvider.GetRequiredService<MediatR.ISender>();
+        barrier.SignalAndWait(TimeSpan.FromSeconds(30));
+        return await sender.Send(command);
     }
 
     private static async Task<(string Email, string Token)> IssuedInvitationAsync()

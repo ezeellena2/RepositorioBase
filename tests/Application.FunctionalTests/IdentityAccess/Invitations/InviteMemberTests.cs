@@ -171,6 +171,7 @@ public sealed class InviteMemberTests : TestBase
         invitation.TokenHash.Matches(TestApp.RawTokenAt(1)).ShouldBeTrue("the rotated token is the one that resolves");
         invitation.TokenHash.Matches(TestApp.RawTokenAt(0)).ShouldBeFalse("the previous token must stop resolving the moment it is replaced");
         (await TestApp.CountAsync<Domain.IdentityAccess.Outbox.OutboxMessage>()).ShouldBe(2, "each rotation is delivered (IA-REQ-017/027)");
+        await AssertOnlyTheNewestSecretIsUsableAsync();
     }
 
     /// <summary>
@@ -200,22 +201,27 @@ public sealed class InviteMemberTests : TestBase
     }
 
     /// <summary>
-    /// Whoever supersedes an offer owns invalidating what it replaced. Leaving the previous envelope pending would
-    /// let the worker deliver a token the tenant has already withdrawn (IA-REQ-015/018).
+    /// Whoever supersedes an offer owns invalidating what it replaced. Leaving the previous envelope pending
+    /// would let the worker deliver a token that no longer resolves (IA-REQ-015/018).
+    /// <para>
+    /// Each envelope is identified by the token it actually holds rather than by position or timestamp: a
+    /// rotation inside one clock tick gives both the same expiry, and ordering would then decide the verdict
+    /// arbitrarily instead of proving which token was retired.
+    /// </para>
     /// </summary>
     private static async Task AssertOnlyTheNewestSecretIsUsableAsync()
     {
-        var secrets = (await TestApp.ListAsync<Domain.IdentityAccess.Outbox.OutboxSecret>())
-            .OrderBy(secret => secret.ExpiresAt)
-            .ToArray();
-        secrets.Length.ShouldBeGreaterThan(1, "each offer writes its own delivery envelope");
-        foreach (var superseded in secrets[..^1])
-        {
-            superseded.Status.ShouldNotBe(Domain.IdentityAccess.Outbox.OutboxSecretStatus.Pending, "a superseded envelope must not stay deliverable");
-            superseded.Ciphertext.ShouldBeNull("terminalizing an envelope clears the token it was holding");
-        }
+        var hasher = new CleanArchitecture.Infrastructure.IdentityAccess.VersionedTokenHasher();
+        var secrets = await TestApp.ListAsync<Domain.IdentityAccess.Outbox.OutboxSecret>();
+        secrets.Count.ShouldBe(2, "each offer writes its own delivery envelope");
 
-        secrets[^1].Status.ShouldBe(Domain.IdentityAccess.Outbox.OutboxSecretStatus.Pending);
+        var superseded = secrets.Single(secret => hasher.Verify(TestApp.RawTokenAt(0), secret.VersionedHash));
+        var current = secrets.Single(secret => hasher.Verify(TestApp.RawTokenAt(1), secret.VersionedHash));
+
+        superseded.Status.ShouldNotBe(Domain.IdentityAccess.Outbox.OutboxSecretStatus.Pending, "a superseded envelope must not stay deliverable");
+        superseded.Ciphertext.ShouldBeNull("terminalizing an envelope clears the token it was holding");
+        current.Status.ShouldBe(Domain.IdentityAccess.Outbox.OutboxSecretStatus.Pending);
+        current.Ciphertext.ShouldNotBeNull("exactly one envelope stays deliverable");
     }
 
     /// <summary>
