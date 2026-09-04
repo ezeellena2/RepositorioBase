@@ -44,6 +44,43 @@ public sealed class InvitationSecretHygieneTests : TestBase
         TestApp.CapturedLogs.ShouldAllBe(entry => !entry.Contains(token), "an invitation token must never reach a log entry");
     }
 
+    /// <summary>
+    /// Issuing is the only moment the usable token exists in this process, so it is the moment to look for it in
+    /// every channel at once: what the caller is answered with over HTTP, the <c>Location</c> it is handed, the
+    /// application log, and the audit record. Anywhere it appears, it has left the envelope that was supposed to
+    /// be its only home (IA-REQ-018/029).
+    /// </summary>
+    [Test]
+    public async Task The_issued_token_reaches_no_response_header_log_or_audit_record()
+    {
+        var organization = await InvitationScenario.SeedOrganizationAsync(Permissions.MembersInvite);
+        TestApp.SetUserId(organization.InviterIdentityId);
+        TestApp.SetCurrentTenant(organization.TenantId);
+        TestApp.SetApplicationPermissionGranted(true);
+        TestApp.SetHttpAuthorizationGranted(true);
+        TestApp.ResetCapturedLogs();
+
+        using var antiforgeryRequest = new HttpRequestMessage(HttpMethod.Get, "https://issued.localhost/api/identity/antiforgery");
+        var antiforgery = (await (await FunctionalTestSetup.HttpClient.SendAsync(antiforgeryRequest)).Content
+            .ReadFromJsonAsync<Web.Endpoints.AntiforgeryResponse>())!.RequestToken;
+        using var issue = new HttpRequestMessage(HttpMethod.Post, $"https://issued.localhost/api/tenants/{organization.TenantId.Value}/invitations")
+        {
+            Content = JsonContent.Create(new { email = $"invitee-{Guid.NewGuid():N}@example.test", roleIds = new[] { organization.RoleId } })
+        };
+        issue.Headers.Add("Origin", "https://issued.localhost");
+        issue.Headers.Add("X-CSRF-TOKEN", antiforgery);
+        var response = await FunctionalTestSetup.HttpClient.SendAsync(issue);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Created);
+        var token = TestApp.RawTokenAt(0);
+        (await response.Content.ReadAsStringAsync()).ShouldNotContain(token);
+        response.Headers.Location!.ToString().ShouldNotContain(token);
+        TestApp.CapturedLogs.ShouldAllBe(entry => !entry.Contains(token), "the minted token must not reach the application log");
+        (await TestApp.ListAsync<AuditEvent>()).ShouldAllBe(audit =>
+            !audit.CorrelationId.Contains(token) && audit.Metadata.All(entry => !entry.Value.Contains(token)));
+        (await TestApp.ListAsync<Domain.IdentityAccess.Outbox.OutboxSecret>()).Single().Ciphertext!.ShouldNotContain(token);
+    }
+
     [Test]
     public async Task No_audit_record_written_by_an_invitation_carries_the_token()
     {

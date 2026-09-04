@@ -354,6 +354,31 @@ public sealed class InviteMemberTests : TestBase
         (await InvitationScenario.SingleInvitationAsync()).TokenHash.Matches(TestApp.RawTokenAt(0)).ShouldBeTrue("a refused reissue does not rotate the token");
     }
 
+    /// <summary>
+    /// Replacement establishes a new offer, so IA-REQ-047 binds it exactly as it binds the first one. Checking
+    /// only the initial issue would leave re-inviting as the way around the rule: offer something grantable, then
+    /// replace it with something that is not.
+    /// </summary>
+    [Test]
+    public async Task Replacing_a_standing_offer_with_one_beyond_the_inviter_authority_is_refused()
+    {
+        var organization = await InvitationScenario.SeedOrganizationAsync(Permissions.MembersInvite);
+        await InvitationGrants.GrantAsync(organization.SecondRoleId, Permissions.RolesManage);
+        InvitationScenario.ActAs(organization);
+        var command = NewCommand(organization);
+        (await TestApp.SendAsync(command)).IsSuccess.ShouldBeTrue();
+
+        var replacement = await TestApp.SendAsync(command with { RoleIds = [organization.SecondRoleId] });
+
+        replacement.IsFailure.ShouldBeTrue();
+        replacement.Error!.Code.ShouldBe("invalid_invitation");
+        var standing = await InvitationScenario.SingleInvitationAsync();
+        standing.Status.ShouldBe(InvitationStatus.Pending, "a refused replacement leaves the standing offer alive");
+        standing.Roles.Select(offered => offered.RoleId.Value).ShouldBe([organization.RoleId]);
+        standing.TokenHash.Matches(TestApp.RawTokenAt(0)).ShouldBeTrue("a refused replacement does not rotate the token");
+        (await TestApp.CountAsync<Domain.IdentityAccess.Outbox.OutboxMessage>()).ShouldBe(1, "a refused replacement delivers nothing");
+    }
+
     private static InviteMemberCommand NewCommand(InvitationScenario.Organization organization) =>
         new(organization.TenantId, $"invitee-{Guid.NewGuid():N}@example.test", [organization.RoleId]);
 

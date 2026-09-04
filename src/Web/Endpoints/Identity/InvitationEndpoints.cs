@@ -1,3 +1,6 @@
+using CleanArchitecture.Application.IdentityAccess.Invitations.InviteMember;
+using CleanArchitecture.Domain.IdentityAccess.Tenants;
+using CleanArchitecture.Web.Endpoints;
 using CleanArchitecture.Web.Infrastructure;
 using Microsoft.AspNetCore.Antiforgery;
 using CleanArchitecture.Web.IdentityEndpoints.Contracts;
@@ -50,13 +53,31 @@ internal static class InvitationEndpoints
             .WithBodyBindingFailureCode(ApiProblemMetadata.InvalidInvitation.Code);
     }
 
-    private static Task<IResult> Issue(
+    /// <summary>
+    /// The route tenant is carried into the command and compared there against the session's active tenant; it is
+    /// never trusted on its own. The <c>Location</c> names the created invitation by identifier, which is the only
+    /// thing about it a caller may hold — the usable token reaches the recipient through the encrypted envelope and
+    /// nothing else (IA-REQ-015/018).
+    /// </summary>
+    private static async Task<IResult> Issue(
         HttpContext context,
         IAntiforgery antiforgery,
         ApiProblemDetailsMapper problems,
         ISender sender,
         Guid tenantId,
-        InviteMemberRequest request) => throw new NotImplementedException();
+        InviteMemberRequest request)
+    {
+        var antiforgeryFailure = await Identity.ValidateAntiforgery(context, antiforgery, problems);
+        if (antiforgeryFailure is not null) return antiforgeryFailure;
+
+        var result = await sender.Send(
+            new InviteMemberCommand(TenantId.From(tenantId), request.Email, request.RoleIds ?? []),
+            context.RequestAborted);
+
+        return result.ToHttpResult(context, problems, issued => Results.Created(
+            $"/api/tenants/{tenantId}/invitations/{issued.InvitationId}",
+            new InvitationCreatedResponse(issued.InvitationId, issued.ExpiresAt)));
+    }
 
     private static Task<IResult> Register(
         HttpContext context,

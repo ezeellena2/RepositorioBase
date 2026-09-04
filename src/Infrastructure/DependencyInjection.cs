@@ -5,6 +5,7 @@ using CleanArchitecture.Infrastructure.Data.Interceptors;
 using CleanArchitecture.Infrastructure.Auditing;
 using CleanArchitecture.Infrastructure.Identity;
 using CleanArchitecture.Infrastructure.IdentityAccess;
+using CleanArchitecture.Application.IdentityAccess.Invitations;
 using CleanArchitecture.Application.IdentityAccess.Organizations;
 using CleanArchitecture.Application.IdentityAccess.Organizations.RegisterOrganization;
 using CleanArchitecture.Application.IdentityAccess.Organizations.ConfirmEmail;
@@ -100,6 +101,7 @@ public static class DependencyInjection
         builder.Services.AddScoped<IRegistrationIdempotencyStore, RegistrationIdempotencyStore>();
         builder.Services.AddScoped<IConfirmationSecretStore, ConfirmationSecretStore>();
         builder.Services.AddScoped<IRegistrationInitialRoleProvisioner, RegistrationInitialRoleProvisioner>();
+        builder.Services.AddScoped<IOfferableRoleReader, OfferableRoleReader>();
         builder.Services.AddSingleton<ISecureTokenGenerator, SecureTokenGenerator>();
         builder.Services.AddSingleton<ITokenHasher, VersionedTokenHasher>();
         builder.Services.AddSingleton<IOutboxSecretWriter, OutboxSecretWriter>();

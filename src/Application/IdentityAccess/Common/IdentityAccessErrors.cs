@@ -25,6 +25,20 @@ public static class IdentityAccessErrors
     public static ApplicationError RegistrationConflict() => new("registration_conflict", ApplicationErrorCategory.Conflict, "The registration cannot be completed in its current state.");
 
     /// <summary>
+    /// Everything a caller may not do with an invitation collapses to one code. A missing token, a lapsed one, a
+    /// withdrawn one, a recipient that is not the caller and an offer the inviter may not make are all the same
+    /// answer, because distinguishing them would tell a token holder about state they were never shown
+    /// (IA-REQ-029, SPEC section 6).
+    /// </summary>
+    public static ApplicationError InvalidInvitation() => new("invalid_invitation", ApplicationErrorCategory.Validation, "The invitation request is invalid.");
+
+    /// <summary>
+    /// The request was well formed and the caller was entitled to make it, but the invitation's current state
+    /// refuses it: the recipient is already a member, or a competing request settled it first.
+    /// </summary>
+    public static ApplicationError InvitationConflict() => new("invitation_conflict", ApplicationErrorCategory.Conflict, "The invitation cannot be completed in its current state.");
+
+    /// <summary>
     /// A session mutation kept losing its optimistic update to competing requests. The session itself is still
     /// valid, so this is a retryable conflict (IA-REQ-035) and never an unexpected failure.
     /// </summary>

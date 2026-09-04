@@ -18,7 +18,7 @@ public sealed class InvitationLockBarrierInterceptor : DbCommandInterceptor
     {
         if (command.CommandText.Contains("\"Invitations\"", StringComparison.Ordinal))
         {
-            await TestApp.WaitForInvitationLockBarrierAsync(cancellationToken);
+            await TestApp.WaitForInvitationLockBarrierAsync(command.Connection!, cancellationToken);
         }
 
         return await base.ReaderExecutingAsync(command, eventData, result, cancellationToken);

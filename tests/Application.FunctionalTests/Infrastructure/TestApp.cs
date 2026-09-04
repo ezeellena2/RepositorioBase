@@ -44,7 +44,7 @@ public static class TestApp
     private static TaskCompletionSource? _confirmationSecretLockBarrier;
     private static int _confirmationSecretLockBarrierArrivals;
     private static TaskCompletionSource? _invitationLockBarrier;
-    private static int _invitationLockBarrierArrivals;
+    private static readonly HashSet<int> _invitationLockBarrierReaders = [];
     private static int _passwordVerificationCount;
     private static readonly System.Collections.Concurrent.ConcurrentQueue<string> _capturedLogs = new();
 
@@ -200,17 +200,41 @@ public static class TestApp
     public static void EnableInvitationLockBarrier()
     {
         _invitationLockBarrier = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        Interlocked.Exchange(ref _invitationLockBarrierArrivals, 0);
+        lock (_invitationLockBarrierReaders) _invitationLockBarrierReaders.Clear();
     }
 
-    public static bool InvitationLockBarrierWasObserved => Volatile.Read(ref _invitationLockBarrierArrivals) >= 2;
+    /// <summary>
+    /// True only once two DIFFERENT connections have read the table. Counting arrivals alone would be satisfied by
+    /// one request querying twice, which proves nothing about contention.
+    /// </summary>
+    public static bool InvitationLockBarrierWasObserved
+    {
+        get { lock (_invitationLockBarrierReaders) return _invitationLockBarrierReaders.Count >= 2; }
+    }
 
-    public static async Task WaitForInvitationLockBarrierAsync(CancellationToken cancellationToken)
+    public static async Task WaitForInvitationLockBarrierAsync(object connection, CancellationToken cancellationToken)
     {
         var barrier = Volatile.Read(ref _invitationLockBarrier);
         if (barrier is null) return;
-        if (Interlocked.Increment(ref _invitationLockBarrierArrivals) == 2) barrier.TrySetResult();
-        await barrier.Task.WaitAsync(TimeSpan.FromSeconds(20), cancellationToken);
+
+        bool release;
+        lock (_invitationLockBarrierReaders)
+        {
+            _invitationLockBarrierReaders.Add(System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(connection));
+            release = _invitationLockBarrierReaders.Count >= 2;
+        }
+
+        if (release) barrier.TrySetResult();
+
+        // A single reader must not hang the suite: it waits out the timeout and the test then fails on the
+        // observation assertion, which is the honest outcome for a handler that never contended.
+        try
+        {
+            await barrier.Task.WaitAsync(TimeSpan.FromSeconds(20), cancellationToken);
+        }
+        catch (TimeoutException)
+        {
+        }
     }
 
     public static void EnableConfirmationSecretLockBarrier()
@@ -393,7 +417,7 @@ public static class TestApp
         _optionalSessionIsInvalid = false;
         _confirmationSecretLockBarrier = null;
         _invitationLockBarrier = null;
-        Interlocked.Exchange(ref _invitationLockBarrierArrivals, 0);
+        lock (_invitationLockBarrierReaders) _invitationLockBarrierReaders.Clear();
         Interlocked.Exchange(ref _confirmationSecretLockBarrierArrivals, 0);
         Interlocked.Exchange(ref _mintedTokenCount, 0);
         ResetConfirmationTokenHashInvocationCount();

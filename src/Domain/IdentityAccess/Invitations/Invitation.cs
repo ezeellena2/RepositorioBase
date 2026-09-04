@@ -217,6 +217,13 @@ public sealed class Invitation : BaseEntity<InvitationId>
     /// category, and no whitespace of any kind.
     /// </para>
     /// </summary>
+    /// <summary>
+    /// The canonical form of a recipient, for a caller that has to compare or look one up before an invitation
+    /// exists to ask. The rule stays here, in the type that owns it, so a caller cannot hold a second copy of it
+    /// that drifts from the one persistence enforces.
+    /// </summary>
+    public static string Canonicalize(string email) => Normalize(email);
+
     private static string Normalize(string email)
     {
         if (string.IsNullOrWhiteSpace(email))

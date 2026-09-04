@@ -53,12 +53,28 @@ Known harness flakes, recorded to watch rather than diagnosed:
 
 - The Aspire PostgreSQL fixture has been reported to time out on a cold first run of `Web.AcceptanceTests` and to
   pass on retry. Not reproduced locally: both local runs were 6/6.
-- `Infrastructure.IntegrationTests` reported 142/143 once, in a run chained immediately after the functional
-  suite, and 143/143 on both re-runs. The failing test was not captured, so the cause is unknown; the suspicion is
-  contention for the shared PostgreSQL instance between back-to-back suites, not a defect in the code under test.
+- `MigrationUpgradeTests.UserSessions_round_trip_preserves_preexisting_sentinels_and_removes_only_session_schema`
+  fails intermittently inside the full `Infrastructure.IntegrationTests` run — observed twice, 142/143 — and
+  passes 6/6 in isolation and on every re-run of the whole suite. Every migration round-trip test creates and
+  drops its own database on the shared PostgreSQL instance while the rest of the suite runs in parallel, so the
+  suspicion is contention over `CREATE`/`DROP DATABASE`, not a defect in the migration under test. Unproven.
 
-Neither is a licence to ignore a red run. A single unexplained failure in either suite should be re-run with the
-failing test name captured before it is called a flake.
+Neither is a licence to ignore a red run. A single unexplained failure should be re-run with the failing test
+name captured before it is called a flake, as was done for the one above.
+
+## IA-008 merge gates
+
+Open, and none of them block a slice. They block the merge:
+
+- `VersionedTokenHash.FromPersistedValue` is public, `default(VersionedTokenHash)` is still constructible and
+  invalid, and the parser accepts non-canonical Base64. Close it with a single public factory, a `default` guard
+  in `Issue`/`Reissue`, and a decode-then-reencode check in both the domain and the SQL constraint. PostgreSQL
+  cannot tell a raw token from a digest, so that provenance belongs at the Application boundary.
+- The `UPDATE` statements in `InvitationCanonicalForm` and `InvitationRecipientComposition` still collide with
+  `TR_Invitations_PreventSettledChange` for `Accepted`/`Cancelled` rows and for losers cancelled in the same
+  migration. Needs upgrade tests for settled legacy rows, a canonicalized collision and NFC from the previous
+  migration, each verifying the trigger is restored afterwards.
+- `Co-Authored-By` trailers and `.claude/settings.local.json` per the maintainer's merge policy.
 
 ## Executable-task contract
 
