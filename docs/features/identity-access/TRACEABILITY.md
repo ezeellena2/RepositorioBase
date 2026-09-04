@@ -10,7 +10,7 @@
 | IA-REQ-005 | confirmation gate | IA-006 | activation and sensitive-operation gate tests | Pending |
 | IA-REQ-006..008 | tenant resolution and active membership | IA-005, IA-007 | evaluator tests plus persisted-session/cross-tenant matrix | Pending |
 | IA-REQ-009..013 | catalog, roles, public marker, filtering, versioning | IA-005 | domain, architecture, permission, concurrency, and denial tests | Pending |
-| IA-REQ-014..018 | invitation onboarding and secret envelope | IA-008 | issue/register/accept/replay and delivery tests | Onboarding done (Task 10): `InviteMemberTests`, `RegisterInvitedUserTests`, `AcceptInvitationTests`, `ResendAndCancelInvitationTests`, `InvitationHttpContractTests`, `InvitationSecretHygieneTests`, `InvitationAuditTests`. Delivery (IA-REQ-018 dispatch) pending in Task 11 |
+| IA-REQ-014..018 | invitation onboarding and secret envelope | IA-008, IA-011 | issue/register/accept/replay and delivery tests | Onboarding done (Task 10): `InviteMemberTests`, `RegisterInvitedUserTests`, `AcceptInvitationTests`, `ResendAndCancelInvitationTests`, `InvitationHttpContractTests`, `InvitationSecretHygieneTests`, `InvitationAuditTests`. Delivery done (Task 11): `OutboxDeliveryTests`, `OutboxInfrastructureShapeTests` |
 | IA-REQ-047 | no privilege escalation through an invitation | IA-008 | offer-outside-own-permissions refusal on every path that establishes an offer: issue, reissue and replacement | Done (Task 10): `Offering_a_role_that_grants_more_than_the_inviter_holds_is_refused_and_creates_nothing`, `Replacing_a_standing_offer_with_one_beyond_the_inviter_authority_is_refused`, `Resending_an_offer_the_inviter_can_no_longer_grant_is_refused` |
 | IA-REQ-019..025 | sign-in, cookies, session lifecycle, client storage | IA-007 | options, rate-limit, lockout, antiforgery, expiry, and revocation tests | Pending |
 | IA-REQ-026 | membership/role change and sensitive denial events | IA-005 | append-only correlation/redaction/event tests | Pending |
@@ -19,8 +19,8 @@
 | IA-REQ-026 | invitation issue and accept events | IA-008 | invitation audit coverage tests | Pending |
 | IA-REQ-026 | Platform bootstrap, MFA, admin, and tenant-lifecycle events | IA-014 | append-only allowlisted Platform audit tests | Pending |
 | IA-REQ-027 | confirmation effects | IA-006 | business transaction creates message and encrypted envelope | Pending |
-| IA-REQ-027 | invitation effects | IA-008 | invitation/outbox atomicity tests | Pending |
-| IA-REQ-028 | lease, CAS, backoff, idempotent delivery | IA-008 | concurrent claim, transient, expired, permanent, and replay tests | Pending |
+| IA-REQ-027 | invitation effects | IA-008 | invitation/outbox atomicity tests | Done (Task 10): `InviteMemberTests`, `ResendAndCancelInvitationTests` |
+| IA-REQ-028 | lease, CAS, backoff, idempotent delivery | IA-011 | concurrent claim, transient, expired, permanent, and replay tests | Done (Task 11): `OutboxDeliveryTests` — 13 cases over real PostgreSQL and a controlled clock |
 | IA-REQ-029 | authorization/registration redaction | IA-005, IA-006 | allowlist and negative secret/PII scans | Pending |
 | IA-REQ-029 | session/invitation/delivery redaction | IA-007, IA-008 | Problem Details, audit, outbox, and telemetry tests | Pending |
 | IA-REQ-029 | Platform MFA/projection redaction | IA-012, IA-014 | encrypted-secret, hashed-code, allowlist, and negative leak tests | Pending |

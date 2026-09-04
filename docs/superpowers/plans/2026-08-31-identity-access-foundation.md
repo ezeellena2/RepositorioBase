@@ -812,14 +812,14 @@ Task 10 leaves the transactional message, the encrypted envelope and the invalid
 - Create: `tests/Infrastructure.IntegrationTests/Architecture/OutboxInfrastructureShapeTests.cs`
 - Create: `tests/Infrastructure.IntegrationTests/IdentityAccess/OutboxDeliveryTests.cs`
 
-- [ ] **Step 1: Shape RED, then shells**
+- [x] **Step 1: Shape RED, then shells**
 
 Reflect for reader, dispatcher, handlers, adapter, worker, `TimeProvider`, and all retry/terminal members established in Task 7.
 
 Run: `dotnet test tests/Infrastructure.IntegrationTests/Infrastructure.IntegrationTests.csproj --filter OutboxInfrastructureShapeTests`  
 Expected RED: runtime missing-type/member assertion. Add shells; rerun PASS.
 
-- [ ] **Step 2: Behavioral RED**
+- [x] **Step 2: Behavioral RED**
 
 With fake time, test due-only claiming, `FOR UPDATE SKIP LOCKED` plus CAS generation, lease release, and message-ID idempotency. A transient failure increments `AttemptCount`, stores only an allowlisted redacted `FailureCode`, clears the lease, and sets `NextAttemptAt = now + min(30 seconds * 2^(attempt-1), 30 minutes)`; optional deterministic 0–20% message-ID jitter is disabled in tests. Before due time no claim occurs; after advancing time exactly one claim occurs. Eight exhausted attempts become permanent.
 
@@ -828,7 +828,7 @@ Also test acknowledged send followed by local-update failure, expired envelope, 
 Run: `dotnet test tests/Infrastructure.IntegrationTests/Infrastructure.IntegrationTests.csproj --filter OutboxDeliveryTests`  
 Expected: runtime failures for early claims, duplicate delivery, missing delay/evidence, leaked provider text, or retained ciphertext.
 
-- [ ] **Step 3: GREEN, REFACTOR, commit**
+- [x] **Step 3: GREEN, REFACTOR, commit**
 
 Inject `TimeProvider`; decrypt only in memory; send with `OutboxMessage.Id` as idempotency key; reconcile adapter receipt before a retry. Production fails closed without wrapping-key/email configuration.
 

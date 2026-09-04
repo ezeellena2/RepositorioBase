@@ -15,6 +15,12 @@ public static class Services
     public const string WebApi = "webapi";
 
     /// <summary>
+    /// The name of the outbox worker service.
+    /// This service drains the transactional outbox and sends the identity emails it carries.
+    /// </summary>
+    public const string OutboxWorker = "outboxworker";
+
+    /// <summary>
     /// The name of the Database Server service.
     /// This service is responsible for hosting the PostgreSQL database server.
     /// </summary>
