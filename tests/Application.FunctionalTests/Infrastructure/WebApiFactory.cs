@@ -96,6 +96,7 @@ public class WebApiFactory(
             services.AddLogging(logging => logging.AddFilter<TestLogCaptureProvider>(null, LogLevel.Trace));
             services.AddScoped<Microsoft.EntityFrameworkCore.Diagnostics.ISaveChangesInterceptor, TestSaveChangesRaceInterceptor>();
             services.AddScoped<DbCommandInterceptor, ConfirmationSecretLockBarrierInterceptor>();
+            services.AddScoped<DbCommandInterceptor, InvitationLockBarrierInterceptor>();
             services.AddScoped<DbCommandInterceptor, SessionLivenessRaceInterceptor>();
             services.AddScoped<DbCommandInterceptor, FailedAccessBarrierInterceptor>();
         });

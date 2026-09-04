@@ -174,12 +174,14 @@ public sealed class InviteMemberTests : TestBase
     }
 
     /// <summary>
-    /// A different offer is not the same invitation. Silently rotating it would change what the recipient was
-    /// offered without anyone saying so, and the aggregate's reissue deliberately cannot alter roles — so the
-    /// caller is told to withdraw the standing offer first.
+    /// A different offer replaces the standing one atomically rather than conflicting with it. Refusing was the
+    /// first design and it was wrong: withdrawing an invitation needs <c>members.manage</c> and has no route in
+    /// the first increment, so a holder of <c>members.invite</c> who mistyped a role would have been stuck with
+    /// the wrong offer forever. Replacement leaves exactly one live offer, and the superseded token and its
+    /// delivery stop being usable in the same transaction (IA-REQ-015/017).
     /// </summary>
     [Test]
-    public async Task Re_inviting_the_same_recipient_with_a_different_offer_is_a_conflict_and_leaves_the_offer_standing()
+    public async Task Re_inviting_the_same_recipient_with_a_different_offer_replaces_the_standing_one()
     {
         var organization = await InvitationScenario.SeedOrganizationAsync(Permissions.MembersInvite);
         InvitationScenario.ActAs(organization);
@@ -188,12 +190,32 @@ public sealed class InviteMemberTests : TestBase
         (await TestApp.SendAsync(command)).IsSuccess.ShouldBeTrue();
         var second = await TestApp.SendAsync(command with { RoleIds = [organization.SecondRoleId] });
 
-        second.IsFailure.ShouldBeTrue();
-        second.Error!.Code.ShouldBe("invitation_conflict");
-        (await TestApp.CountAsync<Invitation>()).ShouldBe(1);
-        var invitation = await InvitationScenario.SingleInvitationAsync();
-        invitation.Roles.Select(offered => offered.RoleId.Value).ShouldBe([organization.RoleId], "a refused change leaves the standing offer untouched");
-        invitation.TokenHash.Matches(TestApp.RawTokenAt(0)).ShouldBeTrue("a refused change does not rotate the token either");
+        second.IsSuccess.ShouldBeTrue();
+        var live = (await TestApp.ListAsync<Invitation>()).Where(item => item.IsPendingAt(DateTimeOffset.UtcNow)).ToArray();
+        live.Length.ShouldBe(1, "a recipient never holds two live offers");
+        second.Value!.InvitationId.ShouldBe(live[0].Id.Value);
+        live[0].TokenHash.Matches(TestApp.RawTokenAt(1)).ShouldBeTrue("the replacement carries the new token");
+        live[0].TokenHash.Matches(TestApp.RawTokenAt(0)).ShouldBeFalse("the superseded token stops resolving");
+        await AssertOnlyTheNewestSecretIsUsableAsync();
+    }
+
+    /// <summary>
+    /// Whoever supersedes an offer owns invalidating what it replaced. Leaving the previous envelope pending would
+    /// let the worker deliver a token the tenant has already withdrawn (IA-REQ-015/018).
+    /// </summary>
+    private static async Task AssertOnlyTheNewestSecretIsUsableAsync()
+    {
+        var secrets = (await TestApp.ListAsync<Domain.IdentityAccess.Outbox.OutboxSecret>())
+            .OrderBy(secret => secret.ExpiresAt)
+            .ToArray();
+        secrets.Length.ShouldBeGreaterThan(1, "each offer writes its own delivery envelope");
+        foreach (var superseded in secrets[..^1])
+        {
+            superseded.Status.ShouldNotBe(Domain.IdentityAccess.Outbox.OutboxSecretStatus.Pending, "a superseded envelope must not stay deliverable");
+            superseded.Ciphertext.ShouldBeNull("terminalizing an envelope clears the token it was holding");
+        }
+
+        secrets[^1].Status.ShouldBe(Domain.IdentityAccess.Outbox.OutboxSecretStatus.Pending);
     }
 
     /// <summary>
@@ -244,12 +266,14 @@ public sealed class InviteMemberTests : TestBase
         var organization = await InvitationScenario.SeedOrganizationAsync(Permissions.MembersInvite);
         InvitationScenario.ActAs(organization);
         var command = NewCommand(organization);
+        TestApp.EnableInvitationLockBarrier();
         using var barrier = new Barrier(2);
 
         var results = await Task.WhenAll(
             Task.Run(() => SendFromIndependentScopeAsync(command, barrier)),
             Task.Run(() => SendFromIndependentScopeAsync(command, barrier)));
 
+        TestApp.InvitationLockBarrierWasObserved.ShouldBeTrue("both invitations must have decided from the same committed state");
         results.ShouldAllBe(result => result.IsSuccess || result.Error!.Code == "invitation_conflict");
         (await TestApp.CountAsync<Invitation>()).ShouldBe(1, "the recipient holds one pending slot however the race lands");
     }
@@ -285,7 +309,7 @@ public sealed class InviteMemberTests : TestBase
     public async Task Offering_a_role_that_grants_more_than_the_inviter_holds_is_refused_and_creates_nothing()
     {
         var organization = await InvitationScenario.SeedOrganizationAsync(Permissions.MembersInvite);
-        await GrantAsync(organization.SecondRoleId, Permissions.RolesManage);
+        await InvitationGrants.GrantAsync(organization.SecondRoleId, Permissions.RolesManage);
         InvitationScenario.ActAs(organization);
 
         var result = await TestApp.SendAsync(NewCommand(organization) with { RoleIds = [organization.SecondRoleId] });
@@ -303,7 +327,7 @@ public sealed class InviteMemberTests : TestBase
     public async Task Offering_a_role_within_what_the_inviter_holds_is_allowed()
     {
         var organization = await InvitationScenario.SeedOrganizationAsync(Permissions.MembersInvite, Permissions.MembersRead);
-        await GrantAsync(organization.SecondRoleId, Permissions.MembersRead);
+        await InvitationGrants.GrantAsync(organization.SecondRoleId, Permissions.MembersRead);
         InvitationScenario.ActAs(organization);
 
         var result = await TestApp.SendAsync(NewCommand(organization) with { RoleIds = [organization.SecondRoleId] });
@@ -317,42 +341,17 @@ public sealed class InviteMemberTests : TestBase
     public async Task A_role_that_stops_being_grantable_cannot_be_re_offered()
     {
         var organization = await InvitationScenario.SeedOrganizationAsync(Permissions.MembersInvite, Permissions.MembersRead);
-        await GrantAsync(organization.SecondRoleId, Permissions.MembersRead);
+        await InvitationGrants.GrantAsync(organization.SecondRoleId, Permissions.MembersRead);
         InvitationScenario.ActAs(organization);
         var email = $"invitee-{Guid.NewGuid():N}@example.test";
         (await TestApp.SendAsync(new InviteMemberCommand(organization.TenantId, email, [organization.SecondRoleId]))).IsSuccess.ShouldBeTrue();
-        await RevokeAsync(organization.RoleId, Permissions.MembersRead);
+        await InvitationGrants.RevokeAsync(organization.RoleId, Permissions.MembersRead);
 
         var result = await TestApp.SendAsync(new InviteMemberCommand(organization.TenantId, email, [organization.SecondRoleId]));
 
         result.IsFailure.ShouldBeTrue("an offer the inviter can no longer make cannot be renewed either");
         result.Error!.Code.ShouldBe("invalid_invitation");
         (await InvitationScenario.SingleInvitationAsync()).TokenHash.Matches(TestApp.RawTokenAt(0)).ShouldBeTrue("a refused reissue does not rotate the token");
-    }
-
-    private static async Task GrantAsync(Guid roleId, string permissionCode)
-    {
-        using var scope = FunctionalTestSetup.ScopeFactory.CreateScope();
-        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        var identifier = RoleId.From(roleId);
-        var role = await context.TenantRoles.SingleAsync(candidate => candidate.Id == identifier);
-        var tenant = await context.Tenants.SingleAsync(candidate => candidate.Id == role.TenantId);
-        var permission = await context.Permissions.SingleAsync(candidate => candidate.Code == permissionCode);
-        context.Add(RolePermission.Create(tenant, role, permission));
-        await context.SaveChangesAsync();
-    }
-
-    private static async Task RevokeAsync(Guid roleId, string permissionCode)
-    {
-        using var scope = FunctionalTestSetup.ScopeFactory.CreateScope();
-        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        var identifier = RoleId.From(roleId);
-        var assignment = await context.RolePermissions.SingleAsync(
-            candidate => candidate.RoleId == identifier && candidate.PermissionCode == permissionCode);
-        var tenant = await context.Tenants.SingleAsync(candidate => candidate.Id == assignment.TenantId);
-        assignment.Revoke(tenant);
-        context.Remove(assignment);
-        await context.SaveChangesAsync();
     }
 
     private static InviteMemberCommand NewCommand(InvitationScenario.Organization organization) =>

@@ -4,7 +4,9 @@ using CleanArchitecture.Application.IdentityAccess.Invitations.InviteMember;
 using CleanArchitecture.Application.IdentityAccess.Invitations.RegisterInvitedUser;
 using CleanArchitecture.Domain.IdentityAccess.Invitations;
 using CleanArchitecture.Domain.IdentityAccess.Memberships;
+using CleanArchitecture.Application.IdentityAccess.Organizations.ConfirmEmail;
 using CleanArchitecture.Infrastructure.Identity;
+using CleanArchitecture.Infrastructure.IdentityAccess;
 
 namespace CleanArchitecture.Application.FunctionalTests.IdentityAccess.Invitations;
 
@@ -145,19 +147,56 @@ public sealed class RegisterInvitedUserTests : TestBase
         present.Error.Category.ShouldBe(absent.Error.Category);
     }
 
-    /// <summary>Registration is delivery-bearing: the invitee has to be told to confirm (IA-REQ-027).</summary>
+    /// <summary>
+    /// Registration is delivery-bearing: the invitee has to be told to confirm (IA-REQ-027). The token it mints is
+    /// a NEW confirmation token, not the invitation's — an earlier version of this test inspected the invitation
+    /// token and so would have passed over a confirmation envelope that was never written at all.
+    /// </summary>
     [Test]
-    public async Task Registering_from_an_invitation_writes_its_confirmation_delivery_intent()
+    public async Task Registering_from_an_invitation_writes_a_confirmation_envelope_holding_its_own_new_token()
     {
         await IssuedInvitationAsync();
-        var before = await TestApp.CountAsync<Domain.IdentityAccess.Outbox.OutboxMessage>();
+        var invitationToken = TestApp.RawTokenAt(0);
         ResetToAnonymous();
 
-        (await TestApp.SendAsync(new RegisterInvitedUserCommand(TestApp.RawTokenAt(0), ValidPassword))).IsSuccess.ShouldBeTrue();
+        (await TestApp.SendAsync(new RegisterInvitedUserCommand(invitationToken, ValidPassword))).IsSuccess.ShouldBeTrue();
 
-        (await TestApp.CountAsync<Domain.IdentityAccess.Outbox.OutboxMessage>()).ShouldBe(before + 1);
-        (await TestApp.ListAsync<Domain.IdentityAccess.Outbox.OutboxMessage>())
-            .ShouldContain(message => message.Payload.Contains(TestApp.RawTokenAt(0)) == false);
+        var confirmationToken = TestApp.RawTokenAt(1);
+        confirmationToken.ShouldNotBe(invitationToken);
+        var messages = await TestApp.ListAsync<Domain.IdentityAccess.Outbox.OutboxMessage>();
+        messages.Count.ShouldBe(2, "the invitation's delivery and the confirmation's are separate messages");
+        messages.ShouldAllBe(message => !message.Payload.Contains(confirmationToken) && !message.Payload.Contains(invitationToken));
+
+        var secrets = await TestApp.ListAsync<Domain.IdentityAccess.Outbox.OutboxSecret>();
+        var confirmation = secrets.Single(secret => new VersionedTokenHasher().Verify(confirmationToken, secret.VersionedHash));
+        confirmation.Ciphertext.ShouldNotBeNull();
+        confirmation.Ciphertext!.ShouldNotContain(confirmationToken);
+        confirmation.ExpiresAt.ShouldBeGreaterThan(DateTimeOffset.UtcNow);
+        confirmation.Status.ShouldBe(Domain.IdentityAccess.Outbox.OutboxSecretStatus.Pending);
+        messages.ShouldContain(message => message.Id == confirmation.OutboxMessageId);
+    }
+
+    /// <summary>
+    /// The whole point of IA-REQ-016's public half, end to end: registering and then confirming leaves a confirmed
+    /// identity, an invitation still pending, and no membership. Confirmation is not acceptance — acceptance is a
+    /// separate authenticated request, and nothing before it may grant access to the organization.
+    /// </summary>
+    [Test]
+    public async Task Registering_then_confirming_leaves_a_confirmed_identity_with_the_offer_still_pending_and_no_membership()
+    {
+        var (email, token) = await IssuedInvitationAsync();
+        var membershipsBefore = await TestApp.CountAsync<TenantMembership>();
+        ResetToAnonymous();
+
+        (await TestApp.SendAsync(new RegisterInvitedUserCommand(token, ValidPassword))).IsSuccess.ShouldBeTrue();
+        (await TestApp.SendAsync(new ConfirmEmailCommand(TestApp.RawTokenAt(1)))).IsSuccess.ShouldBeTrue();
+
+        var identity = (await TestApp.ListAsync<ApplicationUser>()).Single(user => user.Email == email);
+        identity.EmailConfirmed.ShouldBeTrue("confirmation is what the registration flow exists to reach");
+        (await TestApp.CountAsync<TenantMembership>()).ShouldBe(membershipsBefore, "confirming an identity is not accepting an invitation");
+        var invitation = await InvitationScenario.SingleInvitationAsync();
+        invitation.Status.ShouldBe(InvitationStatus.Pending, "the offer still has to be accepted by the signed-in recipient");
+        invitation.AcceptedByIdentityId.ShouldBeNull();
     }
 
     private static async Task<(string Email, string Token)> IssuedInvitationAsync()

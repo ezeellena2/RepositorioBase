@@ -34,8 +34,15 @@ public sealed class ResendAndCancelInvitationTests : TestBase
         invitation.TokenHash.Matches(TestApp.RawTokenAt(1)).ShouldBeTrue();
         invitation.TokenHash.Matches(TestApp.RawTokenAt(0)).ShouldBeFalse("the superseded token must stop resolving");
         (await TestApp.CountAsync<OutboxMessage>()).ShouldBe(2, "the rotated token is delivered like the first one");
-        (await TestApp.ListAsync<OutboxSecret>()).Count.ShouldBe(2);
         (await TestApp.ListAsync<OutboxMessage>()).ShouldAllBe(message => !message.Payload.Contains(TestApp.RawTokenAt(1)));
+
+        // Whoever rotates the token owns invalidating the envelope it replaced: leaving it pending would let the
+        // worker deliver a token that no longer resolves (IA-REQ-015/018).
+        var secrets = (await TestApp.ListAsync<OutboxSecret>()).OrderBy(secret => secret.ExpiresAt).ToArray();
+        secrets.Length.ShouldBe(2);
+        secrets[0].Status.ShouldNotBe(OutboxSecretStatus.Pending, "the superseded envelope must not stay deliverable");
+        secrets[0].Ciphertext.ShouldBeNull("terminalizing clears the token the envelope was holding");
+        secrets[1].Status.ShouldBe(OutboxSecretStatus.Pending);
     }
 
     /// <summary>A lapsed invitation is precisely what a resend exists to revive, so it must not be a conflict.</summary>
@@ -81,6 +88,10 @@ public sealed class ResendAndCancelInvitationTests : TestBase
         invitation.CancelledAt.ShouldNotBeNull();
         invitation.IsPendingAt(DateTimeOffset.UtcNow).ShouldBeFalse();
         (await TestApp.ListAsync<AuditEvent>()).ShouldContain(item => item.EventType == "invitation.cancelled");
+
+        var secret = (await TestApp.ListAsync<OutboxSecret>()).Single();
+        secret.Status.ShouldNotBe(OutboxSecretStatus.Pending, "withdrawing an offer withdraws its undelivered token too");
+        secret.Ciphertext.ShouldBeNull();
     }
 
     /// <summary>Withdrawing an offer twice is the caller retrying, not a failure.</summary>
@@ -126,6 +137,29 @@ public sealed class ResendAndCancelInvitationTests : TestBase
         reinvite.IsSuccess.ShouldBeTrue();
         reinvite.Value!.InvitationId.ShouldNotBe(issued.InvitationId, "a withdrawn offer is history; the new one is a new invitation");
         (await TestApp.CountAsync<Invitation>()).ShouldBe(2, "invitation history survives its withdrawal");
+    }
+
+    /// <summary>
+    /// IA-REQ-047 binds every path that establishes an offer, and a resend re-offers the same roles under a new
+    /// token. Checking only the issue path would leave resend as a way to keep an offer alive after the inviter
+    /// stopped being able to make it.
+    /// </summary>
+    [Test]
+    public async Task Resending_an_offer_the_inviter_can_no_longer_grant_is_refused()
+    {
+        var organization = await InvitationScenario.SeedOrganizationAsync(Permissions.MembersInvite, Permissions.MembersManage, Permissions.MembersRead);
+        await InvitationGrants.GrantAsync(organization.SecondRoleId, Permissions.MembersRead);
+        InvitationScenario.ActAs(organization);
+        var issued = await TestApp.SendAsync(new InviteMemberCommand(
+            organization.TenantId, $"invitee-{Guid.NewGuid():N}@example.test", [organization.SecondRoleId]));
+        issued.IsSuccess.ShouldBeTrue();
+        await InvitationGrants.RevokeAsync(organization.RoleId, Permissions.MembersRead);
+
+        var result = await TestApp.SendAsync(new ResendInvitationCommand(organization.TenantId, issued.Value!.InvitationId));
+
+        result.IsFailure.ShouldBeTrue("a resend re-offers the roles, so it is bound by the same subset rule");
+        result.Error!.Code.ShouldBe("invalid_invitation");
+        (await InvitationScenario.SingleInvitationAsync()).TokenHash.Matches(TestApp.RawTokenAt(0)).ShouldBeTrue("a refused resend does not rotate the token");
     }
 
     private sealed record Issued(InvitationScenario.Organization Organization, Guid InvitationId, string Email);

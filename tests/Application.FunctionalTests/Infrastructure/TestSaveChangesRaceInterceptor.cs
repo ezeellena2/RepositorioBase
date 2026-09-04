@@ -32,15 +32,6 @@ public sealed class TestSaveChangesRaceInterceptor : SaveChangesInterceptor
             throw new InvalidOperationException("confirmation rollback after identity activation");
         }
 
-        // Invitations reach persistence either as a new row (issue) or as a transition (accept, resend, cancel),
-        // and both must be atomic with the effects written alongside them, so one arm covers either shape.
-        if (eventData.Context?.ChangeTracker.Entries<CleanArchitecture.Domain.IdentityAccess.Invitations.Invitation>()
-            .Any(entry => entry.State is EntityState.Added or EntityState.Modified) == true &&
-            TestApp.ConsumeForcedInvitationRollbackAfterPersistedEffects())
-        {
-            throw new InvalidOperationException("invitation rollback after persisted effects");
-        }
-
         if (eventData.Context?.ChangeTracker.Entries<CleanArchitecture.Domain.IdentityAccess.Auditing.AuditEvent>()
             .Any(entry => entry.State == EntityState.Added && entry.Entity.EventType == "session.revoked") == true &&
             TestApp.ConsumeSessionRevokePersistenceFailure())
@@ -92,6 +83,23 @@ public sealed class TestSaveChangesRaceInterceptor : SaveChangesInterceptor
         }
 
         return await base.SavingChangesAsync(eventData, result, cancellationToken);
+    }
+
+    /// <summary>
+    /// Fails an invitation save AFTER it has been written, not before. Throwing in <c>SavingChangesAsync</c> would
+    /// abort the statement batch before any row existed, so the rollback assertion would hold vacuously; the whole
+    /// point is that rows really landed and the enclosing transaction really took them back.
+    /// </summary>
+    public override async ValueTask<int> SavedChangesAsync(SaveChangesCompletedEventData eventData, int result, CancellationToken cancellationToken = default)
+    {
+        if (TestApp.HasPendingInvitationRollback &&
+            eventData.Context?.ChangeTracker.Entries<CleanArchitecture.Domain.IdentityAccess.Invitations.Invitation>().Any() == true &&
+            TestApp.ConsumeForcedInvitationRollbackAfterPersistedEffects())
+        {
+            throw new InvalidOperationException("invitation rollback after persisted effects");
+        }
+
+        return await base.SavedChangesAsync(eventData, result, cancellationToken);
     }
 
     /// <summary>

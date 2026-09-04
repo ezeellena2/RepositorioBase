@@ -32,10 +32,7 @@ public sealed class AcceptInvitationTests : TestBase
         result.Value.MembershipId.ShouldBe(membership.Id.Value);
         membership.TenantId.ShouldBe(invited.Organization.TenantId);
         membership.Status.ShouldBe(MembershipStatus.Active, "an accepted invitation is an active membership, not another pending state");
-        (await TestApp.ListAsync<MembershipRole>())
-            .Where(assignment => assignment.MembershipId == membership.Id)
-            .Select(assignment => assignment.RoleId.Value)
-            .ShouldBe([invited.Organization.RoleId], "the membership carries exactly what the invitation offered");
+        (await RolesOfAsync(invited.RecipientId)).ShouldBe([invited.Organization.RoleId], "the membership carries exactly what the invitation offered");
         var invitation = await InvitationScenario.SingleInvitationAsync();
         invitation.Status.ShouldBe(InvitationStatus.Accepted);
         invitation.AcceptedByIdentityId.ShouldBe(invited.RecipientId);
@@ -60,7 +57,7 @@ public sealed class AcceptInvitationTests : TestBase
         replay.Value!.MembershipId.ShouldBe(first.Value!.MembershipId);
         replay.Value.TenantId.ShouldBe(first.Value.TenantId);
         (await TestApp.ListAsync<TenantMembership>()).Count(item => item.IdentityId == invited.RecipientId).ShouldBe(1);
-        (await TestApp.ListAsync<MembershipRole>()).Count(assignment => assignment.RoleId.Value == invited.Organization.RoleId).ShouldBe(1);
+        (await RolesOfAsync(invited.RecipientId)).ShouldBe([invited.Organization.RoleId], "a replay assigns the offered role once, not twice");
         (await TestApp.ListAsync<AuditEvent>()).Count(item => item.EventType == "invitation.accepted").ShouldBe(1, "a replay is not a second membership change");
     }
 
@@ -187,15 +184,17 @@ public sealed class AcceptInvitationTests : TestBase
         var invited = await InvitedAsync();
         ActAs(invited.RecipientId);
         var command = new AcceptInvitationCommand(invited.Token);
+        TestApp.EnableInvitationLockBarrier();
         using var barrier = new Barrier(2);
 
         var results = await Task.WhenAll(
             Task.Run(() => SendFromIndependentScopeAsync(command, barrier)),
             Task.Run(() => SendFromIndependentScopeAsync(command, barrier)));
 
+        TestApp.InvitationLockBarrierWasObserved.ShouldBeTrue("both acceptances must have decided from the same committed invitation");
         results.ShouldAllBe(result => result.IsSuccess || result.Error!.Code == "invitation_conflict");
         (await TestApp.ListAsync<TenantMembership>()).Count(item => item.IdentityId == invited.RecipientId).ShouldBe(1);
-        (await TestApp.ListAsync<MembershipRole>()).Count(assignment => assignment.RoleId.Value == invited.Organization.RoleId).ShouldBe(1);
+        (await RolesOfAsync(invited.RecipientId)).ShouldBe([invited.Organization.RoleId]);
     }
 
     /// <summary>The membership and the invitation transition together, or neither does (IA-REQ-016/033).</summary>
@@ -213,6 +212,19 @@ public sealed class AcceptInvitationTests : TestBase
 
         (await TestApp.SendAsync(new AcceptInvitationCommand(invited.Token))).IsSuccess.ShouldBeTrue();
         (await TestApp.ListAsync<TenantMembership>()).Count(item => item.IdentityId == invited.RecipientId).ShouldBe(1);
+    }
+
+    /// <summary>
+    /// The roles of one identity's membership. Counting MembershipRole rows globally would also count the
+    /// inviter's own assignment to the same role, so a global count rejects a correct acceptance.
+    /// </summary>
+    private static async Task<Guid[]> RolesOfAsync(Guid identityId)
+    {
+        var memberships = (await TestApp.ListAsync<TenantMembership>()).Where(item => item.IdentityId == identityId).Select(item => item.Id).ToHashSet();
+        return (await TestApp.ListAsync<MembershipRole>())
+            .Where(assignment => memberships.Contains(assignment.MembershipId))
+            .Select(assignment => assignment.RoleId.Value)
+            .ToArray();
     }
 
     private sealed record Invited(InvitationScenario.Organization Organization, Guid RecipientId, string Token);

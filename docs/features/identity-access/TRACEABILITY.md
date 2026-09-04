@@ -11,7 +11,7 @@
 | IA-REQ-006..008 | tenant resolution and active membership | IA-005, IA-007 | evaluator tests plus persisted-session/cross-tenant matrix | Pending |
 | IA-REQ-009..013 | catalog, roles, public marker, filtering, versioning | IA-005 | domain, architecture, permission, concurrency, and denial tests | Pending |
 | IA-REQ-014..018 | invitation onboarding and secret envelope | IA-008 | issue/register/accept/replay and delivery tests | Pending |
-| IA-REQ-047 | no privilege escalation through an invitation | IA-008 | offer-outside-own-permissions refusal at issue, reissue and acceptance | Pending |
+| IA-REQ-047 | no privilege escalation through an invitation | IA-008 | offer-outside-own-permissions refusal on every path that establishes an offer: issue, reissue and replacement | Pending |
 | IA-REQ-019..025 | sign-in, cookies, session lifecycle, client storage | IA-007 | options, rate-limit, lockout, antiforgery, expiry, and revocation tests | Pending |
 | IA-REQ-026 | membership/role change and sensitive denial events | IA-005 | append-only correlation/redaction/event tests | Pending |
 | IA-REQ-026 | registration and confirmation events | IA-006 | transactional audit coverage tests | Pending |

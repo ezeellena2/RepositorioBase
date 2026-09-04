@@ -43,6 +43,8 @@ public static class TestApp
     private static int _mintedTokenCount;
     private static TaskCompletionSource? _confirmationSecretLockBarrier;
     private static int _confirmationSecretLockBarrierArrivals;
+    private static TaskCompletionSource? _invitationLockBarrier;
+    private static int _invitationLockBarrierArrivals;
     private static int _passwordVerificationCount;
     private static readonly System.Collections.Concurrent.ConcurrentQueue<string> _capturedLogs = new();
 
@@ -83,6 +85,8 @@ public static class TestApp
     public static bool ConsumeForcedRegistrationRollbackAfterPersistedEffects() => Interlocked.Exchange(ref _forceRegistrationRollbackAfterPersistedEffects, false);
 
     public static bool ConsumeForcedConfirmationRollbackAfterPersistedEffects() => Interlocked.Exchange(ref _forceConfirmationRollbackAfterPersistedEffects, false);
+
+    public static bool HasPendingInvitationRollback => Volatile.Read(ref _forceInvitationRollbackAfterPersistedEffects);
 
     public static bool ConsumeForcedInvitationRollbackAfterPersistedEffects() => Interlocked.Exchange(ref _forceInvitationRollbackAfterPersistedEffects, false);
 
@@ -187,6 +191,27 @@ public static class TestApp
     public static void RecordLog(string entry) => _capturedLogs.Enqueue(entry);
 
     public static void ResetCapturedLogs() => _capturedLogs.Clear();
+
+    /// <summary>
+    /// Holds every reader of the <c>Invitations</c> table until two have arrived, so a concurrency test proves the
+    /// two operations really did decide from the same committed state. Without it both requests can serialize by
+    /// accident and the test passes while proving nothing about contention.
+    /// </summary>
+    public static void EnableInvitationLockBarrier()
+    {
+        _invitationLockBarrier = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Interlocked.Exchange(ref _invitationLockBarrierArrivals, 0);
+    }
+
+    public static bool InvitationLockBarrierWasObserved => Volatile.Read(ref _invitationLockBarrierArrivals) >= 2;
+
+    public static async Task WaitForInvitationLockBarrierAsync(CancellationToken cancellationToken)
+    {
+        var barrier = Volatile.Read(ref _invitationLockBarrier);
+        if (barrier is null) return;
+        if (Interlocked.Increment(ref _invitationLockBarrierArrivals) == 2) barrier.TrySetResult();
+        await barrier.Task.WaitAsync(TimeSpan.FromSeconds(20), cancellationToken);
+    }
 
     public static void EnableConfirmationSecretLockBarrier()
     {
@@ -367,6 +392,8 @@ public static class TestApp
         _optionalSessionEmail = null;
         _optionalSessionIsInvalid = false;
         _confirmationSecretLockBarrier = null;
+        _invitationLockBarrier = null;
+        Interlocked.Exchange(ref _invitationLockBarrierArrivals, 0);
         Interlocked.Exchange(ref _confirmationSecretLockBarrierArrivals, 0);
         Interlocked.Exchange(ref _mintedTokenCount, 0);
         ResetConfirmationTokenHashInvocationCount();
