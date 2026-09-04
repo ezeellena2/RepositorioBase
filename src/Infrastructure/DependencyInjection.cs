@@ -6,6 +6,8 @@ using CleanArchitecture.Infrastructure.Auditing;
 using CleanArchitecture.Infrastructure.Identity;
 using CleanArchitecture.Infrastructure.IdentityAccess;
 using CleanArchitecture.Application.IdentityAccess.Invitations;
+using CleanArchitecture.Infrastructure.Email;
+using CleanArchitecture.Infrastructure.Outbox;
 using CleanArchitecture.Application.IdentityAccess.Organizations;
 using CleanArchitecture.Application.IdentityAccess.Organizations.RegisterOrganization;
 using CleanArchitecture.Application.IdentityAccess.Organizations.ConfirmEmail;
@@ -103,6 +105,16 @@ public static class DependencyInjection
         builder.Services.AddScoped<IRegistrationInitialRoleProvisioner, RegistrationInitialRoleProvisioner>();
         builder.Services.AddScoped<IOfferableRoleReader, OfferableRoleReader>();
         builder.Services.AddScoped<IInvitationRoleAssigner, InvitationRoleAssigner>();
+
+        // The dispatcher and its handlers are registered as scoped units, not as a hosted service. The loop
+        // that repeats a pass belongs to the worker process; registering it here would start a poller inside
+        // the web application and inside every functional test that boots it.
+        builder.Services.AddScoped<IOutboxSecretReader, OutboxSecretReader>();
+        builder.Services.AddScoped<IOutboxDeliveryHandler, InvitationEmailDeliveryHandler>();
+        builder.Services.AddScoped<IOutboxDeliveryHandler, EmailConfirmationDeliveryHandler>();
+        builder.Services.AddScoped<OutboxDispatcher>();
+        builder.Services.AddOptions<IdentityEmailOptions>().BindConfiguration(IdentityEmailOptions.SectionName);
+        builder.Services.AddScoped<IIdentityEmailSender, IdentityEmailAdapter>();
         builder.Services.AddSingleton<ISecureTokenGenerator, SecureTokenGenerator>();
         builder.Services.AddSingleton<ITokenHasher, VersionedTokenHasher>();
         builder.Services.AddSingleton<IOutboxSecretWriter, OutboxSecretWriter>();

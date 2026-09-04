@@ -28,26 +28,110 @@ public sealed class OutboxMessage : BaseEntity<Guid>
     /// </summary>
     public int Generation { get; private set; }
 
-    /// <summary>Takes the lease for one dispatch attempt.</summary>
-    public void Claim(string owner, DateTimeOffset now, TimeSpan leaseDuration) => throw new NotImplementedException();
+    /// <summary>
+    /// How many times a message is worth retrying before it is nobody's business any more, and the schedule
+    /// between attempts: 30 seconds doubling to a half-hour ceiling. The ceiling matters more than the curve —
+    /// without it the eighth attempt would land an hour and a half out, long after anyone stopped caring.
+    /// </summary>
+    private const int MaxAttempts = 8;
 
-    /// <summary>Gives the lease back without consuming an attempt, for a pass that ended before it delivered.</summary>
-    public void ReleaseLease() => throw new NotImplementedException();
+    private static readonly TimeSpan FirstBackoff = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan MaximumBackoff = TimeSpan.FromMinutes(30);
 
-    /// <summary>Records a transient failure: one more attempt, a redacted code, and a later due time.</summary>
-    public void Fail(string failureCode, DateTimeOffset now) => throw new NotImplementedException();
-
-    public void MarkDelivered(DateTimeOffset now) => throw new NotImplementedException();
-
-    /// <summary>Stops retrying. A message nothing will send again must be distinguishable from one still due.</summary>
-    public void Abandon(string failureCode, DateTimeOffset now) => throw new NotImplementedException();
-
+    /// <summary>
+    /// A message is born due and pending: the business transaction that wrote it has already committed, so there
+    /// is nothing left to wait for before the first attempt.
+    /// </summary>
     public static OutboxMessage Create(string type, string payload, DateTimeOffset now) => new()
     {
         Id = Guid.NewGuid(),
         Type = string.IsNullOrWhiteSpace(type) ? throw new ArgumentException("Message type cannot be empty.", nameof(type)) : type,
         Payload = payload ?? throw new ArgumentNullException(nameof(payload)),
+        Status = OutboxMessageStatus.Pending,
         NextAttemptAt = now,
         CreatedAt = now
     };
+
+    /// <summary>
+    /// Takes the lease for one dispatch attempt. The generation moves with it, which is what a claim compares and
+    /// swaps: two workers that read the same due row cannot both leave it holding their own lease.
+    /// </summary>
+    public void Claim(string owner, DateTimeOffset now, TimeSpan leaseDuration)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(owner);
+        if (Status != OutboxMessageStatus.Pending)
+        {
+            throw new InvalidOperationException("Only a pending message can be claimed.");
+        }
+
+        LeaseOwner = owner;
+        LeaseExpiresAt = now.Add(leaseDuration);
+        Generation++;
+    }
+
+    /// <summary>Gives the lease back without spending an attempt, for a pass that ended before it delivered.</summary>
+    public void ReleaseLease()
+    {
+        LeaseOwner = null;
+        LeaseExpiresAt = null;
+    }
+
+    /// <summary>
+    /// Records a transient failure. The attempt is spent, the lease goes back so another worker may take the
+    /// retry, and the next attempt is scheduled. Exhausting the budget is terminal: a message nothing will send
+    /// again has to be distinguishable from one still waiting its turn.
+    /// </summary>
+    public void Fail(string failureCode, DateTimeOffset now)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(failureCode);
+        EnsurePending();
+        AttemptCount++;
+        FailureCode = failureCode;
+        ReleaseLease();
+
+        if (AttemptCount >= MaxAttempts)
+        {
+            Status = OutboxMessageStatus.Abandoned;
+            return;
+        }
+
+        NextAttemptAt = now.Add(BackoffFor(AttemptCount));
+    }
+
+    public void MarkDelivered(DateTimeOffset now)
+    {
+        EnsurePending();
+        Status = OutboxMessageStatus.Delivered;
+        DeliveredAt = now;
+        ReleaseLease();
+    }
+
+    /// <summary>
+    /// Stops retrying now rather than after the whole budget: a provider that will never accept this message, or
+    /// an envelope whose window has closed, is not worth seven more attempts.
+    /// </summary>
+    public void Abandon(string failureCode, DateTimeOffset now)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(failureCode);
+        EnsurePending();
+        AttemptCount++;
+        FailureCode = failureCode;
+        Status = OutboxMessageStatus.Abandoned;
+        ReleaseLease();
+    }
+
+    /// <summary>Attempt n waits 30s * 2^(n-1), never longer than half an hour.</summary>
+    private static TimeSpan BackoffFor(int attempt)
+    {
+        var scaled = FirstBackoff * Math.Pow(2, attempt - 1);
+        return scaled > MaximumBackoff ? MaximumBackoff : scaled;
+    }
+
+    private void EnsurePending()
+    {
+        if (Status != OutboxMessageStatus.Pending)
+        {
+            throw new InvalidOperationException("Only a pending message can change its dispatch state.");
+        }
+    }
 }
