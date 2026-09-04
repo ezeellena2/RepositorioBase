@@ -18,7 +18,8 @@ public sealed class PermissionEvaluator(ApplicationDbContext context, IHttpConte
         // cookie intentionally carries only the identity and session identifiers.
         var isSelfServiceSessionCapability = permissionCode is Permissions.IdentitySessionManage
             or Permissions.IdentityContextRead
-            or Permissions.IdentityContextSelect;
+            or Permissions.IdentityContextSelect
+            or Permissions.IdentityInvitationsAccept;
         if (identityId == Guid.Empty ||
             string.IsNullOrWhiteSpace(permissionCode) ||
             !hasMatchingIdentity ||

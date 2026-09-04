@@ -18,6 +18,7 @@ public static class Permissions
     public const string IdentitySessionManage = "identity.sessions.manage";
     public const string IdentityContextRead = "identity.context.read";
     public const string IdentityContextSelect = "identity.context.select";
+    public const string IdentityInvitationsAccept = "identity.invitations.accept";
     public const string PlatformAdminsRead = "platform.admins.read";
     public const string PlatformAdminsManage = "platform.admins.manage";
 
@@ -41,7 +42,10 @@ public static class Permissions
         WeatherRead,
         IdentitySessionManage,
         IdentityContextRead,
-        IdentityContextSelect
+        IdentityContextSelect,
+        // An invitee holds no membership until acceptance succeeds, so accepting cannot be tenant-scoped. It is a
+        // self-service capability of the authenticated identity, like reading its own context.
+        IdentityInvitationsAccept
     };
 
 }

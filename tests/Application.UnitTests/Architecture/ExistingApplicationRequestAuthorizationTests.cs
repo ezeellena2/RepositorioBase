@@ -43,6 +43,7 @@ public class ExistingApplicationRequestAuthorizationTests
     [TestCase(typeof(RevokeCurrentSessionCommand), "identity.sessions.manage")]
     [TestCase(typeof(GetIdentityContextQuery), "identity.context.read")]
     [TestCase(typeof(SelectTenantCommand), "identity.context.select")]
+    [TestCase(typeof(CleanArchitecture.Application.IdentityAccess.Invitations.AcceptInvitation.AcceptInvitationCommand), "identity.invitations.accept")]
     public void Session_context_requests_are_authorized_without_tenant_requirement(Type requestType, string permission)
     {
         var authorizeAttribute = requestType.GetCustomAttributes<AuthorizeAttribute>(false).ShouldHaveSingleItem();
@@ -52,7 +53,7 @@ public class ExistingApplicationRequestAuthorizationTests
     }
 
     [Test]
-    public void ExistingRequestInventoryContainsExactlyTheKnownFifteenRequests()
+    public void ExistingRequestInventoryContainsExactlyTheKnownTwentyRequests()
     {
         var actualRequestTypes = GetConcreteRequestTypes(typeof(AuthorizeAttribute).Assembly);
 
@@ -73,6 +74,11 @@ public class ExistingApplicationRequestAuthorizationTests
             typeof(UpdateTodoItemDetailCommand).FullName,
             typeof(DeleteTodoItemCommand).FullName,
             typeof(GetWeatherForecastsQuery).FullName,
+            typeof(CleanArchitecture.Application.IdentityAccess.Invitations.InviteMember.InviteMemberCommand).FullName,
+            typeof(CleanArchitecture.Application.IdentityAccess.Invitations.RegisterInvitedUser.RegisterInvitedUserCommand).FullName,
+            typeof(CleanArchitecture.Application.IdentityAccess.Invitations.AcceptInvitation.AcceptInvitationCommand).FullName,
+            typeof(CleanArchitecture.Application.IdentityAccess.Invitations.ResendInvitation.ResendInvitationCommand).FullName,
+            typeof(CleanArchitecture.Application.IdentityAccess.Invitations.CancelInvitation.CancelInvitationCommand).FullName,
         ];
 
         actualRequestTypes.ShouldBe(expectedRequestTypes.Order());
