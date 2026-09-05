@@ -929,13 +929,19 @@ git commit -m "feat: add reachable identity experience"
 **Evidence.** `npm test` 55, `npm run lint` and `npm run build` clean, and the five .NET suites unchanged at 734
 with Web.AcceptanceTests still 6/6.
 
-**Open finding — antiforgery bootstrap on mount.** Step 3 asks for `GET /api/identity/antiforgery` on initial load.
-Implemented that way, an authenticated page load answers `401` to its own `GET /api/identity/context`, which sends
-the visitor back to sign in; the `WeatherFeature` acceptance scenario reproduces it. A direct HTTP read with the
-same session cookie answers `200`, so the session is valid and the cause is on the server side of the antiforgery
-endpoint. It was not resolved here. The client fetches the pair lazily instead — before the first mutation and
-after sign-in, sign-out and a refused antiforgery — so every mutation still carries a fresh pair, which is what
-the requirement exists to guarantee. The mount-time fetch stays open against the antiforgery endpoint.
+**Resolved — antiforgery bootstrap on mount.** Implementing Step 3's bootstrap made an authenticated page load
+answer `401` to its own `GET /api/identity/context`. The cause was the acceptance harness, not the server and not
+the client: it injected the session cookie with `SetExtraHTTPHeadersAsync`, and Chromium discards that header as
+soon as its own jar holds a cookie for the origin. The bootstrap's `Set-Cookie: __Host-XSRF-TOKEN` was the first
+such cookie, so from that moment the browser rebuilt `Cookie` from the jar and the session was gone. Reading the
+request headers with `AllHeadersAsync` — rather than `Request.Headers`, which omits what the network stack
+adds — showed the context request carrying only `__Host-XSRF-TOKEN`.
+
+The harness now stores the session in the browser's own cookie jar. A `__Host-` cookie may only be stored against
+a secure URL and Aspire serves the test frontend over HTTP, so it is stored against `https://<host>`; cookies
+ignore the port, and Chromium treats localhost as a secure context, so it is sent to the HTTP frontend. The
+mount-time bootstrap is restored and pinned by `bootstraps the antiforgery pair on load without losing the
+session`.
 
 ## Task 13: Verify the pre-Platform foundation
 

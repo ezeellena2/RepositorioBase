@@ -51,6 +51,33 @@ describe('identity provider', () => {
     expect(screen.getByTestId('tenant')).toHaveTextContent('none');
   });
 
+  /**
+   * The pair is fetched on load, before any mutation can need it, and an authenticated load stays authenticated
+   * while doing so. Both halves matter: dropping the bootstrap leaves the first mutation to discover it is
+   * missing, and an early bootstrap that cost the visitor their session is how this requirement was nearly
+   * abandoned — the acceptance harness was injecting its cookie through a header the browser discards once its
+   * own jar holds anything for the origin, so the bootstrap's own Set-Cookie evicted the session.
+   */
+  it('bootstraps the antiforgery pair on load without losing the session', async () => {
+    let bootstraps = 0;
+    const contextCookies = [];
+    server.use(
+      http.get('/api/identity/antiforgery', () => {
+        bootstraps += 1;
+        return HttpResponse.json({ requestToken: ANTIFORGERY_TOKEN });
+      }),
+      http.get('/api/identity/context', ({ request }) => {
+        contextCookies.push(request.headers.get('Cookie'));
+        return HttpResponse.json(signedInContext());
+      }),
+    );
+    renderProbe();
+
+    await waitFor(() => expect(screen.getByTestId('authenticated')).toHaveTextContent('true'));
+    expect(bootstraps).toBe(1);
+    expect(contextCookies).toHaveLength(1);
+  });
+
   it('exposes the signed-in context the API answered with', async () => {
     server.use(antiforgery(), contextIs(signedInContext()));
     renderProbe();

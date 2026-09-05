@@ -25,19 +25,33 @@ public class LoginPage(IPage page) : BasePage(page)
 
         authenticationCookie = cookie;
 
-        // Aspire exposes the browser test frontend through HTTP, where Chromium correctly
-        // rejects Secure __Host- cookies from its jar. Keep the real issued value and send it
-        // through this browser context's request state; functional tests assert its real flags.
-        return Page.Context.SetExtraHTTPHeadersAsync(new Dictionary<string, string>
-        {
-            ["Cookie"] = cookie
-        });
+        // The cookie goes into the browser's own jar, which is where a real session lives. It used to be
+        // injected as an extra HTTP header instead, on the belief that Chromium rejects Secure __Host- cookies
+        // over HTTP — but http://localhost is a secure context, so it accepts them. That header was also silently
+        // dropped the moment the jar held any cookie for this origin: the browser rebuilds Cookie from the jar
+        // and the extra header does not survive. One antiforgery bootstrap was enough to take the session with
+        // it, and every authenticated page load then answered 401 to its own context read.
+        var separatorIndex = cookie.IndexOf('=');
+        return Page.Context.AddCookiesAsync([
+            new Cookie
+            {
+                Name = cookie[..separatorIndex],
+                Value = cookie[(separatorIndex + 1)..],
+                // A __Host- cookie may only be stored for a secure URL, and Aspire serves the test frontend
+                // over HTTP. Cookies ignore the port, so it is stored against https://<host> and the browser
+                // still sends it to the HTTP frontend: Chromium treats localhost as a secure context.
+                Url = $"https://{new Uri(BaseUrl).Host}",
+                Secure = true,
+                HttpOnly = true,
+                SameSite = SameSiteAttribute.Lax
+            }
+        ]);
     }
 
     public Task ClearAuthenticationAsync()
     {
         authenticationCookie = null;
-        return Page.Context.SetExtraHTTPHeadersAsync(new Dictionary<string, string>());
+        return Page.Context.ClearCookiesAsync();
     }
 
     public Task<bool> HasAuthenticationCookieAsync() => Task.FromResult(

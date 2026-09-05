@@ -52,6 +52,8 @@ export function IdentityProvider({ children, client }) {
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      // The pair is bootstrapped on load and on reload, before any mutation can need it.
+      await identityClient.bootstrapAntiforgery().catch(() => undefined);
       await loadContext();
       if (!cancelled && mounted.current) setIsLoading(false);
     })();
