@@ -119,13 +119,20 @@ public sealed class PlatformOperationalProjectionReader(ApplicationDbContext con
 
     public async Task<PlatformDirectoryPage<PlatformAuditEventProjection>> ReadAuditAsync(PlatformDirectoryQuery query, CancellationToken cancellationToken)
     {
-        var after = DecodeGuid(query.Cursor);
         var limit = Bounded(query);
+        var after = DecodeMoment(query.Cursor);
 
+        // Newest first, and keyed on when it happened rather than on the row identifier. An audit directory
+        // ordered by a random UUID is one where a new event lands in an arbitrary position, which makes reading
+        // the log impossible and makes a bounded page show an arbitrary slice of history. The identifier is
+        // still part of the key, so two events recorded in the same microsecond order stably.
         var rows = await context.AuditEvents
             .AsNoTracking()
-            .Where(auditEvent => after == null || auditEvent.Id > after)
-            .OrderBy(auditEvent => auditEvent.Id)
+            .Where(auditEvent => after == null ||
+                                 auditEvent.OccurredAt < after.Value.OccurredAt ||
+                                 (auditEvent.OccurredAt == after.Value.OccurredAt && auditEvent.Id < after.Value.Id))
+            .OrderByDescending(auditEvent => auditEvent.OccurredAt)
+            .ThenByDescending(auditEvent => auditEvent.Id)
             .Take(limit + 1)
             .Select(auditEvent => new
             {
@@ -151,7 +158,11 @@ public sealed class PlatformOperationalProjectionReader(ApplicationDbContext con
             row.Metadata.TryGetValue("outcome", out var outcome) ? outcome : null,
             row.Metadata.TryGetValue("code", out var code) ? code : null)).ToList();
 
-        return Page(items, limit, item => item.EventId);
+        if (items.Count <= limit) return new PlatformDirectoryPage<PlatformAuditEventProjection>(items, null);
+        var page = items.Take(limit).ToArray();
+        return new PlatformDirectoryPage<PlatformAuditEventProjection>(
+            page,
+            EncodeMoment(page[^1].OccurredAtUtc, page[^1].EventId));
     }
 
     private static int Bounded(PlatformDirectoryQuery query) => Math.Clamp(query.Limit, 1, 100);
@@ -170,6 +181,29 @@ public sealed class PlatformOperationalProjectionReader(ApplicationDbContext con
         var page = items.Take(limit).ToArray();
         return new PlatformDirectoryPage<T>(page, EncodeGuid(key(page[^1])));
     }
+
+    /// <summary>A cursor for a directory ordered by time, which needs both halves of its key.</summary>
+    private static (DateTimeOffset OccurredAt, Guid Id)? DecodeMoment(string? cursor)
+    {
+        if (string.IsNullOrWhiteSpace(cursor)) return null;
+        try
+        {
+            var parts = Encoding.UTF8.GetString(Convert.FromBase64String(cursor)).Split('|');
+            return parts.Length == 2 &&
+                   DateTimeOffset.TryParse(parts[0], System.Globalization.CultureInfo.InvariantCulture, out var occurredAt) &&
+                   Guid.TryParse(parts[1], out var id)
+                ? (occurredAt, id)
+                : null;
+        }
+        catch (FormatException)
+        {
+            return null;
+        }
+    }
+
+    private static string EncodeMoment(DateTimeOffset occurredAt, Guid id) =>
+        Convert.ToBase64String(Encoding.UTF8.GetBytes(
+            $"{occurredAt.ToString("O", System.Globalization.CultureInfo.InvariantCulture)}|{id}"));
 
     private static Guid? DecodeGuid(string? cursor)
     {

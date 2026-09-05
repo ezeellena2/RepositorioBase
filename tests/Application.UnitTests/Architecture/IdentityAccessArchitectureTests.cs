@@ -31,6 +31,13 @@ public sealed class IdentityAccessArchitectureTests
         "CleanArchitecture.Domain.IdentityAccess.Tenants"
     ];
 
+    private static readonly string[] LateDomainSlices =
+    [
+        "CleanArchitecture.Domain.IdentityAccess.Sessions",
+        "CleanArchitecture.Domain.IdentityAccess.Invitations",
+        "CleanArchitecture.Domain.IdentityAccess.Platform"
+    ];
+
     [Test]
     public void Each_layer_depends_only_on_the_ones_beneath_it()
     {
@@ -108,6 +115,49 @@ public sealed class IdentityAccessArchitectureTests
 
         DeclaredMemberTypes(typeof(UserSession)).ShouldNotContain(typeof(Invitation));
         DeclaredMemberTypes(typeof(Invitation)).ShouldNotContain(typeof(UserSession));
+    }
+
+    /// <summary>
+    /// The Platform aggregates were added last of all, and the same rule holds for them: the model that worked
+    /// without Platform must keep working without it, so nothing older may hold one (IA-REQ-039).
+    /// </summary>
+    [Test]
+    public void The_platform_aggregates_are_not_referenced_by_the_model_that_preceded_them()
+    {
+        var platformTypes = DomainAssembly.GetTypes()
+            .Where(type => type.Namespace == "CleanArchitecture.Domain.IdentityAccess.Platform")
+            .ToArray();
+        platformTypes.ShouldNotBeEmpty("the Platform slice must exist for this to mean anything.");
+
+        foreach (var type in DomainAssembly.GetTypes().Where(candidate =>
+                     EarlierDomainSlices.Contains(candidate.Namespace) ||
+                     candidate.Namespace is "CleanArchitecture.Domain.IdentityAccess.Sessions"
+                         or "CleanArchitecture.Domain.IdentityAccess.Invitations"))
+        {
+            foreach (var member in DeclaredMemberTypes(type))
+            {
+                platformTypes.ShouldNotContain(member, $"{type.FullName} predates Platform and must not depend on it.");
+            }
+        }
+    }
+
+    /// <summary>Every slice added after the foundation is named, so a new one cannot be added unnoticed.</summary>
+    [Test]
+    public void Every_identity_domain_slice_is_either_an_earlier_one_or_a_later_one()
+    {
+        var namespaces = DomainAssembly.GetTypes()
+            .Select(type => type.Namespace)
+            .Where(name => name?.StartsWith("CleanArchitecture.Domain.IdentityAccess.", StringComparison.Ordinal) == true)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        foreach (var name in namespaces)
+        {
+            var known = EarlierDomainSlices.Contains(name) ||
+                        LateDomainSlices.Contains(name) ||
+                        name == "CleanArchitecture.Domain.IdentityAccess.Security";
+            known.ShouldBeTrue($"{name} is a slice this test does not know about; classify it before adding it.");
+        }
     }
 
     private static IEnumerable<Type> IdentityRequests() =>

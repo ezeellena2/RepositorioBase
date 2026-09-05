@@ -165,7 +165,10 @@ internal static class PlatformEndpoints
         var failure = await Identity.ValidateAntiforgery(context, antiforgery, problems);
         if (failure is not null) return failure;
 
-        if (request.Reason is not { } reason)
+        // An unknown name is a refusal the caller can act on, not a malformed body: the set is closed and
+        // published, so naming something outside it is a decidable mistake.
+        if (!Enum.TryParse<CleanArchitecture.Domain.IdentityAccess.Tenants.TenantSuspensionReason>(request.Reason, ignoreCase: false, out var reason) ||
+            !Enum.IsDefined(reason))
         {
             return problems.ToHttpResult(CleanArchitecture.Application.IdentityAccess.Common.IdentityAccessErrors.InvalidPlatformOperation());
         }

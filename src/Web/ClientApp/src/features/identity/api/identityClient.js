@@ -1,62 +1,24 @@
-import { isProblem, readProblem, readSuccess } from './problemDetails';
+import { ApiProblem, createApiTransport } from './apiTransport';
 
 /**
- * The only place this application talks to the API.
+ * The identity half of the API surface.
  *
- * Every request is same-origin and carries the session cookie; only mutations carry the antiforgery request
- * token, which is held in memory and never written to storage (IA-REQ-025). The server rotates the
- * cookie/token pair whenever the authentication state changes, so the client bootstraps a fresh pair at exactly
- * those moments and after a stable `antiforgery_validation_failed`. It never replays the refused mutation: a
- * state change nobody asked for twice is how one sign-in becomes two sessions. The caller retries.
+ * It owns no transport of its own: the request token lives in one place for the whole application, because the
+ * server rotates the pair on every authentication change and a second cached copy would be stale from that
+ * moment on. What this module owns is the endpoints and the members each one is contractually allowed to
+ * answer with.
  */
-const ANTIFORGERY = '/api/identity/antiforgery';
 
-export class IdentityProblem extends Error {
-  constructor(problem) {
-    super(problem.code);
-    this.name = 'IdentityProblem';
-    this.problem = problem;
-  }
-}
+/** Kept as the identity-facing name for the error the transport throws, so existing callers still catch it. */
+export { ApiProblem as IdentityProblem } from './apiTransport';
 
-export function createIdentityClient() {
-  let requestToken = null;
-
-  const bootstrapAntiforgery = async () => {
-    const response = await fetch(ANTIFORGERY);
-    if (!response.ok) throw new Error('Unable to establish the request token.');
-    const payload = await readSuccess(response, ['requestToken']);
-    requestToken = payload.requestToken;
-    return requestToken;
-  };
-
-  const send = async (path, { method = 'GET', body, expect = [] } = {}) => {
-    const mutation = method !== 'GET';
-    if (mutation && requestToken === null) await bootstrapAntiforgery();
-
-    const response = await fetch(path, {
-      method,
-      headers: {
-        Accept: 'application/json, application/problem+json',
-        ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
-        ...(mutation ? { 'X-CSRF-TOKEN': requestToken } : {}),
-      },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
-
-    if (response.ok) return readSuccess(response, expect);
-    if (!isProblem(response)) throw new Error(`The API answered ${response.status} without a problem document.`);
-
-    const problem = await readProblem(response);
-    // A rotated pair is the documented reason a mutation is refused. Replace it and let the caller decide
-    // whether the action is still wanted; retrying here would repeat a state change on the user's behalf.
-    if (problem.code === 'antiforgery_validation_failed') await bootstrapAntiforgery();
-    throw new IdentityProblem(problem);
-  };
+export function createIdentityClient(transport = createApiTransport()) {
+  const { bootstrapAntiforgery, hasRequestToken, send } = transport;
 
   return {
+    transport,
     bootstrapAntiforgery,
-    hasRequestToken: () => requestToken !== null,
+    hasRequestToken,
 
     // activeTenant is genuinely absent for an identity that holds no membership yet, so it is not required.
     // Demanding it would read "you belong to nothing" as "the contract drifted".

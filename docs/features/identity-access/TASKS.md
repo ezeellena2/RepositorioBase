@@ -1,8 +1,11 @@
 # Identity Access — Tasks
 
-**Status:** In progress. IA-002 and IA-003 are complete. Task 13 verified the pre-Platform foundation end to end,
-so IA-004 through IA-008 move to `Review`. IA-009 stays `Blocked`: it is an evidence task, and its acceptance
-waits for the Platform work in Tasks 14-16. IA-012 and the roadmap tasks are untouched.
+**Status:** In progress. IA-002 and IA-003 are complete. Task 13 verified the pre-Platform foundation and Tasks
+14-16 delivered and verified the Platform slice, so IA-004 through IA-008, IA-012, IA-014 and IA-009 are all in
+`Review`. IA-009 moved last and only after the Platform journeys ran, which is the order its gate requires.
+
+The roadmap tasks are untouched and are not implemented: IA-010 (personal tenants and AR/DNI), IA-011
+(recovery/change and session management), IA-013 and IA-015 remain `Proposed`.
 
 ## Review Workload Forecast
 
@@ -30,9 +33,9 @@ Suggested units: stack/migrations/test harness; domain/persistence; authorizatio
 | IA-006 | Organization registration/confirmation | IA-REQ-003..005,026..029; applies 038 | Review | IA-005 | atomic, idempotent neutral replay |
 | IA-007 | Sessions, limits, active tenant | IA-REQ-006..008,019..026,029,031; applies 038 | Review | IA-006 | revocable sessions and limits |
 | IA-008 | Invitations and reliable outbox | IA-REQ-014..018,026..029,047; applies 038 | Review | IA-007 | secure onboarding and delivery |
-| IA-012 | Platform invitation persistence, credential onboarding, MFA and recovery codes | IA-REQ-041 | Blocked | IA-008 | persisted invitation, password confirmation, encrypted TOTP, hashed codes, step-up |
-| IA-014 | Platform bootstrap, administration, operations panel | IA-REQ-039..040,042..046; applies 038 | Blocked | IA-012 | cold-start recovery, safe directories, no bypass |
-| IA-009 | React and E2E acceptance evidence | evidence only, including 038 | Blocked | IA-014 | post-Platform verified journeys ready for Review |
+| IA-012 | Platform invitation persistence, credential onboarding, MFA and recovery codes | IA-REQ-041 | Review | IA-008 | persisted invitation, password confirmation, encrypted TOTP, hashed codes, step-up |
+| IA-014 | Platform bootstrap, administration, operations panel | IA-REQ-039..040,042..046; applies 038 | Review | IA-012 | cold-start recovery, safe directories, no bypass |
+| IA-009 | React and E2E acceptance evidence | evidence only, including 038 | Review | IA-014 | post-Platform verified journeys ready for Review |
 | IA-010 | Personal tenant and AR/DNI | roadmap | Proposed | IA-009, PII policy | protected profile |
 | IA-011 | Recovery/change and session management | roadmap | Proposed | IA-009 | recovery lifecycle |
 | IA-013 | Google OIDC and linking | roadmap | Proposed | IA-011, IA-012 | explicit secure linking |

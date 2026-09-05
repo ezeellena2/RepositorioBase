@@ -27,24 +27,33 @@ public sealed class ConfiguredPlatformBootstrapper(IConfiguration configuration)
 }
 
 /// <summary>
-/// Creates the Platform system roles and grants the owner role every Platform permission.
+/// Creates the two Platform system roles and grants each one its permissions.
 /// <para>
-/// The owner gets all of them and the administrator role gets none by default. That is deliberate: the first
-/// account has to be able to operate and to grant, and everything a later administrator may do is then a decision
-/// an owner makes explicitly, rather than something they inherit by existing (IA-REQ-042).
+/// An administrator may read every directory and drive the Organization lifecycle; only an owner may invite or
+/// revoke another administrator. That split is what makes the owner a distinct thing rather than a label:
+/// operating Platform and deciding who operates it are different authorities (IA-REQ-042).
+/// </para>
+/// <para>
+/// The grants are fixed here because nothing in this increment edits a Platform role. An administrator with no
+/// permissions at all would be an account that can sign in, complete MFA, and then do nothing — and there would
+/// be no route to fix it.
 /// </para>
 /// </summary>
 public sealed class PlatformSystemRoleProvisioner(ApplicationDbContext context) : IPlatformSystemRoleProvisioner
 {
-    private static readonly string[] OwnerPermissions =
+    /// <summary>What operating Platform means: read every directory, and drive the Organization lifecycle.</summary>
+    private static readonly string[] AdministratorPermissions =
     [
         Permissions.PlatformAdminsRead,
-        Permissions.PlatformAdminsManage,
         Permissions.PlatformOrganizationsRead,
         Permissions.PlatformIdentitiesRead,
         Permissions.PlatformAuditRead,
         Permissions.PlatformTenantsManage
     ];
+
+    /// <summary>Everything an administrator may do, plus deciding who the administrators are.</summary>
+    private static readonly string[] OwnerPermissions =
+        [.. AdministratorPermissions, Permissions.PlatformAdminsManage];
 
     public async Task ProvisionAsync(Tenant platform, CancellationToken cancellationToken)
     {
@@ -54,7 +63,13 @@ public sealed class PlatformSystemRoleProvisioner(ApplicationDbContext context) 
         var administrator = Role.CreateSystem(platform, PlatformRoles.Administrator);
         context.TenantRoles.AddRange(owner, administrator);
 
-        foreach (var code in OwnerPermissions)
+        await GrantAsync(platform, owner, OwnerPermissions, cancellationToken);
+        await GrantAsync(platform, administrator, AdministratorPermissions, cancellationToken);
+    }
+
+    private async Task GrantAsync(Tenant platform, Role role, string[] codes, CancellationToken cancellationToken)
+    {
+        foreach (var code in codes)
         {
             var permission = await context.Permissions.SingleOrDefaultAsync(candidate => candidate.Code == code, cancellationToken);
             if (permission is null)
@@ -65,7 +80,7 @@ public sealed class PlatformSystemRoleProvisioner(ApplicationDbContext context) 
                 throw new InvalidOperationException($"The permission catalogue does not contain {code}.");
             }
 
-            context.RolePermissions.Add(RolePermission.Create(platform, owner, permission));
+            context.RolePermissions.Add(RolePermission.Create(platform, role, permission));
         }
     }
 }

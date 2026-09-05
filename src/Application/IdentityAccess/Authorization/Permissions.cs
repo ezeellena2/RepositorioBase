@@ -72,6 +72,23 @@ public static class Permissions
         PlatformMfaEnroll
     };
 
+    /// <summary>
+    /// The application-scoped capabilities an authenticated identity simply has, rather than ones granted to it.
+    /// <para>
+    /// They are declared here rather than restated by the evaluator because the two lists drifting apart is not
+    /// a visible failure: a capability missing from the evaluator's copy falls through to a persisted claim
+    /// lookup that finds nothing, and the caller is told they lack a permission nobody was ever meant to grant.
+    /// </para>
+    /// </summary>
+    public static IReadOnlySet<string> SelfServiceCodes { get; } = new HashSet<string>(StringComparer.Ordinal)
+    {
+        IdentitySessionManage,
+        IdentityContextRead,
+        IdentityContextSelect,
+        IdentityInvitationsAccept,
+        PlatformMfaEnroll
+    };
+
 }
 
 public sealed record PermissionDefinition(string Code, IReadOnlyCollection<TenantType> AllowedTenantTypes);

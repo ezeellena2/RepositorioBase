@@ -17,6 +17,12 @@ var web = builder.AddProject<Projects.Web>(Services.WebApi)
     .WaitFor(databaseServer)
     .WithExternalHttpEndpoints()
     .WithAspNetCoreEnvironment()
+    // Forwarded rather than read by the web project directly, so a deployment configures the Platform owner in
+    // one place. An absent value is absent all the way down: bootstrap then creates nothing (IA-REQ-040).
+    // Read through the callback so the value is taken when the resource starts rather than when the model is
+    // built — a host that configures it after building would otherwise forward whatever was there first.
+    .WithEnvironment(context => context.EnvironmentVariables["IdentityAccess__Platform__BootstrapOwnerEmail"] =
+        builder.Configuration["IdentityAccess:Platform:BootstrapOwnerEmail"] ?? string.Empty)
     .WithUrlForEndpoint("http", url =>
     {
         url.DisplayText = "Scalar API Reference";

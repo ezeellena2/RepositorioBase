@@ -34,6 +34,9 @@ function IdentityLinks() {
       <li><Link to="/identity">Your access</Link></li>
       <li><Link to="/organizations/select">Organizations</Link></li>
       {permissions.includes('members.invite') && <li><Link to="/members/invite">Invite a member</Link></li>}
+      {/* Offered only to a session already operating as Platform. It is a convenience, not a control: the
+          panel and the API both reauthorize regardless of what the navigation shows. */}
+      {permissions.includes('platform.organizations.read') && <li><Link to="/platform">Platform</Link></li>}
       <li><a href="/login" onClick={handleSignOut}>Log out</a></li>
     </>
   );

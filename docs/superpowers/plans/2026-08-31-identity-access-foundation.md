@@ -1057,19 +1057,19 @@ PostgreSQL can round away, which is now truncated to whole microseconds.
 - Create: `tests/Application.FunctionalTests/IdentityAccess/Platform/PlatformMfaTests.cs`
 - Create: `tests/Application.FunctionalTests/IdentityAccess/Platform/PlatformMfaAuthenticationTests.cs`
 
-- [ ] **Step 1: Platform invitation persistence RED, migration, then GREEN**
+- [x] **Step 1: Platform invitation persistence RED, migration, then GREEN**
 
 Extend `PlatformMfaShapeTests` and `PlatformMfaMappingTests` to first require `PlatformAdminInvitation`, status, hash/expiry/delivery state, DbSet/configuration, and its migration. Run `dotnet test tests/Application.UnitTests/Application.UnitTests.csproj --filter PlatformMfaShapeTests` and `dotnet test tests/Infrastructure.IntegrationTests/Infrastructure.IntegrationTests.csproj --filter PlatformMfaMappingTests`; expect runtime missing-type/member RED. Add only invitation shells, run `dotnet ef migrations add PlatformAdminInvitation --project src/Infrastructure/Infrastructure.csproj --startup-project src/Web/Web.csproj --output-dir Data/Migrations`, then run `dotnet test tests/Infrastructure.IntegrationTests/Infrastructure.IntegrationTests.csproj --filter "PlatformMfaMappingTests|MigrationUpgradeTests"`; expect PASS with empty/latest and baseline/latest upgrades before any MFA RED.
 
-- [ ] **Step 2: Platform invitation onboarding RED, then GREEN**
+- [x] **Step 2: Platform invitation onboarding RED, then GREEN**
 
 After Step 1 PASS, make `PlatformInvitationApplicationShapeTests` require `RegisterPlatformInvitee`/validator, `ConfirmPlatformInvitee`/validator, `POST /api/platform/invitations/register`, and `/confirm`; its registration DTO carries invitation token plus password. Run `dotnet test tests/Application.UnitTests/Application.UnitTests.csproj --filter PlatformInvitationApplicationShapeTests` and expect route/type RED. The public token-aware registration request validates the submitted password against `PasswordOptions` only when it creates a missing matching identity; it uses Identity hashing, atomically binds `PlatformAdminInvitation`, and creates confirmation outbox/secret. For an existing matching identity, it ignores supplied credentials and returns only generic sign-in/confirmation behavior. Confirmation consumes its email and invitation tokens, marks the identity confirmed, and still creates no Platform membership. Run `dotnet test tests/Application.FunctionalTests/Application.FunctionalTests.csproj --filter "PlatformInvitationOnboardingTests|ProblemDetailsContractTests|OpenApiContractTests"`; expect behavioral RED for password creation, existing-identity non-takeover, neutral `202`/`204`, outbox, and no early activation. Implement by generalizing existing credential/confirmation/outbox mechanics without treating Organization `Invitation` as `PlatformAdminInvitation` or generating a default password; rerun both commands and expect PASS.
 
-- [ ] **Step 3: MFA RED, migration, then GREEN after confirmed onboarding**
+- [x] **Step 3: MFA RED, migration, then GREEN after confirmed onboarding**
 
 Only after Step 2 PASS, reflect for Platform tenant type, one-enrollment-per-user, recovery-code/encrypted-secret members, and no global administrator member; run `dotnet test tests/Application.UnitTests/Application.UnitTests.csproj --filter PlatformMfaShapeTests` and `dotnet test tests/Application.FunctionalTests/Application.FunctionalTests.csproj --filter "PlatformMfaTests|PlatformMfaAuthenticationTests"`; expect RED. MFA tests require a registered, confirmed, signed-in matching invitee and bound token, reject theft/mismatch/anonymous/token-only/invalid-session/pre-activation access, and prove no membership activation before TOTP, recovery acknowledgement, and MFA session. Persist encrypted TOTP/hashed codes, run `dotnet ef migrations add PlatformMfa --project src/Infrastructure/Infrastructure.csproj --startup-project src/Web/Web.csproj --output-dir Data/Migrations`, then run `dotnet test tests/Infrastructure.IntegrationTests/Infrastructure.IntegrationTests.csproj --filter "PlatformMfaMappingTests|MigrationUpgradeTests"` and the two prior commands; expect PASS with no plaintext secret and ordered `PlatformAdminInvitation` then `PlatformMfa` migrations.
 
-- [ ] **Step 4: REFACTOR and commit**
+- [x] **Step 4: REFACTOR and commit**
 
 ```bash
 git add src tests
@@ -1130,11 +1130,11 @@ git commit -m "feat: add platform MFA foundation"
 - Create: `tests/Application.FunctionalTests/IdentityAccess/Platform/PlatformProjectionTests.cs`
 - Create: `tests/Application.FunctionalTests/IdentityAccess/Platform/PlatformDirectoryContractTests.cs`
 
-- [ ] **Step 1: Compile-safe shape RED**
+- [x] **Step 1: Compile-safe shape RED**
 
 Reflect for the bootstrap/options, `RecoverPendingPlatformOwnerInvitation` handler/validator/rate-limit port, protected `platform.*` requests, exact Platform routes including `POST /api/platform/bootstrap/recover` and `GET /api/platform/admins`, typed `PlatformDirectoryQuery`/`PlatformDirectoryPage`/`PlatformAdministratorProjection`, and allowlisted DTOs. Run `dotnet test tests/Application.UnitTests/Application.UnitTests.csproj --filter PlatformApplicationShapeTests`; expect runtime missing-type/route/classification RED. Assert active-Platform requests are `[Authorize]` with Platform tenant required; recovery is bodyless `IPublicRequest` with antiforgery/rate-limit/server-derived recipient only, no identity/email/token input, activation, or elevation; and no endpoint is named impersonate/delete/context-bypass.
 
-- [ ] **Step 2: Behavioral RED**
+- [x] **Step 2: Behavioral RED**
 
 With real PostgreSQL, run bootstrap twice with one configured email: only the first missing-Platform invocation atomically creates the singleton tenant, system owner role, pending invitation, outbox message/secret, and audit event. `POST /api/platform/bootstrap/recover` dispatches `RecoverPendingPlatformOwnerInvitation` as a bodyless same-origin antiforgery request with no identity, email, token, or replacement-recipient input. Its validator permits only expired or permanently delivery-failed pending invitations and derives the unchanged configured/pending recipient; its rate-limit port keys the pending invitation and transport source. The handler conditionally claims that invitation in one transaction, invalidates the old token, writes one replacement token/outbox/audit effect, and makes equivalent sequential/concurrent requests idempotent without membership activation/elevation. Test cold-start with no `ApplicationUser`, active/used invitation, unknown/ineligible opaque state, configuration change, and race branches: each valid state-obscuring outcome is neutral `202`, and only one current invitation/effect set survives. Test malformed/missing antiforgery separately as RFC 9457 `400` code `antiforgery_validation_failed`; test exhausted recovery limit separately as RFC 9457 `429` code `rate_limit_exceeded` plus `Retry-After`. Missing configuration creates nothing; completed first activation permanently closes recovery.
 
@@ -1144,7 +1144,7 @@ Test normal active-Platform membership plus distinct `platform.admins.read`/`pla
 
 Run `dotnet test tests/Application.FunctionalTests/Application.FunctionalTests.csproj --filter "PlatformBootstrapTests|PlatformBootstrapRecoveryTests|PlatformAdministrationTests|PlatformOperationsTests|PlatformProjectionTests|PlatformDirectoryContractTests|ProblemDetailsContractTests|OpenApiContractTests"`; expect behavioral/contract RED before handlers/endpoints. Implement the normal authority flow, then rerun that command and `dotnet test tests/Application.UnitTests/Application.UnitTests.csproj --filter PlatformApplicationShapeTests`; expect PASS.
 
-- [ ] **Step 3: GREEN, REFACTOR, commit**
+- [x] **Step 3: GREEN, REFACTOR, commit**
 
 Reuse only confirmation/outbox mechanics where sound; `PlatformAdminInvitation` remains separate from Organization `Invitation`. Bootstrap uses deployment configuration only as a one-time email selector and never as authority after creation. Register no default password or admin. Run `dotnet test tests/Infrastructure.IntegrationTests/Infrastructure.IntegrationTests.csproj --filter MigrationUpgradeTests` and the prior functional/shape commands; expect PASS before commit.
 
@@ -1175,15 +1175,15 @@ git commit -m "feat: add controlled platform operations"
 - Create: `tests/Web.AcceptanceTests/StepDefinitions/PlatformOperationsStepDefinitions.cs`
 - Modify: `tests/Application.UnitTests/Architecture/IdentityAccessArchitectureTests.cs`
 
-- [ ] **Step 1: Shape RED, then shells**
+- [x] **Step 1: Shape RED, then shells**
 
 Filesystem/route shape tests require the Platform client, token-aware public invitation pages, panel, safe DTO parser, and protected route. Run `npm test --prefix src/Web/ClientApp -- PlatformPanel.test.jsx platformClient.test.js platformDirectory.test.js PlatformInvitationPages.test.jsx`; expect missing-module/route RED. Shells must not expose an impersonation control, delete action, unrestricted identity fields, or client tenant override.
 
-- [ ] **Step 2: Behavioral RED**
+- [x] **Step 2: Behavioral RED**
 
 `platformClient.test.js`, `platformDirectory.test.js`, and `PlatformInvitationPages.test.jsx` prove public Platform-token registration/confirmation calls use antiforgery and neutral responses; a missing identity submits a PasswordOptions-valid password, while an existing identity's supplied credentials are ignored and cannot take over the account. After confirmation they hand off to normal password sign-in and cannot activate membership. They also assert recovery `400 antiforgery_validation_failed` and `429 rate_limit_exceeded`/`Retry-After`, while valid opaque recovery outcomes are `202`. The tests prove the client calls the protected typed administrator directory before invite/revoke, carries only the selected allowlisted membership ID into mutations, and follows only typed bounded `items`/`nextCursor` directories. MSW/React tests prove only a recent-MFA Platform context sees the panel; it renders allowlisted organization/identity/administrator/audit projections, handles typed `401/403/404/409/429` Problem Details, requires confirmation for suspension/revocation, and cannot render private data or bypass controls. Run the Step 1 command; expect behavioral RED. Browser journeys prove cold-start bootstrap → expired/failed delivery recovery with no identity → Platform token registration with submitted password/reuse without credential effect → confirmation → normal password sign-in → invitation-bound TOTP/recovery acknowledgement → activation → MFA step-up → admin listing/invitation → suspend/reactivate → audit; the later admin follows the same register/confirm/sign-in/MFA gates. Last-owner revocation and prohibited routes/actions fail.
 
-- [ ] **Step 3: GREEN, REFACTOR, commit**
+- [x] **Step 3: GREEN, REFACTOR, commit**
 
 Only after Tasks 14 and 15 have PASS evidence for Platform invitation persistence/onboarding, MFA, bootstrap recovery, ordered migrations, functional/PostgreSQL, and OpenAPI contracts, route all calls through the existing typed API boundary with same-origin credentials and antiforgery. Run `npm test --prefix src/Web/ClientApp -- PlatformPanel.test.jsx platformClient.test.js platformDirectory.test.js PlatformInvitationPages.test.jsx`, `npm run lint --prefix src/Web/ClientApp`, and `npm run build --prefix src/Web/ClientApp`; expect PASS. Then run `dotnet test tests/Web.AcceptanceTests/Web.AcceptanceTests.csproj --filter PlatformOperations` and `dotnet test tests/Application.UnitTests/Application.UnitTests.csproj --filter IdentityAccessArchitectureTests`; expect PASS. Record traceability without changing normative ownership and only then move IA-009 from `Blocked` to `Review`.
 

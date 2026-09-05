@@ -14,12 +14,11 @@ public sealed class PermissionEvaluator(ApplicationDbContext context, IHttpConte
         var principal = httpContextAccessor.HttpContext?.User;
         var hasMatchingIdentity = principal?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value == identityId.ToString();
 
-        // Session and context operations are self-service capabilities. Their authenticated
-        // cookie intentionally carries only the identity and session identifiers.
-        var isSelfServiceSessionCapability = permissionCode is Permissions.IdentitySessionManage
-            or Permissions.IdentityContextRead
-            or Permissions.IdentityContextSelect
-            or Permissions.IdentityInvitationsAccept;
+        // Session, context and onboarding operations are self-service capabilities. Their authenticated cookie
+        // intentionally carries only the identity and session identifiers. The set is read from the catalogue
+        // rather than restated here: a copy that fell behind would answer permission_denied for a capability
+        // nobody was ever meant to grant, which reads as a missing grant rather than as the drift it is.
+        var isSelfServiceSessionCapability = Permissions.SelfServiceCodes.Contains(permissionCode);
         if (identityId == Guid.Empty ||
             string.IsNullOrWhiteSpace(permissionCode) ||
             !hasMatchingIdentity ||

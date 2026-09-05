@@ -126,6 +126,25 @@ public sealed class PlatformDirectoryContractTests : TestBase
         forged.Items.Count.ShouldBe(3);
     }
 
+    /// <summary>
+    /// The audit directory is a log, so it is ordered by when things happened rather than by a row identifier.
+    /// Ordering it by a random UUID would put a new event in an arbitrary position, which makes a bounded page
+    /// an arbitrary slice of history instead of the most recent one.
+    /// </summary>
+    [Test]
+    public async Task The_audit_directory_is_newest_first_and_pages_backwards_in_time()
+    {
+        await PlatformScenario.ActiveOwnerAsync();
+
+        var first = (await TestApp.SendAsync(new ListPlatformAuditQuery(new PlatformDirectoryQuery(2, null)))).Value!;
+        first.Items.Count.ShouldBe(2);
+        first.Items[0].OccurredAtUtc.ShouldBeGreaterThanOrEqualTo(first.Items[1].OccurredAtUtc);
+
+        var second = (await TestApp.SendAsync(new ListPlatformAuditQuery(new PlatformDirectoryQuery(2, first.NextCursor)))).Value!;
+        second.Items[0].OccurredAtUtc.ShouldBeLessThanOrEqualTo(first.Items[^1].OccurredAtUtc);
+        second.Items.Select(item => item.EventId).ShouldNotContain(first.Items[0].EventId);
+    }
+
     private static async Task OrganizationsAsync(int count)
     {
         using var scope = FunctionalTestSetup.ScopeFactory.CreateScope();

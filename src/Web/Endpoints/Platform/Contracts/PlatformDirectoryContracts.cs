@@ -1,5 +1,3 @@
-using CleanArchitecture.Domain.IdentityAccess.Tenants;
-
 namespace CleanArchitecture.Web.PlatformEndpoints.Contracts;
 
 /// <summary>
@@ -62,8 +60,13 @@ public sealed record PlatformAuditDirectoryResponse(IReadOnlyList<PlatformAuditE
 /// <summary>
 /// Suspending needs the reason it is being suspended for; reactivating needs nothing, and deliberately takes the
 /// same body so a client has one shape to send (IA-REQ-043).
+/// <para>
+/// The reason crosses the wire as the name of a closed set rather than as the enum itself. That is the same form
+/// the projection answers with, so a client reads and writes one vocabulary; and it keeps the endpoint able to
+/// refuse an unknown value as a business refusal instead of a body it could not bind.
+/// </para>
 /// </summary>
-public sealed record PlatformTenantLifecycleRequest(TenantSuspensionReason? Reason);
+public sealed record PlatformTenantLifecycleRequest(string? Reason);
 
 /// <summary>Who to invite as a Platform administrator. There is no role field: the role is the system one.</summary>
 public sealed record PlatformAdministratorInvitationRequest(string Email);

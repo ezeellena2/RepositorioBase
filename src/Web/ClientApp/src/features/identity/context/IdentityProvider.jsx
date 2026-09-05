@@ -10,13 +10,12 @@ const IdentityContext = createContext(null);
  * rotates the pair at exactly those moments and because what the navigation offers follows what the context
  * says. A 401 from the context endpoint is the ordinary answer for a visitor without a session, not a fault.
  *
- * The pair is fetched lazily — before the first mutation, and again after sign-in, sign-out and a refused
- * antiforgery — rather than on mount. Fetching it on mount is what the plan describes, and it is what this
- * provider did first, but doing so makes an authenticated page load answer 401 to its own context read: the
- * WeatherFeature acceptance scenario reproduces it, a direct HTTP read with the same cookie answers 200, and
- * removing the mount-time call makes it pass again. The cause is on the server side of GET
- * /api/identity/antiforgery and is recorded as an open finding. Lazily is not a workaround for the contract —
- * every mutation still carries a fresh pair, which is what the requirement exists to guarantee.
+ * The pair is fetched on mount, and again after sign-in and sign-out, so every mutation carries a current one.
+ * An earlier revision fetched it lazily instead, because doing it on mount appeared to make an authenticated
+ * page load answer 401 to its own context read. That was never the server: the harness was injecting the
+ * session cookie as an extra header, which the browser discards the moment its jar holds any cookie for the
+ * origin — so bootstrapping was simply the first thing to put one there. With the harness corrected the
+ * mount-time bootstrap is what the plan asks for and what runs.
  */
 export function IdentityProvider({ children, client }) {
   const identityClient = useMemo(() => client ?? createIdentityClient(), [client]);

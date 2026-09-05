@@ -14,6 +14,9 @@ const MESSAGES = {
   invitation_conflict: 'That invitation cannot be completed in its current state.',
   registration_conflict: 'That organization cannot be registered right now.',
   session_concurrency_conflict: 'Something changed while you were working. Try again.',
+  platform_tenant_concurrency_conflict: 'That tenant changed while you were working. Refresh it and try again.',
+  invalid_platform_operation: 'That Platform operation is not valid in its current state.',
+  recent_mfa_required: 'Confirm your second factor again before making this change.',
   rate_limit_exceeded: 'Too many attempts. Wait a moment and try again.',
   internal_server_error: 'Something went wrong. Try again.',
 };
