@@ -8,7 +8,7 @@ public sealed class WeatherStepDefinitions(WeatherPage weatherPage)
     [BeforeFeature("Weather")]
     public static async Task BeforeWeatherFeature(IObjectContainer container)
     {
-        var context = await PlaywrightSetup.Browser.NewContextAsync();
+        var context = await PlaywrightSetup.NewContextAsync();
         featureContext = context;
         var page = await context.NewPageAsync();
 

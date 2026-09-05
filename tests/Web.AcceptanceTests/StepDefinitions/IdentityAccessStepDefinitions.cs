@@ -39,7 +39,7 @@ public sealed class IdentityAccessStepDefinitions(ScenarioContext scenario)
     {
         // A context per scenario, because these journeys are about what one browser remembers: a shared jar
         // would let one scenario's session decide another's outcome.
-        featureContext = await PlaywrightSetup.Browser.NewContextAsync();
+        featureContext = await PlaywrightSetup.NewContextAsync();
         sharedPage = await featureContext.NewPageAsync();
     }
 
@@ -131,7 +131,7 @@ public sealed class IdentityAccessStepDefinitions(ScenarioContext scenario)
     public async Task WhenTheySelectTheSecond()
     {
         await Tenants.GotoAsync();
-        await Tenants.ChooseAsync(scenario.Get<IdentityAccessFixtures.SeededOrganization>("second").Name);
+        await Tenants.ChooseAsync(scenario.Get<IdentityAccessFixtures.SeededOrganization>("second").Slug);
     }
 
     [When("they select the organization where they may not invite")]
@@ -148,14 +148,14 @@ public sealed class IdentityAccessStepDefinitions(ScenarioContext scenario)
     public async Task ThenThatOrganizationIsActive()
     {
         await Context.GotoAsync();
-        await Context.AssertActiveOrganizationAsync(Organization.Name);
+        await Context.AssertActiveOrganizationAsync(Organization.Slug);
     }
 
     [Then("their access page shows the second organization as active")]
     public async Task ThenTheSecondOrganizationIsActive()
     {
         await Context.GotoAsync();
-        await Context.AssertActiveOrganizationAsync(scenario.Get<IdentityAccessFixtures.SeededOrganization>("second").Name);
+        await Context.AssertActiveOrganizationAsync(scenario.Get<IdentityAccessFixtures.SeededOrganization>("second").Slug);
     }
 
     [Then("the invite action is not offered")]
@@ -240,7 +240,7 @@ public sealed class IdentityAccessStepDefinitions(ScenarioContext scenario)
     public async Task ThenACorrectPasswordIsRefused()
     {
         await SignIn.GotoAsync();
-        await SignIn.SignInAsync(Identity.Email, IdentityAccessFixtures.Password);
+        await SignIn.AttemptSignInAsync(Identity.Email, IdentityAccessFixtures.Password);
         await SignIn.AssertProblemAsync();
     }
 

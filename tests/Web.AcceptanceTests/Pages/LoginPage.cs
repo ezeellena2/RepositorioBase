@@ -31,16 +31,12 @@ public class LoginPage(IPage page) : BasePage(page)
         // dropped the moment the jar held any cookie for this origin: the browser rebuilds Cookie from the jar
         // and the extra header does not survive. One antiforgery bootstrap was enough to take the session with
         // it, and every authenticated page load then answered 401 to its own context read.
-        var separatorIndex = cookie.IndexOf('=');
         return Page.Context.AddCookiesAsync([
             new Cookie
             {
-                Name = cookie[..separatorIndex],
-                Value = cookie[(separatorIndex + 1)..],
-                // A __Host- cookie may only be stored for a secure URL, and Aspire serves the test frontend
-                // over HTTP. Cookies ignore the port, so it is stored against https://<host> and the browser
-                // still sends it to the HTTP frontend: Chromium treats localhost as a secure context.
-                Url = $"https://{new Uri(BaseUrl).Host}",
+                Name = cookie[..separator],
+                Value = cookie[(separator + 1)..],
+                Url = BaseUrl,
                 Secure = true,
                 HttpOnly = true,
                 SameSite = SameSiteAttribute.Lax

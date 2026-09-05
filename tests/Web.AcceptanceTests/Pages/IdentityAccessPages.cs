@@ -7,14 +7,32 @@ public sealed class IdentitySignInPage(IPage page) : BasePage(page)
 {
     public override string PagePath => $"{BaseUrl}/login";
 
-    public Task SignInAsync(string email, string password) => SubmitAsync(email, password);
-
-    private async Task SubmitAsync(string email, string password)
+    /// <summary>
+    /// Signs in and waits for it to have happened: the page stops being the sign-in page, which is what the
+    /// form does once the session exists. Clicking and moving on would abandon the request mid-flight — the
+    /// next navigation cancels it and no session is ever created.
+    /// </summary>
+    public async Task SignInAsync(string email, string password)
     {
-        await Page.FillAsync("#login-email", email);
-        await Page.FillAsync("#login-password", password);
-        await Page.Locator("button[type='submit']").ClickAsync();
+        var response = await AttemptSignInAsync(email, password);
+        if (response.Status != 204)
+        {
+            throw new InvalidOperationException($"Sign-in answered {response.Status}: {await response.TextAsync()}");
+        }
+
+        await Assertions.Expect(Page.Locator("h1")).Not.ToHaveTextAsync("Sign in");
     }
+
+    /// <summary>Submits and waits for the answer without requiring one, for the journeys that must be refused.</summary>
+    public Task<IResponse> AttemptSignInAsync(string email, string password) =>
+        Page.RunAndWaitForResponseAsync(
+            async () =>
+            {
+                await Page.FillAsync("#login-email", email);
+                await Page.FillAsync("#login-password", password);
+                await Page.Locator("button[type='submit']").ClickAsync();
+            },
+            candidate => candidate.Url.EndsWith("/api/identity/sessions", StringComparison.Ordinal) && candidate.Request.Method == "POST");
 
     public Task AssertVisibleAsync() => Assertions.Expect(Page.Locator("h1")).ToHaveTextAsync("Sign in");
 
@@ -67,7 +85,17 @@ public sealed class InvitationPages(IPage page) : BasePage(page)
 
     public Task GotoRegisterAsync(string token) => Page.GotoAsync($"{BaseUrl}/invitations/register#token={Uri.EscapeDataString(token)}");
 
-    public Task GotoAcceptAsync(string token) => Page.GotoAsync($"{BaseUrl}/invitations/accept#token={Uri.EscapeDataString(token)}");
+    /// <summary>
+    /// Opens the invitation link the way its recipient does: as a fresh document. Going to the same path with
+    /// only a different fragment is a same-document navigation — the page stays mounted, keeps whatever it was
+    /// showing, and never reads the new token. Following a link out of an email is not that, and a step that
+    /// accepted a second time would otherwise be asserting against the first attempt's screen.
+    /// </summary>
+    public async Task GotoAcceptAsync(string token)
+    {
+        await Page.GotoAsync($"{BaseUrl}/invitations/accept#token={Uri.EscapeDataString(token)}");
+        await Page.ReloadAsync();
+    }
 
     public async Task RegisterAsync(string password)
     {
@@ -77,7 +105,20 @@ public sealed class InvitationPages(IPage page) : BasePage(page)
 
     public Task AcceptAsync() => Page.GetByRole(AriaRole.Button, new() { Name = "Accept" }).ClickAsync();
 
-    public Task AssertAcceptedAsync() => Assertions.Expect(Page.GetByRole(AriaRole.Status)).ToContainTextAsync("You are a member now.");
+    /// <summary>
+    /// A refused acceptance renders a problem instead of an outcome, so the refusal is read out here. Without
+    /// it the failure is only that an element is missing, which says nothing about why.
+    /// </summary>
+    public async Task AssertAcceptedAsync()
+    {
+        var problem = Page.GetByRole(AriaRole.Alert);
+        if (await problem.CountAsync() > 0 && await problem.IsVisibleAsync())
+        {
+            throw new InvalidOperationException($"Accepting was refused: {await problem.InnerTextAsync()}");
+        }
+
+        await Assertions.Expect(Page.GetByRole(AriaRole.Status)).ToContainTextAsync("You are a member now.");
+    }
 
     public Task AssertNeutralAcknowledgementAsync() =>
         Assertions.Expect(Page.GetByRole(AriaRole.Status)).ToContainTextAsync("Check your email.");

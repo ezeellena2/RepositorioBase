@@ -18,7 +18,12 @@ internal static class IdentityAccessFixtures
 
     internal sealed record SeededIdentity(Guid Id, string Email);
 
-    internal sealed record SeededOrganization(Guid TenantId, string Name, Guid RoleId);
+    /// <summary>
+    /// The slug is what a tenant is known by (SPEC section on the Tenant aggregate), so it is what the identity
+    /// context carries and what the browser shows. The legal name lives on the profile and is deliberately not
+    /// part of that projection, so a scenario naming an organization has to name it by its slug.
+    /// </summary>
+    internal sealed record SeededOrganization(Guid TenantId, string Slug, Guid RoleId);
 
     private static async Task<NpgsqlConnection> OpenAsync()
     {
@@ -45,6 +50,26 @@ internal static class IdentityAccessFixtures
         }
 
         throw new InvalidOperationException("The identity schema did not appear before the fixtures needed it.");
+    }
+
+    /// <summary>
+    /// The permission catalogue is written by the application as it starts, so a fixture can reach a migrated
+    /// database whose catalogue is still empty and have its role fail the foreign key. Waiting for the exact
+    /// codes a scenario grants turns that race into the ordering it is.
+    /// </summary>
+    private static async Task WaitForPermissionsAsync(NpgsqlConnection connection, string[] codes)
+    {
+        if (codes.Length == 0) return;
+        for (var attempt = 0; attempt < 150; attempt++)
+        {
+            await using var command = new NpgsqlCommand(
+                "SELECT count(*) FROM \"Permissions\" WHERE \"Code\" = ANY(@codes);", connection);
+            command.Parameters.AddWithValue("codes", codes);
+            if ((long)(await command.ExecuteScalarAsync())! == codes.Distinct().Count()) return;
+            await Task.Delay(TimeSpan.FromMilliseconds(200));
+        }
+
+        throw new InvalidOperationException($"The permissions {string.Join(", ", codes)} were never seeded.");
     }
 
     private static async Task ExecuteAsync(NpgsqlConnection connection, string sql, params (string Name, object Value)[] parameters)
@@ -79,11 +104,12 @@ internal static class IdentityAccessFixtures
     {
         var tenantId = Guid.NewGuid();
         var roleId = Guid.NewGuid();
+        var slug = $"{name.ToLowerInvariant()}-{tenantId:N}";
         await using var connection = await OpenAsync();
         await ExecuteAsync(
             connection,
             "INSERT INTO \"Tenants\" (\"Id\", \"Type\", \"Status\", \"Slug\", \"AuthorizationVersion\") VALUES (@id, 'Organization', 'Active', @slug, 0);",
-            ("id", tenantId), ("slug", $"acceptance-{tenantId:N}"));
+            ("id", tenantId), ("slug", slug));
         await ExecuteAsync(
             connection,
             "INSERT INTO \"OrganizationProfiles\" (\"TenantId\", \"LegalName\", \"Cuit\") VALUES (@tenantId, @name, @cuit);",
@@ -92,6 +118,7 @@ internal static class IdentityAccessFixtures
             connection,
             "INSERT INTO \"Roles\" (\"Id\", \"TenantId\", \"Name\", \"NormalizedName\", \"IsSystem\", \"IsRetired\") VALUES (@id, @tenantId, @name, @normalized, FALSE, FALSE);",
             ("id", roleId), ("tenantId", tenantId), ("name", $"role-{roleId:N}"), ("normalized", $"ROLE-{roleId:N}".ToUpperInvariant()));
+        await WaitForPermissionsAsync(connection, permissionCodes);
         foreach (var code in permissionCodes)
         {
             await ExecuteAsync(
@@ -100,7 +127,7 @@ internal static class IdentityAccessFixtures
                 ("tenantId", tenantId), ("roleId", roleId), ("code", code));
         }
 
-        return new SeededOrganization(tenantId, name, roleId);
+        return new SeededOrganization(tenantId, slug, roleId);
     }
 
     internal static async Task MembershipAsync(SeededOrganization organization, SeededIdentity identity)
@@ -166,7 +193,11 @@ internal static class IdentityAccessFixtures
             ("identityId", identityId));
     }
 
-    private static int cuitSeed;
-
-    private static string NextCuit() => $"30-{10000000 + Interlocked.Increment(ref cuitSeed):D8}-1";
+    /// <summary>
+    /// Eleven digits with no separators, which is the normalized form the column stores and the only form
+    /// that fits it. Drawn at random rather than counted, because the acceptance database outlives a run and
+    /// a counter would collide with the previous one on the unique index.
+    /// </summary>
+    private static string NextCuit() =>
+        $"30{System.Security.Cryptography.RandomNumberGenerator.GetInt32(100_000_000, 1_000_000_000):D9}";
 }

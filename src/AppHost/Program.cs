@@ -39,7 +39,11 @@ if (builder.ExecutionContext.IsRunMode)
         .WithRunScript("start")
         .WithReference(web)
         .WaitFor(web)
-        .WithHttpEndpoint(env: "PORT")
+        // HTTPS, because the identity design only holds over it: __Host- cookies are refused on an insecure
+        // origin, session and antiforgery cookies are issued Secure, and the API compares the browser Origin
+        // against the scheme it was reached on. Serving this over HTTP made the proxy hop change the scheme,
+        // so every mutation from the SPA was refused as antiforgery_validation_failed.
+        .WithHttpsEndpoint(env: "PORT")
         .WithExternalHttpEndpoints();
 }
 #endif

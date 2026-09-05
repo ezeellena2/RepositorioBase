@@ -8,7 +8,7 @@ public sealed class CounterStepDefinitions(CounterPage counterPage)
     [BeforeFeature("Counter")]
     public static async Task BeforeCounterFeature(IObjectContainer container)
     {
-        var context = await PlaywrightSetup.Browser.NewContextAsync();
+        var context = await PlaywrightSetup.NewContextAsync();
         featureContext = context;
         var page = await context.NewPageAsync();
         container.RegisterInstanceAs(context);

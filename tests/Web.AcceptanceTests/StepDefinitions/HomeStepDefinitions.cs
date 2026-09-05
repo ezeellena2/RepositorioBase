@@ -8,7 +8,7 @@ public sealed class HomeStepDefinitions(HomePage homePage)
     [BeforeFeature("Home")]
     public static async Task BeforeHomeFeature(IObjectContainer container)
     {
-        var context = await PlaywrightSetup.Browser.NewContextAsync();
+        var context = await PlaywrightSetup.NewContextAsync();
         featureContext = context;
         var page = await context.NewPageAsync();
         container.RegisterInstanceAs(context);
