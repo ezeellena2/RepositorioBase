@@ -885,14 +885,14 @@ Resend account/domain/key activation and shared Production key/certificate provi
 - Create: `src/Web/ClientApp/src/AppRoutes.test.jsx`
 - Create: `src/Web/ClientApp/src/features/identity/context/IdentityProvider.test.jsx`
 
-- [ ] **Step 1: Install MSW/test tooling and file-shape RED**
+- [x] **Step 1: Install MSW/test tooling and file-shape RED**
 
 Install Vitest, jsdom, Testing Library, and MSW; configure `listen/resetHandlers/close`. A Node filesystem test checks modules/root files without importing missing modules.
 
 Run: `npm test --prefix src/Web/ClientApp -- identityFiles.contract.test.js`  
 Expected: FAIL at runtime because feature files are missing.
 
-- [ ] **Step 2: Add shells and route/root behavioral RED**
+- [x] **Step 2: Add shells and route/root behavioral RED**
 
 Add importable shells. `identityClient.js` is the sole fetch/response boundary; `problemDetails.js` validates only the external RFC 9457 shape and never imports or models internal Result. Mount `IdentityProvider` in `App.jsx`; define public `/login`, `/organizations/register`, `/invitations/register`, `/invitations/accept`; protected `/identity`, `/organizations/select`, and `/members/invite`; wrap protected elements with the replacement `ProtectedRoute`. Update `Layout`/`NavMenu` navigation and sign-out. Remove all legacy provider/page imports.
 
@@ -904,7 +904,7 @@ npm test --prefix src/Web/ClientApp -- App.test.jsx AppRoutes.test.jsx IdentityP
 
 Expected: runtime route/header/state assertions fail against shells.
 
-- [ ] **Step 3: GREEN - exact HTTP and antiforgery lifecycle**
+- [x] **Step 3: GREEN - exact HTTP and antiforgery lifecycle**
 
 Use exact SPEC API routes and `credentials: "same-origin"`. Parse every declared success DTO/status/header and every non-success through the sole boundary. Bootstrap `GET /api/identity/antiforgery` after initial load/page reload and successful sign-in/sign-out. On stable `antiforgery_validation_failed`, fetch a fresh pair and require mutation retry. Do not use `X-CSRF-Refresh`. Successful tenant selection keeps the pair because the server does not rotate it. Send `X-CSRF-TOKEN` only on mutations; keep request/invitation tokens in memory; strip invitation fragments with `history.replaceState`.
 
@@ -919,12 +919,23 @@ npm run build --prefix src/Web/ClientApp
 
 Expected: scan returns no legacy contract/import; all commands PASS and every journey is reachable before Playwright.
 
-- [ ] **Step 4: REFACTOR and commit**
+- [x] **Step 4: REFACTOR and commit**
 
 ```bash
 git add src/Web/ClientApp
 git commit -m "feat: add reachable identity experience"
 ```
+
+**Evidence.** `npm test` 55, `npm run lint` and `npm run build` clean, and the five .NET suites unchanged at 734
+with Web.AcceptanceTests still 6/6.
+
+**Open finding — antiforgery bootstrap on mount.** Step 3 asks for `GET /api/identity/antiforgery` on initial load.
+Implemented that way, an authenticated page load answers `401` to its own `GET /api/identity/context`, which sends
+the visitor back to sign in; the `WeatherFeature` acceptance scenario reproduces it. A direct HTTP read with the
+same session cookie answers `200`, so the session is valid and the cause is on the server side of the antiforgery
+endpoint. It was not resolved here. The client fetches the pair lazily instead — before the first mutation and
+after sign-in, sign-out and a refused antiforgery — so every mutation still carries a fresh pair, which is what
+the requirement exists to guarantee. The mount-time fetch stays open against the antiforgery endpoint.
 
 ## Task 13: Verify the pre-Platform foundation
 

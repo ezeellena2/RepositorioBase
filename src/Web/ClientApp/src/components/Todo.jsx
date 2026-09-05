@@ -41,10 +41,12 @@ export function Tasks() {
     }).catch(console.error);
   }, []);
 
-  useEffect(() => {
+  const [composerListId, setComposerListId] = useState(selectedListId);
+  if (composerListId !== selectedListId) {
+    setComposerListId(selectedListId);
     setNewItemTitle('');
     setAddingItem(false);
-  }, [selectedListId]);
+  }
 
   const selectedList = lists?.find(l => l.id === selectedListId) ?? null;
   const remainingItems = list => list.items.filter(t => !t.done).length;

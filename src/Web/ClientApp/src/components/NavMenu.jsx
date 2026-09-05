@@ -1,24 +1,40 @@
 import { Link, useNavigate } from 'react-router-dom';
-import { useAuth } from './api-authorization/AuthContext';
+import { useIdentity } from '../features/identity/context/IdentityProvider';
 import { ThemeToggle } from './ThemeToggle';
 
-function AuthLinks() {
-  const { isAuthenticated, logout } = useAuth();
+/**
+ * What the navigation offers follows the session, and the permissions only decide what is worth showing. Every
+ * action behind these links is authorized again by the server, so hiding one is a courtesy to the user rather
+ * than a control (SPEC section 7).
+ */
+function IdentityLinks() {
+  const identity = useIdentity();
   const navigate = useNavigate();
 
-  const handleLogout = async (e) => {
-    e.preventDefault();
-    await logout();
+  if (!identity || identity.isLoading) return null;
+
+  const handleSignOut = async (event) => {
+    event.preventDefault();
+    await identity.signOut();
     navigate('/login');
   };
 
-  if (isAuthenticated) {
-    return <li><a href="#" onClick={handleLogout}>Log out</a></li>;
+  if (!identity.isAuthenticated) {
+    return (
+      <>
+        <li><Link to="/login">Log in</Link></li>
+        <li><Link to="/organizations/register">Register</Link></li>
+      </>
+    );
   }
+
+  const permissions = identity.context?.permissions ?? [];
   return (
     <>
-      <li><Link to="/login">Log in</Link></li>
-      <li><Link to="/register">Register</Link></li>
+      <li><Link to="/identity">Your access</Link></li>
+      <li><Link to="/organizations/select">Organizations</Link></li>
+      {permissions.includes('members.invite') && <li><Link to="/members/invite">Invite a member</Link></li>}
+      <li><a href="/login" onClick={handleSignOut}>Log out</a></li>
     </>
   );
 }
@@ -37,7 +53,7 @@ export function NavMenu() {
           <li><Link to="/todo">Tasks</Link></li>
         </ul>
         <ul>
-          <AuthLinks />
+          <IdentityLinks />
           <li aria-hidden="true" className="nav-separator"></li>
           <li><ThemeToggle /></li>
         </ul>

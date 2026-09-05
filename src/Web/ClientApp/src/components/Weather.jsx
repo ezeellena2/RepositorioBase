@@ -12,7 +12,7 @@ export function Weather() {
         const client = new WeatherForecastsClient();
         const data = await client.getWeatherForecasts();
         setForecasts(data);
-      } catch (e) {
+      } catch {
         setError('Unable to load weather forecasts. Please try again later.');
       } finally {
         setLoading(false);
