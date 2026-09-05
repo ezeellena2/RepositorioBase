@@ -34,6 +34,15 @@ public sealed class IdentitySignInPage(IPage page) : BasePage(page)
             },
             candidate => candidate.Url.EndsWith("/api/identity/sessions", StringComparison.Ordinal) && candidate.Request.Method == "POST");
 
+    /// <summary>Leaves the session through the navigation, so the next journey starts from a signed-out browser.</summary>
+    public async Task SignOutAsync()
+    {
+        await Page.RunAndWaitForResponseAsync(
+            () => Page.GetByRole(AriaRole.Link, new() { Name = "Log out" }).ClickAsync(),
+            candidate => candidate.Url.EndsWith("/api/identity/sessions/current", StringComparison.Ordinal) && candidate.Request.Method == "DELETE");
+        await AssertVisibleAsync();
+    }
+
     public Task AssertVisibleAsync() => Assertions.Expect(Page.Locator("h1")).ToHaveTextAsync("Sign in");
 
     public Task AssertProblemAsync() => Assertions.Expect(Page.GetByRole(AriaRole.Alert)).ToBeVisibleAsync();

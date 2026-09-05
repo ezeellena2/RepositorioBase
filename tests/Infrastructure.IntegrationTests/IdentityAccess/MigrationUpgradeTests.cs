@@ -762,7 +762,12 @@ public sealed class MigrationUpgradeTests
     {
         var userId = Guid.NewGuid();
         await Execute(connection, $"INSERT INTO \"AspNetUsers\" (\"Id\", \"UserName\", \"NormalizedUserName\", \"Email\", \"NormalizedEmail\", \"EmailConfirmed\", \"PhoneNumberConfirmed\", \"TwoFactorEnabled\", \"LockoutEnabled\", \"AccessFailedCount\") VALUES ('{userId}', 'session-chronology@example.test', 'SESSION-CHRONOLOGY@EXAMPLE.TEST', 'session-chronology@example.test', 'SESSION-CHRONOLOGY@EXAMPLE.TEST', FALSE, FALSE, FALSE, FALSE, 0);");
-        var createdAt = DateTimeOffset.UtcNow;
+        // Truncated to whole microseconds, which is all PostgreSQL stores. The clock supplies a further
+        // hundred-nanosecond digit that the server has to round away, and when that digit is a tie the
+        // rounding can land both timestamps on the same microsecond — erasing the one-microsecond gap this
+        // is about and letting a row the constraint forbids through perhaps one run in twenty.
+        var clock = DateTimeOffset.UtcNow;
+        var createdAt = clock.AddTicks(-(clock.Ticks % 10));
         var invalid = await Should.ThrowAsync<PostgresException>(() => Execute(connection, $"INSERT INTO \"UserSessions\" (\"Id\", \"IdentityId\", \"CreatedAt\", \"LastSeenAt\", \"IdleExpiresAt\", \"AbsoluteExpiresAt\", \"RevokedAt\", \"Version\") VALUES ('{Guid.NewGuid()}', '{userId}', '{createdAt:O}', '{createdAt:O}', '{createdAt.AddMinutes(1):O}', '{createdAt.AddHours(1):O}', '{createdAt.AddMicroseconds(-1):O}', 1);"));
         invalid.SqlState.ShouldBe(PostgresErrorCodes.CheckViolation);
     }

@@ -1,6 +1,8 @@
 # Identity Access — Tasks
 
-**Status:** In progress. IA-002 and IA-003 are complete; the remaining Identity Access tasks remain pending approval and implementation.
+**Status:** In progress. IA-002 and IA-003 are complete. Task 13 verified the pre-Platform foundation end to end,
+so IA-004 through IA-008 move to `Review`. IA-009 stays `Blocked`: it is an evidence task, and its acceptance
+waits for the Platform work in Tasks 14-16. IA-012 and the roadmap tasks are untouched.
 
 ## Review Workload Forecast
 
@@ -23,11 +25,11 @@ Suggested units: stack/migrations/test harness; domain/persistence; authorizatio
 | IA-001 | Approve SPEC and ADR | — | Review | — | human approval |
 | IA-002 | PostgreSQL target and harness | IA-REQ-031 | Complete | IA-001 | real-PostgreSQL tests |
 | IA-003 | Safe baseline migration/startup | IA-REQ-032,037 | Complete | IA-002 | sentinel preserved; no administrator |
-| IA-004 | Core identity/tenant/membership/audit persistence | IA-REQ-001,002,033..037 | Blocked | IA-003 | constraints, stale-write proof, upgrades |
-| IA-005 | Roles, authorization, HTTP contract | IA-REQ-006..013,026,030,038 | Blocked | IA-004 | permission/Problem Details contracts |
-| IA-006 | Organization registration/confirmation | IA-REQ-003..005,026..029; applies 038 | Blocked | IA-005 | atomic, idempotent neutral replay |
-| IA-007 | Sessions, limits, active tenant | IA-REQ-006..008,019..026,029,031; applies 038 | Blocked | IA-006 | revocable sessions and limits |
-| IA-008 | Invitations and reliable outbox | IA-REQ-014..018,026..029,047; applies 038 | Onboarding done (Task 10); dispatch done (Task 11) | IA-007 | secure onboarding and delivery |
+| IA-004 | Core identity/tenant/membership/audit persistence | IA-REQ-001,002,033..037 | Review | IA-003 | constraints, stale-write proof, upgrades |
+| IA-005 | Roles, authorization, HTTP contract | IA-REQ-006..013,026,030,038 | Review | IA-004 | permission/Problem Details contracts |
+| IA-006 | Organization registration/confirmation | IA-REQ-003..005,026..029; applies 038 | Review | IA-005 | atomic, idempotent neutral replay |
+| IA-007 | Sessions, limits, active tenant | IA-REQ-006..008,019..026,029,031; applies 038 | Review | IA-006 | revocable sessions and limits |
+| IA-008 | Invitations and reliable outbox | IA-REQ-014..018,026..029,047; applies 038 | Review | IA-007 | secure onboarding and delivery |
 | IA-012 | Platform invitation persistence, credential onboarding, MFA and recovery codes | IA-REQ-041 | Blocked | IA-008 | persisted invitation, password confirmation, encrypted TOTP, hashed codes, step-up |
 | IA-014 | Platform bootstrap, administration, operations panel | IA-REQ-039..040,042..046; applies 038 | Blocked | IA-012 | cold-start recovery, safe directories, no bypass |
 | IA-009 | React and E2E acceptance evidence | evidence only, including 038 | Blocked | IA-014 | post-Platform verified journeys ready for Review |

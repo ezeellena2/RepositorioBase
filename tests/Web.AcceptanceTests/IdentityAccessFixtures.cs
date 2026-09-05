@@ -194,6 +194,19 @@ internal static class IdentityAccessFixtures
     }
 
     /// <summary>
+    /// Moves the lockout into the past, which is the only thing waiting out a lockout does. Waiting for real
+    /// would make the test slower than the window it is proving, and sleeping for less would prove nothing.
+    /// </summary>
+    internal static async Task ExpireLockOutAsync(Guid identityId)
+    {
+        await using var connection = await OpenAsync();
+        await ExecuteAsync(
+            connection,
+            "UPDATE \"AspNetUsers\" SET \"LockoutEnd\" = NOW() - INTERVAL '1 minute', \"AccessFailedCount\" = 0 WHERE \"Id\" = @identityId;",
+            ("identityId", identityId));
+    }
+
+    /// <summary>
     /// Eleven digits with no separators, which is the normalized form the column stores and the only form
     /// that fits it. Drawn at random rather than counted, because the acceptance database outlives a run and
     /// a counter would collide with the previous one on the unique index.

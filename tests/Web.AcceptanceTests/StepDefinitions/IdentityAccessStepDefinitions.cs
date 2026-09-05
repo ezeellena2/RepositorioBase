@@ -127,6 +127,31 @@ public sealed class IdentityAccessStepDefinitions(ScenarioContext scenario)
         await Context.AssertVisibleAsync();
     }
 
+    /// <summary>
+    /// Registering while signed in is a distinct path: the handler reuses the identity in the session instead
+    /// of creating one, and refuses outright if the submitted address is not that identity's own.
+    /// </summary>
+    [When("they register another organization with their own address")]
+    public async Task WhenTheyRegisterAnotherOrganization()
+    {
+        var cuit = $"30{Random.Shared.Next(100_000_000, 999_999_999)}";
+        scenario.Set($"org-{cuit}", "secondSlug");
+        await Register.GotoAsync();
+        await Register.RegisterAsync($"Acceptance {Guid.NewGuid():N}", cuit, Identity.Email, IdentityAccessFixtures.Password);
+        await Register.AssertNeutralAcknowledgementAsync();
+    }
+
+    [When("the new organization is confirmed")]
+    public async Task WhenTheNewOrganizationIsConfirmed() => await ConfirmPendingIdentityAsync(Identity.Email);
+
+    [Then("both organizations are offered to them")]
+    public async Task ThenBothOrganizationsAreOffered()
+    {
+        await Tenants.GotoAsync();
+        await Tenants.AssertOffersAsync(Organization.Slug);
+        await Tenants.AssertOffersAsync(scenario.Get<string>("secondSlug"));
+    }
+
     [When("they select the second organization")]
     public async Task WhenTheySelectTheSecond()
     {
@@ -251,6 +276,18 @@ public sealed class IdentityAccessStepDefinitions(ScenarioContext scenario)
         var other = await IdentityAccessFixtures.ConfirmedIdentityAsync();
         await SignIn.GotoAsync();
         await SignIn.SignInAsync(other.Email, IdentityAccessFixtures.Password);
+        await Context.GotoAsync();
+        await Context.AssertVisibleAsync();
+    }
+
+    /// <summary>A lockout that never lifted would be a denial of service an attacker could aim at anyone.</summary>
+    [Then("the account signs in again once the lockout has passed")]
+    public async Task ThenTheAccountSignsInAgain()
+    {
+        await SignIn.SignOutAsync(); // The unrelated account is still signed in on this browser.
+        await IdentityAccessFixtures.ExpireLockOutAsync(Identity.Id);
+        await SignIn.GotoAsync();
+        await SignIn.SignInAsync(Identity.Email, IdentityAccessFixtures.Password);
         await Context.GotoAsync();
         await Context.AssertVisibleAsync();
     }

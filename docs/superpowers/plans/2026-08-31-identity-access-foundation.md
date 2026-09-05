@@ -957,14 +957,14 @@ session`.
 - Modify: `docs/features/identity-access/TRACEABILITY.md`
 - Modify: `docs/features/identity-access/TASKS.md`
 
-- [ ] **Step 1: RED - executable journeys**
+- [x] **Step 1: RED - executable journeys**
 
 Cover pending registration -> confirmation activation -> sign-in; zero/one/multiple membership defaults; authenticated second Organization; switching; independent IP/account throttles and lockout recovery; new invitee token-aware registration -> confirmation -> sign-in -> one-shot accept; existing identity acceptance; tenant isolation; revoked session; baseline-to-latest restart; and runtime/OpenAPI/React contract-drift rejection.
 
 Run: `dotnet test tests/Web.AcceptanceTests/Web.AcceptanceTests.csproj --filter IdentityAccess`  
 Expected: runtime scenario assertion failures until browser wiring is complete.
 
-- [ ] **Step 2: GREEN - architecture and full verification**
+- [x] **Step 2: GREEN - architecture and full verification**
 
 Architecture tests enforce dependencies, centralized permissions, exactly one of `IPublicRequest`/`[Authorize]`, no early `UserSession`/Invitation coupling, no endpoint EF access, and no legacy API routes.
 
@@ -979,7 +979,7 @@ dotnet test tests/Web.AcceptanceTests/Web.AcceptanceTests.csproj --no-build
 
 Expected: every command exits 0.
 
-- [ ] **Step 3: REFACTOR traceability and commit**
+- [x] **Step 3: REFACTOR traceability and commit**
 
 Record exact pre-Platform evidence without transferring normative ownership to IA-009; move only IA-002..IA-008 to `Review`. Keep IA-009 `Blocked`: its final acceptance and any move to `Review` wait for Tasks 14–16 and verified Platform evidence.
 
@@ -987,6 +987,26 @@ Record exact pre-Platform evidence without transferring normative ownership to I
 git add tests docs/features/identity-access
 git commit -m "test: verify identity access foundation"
 ```
+
+**Resolved — the SPA could not mutate anything.** Nine of the ten journeys failed, and not for one reason.
+The first was the harness: sign-in clicked and moved straight on, so the next navigation cancelled the
+request before it was answered and the trace showed no `POST /api/identity/sessions` at all. Waiting for
+that answer exposed the real fault — `400 antiforgery_validation_failed`, and a pair minted and used inside
+the same page was refused too, so it was not staleness. The server's own reason was the scheme: the browser
+reached the dev server over HTTP while the proxy reached the API over TLS, and exact-origin validation
+compares the browser's Origin against the scheme the request arrived on. The design does not work over HTTP
+in any case, since an insecure origin cannot store a `__Host-` cookie, so the dev server now presents the
+ASP.NET development certificate. Behind that sat three more, each with its own cause: a seeded CUIT carrying
+separators the eleven-digit column cannot hold, organizations named by a slug unrelated to their name when
+the slug is what a tenant is known by, and a permission catalogue written as the application starts that a
+fixture could outrun. Opening an invitation link twice changed only the fragment, which leaves the page
+mounted, so the second acceptance was asserting against the first attempt's screen.
+
+Two scenarios were added for what the plan listed and the ten did not cover: an authenticated identity
+registering a second organization, and a lockout lifting once passed. Baseline-to-latest is proved by
+`MigrationUpgradeTests` rather than through the browser, and is recorded there. `MigrationUpgradeTests`
+itself held a flake that only the full-solution run surfaced: it asserted a one-microsecond gap that
+PostgreSQL can round away, which is now truncated to whole microseconds.
 
 ## Task 14: Persist Platform invitations before MFA and model MFA invariants
 

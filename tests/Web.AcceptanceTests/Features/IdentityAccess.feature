@@ -25,6 +25,13 @@ Scenario: An identity with several memberships chooses between them
     And they select the second organization
     Then their access page shows the second organization as active
 
+Scenario: A signed-in identity registers another organization without a second account
+    Given a confirmed identity with one active membership
+    When they sign in
+    And they register another organization with their own address
+    And the new organization is confirmed
+    Then both organizations are offered to them
+
 Scenario: Permissions do not cross organizations
     Given a confirmed identity that may invite in one organization only
     When they sign in
@@ -56,6 +63,7 @@ Scenario: Sign-in throttling is per account and recovers
     When the account is locked out by repeated failures
     Then a correct password is still refused
     And an unrelated account can still sign in
+    And the account signs in again once the lockout has passed
 
 Scenario: The served contract matches what the client calls
     Then every identity route the client calls is declared in the served OpenAPI document
