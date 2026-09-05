@@ -29,6 +29,46 @@ dotnet run --project src/AppHost
 
 The dashboard lists the API and the frontend. Open the frontend URL.
 
+## Reading the mail the application sends
+
+Every onboarding link — an organization confirmation, a member invitation, the Platform owner invitation — is
+carried by a token that is sealed with a Data Protection key held by the application. Nothing outside that process
+can read one out of the database, so there is no useful way to fish a link out of `outbox_secrets`.
+
+Instead, point delivery at a folder. Set these five values once and every message is written there as a text file
+instead of being sent, with the link in it exactly as its recipient would receive it:
+
+```bash
+dotnet user-secrets --project src/AppHost set "IdentityAccess:Email:Enabled" "true"
+dotnet user-secrets --project src/AppHost set "IdentityAccess:Email:FromAddress" "platform@example.test"
+dotnet user-secrets --project src/AppHost set "IdentityAccess:Email:LocalDropPath" "C:/temp/identity-mail"
+dotnet user-secrets --project src/AppHost set "IdentityAccess:DataProtection:ApplicationName" "identity-access-local"
+dotnet user-secrets --project src/AppHost set "IdentityAccess:DataProtection:KeyRingPath" "C:/temp/identity-keys"
+```
+
+The two `DataProtection` values are required whenever `Email:Enabled` is `true`, including here: without them the
+API refuses to start with `Identity Data Protection configuration is incomplete`. A key ring on disk is also what
+lets a link survive a restart — an in-memory one makes every envelope written before it unreadable.
+
+A file appears within a second or two of the action that caused it, named after its outbox message:
+
+```text
+To: you@example.test
+From: platform@example.test
+Subject: You have been invited to Platform
+
+You have been invited to become the Platform owner. Open this link to set up your account:
+https://localhost:50889/platform/invitations/register#token=…
+```
+
+Paste the link into the browser. The origin is the frontend's own, filled in by the app host from the port it
+allocated this run; `IdentityAccess:Email:PublicOrigin`, if you set it, wins over that and is what a deployment
+configures.
+
+Two things keep this local. The sender refuses to run outside a Development, Test or Testing host, and it refuses
+at start-up rather than at the first message. And the drop folder holds live invitation links in plain text, which
+is a mailbox with no password on it — keep it under a temporary directory and delete it when you are done.
+
 ## Bootstrapping Platform
 
 Platform has no owner until a deployment names one. Nothing is created by default — no administrator, no password.
@@ -41,36 +81,51 @@ Restart. On start-up the application creates the singleton Platform tenant, its 
 owner invitation for that address. Running again changes nothing, and changing the address afterwards creates no
 second owner.
 
-The owner then walks the same path any administrator does:
+The owner then walks the same path any administrator does, and each step is reached from the mail the step before
+it produced:
 
-1. open the invitation link (`/platform/invitations/register#token=…`) and choose a password;
-2. confirm the address (`/platform/invitations/confirm`);
+1. open the invitation link from the drop folder (`/platform/invitations/register#token=…`) and choose a password;
+2. open the confirmation that arrives next (`/platform/invitations/confirm#token=…`) and confirm the address;
 3. sign in normally at `/login`;
-4. complete the second factor at `/platform/mfa#token=…` — enrol, enter a code from an authenticator, and
-   acknowledge the recovery codes;
+4. complete the second factor at `/platform/mfa#token=…` — the same invitation token as step 1, which is what
+   binds the ceremony to the offer rather than to whoever is signed in. Enrol, enter a code from an authenticator,
+   and acknowledge the recovery codes;
 5. the Platform panel is then at `/platform`.
 
-The membership becomes active only at step 5's acknowledgement. Before it, the account exists and can sign in, and
-holds nothing.
+The membership becomes active only at step 4's acknowledgement. Before it, the account exists and can sign in, and
+holds nothing — the panel answers that the area is for an MFA-authenticated Platform administrator.
 
 If the owner invitation cannot be delivered, `/platform/bootstrap/recover` reissues it. It accepts no input at all
-— not an address, not an identity — and answers the same way whatever the state is.
+— not an address, not an identity — and answers the same way whatever the state is. Reissuing rotates the token,
+so the newer file in the drop folder is the one that opens anything.
+
+This whole journey is also what `PlatformOperations.feature` walks in the browser, from the same bootstrap
+invitation and without confirming anything in the database.
 
 ## Email: simulated versus real
 
-**This is the part to be careful about.** Local runs never send email.
+**This is the part to be careful about.**
 
-- The outbox worker only runs when `IdentityAccess:Email:Enabled` is `true`; the app host does not start it
-  otherwise. So a registration, invitation or confirmation writes an outbox message and an encrypted envelope, and
-  nothing leaves the machine.
-- To read a token locally, take it from the database rather than from an inbox. The messages are in
-  `outbox_messages` and the tokens are encrypted in `outbox_secrets`, readable only by the process that wrote
-  them — which is why the tests read them through the application's own `IOutboxSecretReader` rather than by
-  decrypting a column.
+- With `IdentityAccess:Email:LocalDropPath` set, messages are written to that folder and the app host does not
+  start the outbox worker at all: the web application drains its own outbox, so one process seals the tokens and
+  opens them. Nothing leaves the machine.
+- With `IdentityAccess:Email:Enabled` unset or `false`, nothing is delivered either — a registration, invitation
+  or confirmation writes an outbox message and an encrypted envelope and stops there.
 - **Real sending requires the separate, deliberate activation in [EMAIL-SETUP.md](EMAIL-SETUP.md)**: a provider
-  API key, a shared Data Protection key ring, a wrapping certificate, and `IdentityAccess:Email:Enabled=true`.
-  None of that is set by running locally, and none of it should be pointed at a real mailbox while trying things
-  out.
+  API key, a shared Data Protection key ring, a wrapping certificate, and `IdentityAccess:Email:Enabled=true` with
+  no `LocalDropPath`. None of that is set by running locally, and none of it should be pointed at a real mailbox
+  while trying things out.
+
+## If nothing happens
+
+- **The API says `Identity Data Protection configuration is incomplete`.** `Email:Enabled` is `true` without the
+  two `DataProtection` values above.
+- **The API cannot reach the database after the PostgreSQL container was reused.** The container is persistent and
+  its password is a generated parameter, so a run without user secrets can generate a new one the existing volume
+  does not know. Initialise user secrets for the app host — the start-up warning says the same — or remove the
+  `dbserver-*` container and let it be recreated.
+- **No file appears in the drop folder.** Check the dashboard's `webapi` logs first; delivery is refused as a
+  whole when the sender cannot validate its configuration.
 
 ## Running the checks
 

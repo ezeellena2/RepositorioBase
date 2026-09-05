@@ -54,6 +54,12 @@ Omitting `ApplicationName` in disabled Development preserves the previous Web de
 
 Delivery is disabled by default in Development. Aspire's local run starts OutboxWorker only when `IdentityAccess:Email:Enabled` is explicitly enabled. A directly started disabled worker has no polling service. Web may still create pending outbox intents; disabled delivery is not an assertion that mail was sent.
 
+`IdentityAccess__Email__LocalDropPath` is the third mode, and it belongs only to a developer's machine: with it
+set, messages are written to that folder as text files instead of being sent, no provider is contacted, and no API
+key is needed. It is refused outside an explicit `Development`, `Test` or `Testing` environment, and refused at
+start-up rather than at the first message — so a deployment cannot acquire it by accident. Do not set it here.
+[RUNNING-LOCALLY.md](RUNNING-LOCALLY.md#reading-the-mail-the-application-sends) is where it is documented.
+
 Automated tests use explicit in-memory sinks or fake HTTP transports and an isolated PostgreSQL database. They do not contact Resend or require a provider account. The generic-host test uses the same worker registration as the executable and delivers a seeded notice through its isolated sink.
 
 ## Retry and delivery limits
