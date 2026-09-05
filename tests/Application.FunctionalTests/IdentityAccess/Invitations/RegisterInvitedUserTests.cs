@@ -8,6 +8,10 @@ using CleanArchitecture.Application.IdentityAccess.Organizations.ConfirmEmail;
 using CleanArchitecture.Infrastructure.Identity;
 using Microsoft.Extensions.DependencyInjection;
 using CleanArchitecture.Infrastructure.IdentityAccess;
+using CleanArchitecture.Infrastructure.Outbox;
+using CleanArchitecture.Infrastructure.Data;
+using CleanArchitecture.Application.Common.Interfaces;
+using Microsoft.EntityFrameworkCore;
 
 namespace CleanArchitecture.Application.FunctionalTests.IdentityAccess.Invitations;
 
@@ -265,6 +269,68 @@ public sealed class RegisterInvitedUserTests : TestBase
 
         results.ShouldAllBe(result => result.IsSuccess, "the loser of the race is as neutral as the winner");
         (await TestApp.ListAsync<ApplicationUser>()).Count(user => user.Email == email).ShouldBe(1);
+    }
+
+    [Test]
+    public async Task Invited_confirmation_is_audited_once_without_a_tenant_and_rollback_is_atomic()
+    {
+        var (email, token) = await IssuedInvitationAsync();
+        ResetToAnonymous();
+        (await TestApp.SendAsync(new RegisterInvitedUserCommand(token, ValidPassword))).IsSuccess.ShouldBeTrue();
+        var command = new ConfirmEmailCommand(TestApp.RawTokenAt(1));
+        TestApp.ForceConfirmationRollbackAfterPersistedEffects();
+        await Should.ThrowAsync<InvalidOperationException>(() => TestApp.SendAsync(command));
+        (await TestApp.ListAsync<ApplicationUser>()).Single(user => user.Email == email).EmailConfirmed.ShouldBeFalse();
+        (await TestApp.ListAsync<Domain.IdentityAccess.Auditing.AuditEvent>()).ShouldNotContain(item => item.EventType == "identity.confirmed");
+        (await TestApp.SendAsync(command)).IsSuccess.ShouldBeTrue();
+        (await TestApp.SendAsync(command)).IsSuccess.ShouldBeTrue();
+        var audit = (await TestApp.ListAsync<Domain.IdentityAccess.Auditing.AuditEvent>()).Single(item => item.EventType == "identity.confirmed");
+        audit.TenantId.ShouldBeNull();
+        audit.ActorId.ShouldBe((await TestApp.ListAsync<ApplicationUser>()).Single(user => user.Email == email).Id);
+        audit.CorrelationId.ShouldStartWith("confirmation-");
+        (await TestApp.ListAsync<Domain.IdentityAccess.Outbox.OutboxSecret>()).Count(item => item.Status == Domain.IdentityAccess.Outbox.OutboxSecretStatus.Consumed).ShouldBe(1);
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Real_invitation_registration_messages_have_registered_delivery_handlers(bool existing)
+    {
+        var (email, token) = await IssuedInvitationAsync();
+        if (existing) await InvitationScenario.SeedConfirmedRecipientAsync(email);
+        ResetToAnonymous();
+        (await TestApp.SendAsync(new RegisterInvitedUserCommand(token, ValidPassword))).IsSuccess.ShouldBeTrue();
+        var type = existing ? "identity.invitation.signin.notice.requested" : "identity.invitation.confirmation.requested";
+        var message = (await TestApp.ListAsync<Domain.IdentityAccess.Outbox.OutboxMessage>()).Single(item => item.Type == type);
+        using var scope = FunctionalTestSetup.ScopeFactory.CreateScope();
+        scope.ServiceProvider.GetServices<CleanArchitecture.Infrastructure.Outbox.IOutboxDeliveryHandler>()
+            .ShouldContain(handler => handler.MessageType == message.Type);
+        var sink = new RegistrationDeliverySink();
+        var dispatcher = new OutboxDispatcher(scope.ServiceProvider.GetRequiredService<ApplicationDbContext>(),
+            scope.ServiceProvider.GetRequiredService<IOutboxSecretReader>(), scope.ServiceProvider.GetServices<IOutboxDeliveryHandler>(), TimeProvider.System, sink);
+        await dispatcher.DispatchDueAsync(CancellationToken.None);
+        await dispatcher.DispatchDueAsync(CancellationToken.None);
+        (await TestApp.ListAsync<Domain.IdentityAccess.Outbox.OutboxMessage>()).Single(item => item.Id == message.Id)
+            .Status.ShouldBe(Domain.IdentityAccess.Outbox.OutboxMessageStatus.Delivered);
+        var delivered = sink.Messages.Single(item => item.Key == message.Id.ToString());
+        delivered.Recipient.ToUpperInvariant().ShouldBe(email.ToUpperInvariant());
+        delivered.Body.ShouldContain("https://app.example.test/");
+        if (existing)
+        {
+            delivered.Body.ShouldNotContain(token);
+            delivered.Body.ShouldNotContain("invitation", Case.Insensitive);
+            delivered.Body.ShouldNotContain("#token=");
+        }
+        else Uri.UnescapeDataString(delivered.Body).ShouldContain(TestApp.RawTokenAt(1));
+    }
+
+    private sealed class RegistrationDeliverySink : IIdentityEmailSender
+    {
+        public List<(string Recipient, string Body, string Key)> Messages { get; } = [];
+        public Task<EmailDeliveryReceipt> SendAsync(string recipient, string subject, string body, string idempotencyKey, CancellationToken cancellationToken)
+        {
+            Messages.Add((recipient, body, idempotencyKey));
+            return Task.FromResult(new EmailDeliveryReceipt(true, Guid.NewGuid().ToString(), false));
+        }
     }
 
     private static async Task<Application.Common.Models.Result> SendFromIndependentScopeAsync(RegisterInvitedUserCommand command, Barrier barrier)

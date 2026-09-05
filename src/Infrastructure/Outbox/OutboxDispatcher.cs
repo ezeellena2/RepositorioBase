@@ -2,191 +2,179 @@ using CleanArchitecture.Application.Common.Interfaces;
 using CleanArchitecture.Domain.IdentityAccess.Outbox;
 using CleanArchitecture.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Storage;
 using Npgsql;
 
 namespace CleanArchitecture.Infrastructure.Outbox;
 
-/// <summary>
-/// One pass of the delivery loop, invocable on its own. The hosted service that repeats it adds nothing but the
-/// repetition, which is what lets a test drive exactly one iteration against a controlled clock instead of racing
-/// a background poller (IA-REQ-028).
-/// </summary>
+/// <summary>Claims immediately before each send; external uncertainty is reconciled by the provider's stable key.</summary>
 public sealed class OutboxDispatcher(
     ApplicationDbContext context,
     IOutboxSecretReader secrets,
     IEnumerable<IOutboxDeliveryHandler> handlers,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    IIdentityEmailSender sender)
 {
     private static readonly TimeSpan LeaseDuration = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan ReceiptRetention = TimeSpan.FromHours(24);
     private const int BatchSize = 32;
+    private const int MaxAttempts = 8;
 
-    /// <summary>
-    /// Claims every due message and delivers each one once. Claiming is a single statement: the inner select
-    /// takes row locks with <c>SKIP LOCKED</c> so competing workers pass over each other's rows instead of
-    /// queueing, and the outer update is what actually grants the lease — a worker that reached the row second
-    /// finds nothing left to claim rather than a lease it can overwrite.
-    /// </summary>
     public async Task<int> DispatchDueAsync(CancellationToken cancellationToken)
     {
-        var now = timeProvider.GetUtcNow();
-        var owner = $"{Environment.MachineName}:{Environment.CurrentManagedThreadId}:{Guid.NewGuid():N}";
-        var claimed = await ClaimDueAsync(owner, now, cancellationToken);
-
+        sender.ValidateConfiguration(); // A bad deployment must not claim messages or spend attempts.
         var delivered = 0;
-        foreach (var id in claimed)
+        for (var index = 0; index < BatchSize; index++)
         {
-            if (await DeliverAsync(id, now, cancellationToken))
-            {
-                delivered++;
-            }
+            var claim = await ClaimDueAsync(timeProvider.GetUtcNow(), cancellationToken);
+            if (claim is null) break;
+            if (await DeliverAsync(claim, cancellationToken)) delivered++;
         }
-
         return delivered;
     }
 
-    private async Task<IReadOnlyList<Guid>> ClaimDueAsync(string owner, DateTimeOffset now, CancellationToken cancellationToken)
+    private async Task<Claim?> ClaimDueAsync(DateTimeOffset now, CancellationToken cancellationToken)
     {
         const string sql = """
-            UPDATE outbox_messages
-            SET "LeaseOwner" = @owner, "LeaseExpiresAt" = @leaseUntil, "Generation" = "Generation" + 1
-            WHERE "Id" IN (
-                SELECT "Id" FROM outbox_messages
-                WHERE "Status" = 'Pending'
-                  AND "NextAttemptAt" <= @now
+            WITH due AS (
+                SELECT "Id", "AttemptCount" FROM outbox_messages
+                WHERE "Status" = 'Pending' AND "NextAttemptAt" <= @now
                   AND ("LeaseExpiresAt" IS NULL OR "LeaseExpiresAt" <= @now)
-                ORDER BY "NextAttemptAt"
-                LIMIT @batch
-                FOR UPDATE SKIP LOCKED)
-            RETURNING "Id";
+                ORDER BY "NextAttemptAt", "Id"
+                LIMIT 1 FOR UPDATE SKIP LOCKED)
+            UPDATE outbox_messages AS message
+            SET "LeaseOwner" = @owner, "LeaseExpiresAt" = @leaseUntil,
+                "Generation" = message."Generation" + 1,
+                "FirstAttemptAt" = COALESCE(message."FirstAttemptAt", @now),
+                "AttemptCount" = LEAST(message."AttemptCount" + 1, 8)
+            FROM due WHERE message."Id" = due."Id"
+            RETURNING message."Id", message."Generation", due."AttemptCount" >= 8;
             """;
-
+        var owner = Guid.NewGuid().ToString("N");
         var connection = (NpgsqlConnection)context.Database.GetDbConnection();
         var opened = connection.State != System.Data.ConnectionState.Open;
         if (opened) await connection.OpenAsync(cancellationToken);
-
         try
         {
             await using var command = new NpgsqlCommand(sql, connection);
-            if (context.Database.CurrentTransaction?.GetDbTransaction() is NpgsqlTransaction transaction)
-            {
-                command.Transaction = transaction;
-            }
-
             command.Parameters.AddWithValue("owner", owner);
             command.Parameters.AddWithValue("leaseUntil", now.Add(LeaseDuration));
             command.Parameters.AddWithValue("now", now);
-            command.Parameters.AddWithValue("batch", BatchSize);
-
-            var ids = new List<Guid>();
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-            while (await reader.ReadAsync(cancellationToken))
-            {
-                ids.Add(reader.GetGuid(0));
-            }
-
-            return ids;
+            return await reader.ReadAsync(cancellationToken)
+                ? new Claim(reader.GetGuid(0), owner, reader.GetInt32(1), reader.GetBoolean(2))
+                : null;
         }
-        finally
-        {
-            if (opened) await connection.CloseAsync();
-        }
+        finally { if (opened) await connection.CloseAsync(); }
     }
 
-    /// <summary>
-    /// Delivers one claimed message. The token is decrypted into a local and never written anywhere; the outcome
-    /// is one local transaction that settles the message and its envelope together, so a worker that dies between
-    /// them cannot leave a delivered message whose envelope still holds a usable token (IA-REQ-018).
-    /// </summary>
-    private async Task<bool> DeliverAsync(Guid id, DateTimeOffset now, CancellationToken cancellationToken)
+    private IQueryable<OutboxMessage> Owned(Claim claim) =>
+        context.OutboxMessages.Where(message => message.Id == claim.Id &&
+            message.Status == OutboxMessageStatus.Pending && message.LeaseOwner == claim.Owner && message.Generation == claim.Generation);
+
+    private async Task<bool> DeliverAsync(Claim claim, CancellationToken cancellationToken)
     {
-        var message = await context.OutboxMessages.FirstOrDefaultAsync(candidate => candidate.Id == id, cancellationToken);
-        var secret = await context.OutboxSecrets.FirstOrDefaultAsync(candidate => candidate.OutboxMessageId == id, cancellationToken);
-        if (message is null || secret is null)
+        var message = await Owned(claim).AsNoTracking().SingleOrDefaultAsync(cancellationToken);
+        if (message is null) return false;
+        if (claim.Exhausted) return await FailAsync(claim, message, "attempts_exhausted", true, cancellationToken);
+        var now = timeProvider.GetUtcNow();
+        if (message.FirstAttemptAt is { } firstAttempt && now >= firstAttempt.Add(ReceiptRetention))
+            return await FailAsync(claim, message, "receipt_window_expired", true, cancellationToken);
+
+        var handler = handlers.SingleOrDefault(candidate => candidate.MessageType == message.Type);
+        if (handler is null) return await FailAsync(claim, message, "handler_missing", false, cancellationToken);
+        var secret = await context.OutboxSecrets.AsNoTracking().SingleOrDefaultAsync(item => item.OutboxMessageId == claim.Id, cancellationToken);
+        string? token = null;
+        if (handler.RequiresSecret)
         {
-            return false;
+            if (secret is null) return await FailAsync(claim, message, "secret_missing", false, cancellationToken);
+            if (secret.Status != OutboxSecretStatus.Pending || secret.ExpiresAt <= now)
+                return await FailAsync(claim, message, "envelope_expired", true, cancellationToken);
+            token = await secrets.ReadAsync(claim.Id, cancellationToken);
+            if (token is null) return await FailAsync(claim, message, "envelope_unreadable", false, cancellationToken);
         }
 
-        // The claim was a raw statement, so a copy this context was already tracking still shows the row as it
-        // was before the lease. Releasing the lease on that copy writes nothing — EF sees no change — and the row
-        // would settle as terminal while still holding a lease, which the table's own constraint refuses.
-        await context.Entry(message).ReloadAsync(cancellationToken);
+        IdentityEmail? email;
+        try { email = await handler.PrepareAsync(message.Payload, token, cancellationToken); }
+        catch (Exception exception) when (exception is System.Text.Json.JsonException or ArgumentException or InvalidOperationException)
+        { return await FailAsync(claim, message, "payload_invalid", true, cancellationToken); }
+        if (email is null) return await FailAsync(claim, message, "recipient_missing", true, cancellationToken);
+        var fingerprint = sender.GetRequestFingerprint(email.Recipient, email.Subject, email.Body);
+        if (message.RequestFingerprint is { } previous && previous != fingerprint)
+            return await FailAsync(claim, message, "request_changed", true, cancellationToken);
 
-        if (secret.Status != OutboxSecretStatus.Pending || secret.ExpiresAt <= now)
-        {
-            // The window closed before anyone delivered it. The message stops being work and the envelope is
-            // terminalized, which is what clears the ciphertext without ever decrypting it.
-            message.Abandon("envelope_expired", now);
-            if (secret.Status == OutboxSecretStatus.Pending) secret.Terminate(OutboxSecretStatus.Expired, "envelope_expired", now);
-            await context.SaveChangesAsync(cancellationToken);
-            return false;
-        }
-
-        var handler = handlers.FirstOrDefault(candidate => string.Equals(candidate.MessageType, message.Type, StringComparison.Ordinal));
-        if (handler is null)
-        {
-            message.Fail("handler_missing", now);
-            await context.SaveChangesAsync(cancellationToken);
-            return false;
-        }
-
-        var token = await secrets.ReadAsync(id, cancellationToken);
-        if (token is null)
-        {
-            message.Fail("envelope_unreadable", now);
-            await context.SaveChangesAsync(cancellationToken);
-            return false;
-        }
+        now = timeProvider.GetUtcNow();
+        if (message.FirstAttemptAt is { } started && now.AddSeconds(20) >= started.Add(ReceiptRetention))
+            return await FailAsync(claim, message, "receipt_window_expired", true, cancellationToken);
+        // Renew only the original live claim. Checking the secret here closes expiry while rendering.
+        var ready = Owned(claim).Where(item => item.LeaseExpiresAt > now);
+        if (handler.RequiresSecret)
+            ready = ready.Where(_ => context.OutboxSecrets.Any(item => item.OutboxMessageId == claim.Id && item.Status == OutboxSecretStatus.Pending && item.ExpiresAt > now));
+        var renewed = await ready.ExecuteUpdateAsync(setters => setters
+            .SetProperty(item => item.RequestFingerprint, fingerprint)
+            .SetProperty(item => item.LeaseExpiresAt, now.Add(LeaseDuration)), cancellationToken);
+        if (renewed == 0) return false;
 
         EmailDeliveryReceipt receipt;
+        try { receipt = await sender.SendAsync(email.Recipient, email.Subject, email.Body, claim.Id.ToString(), cancellationToken); }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception) { return await FailAsync(claim, message, "provider_error", false, cancellationToken); }
+        if (!receipt.Delivered)
+            return await FailAsync(claim, message, receipt.IsPermanentFailure ? "provider_rejected" : "provider_unavailable", receipt.IsPermanentFailure, cancellationToken);
+        if (string.IsNullOrWhiteSpace(receipt.ProviderReceipt))
+            return await FailAsync(claim, message, "provider_receipt_missing", false, cancellationToken);
+        return await SettleAsync(claim, OutboxMessageStatus.Delivered, null, null, receipt.ProviderReceipt, cancellationToken);
+    }
+
+    private Task<bool> FailAsync(Claim claim, OutboxMessage message, string code, bool permanent, CancellationToken cancellationToken)
+    {
+        var abandoned = permanent || message.AttemptCount >= MaxAttempts;
+        var retry = timeProvider.GetUtcNow().AddSeconds(Math.Min(30 * Math.Pow(2, message.AttemptCount - 1), 1800));
+        return SettleAsync(claim, abandoned ? OutboxMessageStatus.Abandoned : OutboxMessageStatus.Pending, code, retry, null, cancellationToken);
+    }
+
+    private Task<bool> SettleAsync(Claim claim, OutboxMessageStatus status, string? code, DateTimeOffset? nextAttempt, string? receipt, CancellationToken cancellationToken) =>
+        context.Database.CreateExecutionStrategy().ExecuteAsync(() => SettleLocalAsync(claim, status, code, nextAttempt, receipt, cancellationToken));
+
+    private async Task<bool> SettleLocalAsync(Claim claim, OutboxMessageStatus status, string? code, DateTimeOffset? nextAttempt, string? receipt, CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
+        var changed = await Owned(claim).ExecuteUpdateAsync(setters => setters
+            .SetProperty(item => item.Status, status)
+            .SetProperty(item => item.FailureCode, code)
+            .SetProperty(item => item.DeliveredAt, status == OutboxMessageStatus.Delivered ? now : (DateTimeOffset?)null)
+            .SetProperty(item => item.NextAttemptAt, item => nextAttempt ?? item.NextAttemptAt)
+            .SetProperty(item => item.LeaseOwner, (string?)null)
+            .SetProperty(item => item.LeaseExpiresAt, (DateTimeOffset?)null), cancellationToken);
+        if (changed == 0) return false; // A stale worker changes neither the new claim nor its envelope.
+        var secret = await context.OutboxSecrets.FromSqlInterpolated(
+            $"""SELECT * FROM outbox_secrets WHERE "OutboxMessageId" = {claim.Id} FOR UPDATE""")
+            .SingleOrDefaultAsync(cancellationToken);
+        if (secret is not null)
+        {
+            await context.Entry(secret).ReloadAsync(cancellationToken);
+            if (secret.Status == OutboxSecretStatus.Pending)
+            {
+                if (status == OutboxMessageStatus.Delivered) secret.MarkDelivered("delivered", now, receipt!);
+                if (status == OutboxMessageStatus.Abandoned)
+                    secret.Terminate(code == "envelope_expired" ? OutboxSecretStatus.Expired : OutboxSecretStatus.Failed, code!, now);
+            }
+        }
         try
         {
-            receipt = await handler.HandleAsync(id, message.Payload, token, cancellationToken);
-        }
-        catch (Exception exception) when (exception is not OperationCanceledException)
-        {
-            // Whatever the provider said stays out of the column. Its text is the most likely place for a token,
-            // an address or a stack trace to end up persisted (IA-REQ-029).
-            message.Fail("provider_error", now);
             await context.SaveChangesAsync(cancellationToken);
-            return false;
+            await transaction.CommitAsync(cancellationToken);
+            return status == OutboxMessageStatus.Delivered;
         }
-
-        if (receipt.Delivered)
-        {
-            message.MarkDelivered(now);
-            secret.MarkDelivered("delivered", now, receipt.ProviderReceipt ?? string.Empty);
-            await context.SaveChangesAsync(cancellationToken);
-            return true;
-        }
-
-        if (receipt.IsPermanentFailure)
-        {
-            message.Abandon("provider_rejected", now);
-            secret.Terminate(OutboxSecretStatus.Failed, "provider_rejected", now);
-            await context.SaveChangesAsync(cancellationToken);
-            return false;
-        }
-
-        message.Fail("provider_unavailable", now);
-        if (message.Status == OutboxMessageStatus.Abandoned)
-        {
-            // The attempt budget ran out on this pass, so the envelope goes terminal with the message.
-            secret.Terminate(OutboxSecretStatus.Failed, "attempts_exhausted", now);
-        }
-
-        await context.SaveChangesAsync(cancellationToken);
-        return false;
+        finally { if (secret is not null) context.Entry(secret).State = EntityState.Detached; }
     }
+
+    private sealed record Claim(Guid Id, string Owner, int Generation, bool Exhausted);
 }
 
-/// <summary>
-/// A handler answers for one message type, so dispatch is a lookup rather than a chain of string comparisons
-/// copied into every call site.
-/// </summary>
 public interface IOutboxDeliveryHandler
 {
     string MessageType { get; }
-
-    Task<EmailDeliveryReceipt> HandleAsync(Guid outboxMessageId, string payload, string token, CancellationToken cancellationToken);
+    bool RequiresSecret => true;
+    Task<IdentityEmail?> PrepareAsync(string payload, string? token, CancellationToken cancellationToken);
 }

@@ -9,8 +9,8 @@ internal sealed class DatabaseMigrationHostedService(IServiceScopeFactory scopeF
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         using var scope = scopeFactory.CreateScope();
-        var server = scope.ServiceProvider.GetRequiredService<IServer>();
-        if (!DatabaseMigrationExecutionPolicy.ShouldMigrate(server.GetType().FullName))
+        var server = scope.ServiceProvider.GetService<IServer>();
+        if (!DatabaseMigrationExecutionPolicy.ShouldMigrate(server?.GetType().FullName))
         {
             return;
         }

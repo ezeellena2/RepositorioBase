@@ -49,6 +49,7 @@ public sealed class ConfirmEmailCommandHandler(IApplicationTransaction transacti
                 if (!TryReadIdentityEnvelope(message.Payload, out var identityOnly)) return Result.Failure(IdentityAccessErrors.InvalidConfirmation());
                 await identities.ActivateAsync(identityOnly.IdentityId, ct);
                 secret.Consume("confirmation_consumed", now);
+                context.AuditEvents.Add(AuditEvent.CreateIdentityConfirmed(identityOnly.IdentityId, null, $"confirmation-{secret.Id:N}", now));
                 await context.SaveChangesAsync(ct);
                 return Result.Success();
             }

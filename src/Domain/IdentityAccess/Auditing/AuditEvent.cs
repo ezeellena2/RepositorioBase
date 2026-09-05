@@ -99,6 +99,26 @@ public sealed class AuditEvent : BaseEntity<Guid>
         };
     }
 
+    public static AuditEvent CreateIdentityConfirmed(Guid identityId, TenantId? tenantId, string correlationId, DateTimeOffset occurredAt)
+    {
+        if (identityId == Guid.Empty || tenantId is { IsEmpty: true } || string.IsNullOrWhiteSpace(correlationId))
+            throw new ArgumentException("Identity confirmation audit evidence is invalid.");
+        return new AuditEvent
+        {
+            Id = Guid.NewGuid(),
+            ActorId = identityId,
+            TenantId = tenantId,
+            OccurredAt = occurredAt,
+            EventType = "identity.confirmed",
+            CorrelationId = correlationId,
+            Metadata = new ReadOnlyDictionary<string, string>(new Dictionary<string, string>
+            {
+                ["code"] = "identity.confirmed",
+                ["outcome"] = "activated"
+            })
+        };
+    }
+
     public static AuditEvent CreateMembershipChanged(TenantId tenantId, Guid? actorId, string correlationId, string outcome = "changed") =>
         Create(tenantId, actorId, "membership.changed", correlationId, new Dictionary<string, string>(StringComparer.Ordinal)
         {

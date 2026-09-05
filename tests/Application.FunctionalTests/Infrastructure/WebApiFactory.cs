@@ -31,6 +31,7 @@ public class WebApiFactory(
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseSetting("ConnectionStrings:CleanArchitectureDb", connectionString);
+        builder.UseSetting("IdentityAccess:Email:PublicOrigin", "https://app.example.test");
         if (!string.IsNullOrWhiteSpace(environmentName))
         {
             builder.UseEnvironment(environmentName);

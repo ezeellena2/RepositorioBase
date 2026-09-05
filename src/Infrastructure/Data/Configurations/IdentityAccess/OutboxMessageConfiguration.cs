@@ -16,11 +16,13 @@ public sealed class OutboxMessageConfiguration : IEntityTypeConfiguration<Outbox
         builder.Property(x => x.AttemptCount).IsRequired();
         builder.Property(x => x.NextAttemptAt).IsRequired();
         builder.Property(x => x.CreatedAt).IsRequired();
+        builder.Property(x => x.FirstAttemptAt);
+        builder.Property(x => x.RequestFingerprint).HasMaxLength(64);
         builder.Property(x => x.Status).HasConversion<string>().HasMaxLength(32).IsRequired();
         builder.Property(x => x.LeaseOwner).HasMaxLength(128);
         builder.Property(x => x.LeaseExpiresAt);
         builder.Property(x => x.DeliveredAt);
-        builder.Property(x => x.Generation).IsRequired();
+        builder.Property(x => x.Generation).IsRequired().IsConcurrencyToken();
 
         // A terminal message carries the evidence of how it ended and never a lease; a pending one is the only
         // kind a dispatcher may hold. Stating it here means a bad UPDATE is rejected by the database rather than

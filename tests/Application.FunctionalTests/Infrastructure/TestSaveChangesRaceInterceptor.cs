@@ -23,10 +23,8 @@ public sealed class TestSaveChangesRaceInterceptor : SaveChangesInterceptor
             throw new InvalidOperationException("registration rollback after identity persistence");
         }
 
-        if (eventData.Context?.ChangeTracker.Entries<CleanArchitecture.Domain.IdentityAccess.Tenants.Tenant>()
-            .Any(entry => entry.State == EntityState.Modified) == true &&
-            eventData.Context.ChangeTracker.Entries<CleanArchitecture.Domain.IdentityAccess.Outbox.OutboxSecret>()
-                .Any(entry => entry.State == EntityState.Modified) &&
+        if (eventData.Context?.ChangeTracker.Entries<CleanArchitecture.Domain.IdentityAccess.Outbox.OutboxSecret>()
+                .Any(entry => entry.State == EntityState.Modified && entry.Entity.Status == CleanArchitecture.Domain.IdentityAccess.Outbox.OutboxSecretStatus.Consumed) == true &&
             TestApp.ConsumeForcedConfirmationRollbackAfterPersistedEffects())
         {
             throw new InvalidOperationException("confirmation rollback after identity activation");

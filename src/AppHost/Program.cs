@@ -1,4 +1,5 @@
 using CleanArchitecture.Shared;
+using Microsoft.Extensions.Configuration;
 
 var builder = DistributedApplication.CreateBuilder(args);
 
@@ -24,9 +25,12 @@ var web = builder.AddProject<Projects.Web>(Services.WebApi)
 
 // The dispatcher runs here rather than inside the web application. Registered there it would also poll from
 // inside every functional test that boots the application, racing the rows those tests assert on.
-builder.AddProject<Projects.OutboxWorker>(Services.OutboxWorker)
-    .WithReference(databaseServer)
-    .WaitFor(databaseServer);
+if (!builder.ExecutionContext.IsRunMode || builder.Configuration.GetValue<bool>("IdentityAccess:Email:Enabled"))
+{
+    builder.AddProject<Projects.OutboxWorker>(Services.OutboxWorker)
+        .WithReference(databaseServer)
+        .WaitFor(databaseServer);
+}
 
 #if (!UseApiOnly)
 if (builder.ExecutionContext.IsRunMode)

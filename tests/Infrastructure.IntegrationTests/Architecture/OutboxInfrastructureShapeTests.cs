@@ -31,6 +31,11 @@ public sealed class OutboxInfrastructureShapeTests
     [TestCase("CleanArchitecture.Infrastructure.Outbox.InvitationEmailDeliveryHandler")]
     [TestCase("CleanArchitecture.Infrastructure.Outbox.EmailConfirmationDeliveryHandler")]
     [TestCase("CleanArchitecture.Infrastructure.Email.IdentityEmailAdapter")]
+    [TestCase("CleanArchitecture.Infrastructure.Outbox.InvitedConfirmationDeliveryHandler")]
+    [TestCase("CleanArchitecture.Infrastructure.Outbox.SignInNoticeDeliveryHandler")]
+    [TestCase("CleanArchitecture.Infrastructure.Outbox.IdentityEmail")]
+    [TestCase("CleanArchitecture.Infrastructure.Outbox.WorkerRegistration")]
+    [TestCase("CleanArchitecture.Infrastructure.IdentityAccess.IdentityDataProtectionConfiguration")]
     public void RequiredInfrastructureTypeExists(string fullyQualifiedName)
     {
         InfrastructureAssembly.GetType(fullyQualifiedName).ShouldNotBeNull();
@@ -104,7 +109,7 @@ public sealed class OutboxInfrastructureShapeTests
 
         handler.ShouldNotBeNull();
         handler!.GetProperty("MessageType").ShouldNotBeNull();
-        handler.GetMethod("HandleAsync").ShouldNotBeNull();
+        handler.GetMethod("PrepareAsync").ShouldNotBeNull();
     }
 
     /// <summary>
@@ -125,6 +130,8 @@ public sealed class OutboxInfrastructureShapeTests
     [TestCase("LeaseExpiresAt")]
     [TestCase("LeaseOwner")]
     [TestCase("DeliveredAt")]
+    [TestCase("FirstAttemptAt")]
+    [TestCase("RequestFingerprint")]
     public void OutboxMessageExposesItsDispatchState(string memberName)
     {
         typeof(OutboxMessage).GetProperty(memberName).ShouldNotBeNull();

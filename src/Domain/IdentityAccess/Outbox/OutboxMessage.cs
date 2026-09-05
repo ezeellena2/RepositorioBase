@@ -12,6 +12,8 @@ public sealed class OutboxMessage : BaseEntity<Guid>
     public DateTimeOffset NextAttemptAt { get; private set; }
     public string? FailureCode { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
+    public DateTimeOffset? FirstAttemptAt { get; private set; }
+    public string? RequestFingerprint { get; private set; }
 
     public OutboxMessageStatus Status { get; private set; }
 

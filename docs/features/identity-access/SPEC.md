@@ -344,14 +344,14 @@ Scenario: Platform directories are bounded operational projections
   And no `/api/identity/*` contract, private profile field, credential, token, CUIT, or audit payload is exposed
 ```
 
-## 11. Open decisions that do not block the first plan
+## 11. Deployment decisions and remaining open decisions
 
-- Production email provider and its managed identity.
-- Key-wrapping provider for `OutboxSecret` outside Development/Test.
+- Production email delivery uses Resend's REST API with an externally supplied domain-scoped Sending access API key. The maintainer delegated this implementation choice for the Task 10/11 corrections. No account, paid subscription, DNS change, or real send is part of local implementation. Identical message-ID replay is bounded by the provider's 24-hour retention; the worker fails closed after that window or on payload/credential drift. A credential-derived hash participates only in the combined request fingerprint; no API key is persisted with the message.
+- `OutboxSecret` key wrapping outside explicit `Development`, `Test`, and `Testing` environments uses an externally configured X.509 certificate and a shared durable ASP.NET Core Data Protection key repository. This includes Production, Staging, and custom deployment environments. Web and worker use the exact same application discriminator; existing deployments preserve their previous discriminator and key material. Configuration and activation prerequisites are documented in [EMAIL-SETUP.md](EMAIL-SETUP.md).
 - Legal PII policy before enabling `Personal` tenants and real DNI values.
 - Redis or another distributed cache; the first version may resolve permissions from PostgreSQL and add caching only after measurement.
 
-These decisions must be resolved before the slice that consumes them. They do not authorize insecure fallbacks.
+The remaining open decisions must be resolved before the slice that consumes them. Deployment prerequisites and provider activation remain operator-owned and do not authorize insecure fallbacks.
 
 ## 12. SDD as the repository's standard practice
 

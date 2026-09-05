@@ -789,6 +789,8 @@ IA-REQ-047 was added to the SPEC during this task and approved by the maintainer
 
 Task 10 leaves the transactional message, the encrypted envelope and the invalidation of anything it supersedes. It does not dispatch: the worker, leases, CAS and backoff, decryption, rendering, sending, the email adapter and the test sink are Task 11, so IA-008 is not complete.
 
+**Task 10 correction evidence (2026-09-04).** Invited-user confirmation now records a named, tenantless `identity.confirmed` audit in the same transaction as activation and confirmation consumption. `Invited_confirmation_is_audited_once_without_a_tenant_and_rollback_is_atomic` verifies rollback, successful retry, one audit, and replay without another audit. `Real_invitation_registration_messages_have_registered_delivery_handlers` exercises both actual registration branches through registered handlers and the dispatcher into an isolated sink, verifies settlement/replay, and rejects invitation/token content in a generic notice. The focused functional run passed **3/3**; evidence is `artifacts/current-fix/producer-dispatch-green.trx`. No membership gate or endpoint was added.
+
 ## Task 11: Dispatch outbox messages with deterministic backoff
 
 **Requirements:** IA-REQ-018, IA-REQ-027..029  
@@ -840,6 +842,14 @@ git commit -m "feat: deliver identity outbox reliably"
 ```
 
 Expected: PASS.
+
+**Task 11 correction evidence (2026-09-04).** The generic worker shares complete application/infrastructure registration, including a null background actor and optional HTTP-server migration detection. Resend now performs bounded REST sends with absolute configured links and exact message-ID keys. Additive `OutboxDeliverySafety` persists first-attempt time and request fingerprints; claims increment the attempt budget before network access and lease one message at a time. Conditional owner/generation settlement updates message and secret in one local transaction. Every terminal failure clears pending ciphertext and preserves evidence. Replays stop before Resend's 24-hour retention boundary and changed requests stop without reusing the key for new content.
+
+`dotnet test tests/Infrastructure.IntegrationTests/Infrastructure.IntegrationTests.csproj --filter "OutboxInfrastructureShapeTests|OutboxDeliveryTests|EmailConfigurationTests|Outbox_safety_upgrade"` passed **76/76**, including actual generic-host startup/seeded delivery, independent certificate-wrapped key providers, wrapping requirements outside explicit Development/Test/Testing environments, stale-worker settlement, delayed expiry, thrown-provider/unreadable/missing-handler exhaustion, required missing secrets, crashed attempts, prior-schema preservation, and real-adapter idempotency after acknowledged send/local rollback. Credential drift rejects an uncertain retry without a second HTTP send. The functional run above proves both actual registration purposes. Separate replay evidence passed **2/2** in `artifacts/current-fix/acknowledged-reconciliation.trx`; final focused evidence is `artifacts/current-fix/outbox-final-focused.trx`.
+
+Independent final regression passed **734 applicable tests** (Domain 139, Application unit 83, Infrastructure 220, Functional 286, Acceptance 6), with no failures or skips. Release built with **0 errors** and two existing ASPIRE010 warnings; EF reported no pending model changes. Results and disclosed intermediate corrections are recorded in `artifacts/current-fix/implementation-evidence.md` and `artifacts/current-fix/independent-verification/`. These are local implementation checks, not formal approval or external email activation.
+
+Resend account/domain/key activation and shared Production key/certificate provisioning remain operator prerequisites, documented in [EMAIL-SETUP.md](../../features/identity-access/EMAIL-SETUP.md). Default local delivery is explicitly disabled. The checks used isolated sinks/HTTP and PostgreSQL, with no real email or external provider mutation. Detailed RED/GREEN and final regression evidence is recorded in `artifacts/current-fix/implementation-evidence.md`; this correction record does not claim a commit or formal review approval.
 
 ## Task 12: Make every React identity journey reachable
 

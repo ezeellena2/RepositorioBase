@@ -25,6 +25,8 @@ public static class DependencyInjection
 {
     public static void AddInfrastructureServices(this IHostApplicationBuilder builder)
     {
+        builder.Services.AddSingleton<IHostedService>(provider => new EmailReadiness(provider, builder.Environment));
+        builder.AddIdentityDataProtection();
         var connectionString = builder.Configuration.GetConnectionString(Services.Database);
         Guard.Against.Null(connectionString, message: $"Connection string '{Services.Database}' not found.");
 
@@ -112,20 +114,43 @@ public static class DependencyInjection
         builder.Services.AddScoped<IOutboxSecretReader, OutboxSecretReader>();
         builder.Services.AddScoped<IOutboxDeliveryHandler, InvitationEmailDeliveryHandler>();
         builder.Services.AddScoped<IOutboxDeliveryHandler, EmailConfirmationDeliveryHandler>();
+        builder.Services.AddScoped<IOutboxDeliveryHandler, InvitedConfirmationDeliveryHandler>();
+        builder.Services.AddScoped<IOutboxDeliveryHandler, SignInNoticeDeliveryHandler>();
         builder.Services.AddScoped<OutboxDispatcher>();
         builder.Services.AddOptions<IdentityEmailOptions>().BindConfiguration(IdentityEmailOptions.SectionName);
-        builder.Services.AddScoped<IIdentityEmailSender, IdentityEmailAdapter>();
+        builder.Services.AddKeyedSingleton<HttpClient>("identity-email", (_, _) => new HttpClient(new SocketsHttpHandler
+        {
+            AllowAutoRedirect = false,
+            ConnectTimeout = TimeSpan.FromSeconds(5),
+            ActivityHeadersPropagator = null
+        }) { Timeout = TimeSpan.FromSeconds(20) });
+        builder.Services.AddScoped<IIdentityEmailSender>(provider => new IdentityEmailAdapter(
+            provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<IdentityEmailOptions>>(),
+            provider.GetRequiredKeyedService<HttpClient>("identity-email")));
         builder.Services.AddSingleton<ISecureTokenGenerator, SecureTokenGenerator>();
         builder.Services.AddSingleton<ITokenHasher, VersionedTokenHasher>();
         builder.Services.AddSingleton<IOutboxSecretWriter, OutboxSecretWriter>();
         builder.Services.AddScoped<IValidatedOptionalSession, ValidatedOptionalSession>();
         builder.Services.AddScoped<ICurrentSession, CurrentSession>();
         builder.Services.AddScoped<SessionCookieEvents>();
-        builder.Services.AddDataProtection();
         builder.Services.AddScoped<IPermissionEvaluator, PermissionEvaluator>();
         builder.Services.AddScoped<IEffectivePermissionReader, EffectivePermissionReader>();
         builder.Services.AddScoped<ICurrentTenant, CurrentTenant>();
         builder.Services.AddScoped<ISecurityDenialAuditWriter, SecurityDenialAuditWriter>();
+    }
+
+    private sealed class EmailReadiness(IServiceProvider services, IHostEnvironment environment) : IHostedService
+    {
+        public Task StartAsync(CancellationToken cancellationToken)
+        {
+            if (DatabaseMigrationExecutionPolicy.IsOpenApiDocumentGeneration(services.GetService<Microsoft.AspNetCore.Hosting.Server.IServer>()?.GetType().FullName))
+                return Task.CompletedTask;
+            var email = services.GetRequiredService<Microsoft.Extensions.Options.IOptions<IdentityEmailOptions>>().Value;
+            if ((environment.IsProduction() && !email.Enabled) || ((environment.IsProduction() || email.Enabled) && !email.IsValid()))
+                throw new InvalidOperationException("Identity email delivery is not configured.");
+            return Task.CompletedTask;
+        }
+        public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
     /// <summary>

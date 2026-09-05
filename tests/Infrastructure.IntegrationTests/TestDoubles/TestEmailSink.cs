@@ -17,11 +17,14 @@ public sealed class TestEmailSink : IIdentityEmailSender
 
     /// <summary>Thrown instead of answering, to model a provider that fails without a receipt at all.</summary>
     public Exception? Throw { get; set; }
+    public Func<Task>? BeforeSend { get; set; }
+    public int AcceptedCount => _receiptsByKey.Count;
 
     public IReadOnlyList<SentEmail> Sent => _sent.ToArray();
 
-    public Task<EmailDeliveryReceipt> SendAsync(string recipient, string subject, string body, string idempotencyKey, CancellationToken cancellationToken)
+    public async Task<EmailDeliveryReceipt> SendAsync(string recipient, string subject, string body, string idempotencyKey, CancellationToken cancellationToken)
     {
+        if (BeforeSend is { } before) await before();
         if (Throw is { } failure)
         {
             throw failure;
@@ -30,13 +33,13 @@ public sealed class TestEmailSink : IIdentityEmailSender
         _sent.Enqueue(new SentEmail(recipient, subject, body, idempotencyKey));
         if (Respond is { } respond)
         {
-            return Task.FromResult(respond(idempotencyKey));
+            return respond(idempotencyKey);
         }
 
         // A provider that has already accepted this key answers with the same receipt, which is what makes a
         // retry after an acknowledged send reconcilable instead of a second delivery.
         var receipt = _receiptsByKey.GetOrAdd(idempotencyKey, key => $"receipt-{key}");
-        return Task.FromResult(new EmailDeliveryReceipt(true, receipt, false));
+        return new EmailDeliveryReceipt(true, receipt, false);
     }
 
     public sealed record SentEmail(string Recipient, string Subject, string Body, string IdempotencyKey);

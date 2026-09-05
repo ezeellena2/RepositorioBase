@@ -33,12 +33,12 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, TimeProvider timeP
             {
                 return;
             }
-            catch (Exception exception)
+            catch (Exception)
             {
                 // A failed pass must not end the worker: the messages it did not reach are still due, and their
                 // own attempt counters already govern how often anything is retried. The message identifiers are
                 // deliberately absent here — this log line says the loop stumbled, not what it was carrying.
-                logger.LogError(exception, "An outbox dispatch pass failed.");
+                logger.LogError("An outbox dispatch pass failed (outbox_pass_failed).");
             }
 
             if (delivered == 0)

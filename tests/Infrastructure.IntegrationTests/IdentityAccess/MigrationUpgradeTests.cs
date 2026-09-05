@@ -24,6 +24,39 @@ public sealed class MigrationUpgradeTests
     private const string CanonicalFormPredecessor = "20260903170351_Invitations";
 
     [Test]
+    public async Task Outbox_safety_upgrade_preserves_history_and_bounds_preexisting_attempts_conservatively()
+    {
+        var databaseName = $"outbox_safety_upgrade_{Guid.NewGuid():N}";
+        string? connectionString = null;
+        try
+        {
+            using var scope = TestServices.CreateScope();
+            var source = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>().Database.GetConnectionString()!;
+            connectionString = new NpgsqlConnectionStringBuilder(source) { Database = databaseName }.ConnectionString;
+            await CreateDatabase(databaseName, source);
+            var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseNpgsql(connectionString).Options;
+            await using var context = new ApplicationDbContext(options);
+            await context.Database.GetService<IMigrator>().MigrateAsync("20260904210617_OutboxDispatchState");
+            var messageId = Guid.NewGuid();
+            var created = new DateTimeOffset(2026, 9, 1, 0, 0, 0, TimeSpan.Zero);
+            await context.Database.ExecuteSqlInterpolatedAsync($$"""
+                INSERT INTO outbox_messages ("Id", "Type", "Payload", "AttemptCount", "NextAttemptAt", "CreatedAt", "Status", "Generation", "FailureCode")
+                VALUES ({{messageId}}, 'identity.invitation.requested', '{}', 3, {{created}}, {{created}}, 'Pending', 3, 'provider_error');
+                """);
+            await context.Database.GetService<IMigrator>().MigrateAsync();
+            var preserved = await context.OutboxMessages.SingleAsync(item => item.Id == messageId);
+            preserved.CreatedAt.ShouldBe(created);
+            preserved.FirstAttemptAt.ShouldBe(created, "an older ambiguous attempt cannot acquire a fresh 24-hour window on upgrade");
+            preserved.AttemptCount.ShouldBe(3);
+            preserved.Generation.ShouldBe(3);
+            preserved.FailureCode.ShouldBe("provider_error");
+            preserved.RequestFingerprint.ShouldBeNull();
+            (await context.Database.GetPendingMigrationsAsync()).ShouldBeEmpty();
+        }
+        finally { if (connectionString is not null) await DropDatabase(databaseName, connectionString); }
+    }
+
+    [Test]
     public async Task TenantAuthorization_empty_database_upgrades_to_latest_without_pending_migrations()
     {
         var databaseName = $"tenant_authorization_empty_{Guid.NewGuid():N}";

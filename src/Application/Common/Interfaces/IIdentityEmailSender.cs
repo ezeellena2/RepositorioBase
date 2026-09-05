@@ -13,5 +13,11 @@ public sealed record EmailDeliveryReceipt(bool Delivered, string? ProviderReceip
 /// </summary>
 public interface IIdentityEmailSender
 {
+    void ValidateConfiguration() { }
+
+    string GetRequestFingerprint(string recipient, string subject, string body) =>
+        Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(
+            System.Text.Json.JsonSerializer.Serialize(new { recipient, subject, body }))));
+
     Task<EmailDeliveryReceipt> SendAsync(string recipient, string subject, string body, string idempotencyKey, CancellationToken cancellationToken);
 }

@@ -23,6 +23,17 @@ namespace CleanArchitecture.Infrastructure.IntegrationTests.IdentityAccess;
 public sealed class OutboxDeliveryTests
 {
     private static readonly DateTimeOffset Origin = new(2026, 9, 4, 12, 0, 0, TimeSpan.Zero);
+    private readonly List<Guid> _messageIds = [];
+
+    [TearDown]
+    public async Task Remove_only_this_tests_messages()
+    {
+        using var scope = TestServices.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        await context.OutboxSecrets.Where(secret => _messageIds.Contains(secret.OutboxMessageId)).ExecuteDeleteAsync();
+        await context.OutboxMessages.Where(message => _messageIds.Contains(message.Id)).ExecuteDeleteAsync();
+        _messageIds.Clear();
+    }
 
     /// <summary>A message due later is not work yet; claiming it early would deliver a retry before its backoff.</summary>
     [Test]
@@ -219,7 +230,7 @@ public sealed class OutboxDeliveryTests
         await DispatcherFor(scope, clock, sink).DispatchDueAsync(CancellationToken.None);
 
         // The recipient needs the token; that is the whole point of delivering it.
-        sink.Sent.Single().Body.ShouldContain(KnownToken);
+        Uri.UnescapeDataString(sink.Sent.Single().Body).ShouldContain(KnownToken);
         var delivered = await ReloadAsync(scope, message.Id);
         delivered.Payload.ShouldNotContain(KnownToken);
         (delivered.FailureCode ?? string.Empty).ShouldNotContain(KnownToken);
@@ -252,7 +263,254 @@ public sealed class OutboxDeliveryTests
         (await ReloadAsync(first, message.Id)).Status.ShouldBe(OutboxMessageStatus.Delivered);
     }
 
+    [TestCase("provider_error")]
+    [TestCase("handler_missing")]
+    [TestCase("envelope_unreadable")]
+    public async Task Every_exhausted_failure_clears_the_secret(string failure)
+    {
+        using var scope = TestServices.CreateScope();
+        var clock = new ControlledTimeProvider(Origin);
+        var sink = new TestEmailSink();
+        if (failure == "provider_error") sink.Throw = new InvalidOperationException("private-provider-text");
+        var message = await SeedAsync(scope, failure == "handler_missing" ? "unhandled" : InvitationType, Origin);
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        if (failure == "envelope_unreadable")
+            await context.OutboxSecrets.Where(secret => secret.OutboxMessageId == message.Id).ExecuteUpdateAsync(setters => setters.SetProperty(secret => secret.Ciphertext, "unreadable"));
+        for (var attempt = 0; attempt < 8; attempt++)
+        {
+            await DispatcherFor(scope, clock, sink).DispatchDueAsync(CancellationToken.None);
+            clock.Advance(TimeSpan.FromHours(1));
+        }
+        var abandoned = await ReloadAsync(scope, message.Id);
+        abandoned.Status.ShouldBe(OutboxMessageStatus.Abandoned);
+        abandoned.AttemptCount.ShouldBe(8);
+        abandoned.LeaseOwner.ShouldBeNull();
+        var terminal = await SecretOfAsync(scope, message.Id);
+        terminal.Status.ShouldBe(OutboxSecretStatus.Failed);
+        terminal.Ciphertext.ShouldBeNull();
+        terminal.CompletedAt.ShouldNotBeNull();
+    }
+
     private const string InvitationType = "identity.invitation.requested";
+
+    [Test]
+    public async Task Eight_crashed_attempts_cannot_trigger_a_ninth_provider_request()
+    {
+        using var scope = TestServices.CreateScope();
+        var message = await SeedAsync(scope, InvitationType, Origin);
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        await context.OutboxMessages.Where(item => item.Id == message.Id).ExecuteUpdateAsync(setters => setters
+            .SetProperty(item => item.AttemptCount, 8).SetProperty(item => item.Generation, 8)
+            .SetProperty(item => item.FirstAttemptAt, Origin).SetProperty(item => item.LeaseOwner, "crashed-worker")
+            .SetProperty(item => item.LeaseExpiresAt, Origin));
+        var sink = new TestEmailSink();
+        await DispatcherFor(scope, new ControlledTimeProvider(Origin), sink).DispatchDueAsync(CancellationToken.None);
+        sink.Sent.ShouldBeEmpty();
+        var abandoned = await ReloadAsync(scope, message.Id);
+        abandoned.AttemptCount.ShouldBe(8);
+        abandoned.Status.ShouldBe(OutboxMessageStatus.Abandoned);
+        abandoned.FailureCode.ShouldBe("attempts_exhausted");
+        (await SecretOfAsync(scope, message.Id)).Ciphertext.ShouldBeNull();
+    }
+
+    [Test]
+    public async Task Cleanup_preserves_an_already_consumed_secrets_audit_evidence()
+    {
+        using var scope = TestServices.CreateScope();
+        var message = await SeedAsync(scope, InvitationType, Origin);
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var secret = await context.OutboxSecrets.SingleAsync(item => item.OutboxMessageId == message.Id);
+        secret.Consume("confirmation_consumed", Origin);
+        await context.SaveChangesAsync();
+        var sink = new TestEmailSink();
+        await DispatcherFor(scope, new ControlledTimeProvider(Origin.AddMinutes(1)), sink).DispatchDueAsync(CancellationToken.None);
+        var retained = await SecretOfAsync(scope, message.Id);
+        retained.Status.ShouldBe(OutboxSecretStatus.Consumed);
+        retained.TerminalReason.ShouldBe("confirmation_consumed");
+        retained.CompletedAt.ShouldBe(Origin);
+        sink.Sent.ShouldBeEmpty();
+    }
+
+    [Test]
+    public async Task A_required_missing_secret_exhausts_without_fabricating_an_envelope()
+    {
+        using var scope = TestServices.CreateScope();
+        var message = await SeedAsync(scope, InvitationType, Origin);
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        await context.OutboxSecrets.Where(secret => secret.OutboxMessageId == message.Id).ExecuteDeleteAsync();
+        var clock = new ControlledTimeProvider(Origin);
+        var sink = new TestEmailSink();
+        for (var attempt = 0; attempt < 8; attempt++)
+        {
+            await DispatcherFor(scope, clock, sink).DispatchDueAsync(CancellationToken.None);
+            clock.Advance(TimeSpan.FromHours(1));
+        }
+        var abandoned = await ReloadAsync(scope, message.Id);
+        abandoned.Status.ShouldBe(OutboxMessageStatus.Abandoned);
+        abandoned.AttemptCount.ShouldBe(8);
+        abandoned.FailureCode.ShouldBe("secret_missing");
+        abandoned.LeaseOwner.ShouldBeNull();
+        (await context.OutboxSecrets.AnyAsync(secret => secret.OutboxMessageId == message.Id)).ShouldBeFalse();
+        sink.Sent.ShouldBeEmpty();
+    }
+
+    [TestCase(6, true)]
+    [TestCase(1440, false)]
+    public Task Acknowledged_send_then_local_rollback_reconciles_only_within_Resends_retention(int minutes, bool canReconcile) =>
+        AssertAcknowledgedRollbackAsync(minutes, canReconcile, rotateKey: false);
+
+    [Test]
+    public Task Changed_api_key_never_replays_an_uncertain_request() => AssertAcknowledgedRollbackAsync(6, canReconcile: false, rotateKey: true);
+
+    private async Task AssertAcknowledgedRollbackAsync(int minutes, bool canReconcile, bool rotateKey)
+    {
+        using var scope = TestServices.CreateScope();
+        var message = await SeedAsync(scope, InvitationType, Origin, Origin.AddDays(3));
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var protector = scope.ServiceProvider.GetRequiredService<Microsoft.AspNetCore.DataProtection.IDataProtectionProvider>();
+        var clock = new ControlledTimeProvider(Origin);
+        var transport = new IdempotentResendTransport();
+        using var client = new HttpClient(transport);
+        var emailOptions = Microsoft.Extensions.Options.Options.Create(
+            new CleanArchitecture.Infrastructure.Email.IdentityEmailOptions { ApiKey = "isolated-test-key", FromAddress = "sender@example.test", PublicOrigin = "https://app.example.test" });
+        var sender = new CleanArchitecture.Infrastructure.Email.IdentityEmailAdapter(emailOptions, client);
+        var failingOptions = new DbContextOptionsBuilder<ApplicationDbContext>().UseNpgsql(context.Database.GetConnectionString())
+            .AddInterceptors(new RejectDeliveredSecretSave()).Options;
+        await using (var failing = new ApplicationDbContext(failingOptions))
+        {
+            var first = new OutboxDispatcher(failing, new OutboxSecretReader(failing, protector),
+                [new InvitationEmailDeliveryHandler(failing, EmailOptions)], clock, sender);
+            await Should.ThrowAsync<InvalidOperationException>(() => first.DispatchDueAsync(CancellationToken.None));
+        }
+        transport.AcceptedCount.ShouldBe(1);
+        var pending = await ReloadAsync(scope, message.Id);
+        pending.Status.ShouldBe(OutboxMessageStatus.Pending);
+        pending.FirstAttemptAt.ShouldBe(Origin);
+        pending.AttemptCount.ShouldBe(1);
+        pending.RequestFingerprint.ShouldNotBeNullOrWhiteSpace();
+        (await SecretOfAsync(scope, message.Id)).Ciphertext.ShouldNotBeNull();
+
+        clock.Advance(TimeSpan.FromMinutes(minutes));
+        if (rotateKey) emailOptions.Value.ApiKey = "rotated-isolated-test-key";
+        var retry = new OutboxDispatcher(context, new OutboxSecretReader(context, protector),
+            [new InvitationEmailDeliveryHandler(context, EmailOptions)], clock, sender);
+        await retry.DispatchDueAsync(CancellationToken.None);
+        await retry.DispatchDueAsync(CancellationToken.None);
+        transport.AcceptedCount.ShouldBe(1, "the transport accepts one logical message even after a process restart");
+        transport.RequestCount.ShouldBe(canReconcile ? 2 : 1);
+        var settled = await ReloadAsync(scope, message.Id);
+        settled.Status.ShouldBe(canReconcile ? OutboxMessageStatus.Delivered : OutboxMessageStatus.Abandoned);
+        var secret = await SecretOfAsync(scope, message.Id);
+        secret.Ciphertext.ShouldBeNull();
+        if (canReconcile) secret.ProviderReceipt.ShouldBe(transport.Receipt);
+        else settled.FailureCode.ShouldBe(rotateKey ? "request_changed" : "receipt_window_expired");
+    }
+
+    private sealed class RejectDeliveredSecretSave : Microsoft.EntityFrameworkCore.Diagnostics.SaveChangesInterceptor
+    {
+        public override ValueTask<Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<int>> SavingChangesAsync(
+            Microsoft.EntityFrameworkCore.Diagnostics.DbContextEventData eventData,
+            Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            if (eventData.Context!.ChangeTracker.Entries<OutboxSecret>().Any(entry => entry.Entity.Status == OutboxSecretStatus.Delivered))
+                throw new InvalidOperationException("isolated settlement failure");
+            return ValueTask.FromResult(result);
+        }
+    }
+
+    private sealed class IdempotentResendTransport : HttpMessageHandler
+    {
+        private readonly Dictionary<string, string> _accepted = [];
+        public string Receipt { get; } = Guid.NewGuid().ToString();
+        public int AcceptedCount => _accepted.Count;
+        public int RequestCount { get; private set; }
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            RequestCount++;
+            var key = request.Headers.GetValues("Idempotency-Key").Single();
+            var body = await request.Content!.ReadAsStringAsync(cancellationToken);
+            if (_accepted.TryGetValue(key, out var existing)) body.ShouldBe(existing, "receipt reconciliation must repeat the exact payload");
+            else _accepted.Add(key, body);
+            return new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent(JsonSerializer.Serialize(new { id = Receipt })) };
+        }
+    }
+
+    [Test]
+    public async Task A_stale_worker_cannot_settle_a_message_reclaimed_by_another_worker()
+    {
+        using var first = TestServices.CreateScope();
+        using var second = TestServices.CreateScope();
+        var message = await SeedAsync(first, InvitationType, Origin);
+        var clock = new ControlledTimeProvider(Origin);
+        var sink = new TestEmailSink();
+        var reclaimedCount = 0;
+        sink.BeforeSend = async () =>
+        {
+            sink.BeforeSend = null;
+            clock.Advance(TimeSpan.FromMinutes(6));
+            reclaimedCount = await DispatcherFor(second, clock, sink).DispatchDueAsync(CancellationToken.None);
+        };
+        (await DispatcherFor(first, clock, sink).DispatchDueAsync(CancellationToken.None)).ShouldBe(0);
+        reclaimedCount.ShouldBe(1);
+        sink.AcceptedCount.ShouldBe(1);
+        (await ReloadAsync(first, message.Id)).Generation.ShouldBe(2);
+        (await SecretOfAsync(first, message.Id)).Status.ShouldBe(OutboxSecretStatus.Delivered);
+    }
+
+    [Test]
+    public async Task A_slow_earlier_send_does_not_deliver_a_later_expired_envelope()
+    {
+        using var scope = TestServices.CreateScope();
+        await SeedAsync(scope, InvitationType, Origin.AddSeconds(-2));
+        var later = await SeedAsync(scope, InvitationType, Origin.AddSeconds(-1), Origin.AddMinutes(1));
+        var clock = new ControlledTimeProvider(Origin);
+        var sink = new TestEmailSink { BeforeSend = () => { clock.Advance(TimeSpan.FromMinutes(2)); return Task.CompletedTask; } };
+        await DispatcherFor(scope, clock, sink).DispatchDueAsync(CancellationToken.None);
+        sink.Sent.Count.ShouldBe(1);
+        (await SecretOfAsync(scope, later.Id)).Status.ShouldBe(OutboxSecretStatus.Expired);
+    }
+
+    [Test]
+    public async Task A_claim_persists_the_first_attempt_time_before_external_delivery()
+    {
+        using var scope = TestServices.CreateScope();
+        var message = await SeedAsync(scope, InvitationType, Origin);
+        var sink = new TestEmailSink { Respond = _ => new EmailDeliveryReceipt(false, null, false) };
+        await DispatcherFor(scope, new ControlledTimeProvider(Origin), sink).DispatchDueAsync(CancellationToken.None);
+        (await ReloadAsync(scope, message.Id)).FirstAttemptAt.ShouldBe(Origin);
+        (await ReloadAsync(scope, message.Id)).RequestFingerprint.ShouldNotBeNullOrWhiteSpace();
+    }
+
+    [Test]
+    public async Task An_ambiguous_attempt_is_not_sent_again_after_the_provider_retention_window()
+    {
+        using var scope = TestServices.CreateScope();
+        var message = await SeedAsync(scope, InvitationType, Origin, Origin.AddDays(3));
+        var sink = new TestEmailSink { Respond = _ => new EmailDeliveryReceipt(false, null, false) };
+        var clock = new ControlledTimeProvider(Origin);
+        await DispatcherFor(scope, clock, sink).DispatchDueAsync(CancellationToken.None);
+        clock.Advance(TimeSpan.FromHours(24));
+        await DispatcherFor(scope, clock, sink).DispatchDueAsync(CancellationToken.None);
+        sink.Sent.Count.ShouldBe(1);
+        (await ReloadAsync(scope, message.Id)).Status.ShouldBe(OutboxMessageStatus.Abandoned);
+        (await SecretOfAsync(scope, message.Id)).Ciphertext.ShouldBeNull();
+    }
+
+    [Test]
+    public async Task Changed_recipient_is_not_sent_using_an_existing_idempotency_key()
+    {
+        using var scope = TestServices.CreateScope();
+        var message = await SeedAsync(scope, InvitationType, Origin);
+        var sink = new TestEmailSink { Respond = _ => new EmailDeliveryReceipt(false, null, false) };
+        var clock = new ControlledTimeProvider(Origin);
+        await DispatcherFor(scope, clock, sink).DispatchDueAsync(CancellationToken.None);
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        await context.Database.ExecuteSqlRawAsync("UPDATE \"Invitations\" SET \"NormalizedEmail\" = 'changed@example.test' WHERE \"Id\" = {0}", JsonDocument.Parse(message.Payload).RootElement.GetProperty("InvitationId").GetGuid());
+        clock.Advance(TimeSpan.FromMinutes(1));
+        await DispatcherFor(scope, clock, sink).DispatchDueAsync(CancellationToken.None);
+        sink.Sent.Count.ShouldBe(1);
+        (await ReloadAsync(scope, message.Id)).FailureCode.ShouldBe("request_changed");
+    }
     private const string KnownToken = "MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI=";
 
     private static OutboxDispatcher DispatcherFor(IServiceScope scope, TimeProvider clock, TestEmailSink sink)
@@ -261,16 +519,19 @@ public sealed class OutboxDeliveryTests
         return new OutboxDispatcher(
             context,
             new OutboxSecretReader(context, scope.ServiceProvider.GetRequiredService<Microsoft.AspNetCore.DataProtection.IDataProtectionProvider>()),
-            [new InvitationEmailDeliveryHandler(context, sink), new EmailConfirmationDeliveryHandler(context, sink)],
-            clock);
+            [new InvitationEmailDeliveryHandler(context, EmailOptions), new EmailConfirmationDeliveryHandler(context, EmailOptions)],
+            clock, sink);
     }
+
+    private static readonly Microsoft.Extensions.Options.IOptions<CleanArchitecture.Infrastructure.Email.IdentityEmailOptions> EmailOptions =
+        Microsoft.Extensions.Options.Options.Create(new CleanArchitecture.Infrastructure.Email.IdentityEmailOptions { PublicOrigin = "https://app.example.test" });
 
     /// <summary>
     /// A real invitation behind the message, because the handler resolves the recipient from it rather than from
     /// the payload — an address is PII and IA-REQ-029 keeps PII out of an outbox payload exactly as it keeps
     /// tokens out.
     /// </summary>
-    private static async Task<OutboxMessage> SeedAsync(
+    private async Task<OutboxMessage> SeedAsync(
         IServiceScope scope,
         string type,
         DateTimeOffset dueAt,
@@ -293,6 +554,7 @@ public sealed class OutboxDeliveryTests
         context.AddRange(tenant, role, invitation);
 
         var message = OutboxMessage.Create(type, JsonSerializer.Serialize(new { InvitationId = invitation.Id.Value, TenantId = tenant.Id.Value }), dueAt);
+        _messageIds.Add(message.Id);
         context.OutboxMessages.Add(message);
         context.OutboxSecrets.Add(OutboxSecret.Create(
             message.Id,
