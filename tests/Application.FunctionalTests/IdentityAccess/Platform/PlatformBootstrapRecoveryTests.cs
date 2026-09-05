@@ -215,7 +215,7 @@ public sealed class PlatformBootstrapRecoveryTests : TestBase
         await TestApp.SendAsync(new CleanArchitecture.Application.IdentityAccess.Platform.Invitations.RegisterPlatformInviteeCommand(token, PlatformScenario.ValidPassword));
         var confirmation = await PlatformScenario.SealedTokenAsync(
             (await PlatformScenario.MessagesAsync()).Last(message => message.Type == "platform.invitation.confirmation.requested").Id);
-        await TestApp.SendAsync(new CleanArchitecture.Application.IdentityAccess.Platform.Invitations.ConfirmPlatformInviteeCommand(token, confirmation));
+        await TestApp.SendAsync(new CleanArchitecture.Application.IdentityAccess.Platform.Invitations.ConfirmPlatformInviteeCommand(confirmation));
 
         var identity = (await TestApp.ListAsync<ApplicationUser>()).Single(user => user.NormalizedEmail == OwnerEmail.ToUpperInvariant());
         PlatformScenario.RunAs(identity.Id);

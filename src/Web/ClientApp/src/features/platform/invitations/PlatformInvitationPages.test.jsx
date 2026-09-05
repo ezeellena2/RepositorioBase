@@ -90,21 +90,26 @@ describe('platform invitation pages', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/invitation is not usable/i);
   });
 
-  it('confirms with both tokens and then hands off to a normal sign-in', async () => {
+  /**
+   * One click, from a link in the recipient's own mailbox. The token comes out of the fragment and never appears
+   * in the address bar, and nothing is transcribed by hand.
+   */
+  it('confirms with the token from the link and then hands off to a normal sign-in', async () => {
     const confirmations = [];
     server.use(antiforgery(), contextIs(null));
     server.use(http.post('/api/platform/invitations/confirm', async ({ request }) => {
       confirmations.push(await request.json());
       return new HttpResponse(null, { status: 204 });
     }));
-    withToken('platform-token-1');
+    withToken('confirmation-token-1');
 
     renderPage(<ConfirmPlatformInviteePage />);
-    await userEvent.type(await screen.findByLabelText('Confirmation code'), 'confirmation-token-1');
-    await userEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+    expect(window.location.hash).toBe('');
+    await userEvent.click(await screen.findByRole('button', { name: 'Confirm my address' }));
 
     await waitFor(() => expect(confirmations).toHaveLength(1));
-    expect(confirmations[0]).toEqual({ token: 'platform-token-1', confirmationToken: 'confirmation-token-1' });
+    expect(confirmations[0]).toEqual({ confirmationToken: 'confirmation-token-1' });
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
     expect(await screen.findByRole('status')).toHaveTextContent(/sign in to continue/i);
   });
 

@@ -7,6 +7,7 @@ using CleanArchitecture.Application.IdentityAccess.Organizations.ConfirmEmail;
 using CleanArchitecture.Application.IdentityAccess.Organizations.RegisterOrganization;
 using CleanArchitecture.Domain.IdentityAccess.Auditing;
 using CleanArchitecture.Domain.IdentityAccess.Outbox;
+using CleanArchitecture.Domain.IdentityAccess.Platform;
 using Microsoft.EntityFrameworkCore;
 
 namespace CleanArchitecture.Application.IdentityAccess.Platform.Invitations;
@@ -14,10 +15,10 @@ namespace CleanArchitecture.Application.IdentityAccess.Platform.Invitations;
 /// <summary>
 /// Confirms the identity a Platform invitation was answered by, and does nothing else (IA-REQ-041).
 /// <para>
-/// It requires both tokens. The confirmation token proves the address received the mail; the invitation token
-/// proves which Platform offer is being answered. Requiring only the first would let a confirmation intended for
-/// one offer complete another, and requiring only the second would let anyone holding an invitation link confirm
-/// an address they do not control.
+/// The confirmation token is the whole proof, and the offer it belongs to comes from the envelope sealed with it
+/// rather than from a second token the caller supplies. That envelope was written in the same transaction as the
+/// confirmation, so it is the record of which invitation this is — and it is not something a caller can point
+/// somewhere else.
 /// </para>
 /// <para>
 /// No membership is created here. Activation waits for TOTP enrollment, acknowledged recovery codes and an
@@ -76,8 +77,14 @@ public sealed class ConfirmPlatformInviteeCommandHandler(
                 return Result.Failure(IdentityAccessErrors.InvalidConfirmation());
             }
 
-            var invitation = await PlatformInvitationDelivery.FindByTokenAsync(context, tokenHasher, request.Token, ct);
-            if (invitation is null || invitation.Id.Value != envelope.InvitationId || invitation.BoundIdentityId != envelope.IdentityId)
+            // The offer is read from the envelope rather than from a second token the caller supplies: the
+            // envelope was written in the same transaction as the confirmation it seals, so it is the record of
+            // which invitation this confirmation belongs to. The binding is still checked, only from the side
+            // the caller cannot influence.
+            var invitationId = PlatformAdminInvitationId.From(envelope.InvitationId);
+            var invitation = await context.PlatformAdminInvitations
+                .SingleOrDefaultAsync(candidate => candidate.Id == invitationId, ct);
+            if (invitation is null || invitation.BoundIdentityId != envelope.IdentityId)
             {
                 return Result.Failure(IdentityAccessErrors.InvalidConfirmation());
             }

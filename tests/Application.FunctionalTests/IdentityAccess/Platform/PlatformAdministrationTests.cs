@@ -2,6 +2,7 @@ using CleanArchitecture.Application.FunctionalTests.Infrastructure;
 using CleanArchitecture.Application.IdentityAccess.Platform.Administrators;
 using CleanArchitecture.Application.IdentityAccess.Platform.Mfa;
 using CleanArchitecture.Application.IdentityAccess.Platform.Queries;
+using CleanArchitecture.Domain.IdentityAccess.Auditing;
 using CleanArchitecture.Domain.IdentityAccess.Memberships;
 using CleanArchitecture.Domain.IdentityAccess.Platform;
 
@@ -39,6 +40,8 @@ public sealed class PlatformAdministrationTests : TestBase
         administrator.Status.ShouldBe(PlatformAdminInvitationStatus.Pending);
         administrator.BoundIdentityId.ShouldBeNull();
         (await TestApp.CountAsync<TenantMembership>()).ShouldBe(1, "an invitation is not a membership.");
+        (await TestApp.ListAsync<AuditEvent>())
+            .ShouldContain(item => item.EventType == "platform.administrator.invited", "who may operate Platform is decided in the open (IA-REQ-026).");
     }
 
     /// <summary>
@@ -56,6 +59,8 @@ public sealed class PlatformAdministrationTests : TestBase
         result.IsFailure.ShouldBeTrue();
         result.Error!.Code.ShouldBe("recent_mfa_required");
         (await TestApp.CountAsync<PlatformAdminInvitation>()).ShouldBe(1);
+        // A refusal is not a decision about anybody, so it leaves no decision behind either.
+        (await TestApp.ListAsync<AuditEvent>()).ShouldNotContain(item => item.EventType == "platform.administrator.invited");
     }
 
     /// <summary>Re-inviting the same address revives the standing offer in place rather than leaving two.</summary>
@@ -135,7 +140,7 @@ public sealed class PlatformAdministrationTests : TestBase
 
         var confirmation = await PlatformScenario.SealedTokenAsync(
             (await PlatformScenario.MessagesAsync()).Last(message => message.Type == "platform.invitation.confirmation.requested").Id);
-        await TestApp.SendAsync(new CleanArchitecture.Application.IdentityAccess.Platform.Invitations.ConfirmPlatformInviteeCommand(token, confirmation));
+        await TestApp.SendAsync(new CleanArchitecture.Application.IdentityAccess.Platform.Invitations.ConfirmPlatformInviteeCommand(confirmation));
         (await TestApp.CountAsync<TenantMembership>()).ShouldBe(1, "confirmation grants nothing either.");
 
         var newcomer = (await TestApp.ListAsync<CleanArchitecture.Infrastructure.Identity.ApplicationUser>())
@@ -150,6 +155,9 @@ public sealed class PlatformAdministrationTests : TestBase
         var memberships = await TestApp.ListAsync<TenantMembership>();
         memberships.Count.ShouldBe(2);
         memberships.Single(item => item.IdentityId == newcomer.Id).Status.ShouldBe(MembershipStatus.Active);
+        // The gate that grants the authority is the one that has to be on the record.
+        (await TestApp.ListAsync<AuditEvent>())
+            .Count(item => item.EventType == "platform.membership.activated").ShouldBe(2, "the owner's activation and this one.");
     }
 
     /// <summary>
@@ -175,6 +183,7 @@ public sealed class PlatformAdministrationTests : TestBase
 
         result.IsSuccess.ShouldBeTrue();
         (await TestApp.ListAsync<TenantMembership>()).Single(item => item.Id == membership.Id).Status.ShouldBe(MembershipStatus.Suspended);
+        (await TestApp.ListAsync<AuditEvent>()).ShouldContain(item => item.EventType == "platform.administrator.revoked");
     }
 
     /// <summary>A second administrator, invited by the owner and walking every gate.</summary>
@@ -188,7 +197,7 @@ public sealed class PlatformAdministrationTests : TestBase
         await TestApp.SendAsync(new CleanArchitecture.Application.IdentityAccess.Platform.Invitations.RegisterPlatformInviteeCommand(token, PlatformScenario.ValidPassword));
         var confirmation = await PlatformScenario.SealedTokenAsync(
             (await PlatformScenario.MessagesAsync()).Last(message => message.Type == "platform.invitation.confirmation.requested").Id);
-        await TestApp.SendAsync(new CleanArchitecture.Application.IdentityAccess.Platform.Invitations.ConfirmPlatformInviteeCommand(token, confirmation));
+        await TestApp.SendAsync(new CleanArchitecture.Application.IdentityAccess.Platform.Invitations.ConfirmPlatformInviteeCommand(confirmation));
 
         var identity = (await TestApp.ListAsync<CleanArchitecture.Infrastructure.Identity.ApplicationUser>())
             .Single(user => user.NormalizedEmail == "CO-OWNER@EXAMPLE.TEST");

@@ -190,7 +190,7 @@ public sealed class PlatformMfaTests : TestBase
         PlatformScenario.RunAnonymously();
         await TestApp.SendAsync(new RegisterPlatformInviteeCommand(token, PlatformScenario.ValidPassword));
         var confirmationToken = await PlatformScenario.SealedTokenAsync((await PlatformScenario.MessagesAsync()).Single().Id);
-        await TestApp.SendAsync(new ConfirmPlatformInviteeCommand(token, confirmationToken));
+        await TestApp.SendAsync(new ConfirmPlatformInviteeCommand(confirmationToken));
 
         var identity = (await TestApp.ListAsync<ApplicationUser>()).Single(user => user.Email == email);
         PlatformScenario.RunAs(identity.Id);

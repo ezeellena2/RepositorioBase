@@ -1,4 +1,3 @@
-using CleanArchitecture.Domain.IdentityAccess.Security;
 using Npgsql;
 
 namespace CleanArchitecture.Web.AcceptanceTests;
@@ -6,10 +5,10 @@ namespace CleanArchitecture.Web.AcceptanceTests;
 /// <summary>
 /// The state a Platform journey starts from, read or seeded directly in PostgreSQL.
 /// <para>
-/// The bootstrap ceremony itself is not seeded — the application performs it as it starts, and the first scenario
-/// asserts that it did. What is seeded is an administrator invitation whose token the test chose, because the
-/// token the application mints leaves the process only inside an encrypted envelope that this process has no key
-/// for. Everything a scenario actually asserts still goes through the browser.
+/// No part of the ceremony is seeded — the application performs it as it starts, and the walk asserts that it
+/// did. What is written here is what stands outside the ceremony: an organization for the panel to operate on,
+/// and the one premise recovery exists for, a delivery that failed. Everything a scenario asserts about identity,
+/// confirmation or authority goes through the browser.
 /// </para>
 /// </summary>
 internal static class PlatformFixtures
@@ -70,49 +69,85 @@ internal static class PlatformFixtures
     internal static Task<long> PlatformMembershipsAsync() =>
         CountAsync("SELECT count(*) FROM \"TenantMemberships\" m JOIN \"Tenants\" t ON t.\"Id\" = m.\"TenantId\" WHERE t.\"Type\" = 'Platform';");
 
-    /// <summary>Marks the message carrying the owner's token as permanently undeliverable, which is what recovery is for.</summary>
+    /// <summary>
+    /// Marks the message carrying the owner's token as permanently undeliverable, which is the state recovery
+    /// exists for. The delivery timestamp is cleared with it: a message cannot be both abandoned and delivered,
+    /// and the row constraint says so, which is exactly why the premise has to be set honestly.
+    /// </summary>
     internal static async Task FailOwnerDeliveryAsync()
     {
         await using var connection = await OpenAsync();
         await using var command = new NpgsqlCommand(
-            "UPDATE outbox_messages SET \"Status\" = 'Abandoned', \"FailureCode\" = 'provider_rejected', \"LeaseOwner\" = NULL, \"LeaseExpiresAt\" = NULL " +
+            "UPDATE outbox_messages SET \"Status\" = 'Abandoned', \"FailureCode\" = 'provider_rejected', " +
+            "\"DeliveredAt\" = NULL, \"LeaseOwner\" = NULL, \"LeaseExpiresAt\" = NULL " +
             "WHERE \"Id\" IN (SELECT \"DeliveryMessageId\" FROM \"PlatformAdminInvitations\" WHERE \"IsOwner\" AND \"Status\" = 'Pending');",
             connection);
         await command.ExecuteNonQueryAsync();
     }
 
-    /// <summary>A pending administrator invitation whose token the test chose.</summary>
-    internal static async Task<(string Email, string Token)> AdministratorInvitationAsync()
+    /// <summary>
+    /// One delivered message, read out of the run's drop folder the way its recipient would read their mail.
+    /// <para>
+    /// This is the only way a test can follow a real link: the tokens are sealed with Data Protection keys held
+    /// by the application process, so nothing outside it can read one out of the database. Waiting for the file
+    /// is waiting for the dispatcher to have delivered it, which is the same thing a person waits for.
+    /// </para>
+    /// </summary>
+    /// <param name="excluding">
+    /// Messages already read, by drop-file name. Recovery rotates the token, so after it the folder holds two
+    /// invitations for the same address and only the newer one still opens anything; naming the older one is how
+    /// a caller says which it already has, without guessing from a clock.
+    /// </param>
+    internal static async Task<DeliveredMessage> DeliveredAsync(
+        string recipient, string subjectContains, IReadOnlyCollection<string>? excluding = null)
     {
-        var tenantId = await PlatformTenantIdAsync();
-        var email = $"platform-admin-{Guid.NewGuid():N}@example.test";
-        var token = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
+        for (var attempt = 0; attempt < 300; attempt++)
+        {
+            if (Directory.Exists(AspireSetup.MailDropPath))
+            {
+                foreach (var file in Directory.EnumerateFiles(AspireSetup.MailDropPath, "*.txt"))
+                {
+                    var name = Path.GetFileName(file);
+                    if (excluding?.Contains(name, StringComparer.OrdinalIgnoreCase) == true) continue;
 
-        await using var connection = await OpenAsync();
-        await using var command = new NpgsqlCommand(
-            "INSERT INTO \"PlatformAdminInvitations\" (\"Id\", \"TenantId\", \"NormalizedEmail\", \"TokenHash\", \"Status\", \"Delivery\", \"IsOwner\", \"CreatedAt\", \"ExpiresAt\") " +
-            "VALUES (gen_random_uuid(), @tenantId, @email, @hash, 'Pending', 'Pending', FALSE, NOW() - INTERVAL '1 minute', NOW() + INTERVAL '7 days');",
-            connection);
-        command.Parameters.AddWithValue("tenantId", tenantId);
-        command.Parameters.AddWithValue("email", email);
-        command.Parameters.AddWithValue("hash", VersionedTokenHash.Of(token).Value);
-        await command.ExecuteNonQueryAsync();
-        return (email, token);
+                    string content;
+                    try { content = await File.ReadAllTextAsync(file); }
+                    catch (IOException) { continue; } // Still being written.
+
+                    if (!content.Contains($"To: {recipient}", StringComparison.OrdinalIgnoreCase)) continue;
+                    if (!content.Contains(subjectContains, StringComparison.OrdinalIgnoreCase)) continue;
+
+                    var link = System.Text.RegularExpressions.Regex.Match(content, @"https?://\S+");
+                    if (!link.Success) continue;
+                    var uri = new Uri(link.Value.TrimEnd('.'));
+                    return new DeliveredMessage(recipient, content, uri.AbsolutePath, uri.Fragment, name);
+                }
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(200));
+        }
+
+        // What the dispatcher decided is the only useful thing to say here: "no file appeared" is the symptom,
+        // and the outbox row records the cause — an unreadable envelope, a missing handler, a refused provider.
+        var outbox = await ScalarAsync(
+            "SELECT string_agg(\"Type\" || '=' || \"Status\" || '/' || COALESCE(\"FailureCode\", '-') || 'x' || \"AttemptCount\" || ' due=' || (\"NextAttemptAt\" <= NOW())::text || ' lease=' || COALESCE(\"LeaseOwner\", '-'), ', ') FROM outbox_messages;");
+        // Whether the drop folder exists says which half failed: the sender creates it as it validates its
+        // configuration, so an absent folder means the dispatcher never got as far as a sender at all.
+        var drop = Directory.Exists(AspireSetup.MailDropPath)
+            ? $"{Directory.GetFiles(AspireSetup.MailDropPath).Length} file(s)"
+            : "absent";
+        throw new InvalidOperationException(
+            $"No message reached {recipient} about \"{subjectContains}\". Outbox: {outbox ?? "empty"}. " +
+            $"Drop: {drop}. Worker: {await AspireSetup.WorkerLogTailAsync()}");
     }
 
     /// <summary>
-    /// Confirms the address the way the recipient would. The confirmation token is sealed in an envelope this
-    /// process holds no key for, so the transition the endpoint performs is applied directly — what the journey
-    /// proves is what happens after confirmation, not the cryptography of the link.
+    /// A message as it was delivered, split into the parts a recipient acts on. The path and fragment are kept
+    /// separately because the run's frontend lives on a port only the host knows, so the journey opens the same
+    /// page and the same token on the origin it actually has. <c>DropFile</c> names the message
+    /// itself, which is how a later read says which mail it has already seen.
     /// </summary>
-    internal static async Task ConfirmAsync(string email)
-    {
-        await using var connection = await OpenAsync();
-        await using var command = new NpgsqlCommand(
-            "UPDATE \"AspNetUsers\" SET \"EmailConfirmed\" = TRUE WHERE \"NormalizedEmail\" = @email;", connection);
-        command.Parameters.AddWithValue("email", email.ToUpperInvariant());
-        await command.ExecuteNonQueryAsync();
-    }
+    internal sealed record DeliveredMessage(string Recipient, string Body, string Path, string Fragment, string DropFile);
 
     internal static async Task<Guid> ActiveOrganizationAsync(string slug)
     {

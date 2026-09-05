@@ -2,31 +2,24 @@
 Feature: Platform operations
     The Platform ceremony and panel, driven through the browser a person would use.
 
-Scenario: A deployment starts with one pending Platform owner and nobody who can act
-    Given the application has started with a configured Platform owner
-    Then exactly one Platform tenant and one pending owner invitation exist
-    And no Platform membership exists
-    And the Platform panel is not offered to a visitor
+    A deployment is bootstrapped once, so the ceremony is walked once per run and every scenario reads what that
+    one walk observed. Nothing is seeded and nothing is confirmed in the database: the invitation and the
+    confirmation are read out of the mail that was delivered, and each gate is answered on the screen that offers
+    it.
 
-Scenario: The owner invitation can be resent without naming anybody
-    Given the application has started with a configured Platform owner
-    And the owner invitation could not be delivered
-    When anyone asks for it to be resent
-    Then the answer says nothing about who it was for
-    And exactly one Platform owner invitation is still pending
+Scenario: The first owner reaches the panel through every gate, and through no fewer
+    Given the first owner has been walked in from the deployment's cold start
+    Then the cold start had left one Platform tenant, one pending invitation for the configured address and no membership
+    And no visitor had been offered the panel
+    And a failed delivery had been resent without naming anybody, leaving one invitation pending
+    And the invitation had arrived, and choosing a password had granted no membership
+    And the confirmation had arrived, and had been answered on the confirmation screen
+    And signing in had granted no membership either, and the panel was still refused
+    And only the second factor had granted the membership
+    And the Platform panel is offered to them
 
-Scenario: An administrator reaches Platform only after every gate
-    Given a Platform administrator has been invited
-    When they register with the invitation and a password they chose
-    Then they hold no Platform membership yet
-    When they confirm their address and sign in
-    Then they hold no Platform membership yet
-    And the Platform panel is not offered to them
-    When they complete the second factor and acknowledge their recovery codes
-    Then the Platform panel is offered to them
-
-Scenario: An administrator suspends and reactivates an organization
-    Given a Platform administrator has completed every gate
+Scenario: An owner suspends and reactivates an organization
+    Given the first owner has been walked in from the deployment's cold start
     And an active organization exists
     When they step up and suspend that organization
     Then the organization is suspended with the reason they gave
@@ -35,6 +28,6 @@ Scenario: An administrator suspends and reactivates an organization
     Then the organization is active again
 
 Scenario: The panel offers no prohibited capability
-    Given a Platform administrator has completed every gate
+    Given the first owner has been walked in from the deployment's cold start
     Then the panel offers no impersonation, deletion or context override
-    And an administrator cannot invite another administrator
+    And the owner is the one offered the administrator invitation

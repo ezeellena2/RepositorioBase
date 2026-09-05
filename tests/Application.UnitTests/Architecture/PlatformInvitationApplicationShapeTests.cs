@@ -61,14 +61,16 @@ public sealed class PlatformInvitationApplicationShapeTests
             .ShouldBe(["Password", "Token"]);
     }
 
-    /// <summary>Confirmation consumes both tokens: the invitation's, and the one the confirmation email carried.</summary>
+    /// <summary>
+    /// Confirmation carries the token the address received and nothing else — no credential, and no second token
+    /// naming the offer, which the sealed envelope already does.
+    /// </summary>
     [Test]
-    public void Confirmation_carries_both_tokens_and_no_credential()
+    public void Confirmation_carries_only_the_token_the_address_received()
     {
         var request = Require("ConfirmPlatformInviteeCommand");
 
-        request.GetProperties().Select(property => property.Name).Order(StringComparer.Ordinal)
-            .ShouldBe(["ConfirmationToken", "Token"]);
+        request.GetProperties().Select(property => property.Name).ShouldBe(["ConfirmationToken"]);
     }
 
     /// <summary>

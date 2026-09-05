@@ -30,10 +30,29 @@ public sealed class PlatformInvitationPages(IPage page) : BasePage(page)
 {
     public override string PagePath => $"{BaseUrl}/platform/invitations/register";
 
-    public async Task GotoRegisterAsync(string token)
+    /// <summary>
+    /// Opens a link exactly as it was delivered. Only the origin is this run's own: the mail is rendered from a
+    /// configured public origin, and the host a test allocates has a port nobody could have configured in
+    /// advance. The path and the fragment — which is the whole of the secret — are the delivered ones.
+    /// </summary>
+    internal async Task OpenDeliveredAsync(PlatformFixtures.DeliveredMessage delivered)
     {
-        await Page.GotoAsync($"{BaseUrl}/platform/invitations/register#token={Uri.EscapeDataString(token)}");
+        await Page.GotoAsync($"{BaseUrl}{delivered.Path}{delivered.Fragment}");
         await Page.ReloadAsync();
+    }
+
+    /// <summary>One click, which is all the confirmation screen asks of someone who followed their own link.</summary>
+    public async Task ConfirmAsync()
+    {
+        var response = await Page.RunAndWaitForResponseAsync(
+            () => Page.GetByRole(AriaRole.Button, new() { Name = "Confirm my address" }).ClickAsync(),
+            candidate => candidate.Url.EndsWith("/api/platform/invitations/confirm", StringComparison.Ordinal));
+        if (response.Status != 204)
+        {
+            throw new InvalidOperationException($"Confirmation answered {response.Status}: {await response.TextAsync()}");
+        }
+
+        await Assertions.Expect(Page.GetByRole(AriaRole.Status)).ToContainTextAsync("Sign in to continue");
     }
 
     public async Task RegisterAsync(string password)
@@ -47,9 +66,10 @@ public sealed class PlatformInvitationPages(IPage page) : BasePage(page)
     public Task AssertNeutralAcknowledgementAsync() =>
         Assertions.Expect(Page.GetByRole(AriaRole.Status)).ToContainTextAsync("Check your email.");
 
-    public async Task GotoMfaAsync(string token)
+    /// <summary>The ceremony is opened with the invitation fragment the recipient still holds from their mail.</summary>
+    public async Task GotoMfaAsync(string invitationFragment)
     {
-        await Page.GotoAsync($"{BaseUrl}/platform/mfa#token={Uri.EscapeDataString(token)}");
+        await Page.GotoAsync($"{BaseUrl}/platform/mfa{invitationFragment}");
         await Page.ReloadAsync();
     }
 
@@ -142,6 +162,10 @@ public sealed class PlatformOperationsPage(IPage page) : BasePage(page)
     /// </summary>
     public async Task AssertNoProhibitedCapabilityAsync()
     {
+        // Counting is not a waiting assertion, and a panel still fetching its identity context offers nothing at
+        // all — which would pass this for the one reason that proves nothing. So the panel is waited for first.
+        await AssertOfferedAsync();
+
         foreach (var forbidden in new[] { "impersonate", "delete", "act as", "become" })
         {
             (await Page.GetByRole(AriaRole.Button, new() { NameRegex = new Regex(forbidden, RegexOptions.IgnoreCase) }).CountAsync())
@@ -152,6 +176,10 @@ public sealed class PlatformOperationsPage(IPage page) : BasePage(page)
             .ShouldBe(0, "the acting tenant comes from the session, never from the panel.");
     }
 
-    public async Task AssertCannotInviteAdministratorAsync() =>
-        (await Page.GetByLabel("Invite an administrator").CountAsync()).ShouldBe(0);
+    /// <summary>
+    /// The form is offered only to a session that holds <c>platform.admins.manage</c>, so waiting for it is
+    /// waiting for the panel to have decided — and the panel decides once, from the context it fetched.
+    /// </summary>
+    public Task AssertCanInviteAdministratorAsync() =>
+        Assertions.Expect(Page.GetByRole(AriaRole.Form, new() { Name = "Invite an administrator" })).ToBeVisibleAsync();
 }

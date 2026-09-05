@@ -127,6 +127,9 @@ public static class DependencyInjection
         builder.Services.AddScoped<IOutboxDeliveryHandler, EmailConfirmationDeliveryHandler>();
         builder.Services.AddScoped<IOutboxDeliveryHandler, InvitedConfirmationDeliveryHandler>();
         builder.Services.AddScoped<IOutboxDeliveryHandler, SignInNoticeDeliveryHandler>();
+        builder.Services.AddScoped<IOutboxDeliveryHandler, PlatformInvitationDeliveryHandler>();
+        builder.Services.AddScoped<IOutboxDeliveryHandler, PlatformConfirmationDeliveryHandler>();
+        builder.Services.AddScoped<IOutboxDeliveryHandler, PlatformSignInNoticeDeliveryHandler>();
         builder.Services.AddScoped<OutboxDispatcher>();
         builder.Services.AddOptions<IdentityEmailOptions>().BindConfiguration(IdentityEmailOptions.SectionName);
         builder.Services.AddKeyedSingleton<HttpClient>("identity-email", (_, _) => new HttpClient(new SocketsHttpHandler
@@ -135,9 +138,15 @@ public static class DependencyInjection
             ConnectTimeout = TimeSpan.FromSeconds(5),
             ActivityHeadersPropagator = null
         }) { Timeout = TimeSpan.FromSeconds(20) });
-        builder.Services.AddScoped<IIdentityEmailSender>(provider => new IdentityEmailAdapter(
-            provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<IdentityEmailOptions>>(),
-            provider.GetRequiredKeyedService<HttpClient>("identity-email")));
+        // A configured local drop selects the folder sender. It is chosen here rather than by a flag inside the
+        // adapter so that no code path can reach the provider with local settings, or the reverse.
+        builder.Services.AddScoped<IIdentityEmailSender>(provider =>
+        {
+            var emailOptions = provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<IdentityEmailOptions>>();
+            return emailOptions.Value.DeliversLocally
+                ? new LocalFolderEmailSender(emailOptions, builder.Environment)
+                : new IdentityEmailAdapter(emailOptions, provider.GetRequiredKeyedService<HttpClient>("identity-email"));
+        });
         builder.Services.AddSingleton<ISecureTokenGenerator, SecureTokenGenerator>();
         builder.Services.AddSingleton<ITokenHasher, VersionedTokenHasher>();
         builder.Services.AddSingleton<IOutboxSecretWriter, OutboxSecretWriter>();
@@ -157,6 +166,10 @@ public static class DependencyInjection
             if (DatabaseMigrationExecutionPolicy.IsOpenApiDocumentGeneration(services.GetService<Microsoft.AspNetCore.Hosting.Server.IServer>()?.GetType().FullName))
                 return Task.CompletedTask;
             var email = services.GetRequiredService<Microsoft.Extensions.Options.IOptions<IdentityEmailOptions>>().Value;
+            // A local drop outside a local host is refused here rather than at the first dispatch, so a
+            // deployment that inherited the setting by accident never starts at all.
+            if (email.DeliversLocally && !IdentityEmailOptions.IsLocalEnvironment(environment))
+                throw new InvalidOperationException($"Local folder email delivery is not permitted in the {environment.EnvironmentName} environment.");
             if ((environment.IsProduction() && !email.Enabled) || ((environment.IsProduction() || email.Enabled) && !email.IsValid()))
                 throw new InvalidOperationException("Identity email delivery is not configured.");
             return Task.CompletedTask;

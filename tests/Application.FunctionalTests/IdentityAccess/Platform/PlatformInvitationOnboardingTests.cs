@@ -156,7 +156,7 @@ public sealed class PlatformInvitationOnboardingTests : TestBase
         await TestApp.SendAsync(new RegisterPlatformInviteeCommand(token, ValidPassword));
         var confirmationToken = await PlatformScenario.SealedTokenAsync((await PlatformScenario.MessagesAsync()).Single().Id);
 
-        var result = await TestApp.SendAsync(new ConfirmPlatformInviteeCommand(token, confirmationToken));
+        var result = await TestApp.SendAsync(new ConfirmPlatformInviteeCommand(confirmationToken));
 
         result.IsSuccess.ShouldBeTrue();
         (await TestApp.ListAsync<ApplicationUser>()).Single(user => user.Email == email).EmailConfirmed.ShouldBeTrue();
@@ -172,10 +172,10 @@ public sealed class PlatformInvitationOnboardingTests : TestBase
         PlatformScenario.RunAnonymously();
         await TestApp.SendAsync(new RegisterPlatformInviteeCommand(token, ValidPassword));
         var confirmationToken = await PlatformScenario.SealedTokenAsync((await PlatformScenario.MessagesAsync()).Single().Id);
-        await TestApp.SendAsync(new ConfirmPlatformInviteeCommand(token, confirmationToken));
+        await TestApp.SendAsync(new ConfirmPlatformInviteeCommand(confirmationToken));
         var messagesAfterFirst = (await PlatformScenario.MessagesAsync()).Count;
 
-        var replay = await TestApp.SendAsync(new ConfirmPlatformInviteeCommand(token, confirmationToken));
+        var replay = await TestApp.SendAsync(new ConfirmPlatformInviteeCommand(confirmationToken));
 
         replay.IsSuccess.ShouldBeTrue();
         (await PlatformScenario.MessagesAsync()).Count.ShouldBe(messagesAfterFirst);
@@ -183,22 +183,25 @@ public sealed class PlatformInvitationOnboardingTests : TestBase
     }
 
     /// <summary>
-    /// A confirmation token is bound to the offer it was issued for. Without that, a confirmation intended for one
-    /// invitation could complete another — and the invitation token would stop meaning anything.
+    /// A confirmation belongs to the offer whose envelope was sealed with it, and to the identity that answered
+    /// that offer. Neither comes from the caller, so a token can only ever complete its own onboarding.
     /// </summary>
     [Test]
-    public async Task A_confirmation_token_cannot_complete_a_different_invitation()
+    public async Task A_confirmation_completes_only_the_identity_its_envelope_names()
     {
-        var (_, token) = await PlatformScenario.PendingInvitationAsync();
+        var (firstEmail, firstToken) = await PlatformScenario.PendingInvitationAsync();
         PlatformScenario.RunAnonymously();
-        await TestApp.SendAsync(new RegisterPlatformInviteeCommand(token, ValidPassword));
-        var confirmationToken = await PlatformScenario.SealedTokenAsync((await PlatformScenario.MessagesAsync()).Single().Id);
+        await TestApp.SendAsync(new RegisterPlatformInviteeCommand(firstToken, ValidPassword));
+        var confirmation = await PlatformScenario.SealedTokenAsync((await PlatformScenario.MessagesAsync()).Single().Id);
 
-        var result = await TestApp.SendAsync(new ConfirmPlatformInviteeCommand(UnknownToken(), confirmationToken));
+        var stranger = await IdentityHttpHarness.SeedConfirmedUserAsync($"stranger-{Guid.NewGuid():N}@example.test", ValidPassword);
 
-        result.IsFailure.ShouldBeTrue();
-        result.Error!.Code.ShouldBe("invalid_confirmation");
-        (await TestApp.ListAsync<ApplicationUser>()).Single().EmailConfirmed.ShouldBeFalse();
+        (await TestApp.SendAsync(new ConfirmPlatformInviteeCommand(confirmation))).IsSuccess.ShouldBeTrue();
+
+        var identities = await TestApp.ListAsync<ApplicationUser>();
+        identities.Single(user => user.Email == firstEmail).EmailConfirmed.ShouldBeTrue();
+        identities.Single(user => user.Id == stranger).Id.ShouldBe(stranger, "nobody else was touched.");
+        (await TestApp.CountAsync<TenantMembership>()).ShouldBe(0);
     }
 
     [Test]
@@ -208,7 +211,7 @@ public sealed class PlatformInvitationOnboardingTests : TestBase
         PlatformScenario.RunAnonymously();
         await TestApp.SendAsync(new RegisterPlatformInviteeCommand(token, ValidPassword));
 
-        var result = await TestApp.SendAsync(new ConfirmPlatformInviteeCommand(token, UnknownToken()));
+        var result = await TestApp.SendAsync(new ConfirmPlatformInviteeCommand(UnknownToken()));
 
         result.IsFailure.ShouldBeTrue();
         result.Error!.Code.ShouldBe("invalid_confirmation");

@@ -66,6 +66,14 @@ public static class DependencyInjection
 
         // The ceremony that creates the Platform tenant runs from the host, never from a route.
         builder.Services.AddSingleton<IHostedService, CleanArchitecture.Web.HostedServices.PlatformBootstrapHostedService>();
+
+        // Local mail delivery, and only that. The loop belongs to its own process everywhere else; here it runs
+        // in-process so that one process seals the tokens and opens them, which is what makes a local run able
+        // to produce a link a person can actually follow.
+        if (!string.IsNullOrWhiteSpace(builder.Configuration["IdentityAccess:Email:LocalDropPath"]))
+        {
+            builder.Services.AddHostedService<CleanArchitecture.Web.HostedServices.LocalOutboxDeliveryService>();
+        }
     }
 
     public static void AddKeyVaultIfConfigured(this IHostApplicationBuilder builder)

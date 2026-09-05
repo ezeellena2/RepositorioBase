@@ -13,6 +13,16 @@ public class AspireSetup
     /// </summary>
     internal const string PlatformBootstrapOwnerEmail = "platform-owner@example.test";
 
+    /// <summary>
+    /// Where the run's delivered mail is written. The journeys follow the links a recipient would actually
+    /// receive, which is only possible because the tokens they carry are sealed with keys held by the
+    /// application process — no test can read them out of the database.
+    /// </summary>
+    internal static string MailDropPath { get; } =
+        Path.Combine(Path.GetTempPath(), $"identity-access-acceptance-{Guid.NewGuid():N}");
+
+    private static string KeyRingPath { get; } = Path.Combine(MailDropPath, "keys");
+
     private static readonly TimeSpan DefaultTimeout = TimeSpan.FromMinutes(8);
 
     public static IDistributedApplicationTestingBuilder Builder { get; private set; } = null!;
@@ -28,7 +38,21 @@ public class AspireSetup
              .CreateAsync<Projects.AppHost>(
                 // Passed as an argument rather than set afterwards: the app host reads its configuration while
                 // building the model, so anything assigned after that point arrives too late to be forwarded.
-                args: [$"--IdentityAccess:Platform:BootstrapOwnerEmail={PlatformBootstrapOwnerEmail}"],
+                args:
+                [
+                    $"--IdentityAccess:Platform:BootstrapOwnerEmail={PlatformBootstrapOwnerEmail}",
+                    "--IdentityAccess:Email:Enabled=true",
+                    "--IdentityAccess:Email:FromAddress=platform@example.test",
+                    // Syntactically what a deployment configures; the journeys rebuild each link on the run's
+                    // own frontend, whose port only exists once the host has allocated it.
+                    "--IdentityAccess:Email:PublicOrigin=https://localhost",
+                    $"--IdentityAccess:Email:LocalDropPath={MailDropPath}",
+                    // The web application seals the tokens and the worker opens them, so they need the same key
+                    // ring and the same discriminator. Without it every envelope is unreadable and every message
+                    // fails closed — which is the deployment prerequisite EMAIL-SETUP.md states, met locally.
+                    "--IdentityAccess:DataProtection:ApplicationName=identity-access-acceptance",
+                    $"--IdentityAccess:DataProtection:KeyRingPath={KeyRingPath}"
+                ],
                 configureBuilder: (options, _) =>
                 {
                     options.DisableDashboard = false; // Enable the dashboard for testing purposes
@@ -67,9 +91,37 @@ public class AspireSetup
         await AcceptanceTestCredentials.CreateAsync(App, cancellationToken);
     }
 
+    /// <summary>
+    /// The last thing the outbox worker said. A journey that follows delivered mail fails as "no file
+    /// appeared", which is the symptom; the worker's own log is where the cause is written down.
+    /// </summary>
+    internal static async Task<string> WorkerLogTailAsync(int lines = 25)
+    {
+        var loggers = App.Services.GetRequiredService<Aspire.Hosting.ApplicationModel.ResourceLoggerService>();
+        var collected = new List<string>();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        try
+        {
+            await foreach (var batch in loggers.WatchAsync(Services.OutboxWorker).WithCancellation(timeout.Token))
+            {
+                collected.AddRange(batch.Select(entry => entry.Content));
+                if (collected.Count >= lines) break;
+            }
+        }
+        catch (OperationCanceledException) { /* Whatever arrived in the window is the answer. */ }
+
+        var model = App.Services.GetRequiredService<Aspire.Hosting.ApplicationModel.DistributedApplicationModel>();
+        var resources = string.Join(",", model.Resources.Select(resource => resource.Name));
+        return collected.Count == 0
+            ? $"(no worker log; resources: {resources})"
+            : string.Join(" | ", collected.TakeLast(lines));
+    }
+
     [OneTimeTearDown]
     public async Task OneTimeTearDown()
     {
         await App.DisposeAsync();
+        // The drop holds live invitation links, so it does not outlive the run that produced them.
+        if (Directory.Exists(MailDropPath)) Directory.Delete(MailDropPath, recursive: true);
     }
 }

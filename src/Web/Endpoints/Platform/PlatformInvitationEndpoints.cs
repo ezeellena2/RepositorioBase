@@ -70,7 +70,7 @@ internal static class PlatformInvitationEndpoints
         if (antiforgeryFailure is not null) return antiforgeryFailure;
 
         var result = await sender.Send(
-            new ConfirmPlatformInviteeCommand(request.Token, request.ConfirmationToken),
+            new ConfirmPlatformInviteeCommand(request.ConfirmationToken),
             context.RequestAborted);
 
         return result.IsSuccess ? Results.NoContent() : problems.ToHttpResult(result.Error!);

@@ -67,15 +67,17 @@ export function RegisterPlatformInviteePage() {
 }
 
 /**
- * Confirmation consumes both tokens: the invitation's, which says which offer is being answered, and the one the
- * confirmation email carried. It confirms the identity and never creates a membership — after it, the recipient
- * signs in with the password they chose, like anyone else.
+ * Confirmation consumes the token the confirmation mail carried. The token arrives in the fragment, exactly as
+ * the invitation token does and for the same reason, and is erased from the address bar on arrival.
+ *
+ * It is one button rather than a field to paste into: the recipient followed a link from their own mailbox, and
+ * asking them to transcribe a code out of it would be friction that proves nothing extra. The offer being
+ * confirmed comes from the envelope the server sealed, not from anything typed here.
  */
 export function ConfirmPlatformInviteePage() {
   const platform = usePlatformClient();
-  const token = usePlatformInvitationToken();
-  const [confirmationToken, setConfirmationToken] = useState('');
-  const { submit, problem, isBusy, result } = useSubmit((secret, confirmation) => platform.confirmInvitation(secret, confirmation));
+  const confirmationToken = usePlatformInvitationToken();
+  const { submit, problem, isBusy, result } = useSubmit((secret) => platform.confirmInvitation(secret));
 
   return (
     <section aria-labelledby="platform-confirm-heading">
@@ -84,17 +86,9 @@ export function ConfirmPlatformInviteePage() {
       {result ? (
         <p role="status">Your address is confirmed. Sign in to continue.</p>
       ) : (
-        <form onSubmit={(event) => { event.preventDefault(); submit(token ?? '', confirmationToken); }}>
-          <label htmlFor="platform-confirmation-token">Confirmation code</label>
-          <input
-            id="platform-confirmation-token"
-            type="text"
-            value={confirmationToken}
-            onChange={(event) => setConfirmationToken(event.target.value)}
-            required
-          />
-          <button type="submit" disabled={isBusy}>Confirm</button>
-        </form>
+        <button type="button" disabled={isBusy} onClick={() => submit(confirmationToken ?? '')}>
+          Confirm my address
+        </button>
       )}
     </section>
   );

@@ -1,7 +1,7 @@
 namespace CleanArchitecture.Web.PlatformEndpoints.Contracts;
 
 /// <summary>
-/// Both halves of the onboarding proof: which Platform offer is being answered, and that its recipient's address
-/// received the confirmation.
+/// The confirmation token the address received. It is the whole proof: the envelope sealed with it already names
+/// the invitation and the identity, so there is nothing for a second token to pin down.
 /// </summary>
-public sealed record PlatformInvitationConfirmationRequest(string Token, string ConfirmationToken);
+public sealed record PlatformInvitationConfirmationRequest(string ConfirmationToken);

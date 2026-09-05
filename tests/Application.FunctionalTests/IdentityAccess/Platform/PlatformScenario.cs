@@ -163,7 +163,7 @@ internal static class PlatformScenario
         await TestApp.SendAsync(new RegisterPlatformInviteeCommand(token, ValidPassword));
         var confirmation = await SealedTokenAsync(
             (await MessagesAsync()).Last(message => message.Type == "platform.invitation.confirmation.requested").Id);
-        await TestApp.SendAsync(new ConfirmPlatformInviteeCommand(token, confirmation));
+        await TestApp.SendAsync(new ConfirmPlatformInviteeCommand(confirmation));
 
         var normalized = ownerEmail.ToUpperInvariant();
         Guid identityId;

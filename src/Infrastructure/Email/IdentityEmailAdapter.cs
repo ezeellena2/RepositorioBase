@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using CleanArchitecture.Application.Common.Interfaces;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 
 namespace CleanArchitecture.Infrastructure.Email;
@@ -21,8 +22,23 @@ public sealed class IdentityEmailOptions
 
     public string? PublicOrigin { get; set; }
 
+    /// <summary>
+    /// A folder to write messages into instead of sending them. Setting it selects local delivery, which is
+    /// permitted only in an explicit Development, Test or Testing host — a folder of live invitation links is a
+    /// mailbox with no password on it.
+    /// </summary>
+    public string? LocalDropPath { get; set; }
+
+    public bool DeliversLocally => !string.IsNullOrWhiteSpace(LocalDropPath);
+
+    /// <summary>The environments a local drop may exist in, which is the same list Data Protection uses.</summary>
+    public static bool IsLocalEnvironment(Microsoft.Extensions.Hosting.IHostEnvironment environment) =>
+        environment.IsDevelopment() || environment.IsEnvironment("Test") || environment.IsEnvironment("Testing");
+
+    // A local drop needs no credential, because there is no provider to authenticate to. Everything else is
+    // still required: without a from-address and a public origin there is no usable link to write down.
     public bool IsValid() =>
-        !string.IsNullOrWhiteSpace(ApiKey) && !ApiKey.Any(char.IsWhiteSpace) &&
+        (DeliversLocally || (!string.IsNullOrWhiteSpace(ApiKey) && !ApiKey.Any(char.IsWhiteSpace))) &&
         System.Net.Mail.MailAddress.TryCreate(FromAddress, out var from) && from.Address == FromAddress &&
         Uri.TryCreate(PublicOrigin, UriKind.Absolute, out var origin) && origin.Scheme == Uri.UriSchemeHttps &&
         string.IsNullOrEmpty(origin.UserInfo) && string.IsNullOrEmpty(origin.Query) && string.IsNullOrEmpty(origin.Fragment) && origin.AbsolutePath == "/";

@@ -23,6 +23,7 @@ var web = builder.AddProject<Projects.Web>(Services.WebApi)
     // built — a host that configures it after building would otherwise forward whatever was there first.
     .WithEnvironment(context => context.EnvironmentVariables["IdentityAccess__Platform__BootstrapOwnerEmail"] =
         builder.Configuration["IdentityAccess:Platform:BootstrapOwnerEmail"] ?? string.Empty)
+    .WithEnvironment(ForwardEmailSettings)
     .WithUrlForEndpoint("http", url =>
     {
         url.DisplayText = "Scalar API Reference";
@@ -31,17 +32,51 @@ var web = builder.AddProject<Projects.Web>(Services.WebApi)
 
 // The dispatcher runs here rather than inside the web application. Registered there it would also poll from
 // inside every functional test that boots the application, racing the rows those tests assert on.
-if (!builder.ExecutionContext.IsRunMode || builder.Configuration.GetValue<bool>("IdentityAccess:Email:Enabled"))
+//
+// A local drop folder is the exception: the web application delivers those itself, so that one process seals
+// the tokens and opens them. Starting this worker as well would mean sharing a key ring between two processes
+// to accomplish nothing a developer asked for.
+if (!builder.ExecutionContext.IsRunMode ||
+    (builder.Configuration.GetValue<bool>("IdentityAccess:Email:Enabled") &&
+     string.IsNullOrWhiteSpace(builder.Configuration["IdentityAccess:Email:LocalDropPath"])))
 {
     builder.AddProject<Projects.OutboxWorker>(Services.OutboxWorker)
         .WithReference(databaseServer)
-        .WaitFor(databaseServer);
+        .WaitFor(databaseServer)
+        .WithAspNetCoreEnvironment()
+        .WithEnvironment(ForwardEmailSettings);
+}
+
+// The email and key-protection settings live in one place and reach both processes from it.
+//
+// Both halves matter. The worker renders the links and the web application issues the tokens they carry,
+// so the two disagreeing about the public origin would produce mail nobody can act on — and the tokens
+// are sealed by one process and opened by the other, so without a shared key ring and discriminator every
+// envelope is unreadable and every message fails closed. That is the prerequisite EMAIL-SETUP.md states
+// for a deployment; forwarding it here is what lets a local run deliver at all.
+void ForwardEmailSettings(EnvironmentCallbackContext context)
+{
+    foreach (var key in new[] { "Enabled", "FromAddress", "PublicOrigin", "LocalDropPath" })
+    {
+        if (builder.Configuration[$"IdentityAccess:Email:{key}"] is { Length: > 0 } value)
+        {
+            context.EnvironmentVariables[$"IdentityAccess__Email__{key}"] = value;
+        }
+    }
+
+    foreach (var key in new[] { "ApplicationName", "KeyRingPath" })
+    {
+        if (builder.Configuration[$"IdentityAccess:DataProtection:{key}"] is { Length: > 0 } value)
+        {
+            context.EnvironmentVariables[$"IdentityAccess__DataProtection__{key}"] = value;
+        }
+    }
 }
 
 #if (!UseApiOnly)
 if (builder.ExecutionContext.IsRunMode)
 {
-    builder.AddJavaScriptApp(Services.WebFrontend, "./../Web/ClientApp")
+    var frontend = builder.AddJavaScriptApp(Services.WebFrontend, "./../Web/ClientApp")
         .WithRunScript("start")
         .WithReference(web)
         .WaitFor(web)
@@ -51,6 +86,15 @@ if (builder.ExecutionContext.IsRunMode)
         // so every mutation from the SPA was refused as antiforgery_validation_failed.
         .WithHttpsEndpoint(env: "PORT")
         .WithExternalHttpEndpoints();
+
+    // Locally, the origin the links point at is this frontend, and its port does not exist until the host has
+    // allocated it — so it cannot be configured in advance, and a link rendered on a guessed one is a link that
+    // opens nothing. A value that was configured is left alone: a deployment names its own public origin, and
+    // this fills in only where nobody could have.
+    if (string.IsNullOrWhiteSpace(builder.Configuration["IdentityAccess:Email:PublicOrigin"]))
+    {
+        web.WithEnvironment("IdentityAccess__Email__PublicOrigin", frontend.GetEndpoint("https"));
+    }
 }
 #endif
 

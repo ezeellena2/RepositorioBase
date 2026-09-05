@@ -31,8 +31,8 @@ export function createPlatformClient(transport) {
     registerFromInvitation: (token, password) =>
       send('/api/platform/invitations/register', { method: 'POST', body: { token, password } }),
 
-    confirmInvitation: (token, confirmationToken) =>
-      send('/api/platform/invitations/confirm', { method: 'POST', body: { token, confirmationToken } }),
+    confirmInvitation: (confirmationToken) =>
+      send('/api/platform/invitations/confirm', { method: 'POST', body: { confirmationToken } }),
 
     // Bodyless by contract: it accepts no email, identity or replacement recipient (IA-REQ-040).
     recoverBootstrapInvitation: () => send('/api/platform/bootstrap/recover', { method: 'POST' }),
