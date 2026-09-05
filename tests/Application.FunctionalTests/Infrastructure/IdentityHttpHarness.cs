@@ -141,7 +141,7 @@ internal static class IdentityHttpHarness
         using var scope = FunctionalTestSetup.ScopeFactory.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var tenant = await context.Tenants.SingleAsync(candidate => candidate.Id == tenantId);
-        tenant.Suspend();
+        tenant.Suspend(TenantSuspensionReason.OperatorRequest, DateTimeOffset.UtcNow);
         await context.SaveChangesAsync();
     }
 

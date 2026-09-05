@@ -35,7 +35,7 @@ public sealed class PlatformAdminInvitationTests
     {
         var tenant = Platform();
 
-        Should.Throw<InvalidOperationException>(tenant.Suspend);
+        Should.Throw<InvalidOperationException>(() => tenant.Suspend(TenantSuspensionReason.OperatorRequest, Now));
         Should.Throw<InvalidOperationException>(tenant.Close);
         tenant.Status.ShouldBe(TenantStatus.Active);
     }

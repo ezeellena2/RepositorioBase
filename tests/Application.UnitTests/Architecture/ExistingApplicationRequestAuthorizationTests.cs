@@ -95,6 +95,15 @@ public class ExistingApplicationRequestAuthorizationTests
             typeof(CleanArchitecture.Application.IdentityAccess.Platform.Mfa.VerifyPlatformMfaEnrollmentCommand).FullName,
             typeof(CleanArchitecture.Application.IdentityAccess.Platform.Mfa.AcknowledgePlatformRecoveryCodesCommand).FullName,
             typeof(CleanArchitecture.Application.IdentityAccess.Platform.Mfa.StepUpPlatformMfaCommand).FullName,
+            typeof(CleanArchitecture.Application.IdentityAccess.Platform.Bootstrap.RecoverPendingPlatformOwnerInvitationCommand).FullName,
+            typeof(CleanArchitecture.Application.IdentityAccess.Platform.Administrators.InvitePlatformAdministratorCommand).FullName,
+            typeof(CleanArchitecture.Application.IdentityAccess.Platform.Administrators.RevokePlatformAdministratorCommand).FullName,
+            typeof(CleanArchitecture.Application.IdentityAccess.Platform.Organizations.SuspendOrganizationTenantCommand).FullName,
+            typeof(CleanArchitecture.Application.IdentityAccess.Platform.Organizations.ReactivateOrganizationTenantCommand).FullName,
+            typeof(CleanArchitecture.Application.IdentityAccess.Platform.Queries.ListPlatformOrganizationsQuery).FullName,
+            typeof(CleanArchitecture.Application.IdentityAccess.Platform.Queries.ListPlatformIdentitiesQuery).FullName,
+            typeof(CleanArchitecture.Application.IdentityAccess.Platform.Queries.ListPlatformAdministratorsQuery).FullName,
+            typeof(CleanArchitecture.Application.IdentityAccess.Platform.Queries.ListPlatformAuditQuery).FullName,
         ];
 
         actualRequestTypes.ShouldBe(expectedRequestTypes.Order());

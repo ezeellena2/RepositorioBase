@@ -18,4 +18,10 @@ public interface IPlatformMembershipActivator
     /// caller must not paper over by creating one: authority always predates the grant (IA-REQ-042).
     /// </summary>
     Task<bool> TryAssignSystemRoleAsync(Tenant platform, TenantMembership membership, string roleName, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Whether this membership is the only active owner left. A Platform with no owner is one nobody can ever
+    /// administer again, and there is no higher authority to restore it from (IA-REQ-042).
+    /// </summary>
+    Task<bool> IsLastActiveOwnerAsync(Tenant platform, TenantMembership membership, CancellationToken cancellationToken);
 }

@@ -63,6 +63,9 @@ public static class DependencyInjection
             options.Cookie.SameSite = SameSiteMode.Lax;
         });
         builder.Services.AddLoginRateLimiting();
+
+        // The ceremony that creates the Platform tenant runs from the host, never from a route.
+        builder.Services.AddSingleton<IHostedService, CleanArchitecture.Web.HostedServices.PlatformBootstrapHostedService>();
     }
 
     public static void AddKeyVaultIfConfigured(this IHostApplicationBuilder builder)

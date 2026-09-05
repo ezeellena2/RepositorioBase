@@ -1,4 +1,8 @@
 using CleanArchitecture.Application.FunctionalTests.Infrastructure;
+using CleanArchitecture.Application.IdentityAccess.Platform.Bootstrap;
+using CleanArchitecture.Application.IdentityAccess.Platform.Invitations;
+using CleanArchitecture.Application.IdentityAccess.Platform.Mfa;
+using CleanArchitecture.Infrastructure.IdentityAccess;
 using CleanArchitecture.Domain.IdentityAccess.Outbox;
 using CleanArchitecture.Domain.IdentityAccess.Platform;
 using CleanArchitecture.Domain.IdentityAccess.Security;
@@ -115,6 +119,96 @@ internal static class PlatformScenario
         var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         await context.Database.ExecuteSqlRawAsync(
             "UPDATE \"PlatformAdminInvitations\" SET \"CreatedAt\" = NOW() - INTERVAL '8 days', \"ExpiresAt\" = NOW() - INTERVAL '1 day' WHERE \"Status\" = 'Pending'");
+    }
+
+    /// <summary>Runs the ceremony the host runs at start-up, with the address a test chose.</summary>
+    internal static async Task<bool> BootstrapAsync(string? ownerEmail)
+    {
+        TestApp.SetPlatformBootstrapEmail(ownerEmail);
+        using var scope = FunctionalTestSetup.ScopeFactory.CreateScope();
+        await scope.ServiceProvider.GetRequiredService<PermissionCatalogSynchronizer>().SynchronizeAsync(CancellationToken.None);
+        var bootstrapper = scope.ServiceProvider.GetRequiredService<BootstrapPlatformOwner>();
+        return await bootstrapper.ExecuteAsync(new BootstrapPlatformOwnerCommand(), CancellationToken.None);
+    }
+
+    /// <summary>Reads the invitation token out of the envelope the ceremony sealed, as its recipient would.</summary>
+    internal static async Task<string> PendingOwnerTokenAsync()
+    {
+        var invitation = await SingleInvitationAsync();
+        return await SealedTokenAsync(invitation.DeliveryMessageId!.Value);
+    }
+
+    /// <summary>Marks the message carrying the current token as permanently undeliverable.</summary>
+    internal static async Task FailDeliveryAsync()
+    {
+        var invitation = await SingleInvitationAsync();
+        using var scope = FunctionalTestSetup.ScopeFactory.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        await context.Database.ExecuteSqlAsync(
+            $"""UPDATE outbox_messages SET "Status" = 'Abandoned', "FailureCode" = 'provider_rejected', "LeaseOwner" = NULL, "LeaseExpiresAt" = NULL WHERE "Id" = {invitation.DeliveryMessageId!.Value}""");
+    }
+
+    internal sealed record ActiveOwner(Guid IdentityId, TenantId PlatformId, string Token, string SharedKey);
+
+    /// <summary>
+    /// The whole chain, walked as its recipient would: bootstrap, register, confirm, sign in, enrol, verify,
+    /// acknowledge. It is the premise of every test about operating Platform, and it is walked rather than
+    /// seeded because seeding an active Platform membership would skip the gates the tests exist to trust.
+    /// </summary>
+    internal static async Task<ActiveOwner> ActiveOwnerAsync(string ownerEmail = "platform-owner@example.test")
+    {
+        await BootstrapAsync(ownerEmail);
+        var token = await PendingOwnerTokenAsync();
+        RunAnonymously();
+        await TestApp.SendAsync(new RegisterPlatformInviteeCommand(token, ValidPassword));
+        var confirmation = await SealedTokenAsync(
+            (await MessagesAsync()).Last(message => message.Type == "platform.invitation.confirmation.requested").Id);
+        await TestApp.SendAsync(new ConfirmPlatformInviteeCommand(token, confirmation));
+
+        var normalized = ownerEmail.ToUpperInvariant();
+        Guid identityId;
+        TenantId platformId;
+        using (var scope = FunctionalTestSetup.ScopeFactory.CreateScope())
+        {
+            var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            identityId = (await context.Set<CleanArchitecture.Infrastructure.Identity.ApplicationUser>()
+                .SingleAsync(user => user.NormalizedEmail == normalized)).Id;
+            platformId = (await context.Tenants.SingleAsync(tenant => tenant.Type == TenantType.Platform)).Id;
+        }
+
+        RunAs(identityId);
+        var enrollment = await TestApp.SendAsync(new BeginPlatformMfaEnrollmentCommand(token));
+        await TestApp.SendAsync(new VerifyPlatformMfaEnrollmentCommand(token, TotpCode(enrollment.Value!.SharedKey)));
+        (await TestApp.SendAsync(new AcknowledgePlatformRecoveryCodesCommand(token))).IsSuccess.ShouldBeTrue();
+
+        // From here the caller acts as a Platform member: the tenant comes from the session, never from input.
+        TestApp.SetCurrentTenant(platformId);
+        TestApp.SetApplicationPermissionGranted(true);
+        return new ActiveOwner(identityId, platformId, token, enrollment.Value.SharedKey);
+    }
+
+    /// <summary>What a real authenticator would show for this key now. Computed here, not asked of the code.</summary>
+    internal static string TotpCode(string sharedKey)
+    {
+        const string alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+        var bytes = new List<byte>();
+        int buffer = 0, bitsLeft = 0;
+        foreach (var character in sharedKey.TrimEnd('='))
+        {
+            buffer = (buffer << 5) | alphabet.IndexOf(char.ToUpperInvariant(character));
+            bitsLeft += 5;
+            if (bitsLeft < 8) continue;
+            bytes.Add((byte)((buffer >> (bitsLeft - 8)) & 0xFF));
+            bitsLeft -= 8;
+        }
+
+        Span<byte> counter = stackalloc byte[8];
+        System.Buffers.Binary.BinaryPrimitives.WriteInt64BigEndian(counter, DateTimeOffset.UtcNow.ToUnixTimeSeconds() / 30);
+        Span<byte> mac = stackalloc byte[20];
+        System.Security.Cryptography.HMACSHA1.HashData([.. bytes], counter, mac);
+        var offset = mac[^1] & 0x0F;
+        var binary = ((mac[offset] & 0x7F) << 24) | (mac[offset + 1] << 16) | (mac[offset + 2] << 8) | mac[offset + 3];
+        return (binary % 1_000_000).ToString("D6", System.Globalization.CultureInfo.InvariantCulture);
     }
 
     internal static void RunAnonymously()

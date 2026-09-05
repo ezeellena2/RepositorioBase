@@ -1,4 +1,5 @@
 using CleanArchitecture.Application.IdentityAccess.Platform;
+using CleanArchitecture.Application.IdentityAccess.Platform.Mfa;
 using CleanArchitecture.Application.IdentityAccess.Sessions;
 using CleanArchitecture.Domain.IdentityAccess.Authorization;
 using CleanArchitecture.Domain.IdentityAccess.Memberships;
@@ -32,6 +33,29 @@ public sealed class PlatformMembershipActivator(ApplicationDbContext context) : 
 
         context.MembershipRoles.Add(MembershipRole.Create(platform, membership, role));
         return true;
+    }
+
+    public async Task<bool> IsLastActiveOwnerAsync(Tenant platform, TenantMembership membership, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(platform);
+        ArgumentNullException.ThrowIfNull(membership);
+        var owner = PlatformRoles.Owner.ToUpperInvariant();
+
+        var holdsOwner = await context.MembershipRoles.AnyAsync(
+            assignment => assignment.MembershipId == membership.Id &&
+                          context.TenantRoles.Any(role => role.Id == assignment.RoleId && role.NormalizedName == owner),
+            cancellationToken);
+        if (!holdsOwner) return false;
+
+        var activeOwners = await context.TenantMemberships.CountAsync(
+            candidate => candidate.TenantId == platform.Id &&
+                         candidate.Status == MembershipStatus.Active &&
+                         context.MembershipRoles.Any(assignment =>
+                             assignment.MembershipId == candidate.Id &&
+                             context.TenantRoles.Any(role => role.Id == assignment.RoleId && role.NormalizedName == owner)),
+            cancellationToken);
+
+        return activeOwners <= 1;
     }
 }
 

@@ -5,7 +5,13 @@ namespace CleanArchitecture.Web.AcceptanceTests;
 [SetUpFixture]
 public class AspireSetup
 {
-    private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(60);
+    /// <summary>
+    /// How long the whole distributed application has to become healthy. It covers a container start, a
+    /// migration, a permission-catalogue synchronization and a Vite dev server, and the budget is spent while
+    /// the rest of the solution's suites are competing for the same machine — a minute is comfortable when this
+    /// project runs alone and not when it does not, which is exactly the flake that looks like a broken app.
+    /// </summary>
+    private static readonly TimeSpan DefaultTimeout = TimeSpan.FromMinutes(3);
 
     public static IDistributedApplicationTestingBuilder Builder { get; private set; } = null!;
     public static DistributedApplication App { get; private set; } = null!;

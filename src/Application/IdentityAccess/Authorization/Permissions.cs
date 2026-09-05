@@ -23,6 +23,15 @@ public static class Permissions
     public const string PlatformAdminsManage = "platform.admins.manage";
 
     /// <summary>
+    /// The organization lifecycle Platform may drive. It reads as `tenants` while the matching read code reads
+    /// as `organizations` because the SPEC route table names them that way, and the routes are the contract.
+    /// </summary>
+    public const string PlatformTenantsManage = "platform.tenants.manage";
+    public const string PlatformOrganizationsRead = "platform.organizations.read";
+    public const string PlatformIdentitiesRead = "platform.identities.read";
+    public const string PlatformAuditRead = "platform.audit.read";
+
+    /// <summary>
     /// Enrolling and stepping up the Platform second factor. The SPEC names no code for it, so this one is
     /// chosen to fit the existing `resource.action` catalogue. It is application-scoped for the same reason
     /// accepting an invitation is: the invitee holds no membership until the gates complete, so there is no
@@ -37,6 +46,10 @@ public static class Permissions
         new(MembersRead, [TenantType.Organization]),
         new(PlatformAdminsManage, [TenantType.Platform]),
         new(PlatformAdminsRead, [TenantType.Platform]),
+        new(PlatformAuditRead, [TenantType.Platform]),
+        new(PlatformIdentitiesRead, [TenantType.Platform]),
+        new(PlatformOrganizationsRead, [TenantType.Platform]),
+        new(PlatformTenantsManage, [TenantType.Platform]),
         new(RolesManage, [TenantType.Organization, TenantType.Platform]),
         new(RolesRead, [TenantType.Organization, TenantType.Platform]),
         new(TenantManage, [TenantType.Organization, TenantType.Platform]),

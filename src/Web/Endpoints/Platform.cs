@@ -14,5 +14,6 @@ public sealed class Platform : IEndpointGroup
     {
         global::CleanArchitecture.Web.PlatformEndpoints.PlatformInvitationEndpoints.Map(group);
         global::CleanArchitecture.Web.PlatformEndpoints.PlatformMfaEndpoints.Map(group);
+        global::CleanArchitecture.Web.PlatformEndpoints.PlatformEndpoints.Map(group);
     }
 }

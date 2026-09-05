@@ -29,7 +29,7 @@ public class TenantLifecycleTests
     {
         var suspendedTenant = Tenant.CreateOrganization(TenantSlug.From("suspended-org"));
         suspendedTenant.Activate();
-        suspendedTenant.Suspend();
+        suspendedTenant.Suspend(TenantSuspensionReason.PolicyViolation, DateTimeOffset.UtcNow);
 
         suspendedTenant.Status.ShouldBe(TenantStatus.Suspended);
         Should.Throw<InvalidOperationException>(() => suspendedTenant.Activate());

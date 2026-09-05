@@ -84,6 +84,10 @@ public class WebApiFactory(
                 // Platform MFA gates — would otherwise be untestable at this level.
                 services.RemoveAll<ICurrentSession>();
                 services.AddScoped<ICurrentSession, TestCurrentSession>();
+                // The bootstrap ceremony reads one configured address. A test chooses it per scenario, which
+                // configuration alone cannot do because the host is built once for the whole run.
+                services.RemoveAll<CleanArchitecture.Application.IdentityAccess.Platform.Bootstrap.IPlatformBootstrapOptions>();
+                services.AddSingleton<CleanArchitecture.Application.IdentityAccess.Platform.Bootstrap.IPlatformBootstrapOptions, TestPlatformBootstrapOptions>();
                 services.RemoveAll<IValidatedOptionalSession>();
                 services.AddScoped<IValidatedOptionalSession>(_ => TestApp.GetValidatedOptionalSession());
                 services.RemoveAll<ISecureTokenGenerator>();
@@ -175,6 +179,11 @@ public class WebApiFactory(
     private sealed class TestCurrentTenant : ICurrentTenant
     {
         public TenantId? TenantId => TestApp.GetTenantId();
+    }
+
+    private sealed class TestPlatformBootstrapOptions : CleanArchitecture.Application.IdentityAccess.Platform.Bootstrap.IPlatformBootstrapOptions
+    {
+        public string? OwnerEmail => TestApp.GetPlatformBootstrapEmail();
     }
 
     private sealed class TestCurrentSession : ICurrentSession

@@ -19,6 +19,9 @@ public static class ApiProblemMetadata
     public static readonly ApiProblemContract InvalidInvitation = new(StatusCodes.Status400BadRequest, "invalid_invitation");
     public static readonly ApiProblemContract InvitationConflict = new(StatusCodes.Status409Conflict, "invitation_conflict");
     public static readonly ApiProblemContract InvalidSession = new(StatusCodes.Status401Unauthorized, "invalid_session");
+    public static readonly ApiProblemContract PlatformTenantConcurrencyConflict = new(StatusCodes.Status409Conflict, "platform_tenant_concurrency_conflict");
+    public static readonly ApiProblemContract InvalidPlatformOperation = new(StatusCodes.Status400BadRequest, "invalid_platform_operation");
+    public static readonly ApiProblemContract RecentMfaRequired = new(StatusCodes.Status401Unauthorized, "recent_mfa_required");
     public static readonly ApiProblemContract InternalServerError = new(StatusCodes.Status500InternalServerError, "internal_server_error");
     public static readonly ApiProblemContract RateLimitExceeded = new(StatusCodes.Status429TooManyRequests, "rate_limit_exceeded", true);
 

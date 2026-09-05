@@ -348,6 +348,13 @@ public static class TestApp
     /// <summary>Puts a session behind the request, for the handlers that identify the caller by session.</summary>
     public static void SetSessionId(Guid? sessionId) => _sessionId = sessionId;
 
+    private static string? _platformBootstrapEmail;
+
+    /// <summary>The one address a deployment may configure for the Platform bootstrap ceremony.</summary>
+    public static string? GetPlatformBootstrapEmail() => _platformBootstrapEmail;
+
+    public static void SetPlatformBootstrapEmail(string? email) => _platformBootstrapEmail = email;
+
     public static async Task<Guid> RunAsDefaultUserAsync()
     {
         return await RunAsUserAsync("test@local", "Testing1234!", []);
@@ -425,6 +432,9 @@ public static class TestApp
         _optionalSessionIdentityId = null;
         _optionalSessionEmail = null;
         _optionalSessionIsInvalid = false;
+        _platformBootstrapEmail = null;
+        // The recovery budget is process state rather than database state, so Respawn does not clear it.
+        CleanArchitecture.Infrastructure.Platform.PlatformBootstrapRecoveryRateLimiter.Reset();
         _confirmationSecretLockBarrier = null;
         _invitationLockBarrier = null;
         lock (_invitationLockBarrierReaders) _invitationLockBarrierReaders.Clear();

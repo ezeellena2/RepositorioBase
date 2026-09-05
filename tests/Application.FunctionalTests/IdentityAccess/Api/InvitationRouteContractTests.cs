@@ -19,6 +19,7 @@ public sealed class InvitationRouteContractTests : TestBase
     [TestCase("/api/invitations/accept")]
     [TestCase("/api/platform/invitations/register")]
     [TestCase("/api/platform/invitations/confirm")]
+    [TestCase("/api/platform/admins/invitations")]
     public async Task Invitation_routes_are_declared_exactly_as_specified(string path)
     {
         var paths = await PathsAsync();
@@ -49,6 +50,7 @@ public sealed class InvitationRouteContractTests : TestBase
             .ShouldBe([
                 "/api/invitations/accept",
                 "/api/invitations/register",
+                "/api/platform/admins/invitations",
                 "/api/platform/invitations/confirm",
                 "/api/platform/invitations/register",
                 "/api/tenants/{tenantId}/invitations"

@@ -14,6 +14,11 @@ public sealed class Tenant : BaseEntity<TenantId>
 
     public long AuthorizationVersion { get; private set; }
 
+    /// <summary>Why this tenant is suspended, and when. Both are null unless it is.</summary>
+    public TenantSuspensionReason? SuspensionReason { get; private set; }
+
+    public DateTimeOffset? SuspendedAt { get; private set; }
+
     public static Tenant CreateOrganization(TenantSlug slug) => Create(TenantType.Organization, slug);
 
     public static Tenant CreatePersonal(TenantSlug slug) => Create(TenantType.Personal, slug);
@@ -31,11 +36,36 @@ public sealed class Tenant : BaseEntity<TenantId>
         IncrementAuthorizationVersion();
     }
 
-    public void Suspend()
+    /// <summary>
+    /// Suspends the tenant with the reason it is being suspended for. The reason is required rather than
+    /// optional because a suspension nobody recorded a cause for is one nobody can review or reverse with
+    /// confidence (IA-REQ-043).
+    /// </summary>
+    public void Suspend(TenantSuspensionReason reason, DateTimeOffset now)
     {
         EnsurePlatformIsNotEndedHere("The Platform tenant cannot be suspended.");
         EnsureStatus(TenantStatus.Active, "Only active tenants can be suspended.");
+        if (!Enum.IsDefined(reason))
+        {
+            throw new ArgumentOutOfRangeException(nameof(reason));
+        }
+
         Status = TenantStatus.Suspended;
+        SuspensionReason = reason;
+        SuspendedAt = now;
+        IncrementAuthorizationVersion();
+    }
+
+    /// <summary>
+    /// Returns a suspended tenant to service and clears the evidence of the suspension it is leaving, so a
+    /// reactivated tenant never reads as one that is still suspended for an old reason.
+    /// </summary>
+    public void Reactivate()
+    {
+        EnsureStatus(TenantStatus.Suspended, "Only suspended tenants can be reactivated.");
+        Status = TenantStatus.Active;
+        SuspensionReason = null;
+        SuspendedAt = null;
         IncrementAuthorizationVersion();
     }
 

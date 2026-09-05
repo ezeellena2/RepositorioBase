@@ -272,7 +272,7 @@ public sealed class RolePermissionMappingTests
         await context.SaveChangesAsync();
         (await evaluator.HasPermissionAsync(identityId, tenant.Id, Permissions.MembersRead)).ShouldBeFalse("a suspended membership must never retain a tenant permission");
 
-        tenant.Suspend();
+        tenant.Suspend(TenantSuspensionReason.OperatorRequest, DateTimeOffset.UtcNow);
         await context.SaveChangesAsync();
         (await evaluator.HasPermissionAsync(identityId, tenant.Id, Permissions.MembersRead)).ShouldBeFalse("a suspended tenant must never retain a tenant permission");
 

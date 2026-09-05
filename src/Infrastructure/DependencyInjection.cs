@@ -33,6 +33,7 @@ public static class DependencyInjection
         builder.Services.AddScoped<ISaveChangesInterceptor, AuditableEntityInterceptor>();
         builder.Services.AddScoped<ISaveChangesInterceptor, DispatchDomainEventsInterceptor>();
         builder.Services.AddScoped<ISaveChangesInterceptor, TenantAuthorizationAuditInterceptor>();
+        builder.Services.AddScoped<ISaveChangesInterceptor, CleanArchitecture.Infrastructure.Data.Interceptors.TenantTimestampInterceptor>();
 
         builder.Services.AddDbContext<ApplicationDbContext>((sp, options) =>
         {
@@ -111,6 +112,12 @@ public static class DependencyInjection
         builder.Services.AddSingleton<CleanArchitecture.Application.IdentityAccess.Platform.IPlatformRecoveryCodeFactory, CleanArchitecture.Infrastructure.Security.PlatformRecoveryCodeHasher>();
         builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.Platform.IPlatformMembershipActivator, CleanArchitecture.Infrastructure.Platform.PlatformMembershipActivator>();
         builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.Platform.IRecentMfaVerifier, CleanArchitecture.Infrastructure.Platform.RecentMfaVerifier>();
+        builder.Services.AddSingleton<CleanArchitecture.Application.IdentityAccess.Platform.Bootstrap.IPlatformBootstrapOptions, CleanArchitecture.Infrastructure.Platform.ConfiguredPlatformBootstrapper>();
+        builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.Platform.Bootstrap.IPlatformSystemRoleProvisioner, CleanArchitecture.Infrastructure.Platform.PlatformSystemRoleProvisioner>();
+        builder.Services.AddSingleton<CleanArchitecture.Application.IdentityAccess.Platform.Bootstrap.IPlatformBootstrapRecoveryRateLimiter, CleanArchitecture.Infrastructure.Platform.PlatformBootstrapRecoveryRateLimiter>();
+        builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.Platform.IPlatformOperationalProjectionReader, CleanArchitecture.Infrastructure.Platform.PlatformOperationalProjectionReader>();
+        builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.Platform.Bootstrap.RecoverPendingPlatformOwnerInvitationValidator>();
+        builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.Platform.Bootstrap.BootstrapPlatformOwner>();
 
         // The dispatcher and its handlers are registered as scoped units, not as a hosted service. The loop
         // that repeats a pass belongs to the worker process; registering it here would start a poller inside

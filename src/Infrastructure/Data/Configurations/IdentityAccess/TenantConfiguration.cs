@@ -17,5 +17,20 @@ public sealed class TenantConfiguration : IEntityTypeConfiguration<Tenant>
         builder.Property(tenant => tenant.AuthorizationVersion).IsRequired();
         builder.Property<uint>("Version").IsRowVersion().HasColumnName("xmin");
         builder.HasIndex(tenant => tenant.Slug).IsUnique();
+
+        // Suspension evidence. The reason is a closed set stored by name, so a read-only Platform projection
+        // cannot become a place free text — very plausibly personal data — is written into (IA-REQ-043/044).
+        builder.Property(tenant => tenant.SuspensionReason).HasConversion<string>().HasMaxLength(32);
+        builder.Property(tenant => tenant.SuspendedAt);
+
+        // Operational timestamps, kept out of the aggregate because no domain rule depends on them. They are
+        // stamped by an interceptor and read only by the Platform projection.
+        builder.Property<DateTimeOffset>("CreatedAt").IsRequired();
+        builder.Property<DateTimeOffset>("UpdatedAt").IsRequired();
+
+        builder.ToTable("Tenants", table => table.HasCheckConstraint(
+            "CK_Tenants_Suspension",
+            "((\"Status\" = 'Suspended') OR (\"SuspensionReason\" IS NULL AND \"SuspendedAt\" IS NULL)) AND " +
+            "((\"SuspensionReason\" IS NULL) = (\"SuspendedAt\" IS NULL)) AND \"UpdatedAt\" >= \"CreatedAt\""));
     }
 }
