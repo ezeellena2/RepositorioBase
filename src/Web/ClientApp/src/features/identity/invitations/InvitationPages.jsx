@@ -1,25 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useIdentity } from '../context/IdentityProvider';
 import { ProblemMessage } from '../ProblemMessage';
+import { useFragmentToken } from '../useFragmentToken';
 import { useSubmit } from '../useSubmit';
-
-/**
- * The invitation token arrives in the URL fragment, which browsers never send to a server and proxies never log.
- * It is read once into memory and the fragment is erased with replaceState, so it does not survive in history,
- * in a bookmark, or in whatever the next page decides to log (IA-REQ-025/029).
- */
-function useInvitationToken() {
-  const [token] = useState(() => new URLSearchParams(window.location.hash.replace(/^#/, '')).get('token'));
-
-  useEffect(() => {
-    if (window.location.hash) {
-      window.history.replaceState({}, '', `${window.location.pathname}${window.location.search}`);
-    }
-  }, []);
-
-  return token;
-}
 
 /**
  * Registering from an invitation answers with a neutral bodyless 202 whether the token was live, dead, or
@@ -27,7 +11,7 @@ function useInvitationToken() {
  */
 export function RegisterFromInvitationPage() {
   const identity = useIdentity();
-  const token = useInvitationToken();
+  const token = useFragmentToken();
   const [password, setPassword] = useState('');
   const { submit, problem, isBusy, result } = useSubmit((secret, chosen) =>
     identity.client.registerFromInvitation(secret, chosen));
@@ -58,7 +42,7 @@ export function RegisterFromInvitationPage() {
 export function AcceptInvitationPage() {
   const identity = useIdentity();
   const navigate = useNavigate();
-  const token = useInvitationToken();
+  const token = useFragmentToken();
   const { submit, problem, isBusy, result } = useSubmit((secret) => identity.client.acceptInvitation(secret));
 
   return (

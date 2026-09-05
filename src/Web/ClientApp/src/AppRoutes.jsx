@@ -5,6 +5,7 @@ import { Home } from "./components/Home";
 import { ProtectedRoute } from "./components/api-authorization/ProtectedRoute";
 import { LoginPage } from "./features/identity/login/LoginPage";
 import { RegisterOrganizationPage } from "./features/identity/register/RegisterOrganizationPage";
+import { ConfirmEmailPage } from "./features/identity/register/ConfirmEmailPage";
 import { TenantSelector } from "./features/identity/tenants/TenantSelector";
 import { InviteMemberPage } from "./features/identity/invitations/InviteMemberPage";
 import { AcceptInvitationPage, RegisterFromInvitationPage } from "./features/identity/invitations/InvitationPages";
@@ -30,6 +31,9 @@ const AppRoutes = [
   { path: '/todo', element: <ProtectedRoute><Tasks /></ProtectedRoute> },
   { path: '/login', element: <LoginPage /> },
   { path: '/organizations/register', element: <RegisterOrganizationPage /> },
+  // Where both confirmation emails point. It is public because confirming is what an identity does before it can
+  // sign in at all, so requiring a session here would make the link impossible to answer.
+  { path: '/confirm-email', element: <ConfirmEmailPage /> },
   { path: '/invitations/register', element: <RegisterFromInvitationPage /> },
   { path: '/invitations/accept', element: <AcceptInvitationPage /> },
   { path: '/identity', element: <ProtectedRoute><IdentityContextPage /></ProtectedRoute> },

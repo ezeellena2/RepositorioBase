@@ -183,13 +183,16 @@ public sealed class PlatformMfaTests : TestBase
 
     internal sealed record Invitee(Guid IdentityId, string Email, string Token, string SharedKey);
 
-    private static async Task<Invitee> ConfirmedInviteeAsync(bool seedRoles = true, bool isOwner = true)
+    internal static async Task<Invitee> ConfirmedInviteeAsync(bool seedRoles = true, bool isOwner = true)
     {
         if (seedRoles) await PlatformScenario.SeedPlatformRolesAsync();
         var (email, token) = await PlatformScenario.PendingInvitationAsync(isOwner);
         PlatformScenario.RunAnonymously();
         await TestApp.SendAsync(new RegisterPlatformInviteeCommand(token, PlatformScenario.ValidPassword));
-        var confirmationToken = await PlatformScenario.SealedTokenAsync((await PlatformScenario.MessagesAsync()).Single().Id);
+        // The newest confirmation rather than the only one: a test may set up more than one invitee, and this
+        // helper has to keep working when it does.
+        var confirmationToken = await PlatformScenario.SealedTokenAsync(
+            (await PlatformScenario.MessagesAsync()).Last(message => message.Type == "platform.invitation.confirmation.requested").Id);
         await TestApp.SendAsync(new ConfirmPlatformInviteeCommand(confirmationToken));
 
         var identity = (await TestApp.ListAsync<ApplicationUser>()).Single(user => user.Email == email);
@@ -197,7 +200,7 @@ public sealed class PlatformMfaTests : TestBase
         return new Invitee(identity.Id, email, token, string.Empty);
     }
 
-    private static async Task<Invitee> CompletedGatesAsync()
+    internal static async Task<Invitee> CompletedGatesAsync()
     {
         var invitee = await ConfirmedInviteeAsync();
         var enrollment = await TestApp.SendAsync(new BeginPlatformMfaEnrollmentCommand(invitee.Token));

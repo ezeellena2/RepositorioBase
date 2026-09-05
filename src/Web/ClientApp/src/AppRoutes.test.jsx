@@ -17,6 +17,7 @@ describe('identity routes', () => {
     ['/organizations/register', 'Register an organization'],
     ['/invitations/register', 'Set up your account'],
     ['/invitations/accept', 'Accept your invitation'],
+    ['/confirm-email', 'Confirm your email'],
   ])('renders the public route %s', async (path, heading) => {
     server.use(antiforgery(), contextIs(null));
     renderAt(path);

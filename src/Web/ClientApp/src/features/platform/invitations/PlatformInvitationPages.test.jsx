@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
+import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 import { IdentityProvider } from '../../identity/context/IdentityProvider';
 import {
@@ -14,7 +15,7 @@ import { antiforgery, contextIs, problem, signedInContext } from '../../../test/
 
 const withToken = (token) => window.history.replaceState({}, '', `/platform/invitations/register#token=${encodeURIComponent(token)}`);
 
-const renderPage = (page) => render(<IdentityProvider>{page}</IdentityProvider>);
+const renderPage = (page) => render(<MemoryRouter><IdentityProvider>{page}</IdentityProvider></MemoryRouter>);
 
 /**
  * The Platform onboarding pages (IA-REQ-041).
@@ -42,6 +43,52 @@ describe('platform invitation pages', () => {
 
     await waitFor(() => expect(submissions).toHaveLength(1));
     expect(submissions[0]).toEqual({ token: 'platform-token-1', password: 'Testing1234!' });
+  });
+
+  /**
+   * The continuation renders on a PUBLIC route, so the only thing standing between an anonymous visitor holding
+   * a link and the enrollment gates is this check. The negative on the /platform/mfa page does not cover it:
+   * that page is behind ProtectedRoute and this one is not.
+   */
+  it('offers no second factor to a visitor with no session, and asks for nothing', async () => {
+    const enrollments = [];
+    server.use(antiforgery(), contextIs(null));
+    server.use(http.post('/api/platform/mfa/enroll', async ({ request }) => {
+      enrollments.push(await request.json());
+      return HttpResponse.json({ sharedKey: 'K', provisioningUri: 'otpauth://x', recoveryCodes: ['c'] });
+    }));
+    withToken('platform-token-anonymous');
+
+    renderPage(<RegisterPlatformInviteePage />);
+
+    expect(await screen.findByLabelText('Choose a password')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Set up your second factor' })).not.toBeInTheDocument();
+    expect(enrollments).toHaveLength(0);
+  });
+
+  /**
+   * Signed in, the same link is the way back into the ceremony — with the token still only in this component's
+   * memory. The password form stays because an invitee whose account already existed answers it from here too.
+   */
+  it('offers a signed-in invitee the second factor from the invitation link, without writing the token anywhere', async () => {
+    const enrollments = [];
+    server.use(antiforgery(), contextIs(signedInContext({ activeTenant: null, availableTenants: [], permissions: [] })));
+    server.use(http.post('/api/platform/mfa/enroll', async ({ request }) => {
+      enrollments.push(await request.json());
+      return HttpResponse.json({ sharedKey: 'KEY', provisioningUri: 'otpauth://x', recoveryCodes: ['code-1'] });
+    }));
+    withToken('platform-token-continued');
+
+    renderPage(<RegisterPlatformInviteePage />);
+    expect(await screen.findByLabelText('Choose a password')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Set up your second factor' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Begin enrollment' }));
+
+    await waitFor(() => expect(enrollments).toHaveLength(1));
+    expect(enrollments[0]).toEqual({ token: 'platform-token-continued' });
+    expect(await screen.findByTestId('platform-shared-key')).toHaveTextContent('KEY');
+    expect(window.location.hash).toBe('');
+    expect(window.location.search).toBe('');
   });
 
   it('says the same neutral thing whether the token was live or not', async () => {
@@ -110,7 +157,10 @@ describe('platform invitation pages', () => {
     await waitFor(() => expect(confirmations).toHaveLength(1));
     expect(confirmations[0]).toEqual({ confirmationToken: 'confirmation-token-1' });
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
-    expect(await screen.findByRole('status')).toHaveTextContent(/sign in to continue/i);
+    // The screen names the two steps that are left, and offers the first of them. Ending on "sign in to continue"
+    // alone was what left the invitee with no way back into the ceremony (R2).
+    expect(await screen.findByRole('status')).toHaveTextContent(/open your invitation email again to set up your second factor/i);
+    expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/login');
   });
 
   it('does not offer the MFA ceremony to a visitor with no session', async () => {
@@ -118,7 +168,7 @@ describe('platform invitation pages', () => {
 
     renderPage(<PlatformMfaEnrollmentPage />);
 
-    expect(await screen.findByText(/sign in with the invited address first/i)).toBeInTheDocument();
+    expect(await screen.findByText(/sign in with the invited address, then open your invitation email again/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Begin enrollment' })).not.toBeInTheDocument();
   });
 

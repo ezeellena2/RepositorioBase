@@ -13,8 +13,9 @@ Scenario: The first owner reaches the panel through every gate, and through no f
     And no visitor had been offered the panel
     And a failed delivery had been resent without naming anybody, leaving one invitation pending
     And the invitation had arrived, and choosing a password had granted no membership
-    And the confirmation had arrived, and had been answered on the confirmation screen
+    And answering the invitation again had reissued the confirmation, and only the newest link had confirmed the address
     And signing in had granted no membership either, and the panel was still refused
+    And the invitation link they still held had carried them into the second factor
     And only the second factor had granted the membership
     And the Platform panel is offered to them
 
@@ -31,3 +32,12 @@ Scenario: The panel offers no prohibited capability
     Given the first owner has been walked in from the deployment's cold start
     Then the panel offers no impersonation, deletion or context override
     And the owner is the one offered the administrator invitation
+
+# Last on purpose. One browser serves the whole feature and the walk above is cached, so signing out here ends
+# the session every earlier scenario operates from; reordering this would strand them with no failure that says so.
+Scenario: A returning owner proves the second factor again before the directories open
+    Given the first owner has been walked in from the deployment's cold start
+    When they sign out and sign in again with their password
+    Then the panel asks for the second factor and shows no directory
+    When they prove the second factor on the panel
+    Then the Platform panel is offered to them

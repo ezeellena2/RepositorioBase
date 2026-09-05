@@ -1,11 +1,15 @@
 # Identity Access — Tasks
 
-**Status:** In progress. IA-002 and IA-003 are complete. Task 13 verified the pre-Platform foundation and Tasks
-14-16 delivered and verified the Platform slice, so IA-004 through IA-008, IA-012, IA-014 and IA-009 are all in
-`Review`. IA-009 moved last and only after the Platform journeys ran, which is the order its gate requires.
+**Status:** In progress. IA-002 and IA-003 are complete. Tasks 1–16 implemented the Organization and Platform
+foundation; IA-004 through IA-008, IA-012, IA-014 and IA-009 remain recorded as `Review`, not approved or closed.
+The [2026-09-05 direct review](CODE-REVIEW-2026-09-05.md) found incomplete browser journeys and security/session
+defects at `7e9eb55`. **R1-R7 and L1 are corrected**, each with a test that fails on the code the review read;
+[TRACEABILITY.md](TRACEABILITY.md) names them row by row and records the full verification run. Correcting them
+does not by itself close a task or establish a usable end-to-end product — the remaining entries there are
+coverage gaps and one named residual, and the task states below are unchanged by this work.
 
-The roadmap tasks are untouched and are not implemented: IA-010 (personal tenants and AR/DNI), IA-011
-(recovery/change and session management), IA-013 and IA-015 remain `Proposed`.
+The broader baseline is not complete: IA-010 (Personal/B2C tenants and AR/DNI), IA-011 (recovery/change and session
+management), IA-013 (Google OIDC/linking) and IA-015 (operations hardening) remain `Proposed` and unimplemented.
 
 ## Review Workload Forecast
 
@@ -52,39 +56,44 @@ Task 11 built the delivery loop: the lease and compare-and-swap dispatcher of IA
 lease/decrypt/render/send/terminalize handling of IA-REQ-018, with `OutboxMessage` gaining the dispatch state
 Task 7 had left it without.
 
-The dispatcher exposes one pass as its own method and runs from a separate `OutboxWorker` process. Registering a
-hosted service inside the web application would also start it inside every functional test that boots that
-application — `WebApiFactory` only strips `IHostedService` when an environment name is supplied — and it would
-race the rows those tests assert on. The loop belongs to the worker; every rule about what to deliver, when to
-retry and when to give up belongs to the dispatcher, which is what makes them testable against a clock a test
-moves by hand.
+The dispatcher exposes one pass as its own method. Provider delivery runs from `OutboxWorker`; an explicit
+local drop uses `LocalOutboxDeliveryService` inside Web, keeping token encryption and decryption in one process.
+AppHost omits the separate worker for that local configuration. Local folder delivery is restricted to
+Development/Test/Testing, and functional tests that do not configure a drop do not start this poller. Delivery,
+retry and settlement rules remain in the dispatcher. Review follow-up L1 records interrupted local-file handling.
 
-Known harness flakes, recorded to watch rather than diagnosed:
+Historical harness observations (not fresh verification results):
 
 - The Aspire PostgreSQL fixture has been reported to time out on a cold first run of `Web.AcceptanceTests` and to
   pass on retry. Not reproduced locally: both local runs were 6/6.
 - `MigrationUpgradeTests.UserSessions_round_trip_preserves_preexisting_sentinels_and_removes_only_session_schema`
-  fails intermittently inside the full `Infrastructure.IntegrationTests` run — observed twice, 142/143 — and
-  passes 6/6 in isolation and on every re-run of the whole suite. Every migration round-trip test creates and
-  drops its own database on the shared PostgreSQL instance while the rest of the suite runs in parallel, so the
-  suspicion is contention over `CREATE`/`DROP DATABASE`, not a defect in the migration under test. Unproven.
+  previously failed intermittently in the full suite. The current `AssertUserSessionChronologyConstraint`
+  truncates its clock to PostgreSQL microsecond precision with `clock.AddTicks(-(clock.Ticks % 10))`, preserving
+  the one-microsecond invalid timestamp used by the assertion. This correction is present at `7e9eb55`;
+  the earlier database-contention suspicion is not established. No new integration run is claimed here.
 
 Neither is a licence to ignore a red run. A single unexplained failure should be re-run with the failing test
 name captured before it is called a flake, as was done for the one above.
 
 ## IA-008 merge gates
 
-Open, and none of them block a slice. They block the merge:
+Reconciled against source at `7e9eb55`; this is not a new integration-test run or merge approval:
 
-- `VersionedTokenHash.FromPersistedValue` is public, `default(VersionedTokenHash)` is still constructible and
-  invalid, and the parser accepts non-canonical Base64. Close it with a single public factory, a `default` guard
-  in `Issue`/`Reissue`, and a decode-then-reencode check in both the domain and the SQL constraint. PostgreSQL
-  cannot tell a raw token from a digest, so that provenance belongs at the Application boundary.
-- The `UPDATE` statements in `InvitationCanonicalForm` and `InvitationRecipientComposition` still collide with
-  `TR_Invitations_PreventSettledChange` for `Accepted`/`Cancelled` rows and for losers cancelled in the same
-  migration. Needs upgrade tests for settled legacy rows, a canonicalized collision and NFC from the previous
-  migration, each verifying the trigger is restored afterwards.
-- `Co-Authored-By` trailers and `.claude/settings.local.json` per the maintainer's merge policy.
+- **Implementation corrected:** `VersionedTokenHash.FromPersistedValue` is internal; `Of` is the sole public
+  hash factory. `Invitation.Issue`/`Reissue` guard `IsEmpty`, and decoding/re-encoding plus the canonical SQL
+  constraint reject alternate Base64 padding. `VersionedTokenHashTests.The_only_public_way_to_obtain_a_hash_is_to_hash_a_token`,
+  `A_non_canonical_encoding_is_not_a_persisted_hash` and `The_default_value_is_empty` exist. Direct Issue/Reissue
+  tests with `default` were not found; that narrow coverage gap is not the former missing implementation.
+- **Implementation corrected:** `InvitationCanonicalForm` and `InvitationRecipientComposition` disable and
+  restore `TR_Invitations_PreventSettledChange` around data repair.
+  `MigrationUpgradeTests.Invitation_canonicalization_upgrades_settled_and_colliding_rows_and_leaves_the_trigger_operative`
+  covers accepted/cancelled history, case/NFC collisions, preserved rows and the restored trigger.
+- **Still applicable:** the maintainer's merge policy for `Co-Authored-By` trailers and
+  `.claude/settings.local.json`. This documentation change does not alter that policy or configuration.
+- **Closure defects, corrected:** R1–R7 and L1 of [CODE-REVIEW-2026-09-05.md](CODE-REVIEW-2026-09-05.md) have
+  remediation and focused regression evidence, named per requirement in [TRACEABILITY.md](TRACEABILITY.md). Task
+  states and workflow gates are not advanced by that correction either; what changed is that the defects and the
+  browser journeys they blocked are no longer open.
 
 ## Executable-task contract
 

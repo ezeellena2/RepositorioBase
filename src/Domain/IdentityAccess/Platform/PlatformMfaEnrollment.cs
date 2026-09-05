@@ -170,12 +170,25 @@ public sealed class PlatformMfaEnrollment : BaseEntity<PlatformMfaEnrollmentId>
     }
 
     /// <summary>
+    /// Whether this session has ever proved the factor. It is what reading Platform requires: a session that only
+    /// presented a password has proved one thing, and the operational directories are not for it (IA-REQ-045).
+    /// <para>
+    /// Proof deliberately outlives the freshness window. Re-prompting an administrator every fifteen minutes to
+    /// keep reading a directory would train them to type a code without reading what it is for, which is the
+    /// opposite of what the window exists to achieve — so freshness is asked only of a change.
+    /// </para>
+    /// </summary>
+    public bool HasProvedFactor(Guid sessionId) =>
+        Status == PlatformMfaEnrollmentStatus.Active &&
+        LastVerifiedSessionId == sessionId &&
+        LastVerifiedAt is not null;
+
+    /// <summary>
     /// Whether this session has proved the factor recently enough to make a Platform change. An enrollment that
     /// never completed can never satisfy it, however recently a code was accepted.
     /// </summary>
     public bool HasRecentStepUp(Guid sessionId, DateTimeOffset now, TimeSpan window) =>
-        Status == PlatformMfaEnrollmentStatus.Active &&
-        LastVerifiedSessionId == sessionId &&
+        HasProvedFactor(sessionId) &&
         LastVerifiedAt is { } verified &&
         verified <= now &&
         now - verified <= window;

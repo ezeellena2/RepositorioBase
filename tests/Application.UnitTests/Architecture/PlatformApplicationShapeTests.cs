@@ -4,6 +4,7 @@ using CleanArchitecture.Application.IdentityAccess.Authorization;
 using MediatR;
 using NUnit.Framework;
 using Shouldly;
+using CleanArchitecture.Application.IdentityAccess.Platform;
 
 namespace CleanArchitecture.Application.UnitTests.Architecture;
 
@@ -194,6 +195,34 @@ public sealed class PlatformApplicationShapeTests
         {
             property.Name.Contains("tenant", StringComparison.OrdinalIgnoreCase).ShouldBeFalse(
                 $"{name}.{property.Name} would let a caller choose its context.");
+        }
+    }
+
+    /// <summary>
+    /// Every directory handler asks whether this session proved the second factor (IA-REQ-045).
+    /// <para>
+    /// The pipeline cannot ask it: tenant and permission are both satisfied by a session that presented only a
+    /// password, because signing in selects the sole active tenant and the membership already carries the reads.
+    /// So the question lives in the handlers, and a fifth directory added without it would be the same hole
+    /// reopened. This pins the dependency; the functional tests pin that it is actually consulted.
+    /// </para>
+    /// </summary>
+    [Test]
+    public void Every_platform_directory_handler_asks_whether_this_session_proved_the_second_factor()
+    {
+        var handlers = ApplicationAssembly.GetTypes()
+            .Where(type => type is { IsClass: true, IsAbstract: false })
+            .Where(type => type.Namespace == $"{Root}.Queries")
+            .Where(type => type.GetInterfaces().Any(contract =>
+                contract.IsGenericType && contract.Name.StartsWith("IRequestHandler", StringComparison.Ordinal)))
+            .ToArray();
+
+        handlers.Length.ShouldBe(4, "the four directories are the whole read surface of Platform.");
+        foreach (var handler in handlers)
+        {
+            handler.GetConstructors().ShouldContain(
+                constructor => constructor.GetParameters().Any(parameter => parameter.ParameterType == typeof(IPlatformMfaSessionProof)),
+                $"{handler.Name} reads a Platform directory without asking for proof of the second factor.");
         }
     }
 }

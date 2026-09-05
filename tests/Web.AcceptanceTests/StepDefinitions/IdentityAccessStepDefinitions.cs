@@ -19,6 +19,7 @@ public sealed class IdentityAccessStepDefinitions(ScenarioContext scenario)
     private TenantSelectorPage Tenants => new(Page);
     private InvitationPages Invitations => new(Page);
     private InviteMemberPage Invite => new(Page);
+    private ConfirmEmailPage Confirmation => new(Page);
 
     private static IPage Page => sharedPage ?? throw new InvalidOperationException("The identity feature has no page.");
 
@@ -73,8 +74,11 @@ public sealed class IdentityAccessStepDefinitions(ScenarioContext scenario)
         await SignIn.AssertVisibleAsync();
     }
 
-    [When("the invitee confirms the address")]
-    public async Task WhenTheInviteeConfirms() => await ConfirmPendingIdentityAsync(scenario.Get<string>("email"));
+    [When("the invitee opens the delivered confirmation link and confirms")]
+    public async Task WhenTheInviteeConfirms() => await ConfirmThroughDeliveredMailAsync(scenario.Get<string>("email"));
+
+    [Then("the confirmation link left no token in the address bar")]
+    public Task ThenTheConfirmationLinkLeftNoToken() => Confirmation.AssertFragmentClearedAsync();
 
     [Then("they can sign in and reach their access page")]
     public async Task ThenTheyCanSignIn()
@@ -142,7 +146,7 @@ public sealed class IdentityAccessStepDefinitions(ScenarioContext scenario)
     }
 
     [When("the new organization is confirmed")]
-    public async Task WhenTheNewOrganizationIsConfirmed() => await ConfirmPendingIdentityAsync(Identity.Email);
+    public async Task WhenTheNewOrganizationIsConfirmed() => await ConfirmThroughDeliveredMailAsync(Identity.Email);
 
     [Then("both organizations are offered to them")]
     public async Task ThenBothOrganizationsAreOffered()
@@ -219,7 +223,7 @@ public sealed class IdentityAccessStepDefinitions(ScenarioContext scenario)
     [When("the newcomer confirms the address")]
     public async Task WhenTheNewcomerConfirms()
     {
-        Identity = await ConfirmPendingIdentityAsync(scenario.Get<string>("email"));
+        Identity = await ConfirmThroughDeliveredMailAsync(scenario.Get<string>("email"));
     }
 
     [When("the newcomer signs in and accepts the invitation")]
@@ -332,30 +336,21 @@ public sealed class IdentityAccessStepDefinitions(ScenarioContext scenario)
     }
 
     /// <summary>
-    /// Confirms the address the way the recipient would, by consuming the confirmation the registration wrote.
-    /// The token itself is encrypted in the outbox envelope and unreadable from here, so the confirmation is
-    /// completed through the same transition the endpoint performs. What the journey is proving is what happens
-    /// after confirmation, not the cryptography of the link.
+    /// Confirms the address the way its recipient does: by opening the link that was delivered to them and
+    /// pressing the button on the screen it opens.
+    /// <para>
+    /// This used to be two UPDATE statements. They made every scenario downstream of confirmation pass without
+    /// anything having confirmed anything — which is exactly how a delivered link that opened no screen at all
+    /// survived (R1). One helper serves all three call sites because both confirmation mails, the organization's
+    /// and the invited member's, carry the same subject to the same page.
+    /// </para>
     /// </summary>
-    private static async Task<IdentityAccessFixtures.SeededIdentity> ConfirmPendingIdentityAsync(string email)
+    private async Task<IdentityAccessFixtures.SeededIdentity> ConfirmThroughDeliveredMailAsync(string email)
     {
-        var connectionString = await AspireSetup.App.GetConnectionStringAsync(Services.Database)
-            ?? throw new InvalidOperationException("Acceptance database connection string is unavailable.");
-        await using var connection = new Npgsql.NpgsqlConnection(connectionString);
-        await connection.OpenAsync();
-
-        await using var activate = new Npgsql.NpgsqlCommand(
-            "UPDATE \"AspNetUsers\" SET \"EmailConfirmed\" = TRUE WHERE \"NormalizedEmail\" = @email RETURNING \"Id\";", connection);
-        activate.Parameters.AddWithValue("email", email.ToUpperInvariant());
-        var identityId = await activate.ExecuteScalarAsync()
-            ?? throw new InvalidOperationException($"No pending identity was registered for {email}.");
-
-        await using var activateTenant = new Npgsql.NpgsqlCommand(
-            "UPDATE \"Tenants\" SET \"Status\" = 'Active' WHERE \"Status\" = 'PendingConfirmation'; " +
-            "UPDATE \"TenantMemberships\" SET \"Status\" = 'Active' WHERE \"IdentityId\" = @id AND \"Status\" = 'PendingConfirmation';", connection);
-        activateTenant.Parameters.AddWithValue("id", (Guid)identityId);
-        await activateTenant.ExecuteNonQueryAsync();
-
-        return new IdentityAccessFixtures.SeededIdentity((Guid)identityId, email);
+        var delivered = await PlatformFixtures.DeliveredAsync(email, "Confirm your email");
+        await Confirmation.OpenDeliveredAsync(delivered);
+        await Confirmation.AssertFragmentClearedAsync();
+        await Confirmation.ConfirmAsync();
+        return new IdentityAccessFixtures.SeededIdentity(await IdentityAccessFixtures.IdentityIdAsync(email), email);
     }
 }

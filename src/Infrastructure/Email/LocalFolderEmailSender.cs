@@ -61,7 +61,12 @@ public sealed class LocalFolderEmailSender(IOptions<IdentityEmailOptions> option
         // Keyed by the outbox message, so a retry after an uncertain write reconciles onto the same file and the
         // same receipt — which is exactly what the provider's idempotency key buys, and what the dispatcher's
         // replay logic expects.
-        if (!File.Exists(path))
+        //
+        // What counts as the prior attempt having succeeded is the file being COMPLETE, not the name existing. A
+        // write interrupted midway leaves a truncated file; treating that as delivered would report success for a
+        // message nobody can read, and the dispatcher would then delete the token ciphertext — losing the only
+        // copy of the link. So a file that does not parse is republished rather than believed.
+        if (!await IsCompleteAsync(path, recipient, subject, cancellationToken))
         {
             var content = new StringBuilder()
                 .Append("To: ").AppendLine(recipient)
@@ -71,9 +76,62 @@ public sealed class LocalFolderEmailSender(IOptions<IdentityEmailOptions> option
                 .AppendLine()
                 .AppendLine(body)
                 .ToString();
-            await File.WriteAllTextAsync(path, content, cancellationToken);
+            await PublishAsync(path, content, cancellationToken);
         }
 
         return new EmailDeliveryReceipt(true, $"local-folder-{idempotencyKey}", false);
+    }
+
+    /// <summary>
+    /// Writes beside the final name and moves it into place, so the message a reader can see is either absent or
+    /// whole. A reader polling the folder — the acceptance journeys do exactly that — would otherwise be able to
+    /// open a half-written file and act on a truncated link.
+    /// </summary>
+    private static async Task PublishAsync(string path, string content, CancellationToken cancellationToken)
+    {
+        // Beside it rather than in a temp directory: a move within one directory is the only kind the filesystem
+        // performs atomically, and a cross-volume move degrades to a copy, which is the very thing being avoided.
+        var pending = $"{path}.{Guid.NewGuid():N}.part";
+        try
+        {
+            await File.WriteAllTextAsync(pending, content, cancellationToken);
+            File.Move(pending, path, overwrite: true);
+        }
+        catch
+        {
+            // A failed publish leaves nothing behind to be mistaken for a delivery.
+            try { File.Delete(pending); } catch (IOException) { /* The next attempt writes its own name. */ }
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Whether a previous attempt actually published this message. It is the evidence that is checked, not the
+    /// name: every header the writer emits must be present with the values this attempt would write, and there
+    /// must be a body after the blank line. An empty or truncated file answers false and is republished.
+    /// </summary>
+    private async Task<bool> IsCompleteAsync(string path, string recipient, string subject, CancellationToken cancellationToken)
+    {
+        if (!File.Exists(path)) return false;
+
+        string content;
+        try { content = await File.ReadAllTextAsync(path, cancellationToken); }
+        catch (IOException) { return false; }
+
+        // The blank line the writer emits, in whichever line ending the platform that wrote it uses.
+        var bodyStart = -1;
+        foreach (var blankLine in new[] { "\r\n\r\n", "\n\n" })
+        {
+            var index = content.IndexOf(blankLine, StringComparison.Ordinal);
+            if (index >= 0) { bodyStart = index + blankLine.Length; break; }
+        }
+
+        if (bodyStart < 0 || string.IsNullOrWhiteSpace(content[bodyStart..])) return false;
+
+        var headers = content[..bodyStart];
+        return headers.Contains($"To: {recipient}", StringComparison.Ordinal) &&
+               headers.Contains($"From: {options.Value.FromAddress}", StringComparison.Ordinal) &&
+               headers.Contains($"Subject: {subject}", StringComparison.Ordinal) &&
+               headers.Contains("Date: ", StringComparison.Ordinal);
     }
 }

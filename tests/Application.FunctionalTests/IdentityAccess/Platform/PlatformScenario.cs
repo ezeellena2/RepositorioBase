@@ -121,6 +121,30 @@ internal static class PlatformScenario
             "UPDATE \"PlatformAdminInvitations\" SET \"CreatedAt\" = NOW() - INTERVAL '8 days', \"ExpiresAt\" = NOW() - INTERVAL '1 day' WHERE \"Status\" = 'Pending'");
     }
 
+    /// <summary>Closes the window on every confirmation envelope, which is all letting one expire does.</summary>
+    internal static async Task ExpireConfirmationEnvelopeAsync()
+    {
+        using var scope = FunctionalTestSetup.ScopeFactory.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        await context.Database.ExecuteSqlRawAsync(
+            "UPDATE outbox_secrets SET \"ExpiresAt\" = NOW() - INTERVAL '1 minute' WHERE \"OutboxMessageId\" IN " +
+            "(SELECT \"Id\" FROM outbox_messages WHERE \"Type\" = 'platform.invitation.confirmation.requested')");
+    }
+
+    /// <summary>
+    /// Marks one confirmation envelope delivered. The functional harness strips every hosted service, so no
+    /// dispatcher ever runs and a secret would otherwise stay Pending forever — which would hide the difference
+    /// between retiring the pending envelopes and retiring the ones confirmation actually accepts.
+    /// </summary>
+    internal static async Task MarkConfirmationSecretDeliveredAsync(Guid outboxMessageId)
+    {
+        using var scope = FunctionalTestSetup.ScopeFactory.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var secret = await context.OutboxSecrets.SingleAsync(item => item.OutboxMessageId == outboxMessageId);
+        secret.MarkDelivered("confirmation_delivered", DateTimeOffset.UtcNow, "test-receipt");
+        await context.SaveChangesAsync();
+    }
+
     /// <summary>Runs the ceremony the host runs at start-up, with the address a test chose.</summary>
     internal static async Task<bool> BootstrapAsync(string? ownerEmail)
     {

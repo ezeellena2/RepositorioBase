@@ -83,13 +83,12 @@ public sealed class RegistrationTests : TestBase
             Task.Run(() => SendFromIndependentScopeAsync(first, barrier)),
             Task.Run(() => SendFromIndependentScopeAsync(second, barrier)));
 
-        results.Count(result => result.IsSuccess).ShouldBe(1);
-        var conflict = results.Single(result => result.IsFailure);
-        conflict.Error!.Code.ShouldBe("registration_conflict");
+        // Both anonymous callers are told the same thing, and which of them lost the race is visible to neither.
+        // The uniqueness they raced for still holds: one organization, one profile, one identity.
+        results.ShouldAllBe(result => result.IsSuccess);
         var submissions = await TestApp.ListAsync<RegistrationSubmission>();
         submissions.Count.ShouldBe(2);
-        submissions.Count(submission => submission.Outcome == RegistrationSubmissionOutcome.Accepted).ShouldBe(1);
-        submissions.Count(submission => submission.Outcome == RegistrationSubmissionOutcome.RegistrationConflict).ShouldBe(1);
+        submissions.Count(submission => submission.Outcome == RegistrationSubmissionOutcome.Accepted).ShouldBe(2);
         submissions.Count(submission => submission.CompletedAt.HasValue).ShouldBe(2);
         (await TestApp.CountAsync<Tenant>()).ShouldBe(1);
         (await TestApp.CountAsync<OrganizationProfile>()).ShouldBe(1);
@@ -133,13 +132,78 @@ public sealed class RegistrationTests : TestBase
         (await TestApp.CountAsync<OrganizationProfile>()).ShouldBe(0);
     }
 
+    /// <summary>
+    /// The oracle R6 closes, stated as the pair of requests that produced it.
+    /// <para>
+    /// The two differ in the one thing a caller chooses — the address — and agree on an occupied CUIT. Answering
+    /// the taken address neutrally and the untaken one with a conflict made the status a direct read of whether
+    /// that address has an account, which is the question anonymous registration exists not to answer
+    /// (IA-REQ-003, SPEC section 6). Both now answer the same way and create nothing.
+    /// </para>
+    /// </summary>
     [Test]
-    public async Task Conflict_replay_returns_the_original_conflict_instead_of_a_neutral_success()
+    public async Task An_occupied_cuit_answers_an_anonymous_caller_the_same_for_a_known_and_an_unknown_address()
+    {
+        var tenant = Tenant.CreateOrganization(TenantSlug.From($"existing-{Guid.NewGuid():N}"));
+        await TestApp.AddAsync(tenant);
+        await TestApp.AddAsync(OrganizationProfile.Create(tenant, "Existing Organization", NormalizedCuit.From("30-12345678-9")));
+        var known = $"known-{Guid.NewGuid():N}@example.test";
+        await TestApp.RunAsUserAsync(known, "Testing1234!", []);
+        TestApp.SetUserId(null);
+        TestApp.SetValidatedOptionalSession(null, null);
+
+        var takenAddress = await TestApp.SendAsync(new RegisterOrganizationCommand(known, "Testing1234!", "Conflicting One", "30-12345678-9"));
+        var unknownAddress = await TestApp.SendAsync(new RegisterOrganizationCommand($"unknown-{Guid.NewGuid():N}@example.test", "Testing1234!", "Conflicting Two", "30-12345678-9"));
+
+        takenAddress.IsSuccess.ShouldBeTrue();
+        unknownAddress.IsSuccess.ShouldBeTrue("an occupied CUIT must not make the answer depend on the address.");
+        (await TestApp.ListAsync<RegistrationSubmission>())
+            .ShouldAllBe(submission => submission.Outcome == RegistrationSubmissionOutcome.Accepted && submission.CompletedAt.HasValue);
+
+        // Neutral is not the same as permissive: the CUIT is still unique and neither request created anything.
+        (await TestApp.CountAsync<ApplicationUser>()).ShouldBe(1);
+        (await TestApp.CountAsync<Tenant>()).ShouldBe(1);
+        (await TestApp.CountAsync<OrganizationProfile>()).ShouldBe(1);
+    }
+
+    /// <summary>
+    /// Replay keeps the durable outcome the submission recorded, and for an anonymous caller that outcome is now
+    /// the neutral one. What replay must never do is answer a second way for the same submission.
+    /// </summary>
+    [Test]
+    public async Task Anonymous_occupied_cuit_replay_stays_neutral_and_creates_nothing()
     {
         var tenant = Tenant.CreateOrganization(TenantSlug.From($"existing-{Guid.NewGuid():N}"));
         await TestApp.AddAsync(tenant);
         await TestApp.AddAsync(OrganizationProfile.Create(tenant, "Existing Organization", NormalizedCuit.From("30-12345678-9")));
         var command = new RegisterOrganizationCommand($"conflict-{Guid.NewGuid():N}@example.test", "Testing1234!", "Conflicting Organization", "30-12345678-9");
+
+        var first = await TestApp.SendAsync(command);
+        var replay = await TestApp.SendAsync(command);
+
+        first.IsSuccess.ShouldBeTrue();
+        replay.IsSuccess.ShouldBeTrue();
+        var submission = (await TestApp.ListAsync<RegistrationSubmission>()).Single();
+        submission.CompletedAt.ShouldNotBeNull();
+        submission.Outcome.ShouldBe(RegistrationSubmissionOutcome.Accepted);
+        (await TestApp.CountAsync<ApplicationUser>()).ShouldBe(0);
+        (await TestApp.CountAsync<Tenant>()).ShouldBe(1);
+    }
+
+    /// <summary>
+    /// A signed-in caller may register only for the address their own session proves, so nothing they can vary
+    /// asks about anyone else — and the conflict is the answer they can act on. It is kept, and it still replays.
+    /// </summary>
+    [Test]
+    public async Task Authenticated_occupied_cuit_returns_the_conflict_and_replays_it()
+    {
+        var tenant = Tenant.CreateOrganization(TenantSlug.From($"existing-{Guid.NewGuid():N}"));
+        await TestApp.AddAsync(tenant);
+        await TestApp.AddAsync(OrganizationProfile.Create(tenant, "Existing Organization", NormalizedCuit.From("30-12345678-9")));
+        var email = $"member-{Guid.NewGuid():N}@example.test";
+        var identityId = await TestApp.RunAsUserAsync(email, "Testing1234!", []);
+        TestApp.SetValidatedOptionalSession(identityId, email);
+        var command = new RegisterOrganizationCommand(email, "Testing1234!", "Conflicting Organization", "30-12345678-9");
 
         var first = await TestApp.SendAsync(command);
         var replay = await TestApp.SendAsync(command);
@@ -151,7 +215,6 @@ public sealed class RegistrationTests : TestBase
         var submission = (await TestApp.ListAsync<RegistrationSubmission>()).Single();
         submission.CompletedAt.ShouldNotBeNull();
         submission.Outcome.ShouldBe(RegistrationSubmissionOutcome.RegistrationConflict);
-        (await TestApp.CountAsync<ApplicationUser>()).ShouldBe(0);
         (await TestApp.CountAsync<Tenant>()).ShouldBe(1);
     }
 

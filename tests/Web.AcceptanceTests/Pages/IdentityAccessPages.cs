@@ -48,6 +48,42 @@ public sealed class IdentitySignInPage(IPage page) : BasePage(page)
     public Task AssertProblemAsync() => Assertions.Expect(Page.GetByRole(AriaRole.Alert)).ToBeVisibleAsync();
 }
 
+/// <summary>
+/// The screen both confirmation mails open. It is a page object rather than a fixture because that is the point:
+/// confirming used to be an UPDATE the harness ran, so nothing proved the link a recipient receives leads
+/// anywhere (IA-REQ-005).
+/// </summary>
+public sealed class ConfirmEmailPage(IPage page) : BasePage(page)
+{
+    public override string PagePath => $"{BaseUrl}/confirm-email";
+
+    /// <summary>
+    /// Opens the link exactly as delivered. There is no reload here, unlike the invitation pages: those
+    /// re-navigate to the path they are already on, which is a same-document change the SPA would ignore. This
+    /// link is always arrived at from somewhere else, and reloading after the page has erased its own fragment
+    /// would throw the token away.
+    /// </summary>
+    internal Task OpenDeliveredAsync(PlatformFixtures.DeliveredMessage delivered) =>
+        Page.GotoAsync($"{BaseUrl}{delivered.Path}{delivered.Fragment}");
+
+    /// <summary>The token must not survive in the address bar, in history, or in anything that logs a URL.</summary>
+    public Task AssertFragmentClearedAsync() => Assertions.Expect(Page).Not.ToHaveURLAsync(new Regex("#token="));
+
+    public async Task ConfirmAsync()
+    {
+        var response = await Page.RunAndWaitForResponseAsync(
+            () => Page.GetByRole(AriaRole.Button, new() { Name = "Confirm my address" }).ClickAsync(),
+            candidate => candidate.Url.EndsWith("/api/identity/confirm-email", StringComparison.Ordinal) &&
+                         candidate.Request.Method == "POST");
+        if (response.Status != 204)
+        {
+            throw new InvalidOperationException($"Confirmation answered {response.Status}: {await response.TextAsync()}");
+        }
+
+        await Assertions.Expect(Page.GetByRole(AriaRole.Status)).ToContainTextAsync("Your address is confirmed");
+    }
+}
+
 /// <summary>Registering an organization, whose answer is deliberately the same whatever happened.</summary>
 public sealed class RegisterOrganizationPage(IPage page) : BasePage(page)
 {

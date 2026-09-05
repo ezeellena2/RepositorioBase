@@ -3,6 +3,7 @@ using CleanArchitecture.Application.Common.Models;
 using CleanArchitecture.Application.IdentityAccess.Authorization;
 using CleanArchitecture.Application.IdentityAccess.Common;
 using CleanArchitecture.Application.IdentityAccess.Organizations;
+using CleanArchitecture.Application.IdentityAccess.Platform;
 using CleanArchitecture.Application.IdentityAccess.Sessions;
 using CleanArchitecture.Domain.IdentityAccess.Memberships;
 using CleanArchitecture.Domain.IdentityAccess.Tenants;
@@ -14,7 +15,8 @@ public sealed class GetIdentityContextQueryHandler(
     IApplicationDbContext context,
     ICurrentSession currentSession,
     IIdentityAccountService identities,
-    IEffectivePermissionReader permissions) : IRequestHandler<GetIdentityContextQuery, Result<IdentityContext>>
+    IEffectivePermissionReader permissions,
+    IPlatformMfaSessionProof platformMfa) : IRequestHandler<GetIdentityContextQuery, Result<IdentityContext>>
 {
     public async Task<Result<IdentityContext>> Handle(GetIdentityContextQuery request, CancellationToken cancellationToken)
     {
@@ -39,6 +41,12 @@ public sealed class GetIdentityContextQueryHandler(
         IReadOnlyList<string> effectivePermissions = activeTenant is null
             ? []
             : await permissions.GetEffectivePermissionsAsync(identity.Id, TenantId.From(activeTenant.Id), cancellationToken);
-        return Result<IdentityContext>.Success(new IdentityContext(identity.Id, identity.Email, identity.IsActive, activeTenant, tenants, effectivePermissions, session.AbsoluteExpiresAt, false));
+
+        // What the client needs in order to offer the step-up instead of a screen of refusals: operating inside
+        // Platform requires that this session proved the second factor, and a password sign-in has not
+        // (IA-REQ-045). It is asked only for Platform, because it is the only tenant type that requires it.
+        var requiresTwoFactor = activeTenant is { Type: nameof(TenantType.Platform) } &&
+                                !await platformMfa.HasProvedFactorAsync(cancellationToken);
+        return Result<IdentityContext>.Success(new IdentityContext(identity.Id, identity.Email, identity.IsActive, activeTenant, tenants, effectivePermissions, session.AbsoluteExpiresAt, requiresTwoFactor));
     }
 }

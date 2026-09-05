@@ -1,25 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useIdentity } from '../../identity/context/IdentityProvider';
 import { ProblemMessage } from '../../identity/ProblemMessage';
+import { useFragmentToken } from '../../identity/useFragmentToken';
 import { useSubmit } from '../../identity/useSubmit';
 import { createPlatformClient } from '../api/platformClient';
-
-/**
- * The Platform invitation token arrives in the URL fragment, which browsers never send to a server and proxies
- * never log. It is read once into memory and the fragment is erased with replaceState, so it does not survive in
- * history, in a bookmark, or in whatever the next page decides to log (IA-REQ-025/029).
- */
-function usePlatformInvitationToken() {
-  const [token] = useState(() => new URLSearchParams(window.location.hash.replace(/^#/, '')).get('token'));
-
-  useEffect(() => {
-    if (window.location.hash) {
-      window.history.replaceState({}, '', `${window.location.pathname}${window.location.search}`);
-    }
-  }, []);
-
-  return token;
-}
 
 export function usePlatformClient() {
   const identity = useIdentity();
@@ -32,16 +17,33 @@ export function usePlatformClient() {
  * the matching identity is missing; for one that already exists it is ignored and cannot take over the account.
  */
 export function RegisterPlatformInviteePage() {
+  const identity = useIdentity();
   const platform = usePlatformClient();
-  const token = usePlatformInvitationToken();
+  const token = useFragmentToken();
   const [password, setPassword] = useState('');
+  const [continuing, setContinuing] = useState(false);
   const { submit, problem, isBusy, result } = useSubmit((secret, chosen) => platform.registerFromInvitation(secret, chosen));
+
+  // The ceremony runs here rather than behind a link because the invitation token cannot travel to another page
+  // without being written down somewhere: a URL would put it in history, and storage would outlive the visit. It
+  // is already in this component's memory, so the last gate is rendered where the token already is.
+  if (continuing) {
+    return (
+      <section aria-labelledby="platform-register-heading">
+        <h1 id="platform-register-heading">Set up your Platform account</h1>
+        <PlatformSecondFactor token={token} />
+      </section>
+    );
+  }
 
   if (result) {
     return (
       <section aria-labelledby="platform-register-heading">
         <h1 id="platform-register-heading">Set up your Platform account</h1>
-        <p role="status">Check your email. If that invitation is still open, we have sent you what you need to continue.</p>
+        <p role="status">
+          Check your email. If that invitation is still open, we have sent you what you need to continue. Confirm
+          your address, sign in, then open this invitation link again to set up your second factor.
+        </p>
       </section>
     );
   }
@@ -50,6 +52,12 @@ export function RegisterPlatformInviteePage() {
     <section aria-labelledby="platform-register-heading">
       <h1 id="platform-register-heading">Set up your Platform account</h1>
       <ProblemMessage problem={problem} />
+      {/* Signed in already means the account exists and the address is confirmed, so what is left of the
+          invitation is its last gate. Offering it here is what makes the mailed link the whole journey rather
+          than only its first step (IA-REQ-041). */}
+      {identity?.isAuthenticated && (
+        <button type="button" disabled={!token} onClick={() => setContinuing(true)}>Set up your second factor</button>
+      )}
       <form onSubmit={(event) => { event.preventDefault(); submit(token ?? '', password); }}>
         <label htmlFor="platform-password">Choose a password</label>
         <input
@@ -76,7 +84,7 @@ export function RegisterPlatformInviteePage() {
  */
 export function ConfirmPlatformInviteePage() {
   const platform = usePlatformClient();
-  const confirmationToken = usePlatformInvitationToken();
+  const confirmationToken = useFragmentToken();
   const { submit, problem, isBusy, result } = useSubmit((secret) => platform.confirmInvitation(secret));
 
   return (
@@ -84,7 +92,12 @@ export function ConfirmPlatformInviteePage() {
       <h1 id="platform-confirm-heading">Confirm your Platform address</h1>
       <ProblemMessage problem={problem} />
       {result ? (
-        <p role="status">Your address is confirmed. Sign in to continue.</p>
+        <>
+          <p role="status">
+            Your address is confirmed. Sign in, then open your invitation email again to set up your second factor.
+          </p>
+          <Link to="/login">Sign in</Link>
+        </>
       ) : (
         <button type="button" disabled={isBusy} onClick={() => submit(confirmationToken ?? '')}>
           Confirm my address
@@ -101,18 +114,13 @@ export function ConfirmPlatformInviteePage() {
  */
 export function PlatformMfaEnrollmentPage() {
   const identity = useIdentity();
-  const platform = usePlatformClient();
-  const token = usePlatformInvitationToken();
-  const [enrollment, setEnrollment] = useState(null);
-  const [code, setCode] = useState('');
-  const [stage, setStage] = useState('start');
-  const { submit, problem, isBusy } = useSubmit(async (action) => action());
+  const token = useFragmentToken();
 
   if (!identity?.isAuthenticated) {
     return (
       <section aria-labelledby="platform-mfa-heading">
         <h1 id="platform-mfa-heading">Set up your second factor</h1>
-        <p>Sign in with the invited address first.</p>
+        <p>Sign in with the invited address, then open your invitation email again.</p>
       </section>
     );
   }
@@ -120,6 +128,26 @@ export function PlatformMfaEnrollmentPage() {
   return (
     <section aria-labelledby="platform-mfa-heading">
       <h1 id="platform-mfa-heading">Set up your second factor</h1>
+      <PlatformSecondFactor token={token} />
+    </section>
+  );
+}
+
+/**
+ * The three gates themselves, given the invitation token by whoever still holds it. It is a component rather than
+ * a page because the token cannot be handed from one page to another without writing it down: the page that read
+ * it out of the mailed fragment is the only place it exists, so the ceremony is rendered there.
+ */
+function PlatformSecondFactor({ token }) {
+  const identity = useIdentity();
+  const platform = usePlatformClient();
+  const [enrollment, setEnrollment] = useState(null);
+  const [code, setCode] = useState('');
+  const [stage, setStage] = useState('start');
+  const { submit, problem, isBusy } = useSubmit(async (action) => action());
+
+  return (
+    <>
       <ProblemMessage problem={problem} />
 
       {stage === 'start' && (
@@ -186,7 +214,7 @@ export function PlatformMfaEnrollmentPage() {
       )}
 
       {stage === 'done' && <p role="status">Your second factor is active.</p>}
-    </section>
+    </>
   );
 }
 

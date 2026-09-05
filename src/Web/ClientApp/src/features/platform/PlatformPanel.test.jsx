@@ -15,10 +15,11 @@ const PLATFORM_PERMISSIONS = [
   'platform.tenants.manage',
 ];
 
-const platformContext = (permissions = PLATFORM_PERMISSIONS) => signedInContext({
+const platformContext = (permissions = PLATFORM_PERMISSIONS, session = {}) => signedInContext({
   activeTenant: { id: 'platform-1', type: 'Platform', name: 'platform' },
   availableTenants: [{ id: 'platform-1', type: 'Platform', name: 'platform' }],
   permissions,
+  session: { expiresAt: '2026-12-31T00:00:00Z', requiresTwoFactor: false, ...session },
 });
 
 const ORGANIZATION = {
@@ -61,6 +62,49 @@ const renderPanel = () => render(<IdentityProvider><PlatformPanel /></IdentityPr
  * own.
  */
 describe('platform panel', () => {
+  /**
+   * A session that presented only a password holds the Platform membership and its read permissions, so nothing
+   * about the tenant or the permission set distinguishes it. What distinguishes it is that it never proved the
+   * second factor, and the panel must ask for that rather than request three directories the server will refuse
+   * (IA-REQ-045).
+   */
+  it('asks for the second factor instead of reading the directories', async () => {
+    const reads = [];
+    server.use(antiforgery(), contextIs(platformContext(PLATFORM_PERMISSIONS, { requiresTwoFactor: true })));
+    server.use(...directories().map((handler) => handler));
+    server.events.on('request:start', ({ request }) => {
+      if (new URL(request.url).pathname.startsWith('/api/platform/')) reads.push(new URL(request.url).pathname);
+    });
+
+    renderPanel();
+
+    expect(await screen.findByRole('form', { name: 'Step up' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Organizations' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    await waitFor(() => expect(reads.filter((path) => path !== '/api/platform/mfa/step-up')).toEqual([]));
+    server.events.removeAllListeners();
+  });
+
+  /** Proving it is what opens the directories, and the answer comes from the reloaded context, not from the form. */
+  it('opens the directories once the factor is proved', async () => {
+    let requiresTwoFactor = true;
+    server.use(antiforgery());
+    server.use(http.get('/api/identity/context', () =>
+      HttpResponse.json(platformContext(PLATFORM_PERMISSIONS, { requiresTwoFactor }))));
+    server.use(...directories());
+    server.use(http.post('/api/platform/mfa/step-up', () => {
+      requiresTwoFactor = false;
+      return new HttpResponse(null, { status: 204 });
+    }));
+
+    renderPanel();
+    await userEvent.type(await screen.findByLabelText('Authenticator code'), '123456');
+    await userEvent.click(screen.getByRole('form', { name: 'Step up' }).querySelector('button'));
+
+    expect(await screen.findByRole('heading', { name: 'Organizations' })).toBeInTheDocument();
+    expect(await screen.findByText('acme-1')).toBeInTheDocument();
+  });
+
   it('does not render for a session that is not operating as Platform', async () => {
     server.use(antiforgery(), contextIs(signedInContext()));
     renderPanel();

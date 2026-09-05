@@ -69,22 +69,43 @@ public sealed class PlatformMembershipActivator(ApplicationDbContext context) : 
 /// differently.
 /// </para>
 /// </summary>
-public sealed class RecentMfaVerifier(ApplicationDbContext context, ICurrentSession session, TimeProvider timeProvider) : IRecentMfaVerifier
+/// <para>
+/// It answers the proof question as well (<see cref="IPlatformMfaSessionProof"/>), from the same row and the same
+/// session, because the two are one fact read two ways: a change needs a recent proof, a read needs any proof.
+/// Splitting them across two components would be two lookups and two chances to disagree about which session.
+/// </para>
+public sealed class RecentMfaVerifier(ApplicationDbContext context, ICurrentSession session, TimeProvider timeProvider)
+    : IRecentMfaVerifier, IPlatformMfaSessionProof
 {
     internal static readonly TimeSpan Window = TimeSpan.FromMinutes(15);
 
     public async Task<bool> HasRecentStepUpAsync(CancellationToken cancellationToken)
     {
+        var found = await FindAsync(cancellationToken);
+        return found is var (enrollment, sessionId) && enrollment is not null &&
+               enrollment.HasRecentStepUp(sessionId, timeProvider.GetUtcNow(), Window);
+    }
+
+    public async Task<bool> HasProvedFactorAsync(CancellationToken cancellationToken)
+    {
+        var found = await FindAsync(cancellationToken);
+        return found is var (enrollment, sessionId) && enrollment is not null && enrollment.HasProvedFactor(sessionId);
+    }
+
+    /// <summary>
+    /// The enrollment of the identity this request belongs to, with the session that must have produced the
+    /// evidence. An invalid or absent session answers with nothing, so every caller fails closed identically.
+    /// </summary>
+    private async Task<(PlatformMfaEnrollment? Enrollment, Guid SessionId)> FindAsync(CancellationToken cancellationToken)
+    {
         if (session.IsInvalid || session.IdentityId is not { } identityId || session.SessionId is not { } sessionId)
         {
-            return false;
+            return (null, Guid.Empty);
         }
 
         var enrollment = await context.PlatformMfaEnrollments
             .AsNoTracking()
             .SingleOrDefaultAsync(candidate => candidate.IdentityId == identityId, cancellationToken);
-
-        return enrollment is not null &&
-               enrollment.HasRecentStepUp(sessionId.Value, timeProvider.GetUtcNow(), Window);
+        return (enrollment, sessionId.Value);
     }
 }

@@ -34,11 +34,31 @@ public sealed class PlatformInvitationPages(IPage page) : BasePage(page)
     /// Opens a link exactly as it was delivered. Only the origin is this run's own: the mail is rendered from a
     /// configured public origin, and the host a test allocates has a port nobody could have configured in
     /// advance. The path and the fragment — which is the whole of the secret — are the delivered ones.
+    /// <para>
+    /// The step away first is what makes it a real arrival. Navigating to the path the browser is already on with
+    /// only a different fragment is a same-document change: the page stays mounted and never reads the new token.
+    /// Reloading instead was a race — the page erases its own fragment on arrival, so a reload that lost it threw
+    /// the token away — and leaving somewhere else first has neither problem.
+    /// </para>
     /// </summary>
     internal async Task OpenDeliveredAsync(PlatformFixtures.DeliveredMessage delivered)
     {
+        await Page.GotoAsync($"{BaseUrl}/");
         await Page.GotoAsync($"{BaseUrl}{delivered.Path}{delivered.Fragment}");
-        await Page.ReloadAsync();
+    }
+
+    /// <summary>
+    /// Presses the same button and expects to be refused. It is how a superseded link behaves: reissuing a
+    /// confirmation retires the envelope the older one opens, so the older link stops working the moment the
+    /// newer one is sent — which is what "one usable confirmation" has to mean.
+    /// </summary>
+    public async Task AssertConfirmationRefusedAsync()
+    {
+        var response = await Page.RunAndWaitForResponseAsync(
+            () => Page.GetByRole(AriaRole.Button, new() { Name = "Confirm my address" }).ClickAsync(),
+            candidate => candidate.Url.EndsWith("/api/platform/invitations/confirm", StringComparison.Ordinal));
+        response.Status.ShouldNotBe(204, "a retired confirmation link must not confirm anything.");
+        await Assertions.Expect(Page.GetByRole(AriaRole.Alert)).ToBeVisibleAsync();
     }
 
     /// <summary>One click, which is all the confirmation screen asks of someone who followed their own link.</summary>
@@ -52,7 +72,8 @@ public sealed class PlatformInvitationPages(IPage page) : BasePage(page)
             throw new InvalidOperationException($"Confirmation answered {response.Status}: {await response.TextAsync()}");
         }
 
-        await Assertions.Expect(Page.GetByRole(AriaRole.Status)).ToContainTextAsync("Sign in to continue");
+        await Assertions.Expect(Page.GetByRole(AriaRole.Status))
+            .ToContainTextAsync("open your invitation email again to set up your second factor");
     }
 
     public async Task RegisterAsync(string password)
@@ -66,11 +87,15 @@ public sealed class PlatformInvitationPages(IPage page) : BasePage(page)
     public Task AssertNeutralAcknowledgementAsync() =>
         Assertions.Expect(Page.GetByRole(AriaRole.Status)).ToContainTextAsync("Check your email.");
 
-    /// <summary>The ceremony is opened with the invitation fragment the recipient still holds from their mail.</summary>
-    public async Task GotoMfaAsync(string invitationFragment)
+    /// <summary>
+    /// Takes the continuation the invitation page offers a signed-in recipient. There is no URL to compose: the
+    /// page is the one their mail already opened, and the token is the one it read out of that mail and still
+    /// holds. Composing "/platform/mfa#token=..." here was the harness supplying a step the product did not have.
+    /// </summary>
+    public async Task ContinueToSecondFactorAsync()
     {
-        await Page.GotoAsync($"{BaseUrl}/platform/mfa{invitationFragment}");
-        await Page.ReloadAsync();
+        await Page.GetByRole(AriaRole.Button, new() { Name = "Set up your second factor" }).ClickAsync();
+        await Assertions.Expect(Page.GetByRole(AriaRole.Button, new() { Name = "Begin enrollment" })).ToBeVisibleAsync();
     }
 
     /// <summary>
@@ -120,6 +145,19 @@ public sealed class PlatformOperationsPage(IPage page) : BasePage(page)
 
     public Task AssertNotOfferedAsync() =>
         Assertions.Expect(Page.GetByText(new Regex("MFA-authenticated Platform administrator"))).ToBeVisibleAsync();
+
+    /// <summary>
+    /// The screen a session that holds the membership but has not proved the factor meets: the step-up, and no
+    /// directory at all. Asserting both halves is the point — offering the form while still rendering the
+    /// organizations would be the same leak with a prompt on top of it.
+    /// </summary>
+    public async Task AssertStepUpRequestedAsync()
+    {
+        await Assertions.Expect(Page.GetByRole(AriaRole.Form, new() { Name = "Step up" })).ToBeVisibleAsync();
+        (await Page.GetByRole(AriaRole.Heading, new() { Name = "Organizations" }).CountAsync())
+            .ShouldBe(0, "a session that has not proved the factor reads no directory.");
+        (await Page.GetByRole(AriaRole.List, new() { Name = "Audit" }).CountAsync()).ShouldBe(0);
+    }
 
     public async Task StepUpAsync(string sharedKey)
     {

@@ -150,13 +150,29 @@ public sealed class SessionCookieEvents(TimeProvider timeProvider) : CookieAuthe
     private static bool IsLockedOut(ApplicationUser user, DateTimeOffset now) =>
         user.LockoutEnabled && user.LockoutEnd is { } lockoutEnd && lockoutEnd > now;
 
-    private static Task RejectAsync(CookieValidatePrincipalContext context)
+    /// <summary>
+    /// Refuses the ticket and deletes the cookie carrying it.
+    /// <para>
+    /// Rejecting alone left the browser holding a cookie it could not use and could not get rid of: logout requires
+    /// authentication, so an expired session never reached the handler that deletes it, and every later request
+    /// still presented an invalid cookie, which public registration refuses. Deleting it ends that loop while
+    /// conceding nothing — the principal is still rejected, this request is still anonymous, and no rejected
+    /// session is ever treated as valid. The deletion goes through the same handler that issued the cookie, so it
+    /// carries the identical <c>__Host-</c> attributes the browser requires before it will drop one.
+    /// </para>
+    /// <para>
+    /// Every rejection deletes, including a lockout: a ticket refused on every request has no value while the
+    /// refusal lasts, and keeping it would leave exactly the loop this closes — an unusable cookie that public
+    /// registration then refuses. Signing in again is what ends a lockout for the person anyway.
+    /// </para>
+    /// </summary>
+    private static async Task RejectAsync(CookieValidatePrincipalContext context)
     {
         // A rejected ticket must not influence anything else in the request, including antiforgery binding.
         context.HttpContext.Items.Remove(AntiforgerySessionKey);
         context.HttpContext.Items[InvalidSessionKey] = true;
         context.RejectPrincipal();
-        return Task.CompletedTask;
+        await context.HttpContext.SignOutAsync(context.Scheme.Name);
     }
 }
 

@@ -78,6 +78,7 @@ public sealed class VerifyPlatformMfaEnrollmentCommandHandler(
     ICurrentSession session,
     ITokenHasher tokenHasher,
     IPlatformMfaVerifier verifier,
+    IPlatformMfaAttemptLimiter attempts,
     TimeProvider timeProvider) : IRequestHandler<VerifyPlatformMfaEnrollmentCommand, Result>
 {
     public Task<Result> Handle(VerifyPlatformMfaEnrollmentCommand request, CancellationToken cancellationToken) =>
@@ -87,12 +88,18 @@ public sealed class VerifyPlatformMfaEnrollmentCommandHandler(
             var admission = await PlatformMfaGate.AdmitAsync(context, tokenHasher, identities, session, request.Token, now, ct);
             if (admission.IsFailure) return Result.Failure(admission.Error!);
 
-            var enrollment = await PlatformMfaGate.FindEnrollmentAsync(context, admission.Value!.IdentityId, ct);
+            // Spent before the code is compared and keyed on the identity, so signing in again to obtain a fresh
+            // session buys nothing: the same identity meets the same budget (IA-REQ-041).
+            var lease = await attempts.TryAcquireAsync(admission.Value!.IdentityId, ct);
+            if (!lease.IsAcquired) return Result.Failure(IdentityAccessErrors.MfaAttemptsExhausted(lease.RetryAfterSeconds));
+
+            var enrollment = await PlatformMfaGate.FindEnrollmentAsync(context, admission.Value.IdentityId, ct);
             if (enrollment is null) return Result.Failure(IdentityAccessErrors.InvalidInvitation());
             if (!verifier.Verify(enrollment.EncryptedSecret, request.Code, now)) return Result.Failure(IdentityAccessErrors.InvalidInvitation());
 
             enrollment.Verify(admission.Value.SessionId, now);
             await context.SaveChangesAsync(ct);
+            await attempts.ResetAsync(admission.Value.IdentityId, ct);
             return Result.Success();
         }, cancellationToken);
 }
@@ -182,6 +189,7 @@ public sealed class StepUpPlatformMfaCommandHandler(
     IApplicationDbContext context,
     ICurrentSession session,
     IPlatformMfaVerifier verifier,
+    IPlatformMfaAttemptLimiter attempts,
     TimeProvider timeProvider) : IRequestHandler<StepUpPlatformMfaCommand, Result>
 {
     public Task<Result> Handle(StepUpPlatformMfaCommand request, CancellationToken cancellationToken) =>
@@ -191,6 +199,11 @@ public sealed class StepUpPlatformMfaCommandHandler(
             {
                 return Result.Failure(IdentityAccessErrors.InvalidSession());
             }
+
+            // The same budget as enrollment verification, because it is the same secret and the same guess. A
+            // limit on one of the two routes would only move the guessing to the other.
+            var lease = await attempts.TryAcquireAsync(identityId, ct);
+            if (!lease.IsAcquired) return Result.Failure(IdentityAccessErrors.MfaAttemptsExhausted(lease.RetryAfterSeconds));
 
             var now = PlatformInvitationDelivery.ToStorablePrecision(timeProvider.GetUtcNow());
             var enrollment = await PlatformMfaGate.FindEnrollmentAsync(context, identityId, ct);
@@ -209,6 +222,7 @@ public sealed class StepUpPlatformMfaCommandHandler(
 
             enrollment.RecordStepUp(sessionId.Value, now);
             await context.SaveChangesAsync(ct);
+            await attempts.ResetAsync(identityId, ct);
             return Result.Success();
         }, cancellationToken);
 }

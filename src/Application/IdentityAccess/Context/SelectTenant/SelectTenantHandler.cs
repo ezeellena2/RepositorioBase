@@ -4,6 +4,7 @@ using CleanArchitecture.Application.IdentityAccess.Authorization;
 using CleanArchitecture.Application.IdentityAccess.Common;
 using CleanArchitecture.Application.IdentityAccess.Context.GetIdentityContext;
 using CleanArchitecture.Application.IdentityAccess.Organizations;
+using CleanArchitecture.Application.IdentityAccess.Platform;
 using CleanArchitecture.Application.IdentityAccess.Sessions;
 using CleanArchitecture.Domain.IdentityAccess.Memberships;
 using CleanArchitecture.Domain.IdentityAccess.Tenants;
@@ -17,6 +18,7 @@ public sealed class SelectTenantCommandHandler(
     ICurrentSession currentSession,
     IIdentityAccountService identities,
     IEffectivePermissionReader permissions,
+    IPlatformMfaSessionProof platformMfa,
     TimeProvider timeProvider) : IRequestHandler<SelectTenantCommand, Result<IdentityContext>>
 {
     public Task<Result<IdentityContext>> Handle(SelectTenantCommand request, CancellationToken cancellationToken)
@@ -67,7 +69,12 @@ public sealed class SelectTenantCommandHandler(
                 var tenants = tenantEntities.Select(tenant => new TenantContext(tenant.Id.Value, tenant.Type.ToString(), tenant.Slug.Value)).ToArray();
                 var selected = new TenantContext(selectedEntity.Id.Value, selectedEntity.Type.ToString(), selectedEntity.Slug.Value);
                 var effectivePermissions = await permissions.GetEffectivePermissionsAsync(account.Id, request.TenantId, ct);
-                return Result<IdentityContext>.Success(new IdentityContext(account.Id, account.Email, account.IsActive, selected, tenants, effectivePermissions, session.AbsoluteExpiresAt, false));
+
+                // Selecting Platform is not the same as being able to operate it: the directories require that
+                // this session proved the second factor, so the answer says whether it still has to (IA-REQ-045).
+                var requiresTwoFactor = selectedEntity.Type == TenantType.Platform &&
+                                        !await platformMfa.HasProvedFactorAsync(ct);
+                return Result<IdentityContext>.Success(new IdentityContext(account.Id, account.Email, account.IsActive, selected, tenants, effectivePermissions, session.AbsoluteExpiresAt, requiresTwoFactor));
             }
 
             return Result<IdentityContext>.Failure(IdentityAccessErrors.SessionConcurrencyConflict());

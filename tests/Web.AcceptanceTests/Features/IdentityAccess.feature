@@ -6,8 +6,9 @@ Scenario: A pending registration becomes usable only after confirmation
     Given a visitor registers an organization
     Then the registration answers neutrally without revealing whether the address was taken
     And the organization is not usable before its confirmation
-    When the invitee confirms the address
-    Then they can sign in and reach their access page
+    When the invitee opens the delivered confirmation link and confirms
+    Then the confirmation link left no token in the address bar
+    And they can sign in and reach their access page
 
 Scenario: An identity that belongs to nothing is signed in with no active organization
     Given a confirmed identity with no membership

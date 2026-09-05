@@ -1,4 +1,4 @@
-﻿using CleanArchitecture.Application.Common.Interfaces;
+using CleanArchitecture.Application.Common.Interfaces;
 using CleanArchitecture.Application.IdentityAccess.Authorization;
 using CleanArchitecture.Infrastructure.Data;
 using CleanArchitecture.Infrastructure.Data.Interceptors;
@@ -111,10 +111,15 @@ public static class DependencyInjection
         builder.Services.AddSingleton<CleanArchitecture.Application.IdentityAccess.Platform.IPlatformMfaVerifier, CleanArchitecture.Infrastructure.Security.PlatformTotpSecretProtector>();
         builder.Services.AddSingleton<CleanArchitecture.Application.IdentityAccess.Platform.IPlatformRecoveryCodeFactory, CleanArchitecture.Infrastructure.Security.PlatformRecoveryCodeHasher>();
         builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.Platform.IPlatformMembershipActivator, CleanArchitecture.Infrastructure.Platform.PlatformMembershipActivator>();
-        builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.Platform.IRecentMfaVerifier, CleanArchitecture.Infrastructure.Platform.RecentMfaVerifier>();
+        // One instance answers both MFA questions for a request — a recent proof for a change, any proof for a
+        // read — so the two can never disagree about which session produced the evidence.
+        builder.Services.AddScoped<CleanArchitecture.Infrastructure.Platform.RecentMfaVerifier>();
+        builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.Platform.IRecentMfaVerifier>(provider => provider.GetRequiredService<CleanArchitecture.Infrastructure.Platform.RecentMfaVerifier>());
+        builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.Platform.IPlatformMfaSessionProof>(provider => provider.GetRequiredService<CleanArchitecture.Infrastructure.Platform.RecentMfaVerifier>());
         builder.Services.AddSingleton<CleanArchitecture.Application.IdentityAccess.Platform.Bootstrap.IPlatformBootstrapOptions, CleanArchitecture.Infrastructure.Platform.ConfiguredPlatformBootstrapper>();
         builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.Platform.Bootstrap.IPlatformSystemRoleProvisioner, CleanArchitecture.Infrastructure.Platform.PlatformSystemRoleProvisioner>();
         builder.Services.AddSingleton<CleanArchitecture.Application.IdentityAccess.Platform.Bootstrap.IPlatformBootstrapRecoveryRateLimiter, CleanArchitecture.Infrastructure.Platform.PlatformBootstrapRecoveryRateLimiter>();
+        builder.Services.AddSingleton<CleanArchitecture.Application.IdentityAccess.Platform.Mfa.IPlatformMfaAttemptLimiter, CleanArchitecture.Infrastructure.Platform.PlatformMfaAttemptLimiter>();
         builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.Platform.IPlatformOperationalProjectionReader, CleanArchitecture.Infrastructure.Platform.PlatformOperationalProjectionReader>();
         builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.Platform.Bootstrap.RecoverPendingPlatformOwnerInvitationValidator>();
         builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.Platform.Bootstrap.BootstrapPlatformOwner>();

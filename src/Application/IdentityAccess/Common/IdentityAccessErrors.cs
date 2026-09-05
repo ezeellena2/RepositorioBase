@@ -55,8 +55,19 @@ public static class IdentityAccessErrors
     /// </summary>
     public static ApplicationError InvalidPlatformOperation() => new("invalid_platform_operation", ApplicationErrorCategory.Validation, "The Platform operation is not valid in its current state.");
 
-    /// <summary>The caller holds Platform authority but has not proved the second factor recently enough.</summary>
+    /// <summary>
+    /// The caller has not proved the second factor on this session — recently enough to change something, or at
+    /// all where reading requires it (IA-REQ-041/045). One code for both because the caller does the same thing
+    /// about it: prove the factor. Which of the two it was is not state they were shown.
+    /// </summary>
     public static ApplicationError RecentMfaRequired() => new("recent_mfa_required", ApplicationErrorCategory.Authentication, "This operation requires a recent second-factor verification.");
+
+    /// <summary>
+    /// Too many second-factor submissions for this identity. It is the one answer a bounded gate has to make
+    /// distinguishable, because a client that cannot tell "wrong code" from "stop asking" will keep asking.
+    /// </summary>
+    public static ApplicationError MfaAttemptsExhausted(int retryAfterSeconds) =>
+        new("rate_limit_exceeded", ApplicationErrorCategory.RateLimited, "Too many verification attempts. Try again later.", retryAfterSeconds: retryAfterSeconds);
 
     public static ApplicationError SessionConcurrencyConflict() => new("session_concurrency_conflict", ApplicationErrorCategory.Conflict, "The session was changed by another request. Try again.");
 }

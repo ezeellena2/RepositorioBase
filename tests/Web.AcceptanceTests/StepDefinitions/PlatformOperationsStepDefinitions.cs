@@ -96,8 +96,8 @@ public sealed class PlatformOperationsStepDefinitions(ScenarioContext scenario)
         walk.MembershipsAfterChoosingAPassword.ShouldBe(0);
     }
 
-    [Then("the confirmation had arrived, and had been answered on the confirmation screen")]
-    public void ThenTheConfirmationWasAnsweredOnTheScreen() =>
+    [Then("answering the invitation again had reissued the confirmation, and only the newest link had confirmed the address")]
+    public void ThenTheReissuedConfirmationWasTheOneThatWorked() =>
         scenario.Get<OwnerWalk>("walk").ConfirmationPath.ShouldBe("/platform/invitations/confirm");
 
     [Then("signing in had granted no membership either, and the panel was still refused")]
@@ -107,6 +107,10 @@ public sealed class PlatformOperationsStepDefinitions(ScenarioContext scenario)
         walk.MembershipsAfterSigningIn.ShouldBe(0);
         walk.PanelOfferedBeforeSecondFactor.ShouldBeFalse();
     }
+
+    [Then("the invitation link they still held had carried them into the second factor")]
+    public void ThenTheInvitationLinkCarriedThemOn() =>
+        scenario.Get<OwnerWalk>("walk").ContinuationPath.ShouldBe("/platform/invitations/register");
 
     [Then("only the second factor had granted the membership")]
     public void ThenTheSecondFactorGrantedTheMembership() =>
@@ -171,6 +175,30 @@ public sealed class PlatformOperationsStepDefinitions(ScenarioContext scenario)
     public Task ThenTheOwnerMayInvite() => Panel.AssertCanInviteAdministratorAsync();
 
     /// <summary>
+    /// The reproduction of R3, as a person performs it. Nothing is seeded and nothing is fabricated: the "Log out"
+    /// link in the navigation, the real sign-in form, and the panel's own step-up.
+    /// </summary>
+    [When("they sign out and sign in again with their password")]
+    public async Task WhenTheySignOutAndBackIn()
+    {
+        await Panel.GotoAsync();
+        await SignIn.SignOutAsync();
+        await SignIn.GotoAsync();
+        await SignIn.SignInAsync(AspireSetup.PlatformBootstrapOwnerEmail, PlatformFixtures.Password);
+    }
+
+    [Then("the panel asks for the second factor and shows no directory")]
+    public async Task ThenThePanelAsksForTheSecondFactor()
+    {
+        await Panel.GotoAsync();
+        await Panel.AssertStepUpRequestedAsync();
+    }
+
+    [When("they prove the second factor on the panel")]
+    public async Task WhenTheyProveTheSecondFactor() =>
+        await Panel.StepUpAsync(scenario.Get<OwnerWalk>("walk").SharedKey);
+
+    /// <summary>
     /// The whole ceremony, once, in the order a first owner meets it: a cold start, a delivery that failed and was
     /// recovered, the invitation, the confirmation, the sign-in and the second factor. Each gate is read rather
     /// than judged here, so the scenario that reports a reading is also the place that says what it had to be.
@@ -210,7 +238,20 @@ public sealed class PlatformOperationsStepDefinitions(ScenarioContext scenario)
         var membershipsAfterPassword = await PlatformFixtures.PlatformMembershipsAsync();
 
         var confirmation = await PlatformFixtures.DeliveredAsync(owner, "Confirm your Platform address");
+
+        // Answering the invitation again before confirming, which is what someone whose confirmation expired or
+        // was lost would do. It reissues the confirmation and retires the one it replaces, so the recipient ends
+        // up with exactly one link that works — and this is the only place in the suite where the superseded
+        // envelope has actually been delivered, which is the state the retire has to cover.
+        await Invitation.OpenDeliveredAsync(invitation);
+        await Invitation.RegisterAsync(PlatformFixtures.Password);
+        await Invitation.AssertNeutralAcknowledgementAsync();
+        var reissued = await PlatformFixtures.DeliveredAsync(owner, "Confirm your Platform address", [confirmation.DropFile]);
+
         await Invitation.OpenDeliveredAsync(confirmation);
+        await Invitation.AssertConfirmationRefusedAsync();
+
+        await Invitation.OpenDeliveredAsync(reissued);
         await Invitation.ConfirmAsync();
 
         await SignIn.GotoAsync();
@@ -220,10 +261,13 @@ public sealed class PlatformOperationsStepDefinitions(ScenarioContext scenario)
         await Panel.GotoAsync();
         var offeredBeforeSecondFactor = await PanelIsOfferedAsync();
 
-        // The ceremony is opened from the invitation link the owner still holds, which is what binds it to the
-        // offer rather than to whoever happens to be signed in. The page erases the fragment as soon as it reads
-        // it — exactly as it should, which is why the walk kept it.
-        await Invitation.GotoMfaAsync(invitation.Fragment);
+        // Back to the invitation mail, which is where the last gate is. The ceremony is bound to the offer rather
+        // than to whoever happens to be signed in, so it needs the invitation token — and the only place that
+        // token exists is the mail and the page that reads it. Opening that link again and taking the control it
+        // offers is the whole continuation; the walk composes no URL of its own.
+        await Invitation.OpenDeliveredAsync(invitation);
+        var continuationPath = new Uri(Page.Url).AbsolutePath;
+        await Invitation.ContinueToSecondFactorAsync();
         await Invitation.CompleteMfaAsync();
         var sharedKey = await Invitation.ReadSharedKeyAsync();
         var membershipsAfterSecondFactor = await PlatformFixtures.PlatformMembershipsAsync();
@@ -241,21 +285,23 @@ public sealed class PlatformOperationsStepDefinitions(ScenarioContext scenario)
             confirmation.Path,
             membershipsAfterSignIn,
             offeredBeforeSecondFactor,
+            continuationPath,
             membershipsAfterSecondFactor,
             sharedKey);
     }
 
     /// <summary>
     /// Reads whether the panel answered rather than asserting which way it answered. It waits for whichever of the
-    /// three possible screens arrived — the directories, the refusal, or the sign-in page a visitor is sent to —
+    /// four possible screens arrived — the directories, the refusal, the step-up it asks for, or the sign-in page
     /// so the reading is of a settled page rather than of a race.
     /// </summary>
     private static async Task<bool> PanelIsOfferedAsync()
     {
         var offered = Page.GetByRole(AriaRole.Heading, new() { Name = "Organizations" });
         var refused = Page.GetByText(new Regex("MFA-authenticated Platform administrator"));
+        var stepUp = Page.GetByRole(AriaRole.Form, new() { Name = "Step up" });
         var visitor = Page.GetByRole(AriaRole.Heading, new() { Name = "Sign in" });
-        await Assertions.Expect(offered.Or(refused).Or(visitor)).ToBeVisibleAsync();
+        await Assertions.Expect(offered.Or(refused).Or(stepUp).Or(visitor)).ToBeVisibleAsync();
         return await offered.CountAsync() == 1;
     }
 
@@ -276,6 +322,7 @@ public sealed class PlatformOperationsStepDefinitions(ScenarioContext scenario)
         string ConfirmationPath,
         long MembershipsAfterSigningIn,
         bool PanelOfferedBeforeSecondFactor,
+        string ContinuationPath,
         long MembershipsAfterSecondFactor,
         string SharedKey);
 }

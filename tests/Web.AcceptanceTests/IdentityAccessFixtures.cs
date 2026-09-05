@@ -19,6 +19,22 @@ internal static class IdentityAccessFixtures
     internal sealed record SeededIdentity(Guid Id, string Email);
 
     /// <summary>
+    /// Reads back the identifier of an identity the journey created. It replaces the one the SQL confirmation
+    /// used to return as a side effect of activating the account: reading does not bypass a journey, the writes
+    /// did.
+    /// </summary>
+    internal static async Task<Guid> IdentityIdAsync(string email)
+    {
+        await using var connection = await OpenAsync();
+        await using var command = new NpgsqlCommand(
+            "SELECT \"Id\" FROM \"AspNetUsers\" WHERE \"NormalizedEmail\" = @email;", connection);
+        command.Parameters.AddWithValue("email", email.ToUpperInvariant());
+        return await command.ExecuteScalarAsync() is Guid id
+            ? id
+            : throw new InvalidOperationException($"No identity was registered for {email}.");
+    }
+
+    /// <summary>
     /// The slug is what a tenant is known by (SPEC section on the Tenant aggregate), so it is what the identity
     /// context carries and what the browser shows. The legal name lives on the profile and is deliberately not
     /// part of that projection, so a scenario naming an organization has to name it by its slug.

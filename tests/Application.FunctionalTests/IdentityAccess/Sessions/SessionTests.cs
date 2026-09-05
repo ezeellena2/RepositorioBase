@@ -391,6 +391,59 @@ public sealed class SessionTests : TestBase
         response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
         (await GetOnlySessionAsync()).RevokedAt.ShouldBeNull();
         (await ListAsync<AuditEvent>()).Count(item => item.EventType == "session.revoked").ShouldBe(0);
+
+        // Refused, and the useless cookie taken back with it. Deleting is not accepting: the row above is still
+        // un-revoked and no revocation was audited, so nothing about this request was treated as a sign-out.
+        response.Headers.TryGetValues("Set-Cookie", out var setCookies).ShouldBeTrue();
+        setCookies!.ShouldContain(value => value.StartsWith($"{SessionCookieEvents.CookieName}=;", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// The whole of R7, end to end: a browser whose session expired server-side gets back to ordinary anonymous
+    /// browsing without anybody clearing cookies by hand.
+    /// <para>
+    /// It could not before. Logout is behind <c>RequireAuthorization</c>, so an expired ticket never reached the
+    /// handler that deletes the cookie; validation rejected the ticket without deleting it; and the public
+    /// registration route refuses a request that carries a cookie it cannot validate. The three together were an
+    /// absorbing state — every route refused, and the one route that would have fixed it was among them.
+    /// </para>
+    /// </summary>
+    [Test]
+    public async Task An_expired_session_gives_the_cookie_back_and_the_browser_can_register_anonymously_again()
+    {
+        var clock = new ControlledTimeProvider(new DateTimeOffset(2030, 5, 1, 0, 0, 0, TimeSpan.Zero));
+        using var harness = CreateProductionHarness(clock);
+        var client = harness.Client;
+        var host = "https://session-expired-recovery.localhost";
+        await SeedConfirmedUserAsync("expired-recovery@example.test", "Testing1234!");
+        await SignInAsync(client, host, "expired-recovery@example.test", "Testing1234!");
+        clock.Advance(TimeSpan.FromMinutes(31));
+
+        // Whatever the browser does next is what hands the cookie back. Reading its own context is the first
+        // thing this SPA does on every load, so that is the request used here.
+        using var read = new HttpRequestMessage(HttpMethod.Get, $"{host}/api/identity/context");
+        var refused = await client.SendAsync(read);
+        refused.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+        refused.Headers.TryGetValues("Set-Cookie", out var deletions).ShouldBeTrue();
+        deletions!.ShouldContain(value => value.StartsWith($"{SessionCookieEvents.CookieName}=;", StringComparison.Ordinal));
+
+        // The cookie jar has dropped it, so the next request is simply anonymous — and anonymous registration,
+        // which refuses a cookie it cannot validate, now goes through.
+        var fresh = await GetAntiforgeryAsync(client, host);
+        using var registration = JsonRequest(HttpMethod.Post, $"{host}/api/identity/organizations/register", new
+        {
+            email = "after-expiry@example.test",
+            password = "Testing1234!",
+            legalName = "After Expiry",
+            cuit = "30-71234567-4"
+        }, fresh);
+        var registered = await client.SendAsync(registration);
+
+        registered.StatusCode.ShouldBe(HttpStatusCode.Accepted);
+
+        // And the expired session was never accepted along the way: it is still unrevoked and never signed out.
+        (await GetOnlySessionAsync()).RevokedAt.ShouldBeNull();
+        (await ListAsync<AuditEvent>()).Count(item => item.EventType == "session.revoked").ShouldBe(0);
     }
 
     [Test]
@@ -664,7 +717,7 @@ public sealed class SessionTests : TestBase
     }
 
     [Test]
-    public async Task Selecting_with_an_expired_session_returns_invalid_session_without_mutation_or_cookie()
+    public async Task Selecting_with_an_expired_session_returns_invalid_session_without_mutation_and_clears_the_dead_cookie()
     {
         var clock = new ControlledTimeProvider(new DateTimeOffset(2030, 4, 1, 0, 0, 0, TimeSpan.Zero));
         using var harness = CreateProductionHarness(clock);
@@ -681,7 +734,13 @@ public sealed class SessionTests : TestBase
         response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
         (await response.Content.ReadFromJsonAsync<CleanArchitecture.Web.Infrastructure.ApiProblemDetails>())!.Code.ShouldBe("invalid_session");
         (await GetOnlySessionAsync()).ActiveTenantId.ShouldBe(before.ActiveTenantId);
-        response.Headers.TryGetValues("Set-Cookie", out _).ShouldBeFalse();
+
+        // The refusal is unchanged; what it now also does is take the useless cookie back. A browser that keeps
+        // presenting a rejected ticket cannot reach logout — that route needs authentication — and every public
+        // flow refuses it as invalid_session, so the visitor was stuck (R7). Deleting it here is the way out, and
+        // it concedes nothing: this request was still refused and the session row was still not touched.
+        response.Headers.TryGetValues("Set-Cookie", out var setCookies).ShouldBeTrue();
+        setCookies!.ShouldContain(value => value.StartsWith($"{SessionCookieEvents.CookieName}=;", StringComparison.Ordinal));
     }
 
     [TestCase(0)]

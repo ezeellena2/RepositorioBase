@@ -134,6 +134,88 @@ public sealed class PlatformInvitationOnboardingTests : TestBase
         (await TestApp.CountAsync<OutboxSecret>()).ShouldBe(0, "an existing identity is sent no token at all.");
     }
 
+    /// <summary>
+    /// The dead end R5 closes. An invitee who lets their confirmation expire has an identity that exists and is
+    /// unusable: the expired token is refused, an unconfirmed identity cannot sign in, and the only branch that
+    /// ever minted a confirmation was the one that created the identity — which by definition cannot run again.
+    /// Answering the invitation a second time now reissues the confirmation, and nothing else.
+    /// </summary>
+    [Test]
+    public async Task Answering_again_reissues_the_confirmation_for_an_identity_that_never_confirmed()
+    {
+        var (email, token) = await PlatformScenario.PendingInvitationAsync();
+        PlatformScenario.RunAnonymously();
+        await TestApp.SendAsync(new RegisterPlatformInviteeCommand(token, ValidPassword));
+        var first = (await PlatformScenario.MessagesAsync()).Single(message => message.Type == "platform.invitation.confirmation.requested");
+        var storedHash = (await TestApp.ListAsync<ApplicationUser>()).Single(user => user.Email == email).PasswordHash;
+        await PlatformScenario.ExpireConfirmationEnvelopeAsync();
+
+        var result = await TestApp.SendAsync(new RegisterPlatformInviteeCommand(token, "AnotherPassword1!"));
+
+        result.IsSuccess.ShouldBeTrue();
+        var confirmations = (await PlatformScenario.MessagesAsync())
+            .Where(message => message.Type == "platform.invitation.confirmation.requested").ToArray();
+        confirmations.Length.ShouldBe(2, "the pending identity is sent another confirmation.");
+        var reissued = await PlatformScenario.SealedTokenAsync(confirmations[^1].Id);
+        reissued.ShouldNotBeNullOrWhiteSpace();
+
+        // The account itself is untouched: no credential change, no membership, and the recipient binding is
+        // still the invitation's own rather than anything the caller supplied.
+        var after = (await TestApp.ListAsync<ApplicationUser>()).Single(user => user.Email == email);
+        after.PasswordHash.ShouldBe(storedHash, "a reissue is not a password reset.");
+        after.EmailConfirmed.ShouldBeFalse();
+        (await TestApp.CountAsync<TenantMembership>()).ShouldBe(0);
+        (await PlatformScenario.SingleInvitationAsync()).BoundIdentityId.ShouldBe(after.Id);
+
+        // And it completes: the reissued token confirms, which is the whole point of issuing it.
+        (await TestApp.SendAsync(new ConfirmPlatformInviteeCommand(reissued))).IsSuccess.ShouldBeTrue();
+        (await TestApp.ListAsync<ApplicationUser>()).Single(user => user.Email == email).EmailConfirmed.ShouldBeTrue();
+        first.Id.ShouldNotBe(confirmations[^1].Id);
+    }
+
+    /// <summary>
+    /// One usable confirmation at a time, including when the superseded one was already delivered. Confirmation
+    /// accepts a pending or a delivered envelope, so retiring only the pending ones would leave the recipient
+    /// holding two working links — and the older one names the same identity, so it would still confirm.
+    /// </summary>
+    [Test]
+    public async Task Reissuing_retires_a_confirmation_that_was_already_delivered()
+    {
+        var (email, token) = await PlatformScenario.PendingInvitationAsync();
+        PlatformScenario.RunAnonymously();
+        await TestApp.SendAsync(new RegisterPlatformInviteeCommand(token, ValidPassword));
+        var first = (await PlatformScenario.MessagesAsync()).Single(message => message.Type == "platform.invitation.confirmation.requested");
+        var firstToken = await PlatformScenario.SealedTokenAsync(first.Id);
+        await PlatformScenario.MarkConfirmationSecretDeliveredAsync(first.Id);
+
+        await TestApp.SendAsync(new RegisterPlatformInviteeCommand(token, ValidPassword));
+
+        var superseded = (await TestApp.ListAsync<OutboxSecret>()).Single(secret => secret.OutboxMessageId == first.Id);
+        superseded.Status.ShouldBe(OutboxSecretStatus.Expired);
+        superseded.Ciphertext.ShouldBeNull("a retired envelope stops being readable.");
+        (await TestApp.SendAsync(new ConfirmPlatformInviteeCommand(firstToken))).IsFailure.ShouldBeTrue();
+        (await TestApp.ListAsync<ApplicationUser>()).Single(user => user.Email == email).EmailConfirmed.ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// The branch is chosen on whether the identity is usable, not on whether it exists. A confirmed account is
+    /// still told only that it can sign in, and is still sent no token of any kind.
+    /// </summary>
+    [Test]
+    public async Task Answering_again_for_a_confirmed_identity_still_only_sends_the_neutral_notice()
+    {
+        var (email, token) = await PlatformScenario.PendingInvitationAsync();
+        await IdentityHttpHarness.SeedConfirmedUserAsync(email, ValidPassword);
+        PlatformScenario.RunAnonymously();
+
+        await TestApp.SendAsync(new RegisterPlatformInviteeCommand(token, ValidPassword));
+        await TestApp.SendAsync(new RegisterPlatformInviteeCommand(token, ValidPassword));
+
+        var messages = await PlatformScenario.MessagesAsync();
+        messages.ShouldAllBe(message => message.Type == "platform.invitation.signin.notice.requested");
+        (await TestApp.CountAsync<OutboxSecret>()).ShouldBe(0, "a confirmed identity is sent no token at all.");
+    }
+
     [Test]
     public async Task Registration_binds_the_invitation_to_the_identity_that_answered_it()
     {

@@ -36,6 +36,9 @@ internal static class PlatformEndpoints
     [
         ApiProblemMetadata.AuthenticationRequired,
         ApiProblemMetadata.InvalidSession,
+        // Reading an operational directory requires that this session proved the second factor, not only that it
+        // holds the permission — so the refusal a password-only session meets is a declared answer (IA-REQ-045).
+        ApiProblemMetadata.RecentMfaRequired,
         ApiProblemMetadata.PermissionDenied,
         ApiProblemMetadata.ValidationFailed,
         ApiProblemMetadata.InternalServerError

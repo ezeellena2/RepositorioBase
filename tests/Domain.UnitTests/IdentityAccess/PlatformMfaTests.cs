@@ -120,6 +120,37 @@ public sealed class PlatformMfaTests
         enrollment.HasRecentStepUp(sessionId, Now.AddHours(1), StepUpWindow).ShouldBeTrue();
     }
 
+    /// <summary>
+    /// Proof and freshness are two different questions of the same evidence, and reading Platform asks the first.
+    /// <para>
+    /// An administrator who proved the factor an hour ago has still proved it — nothing revoked it — so the
+    /// directories stay readable, while a change asks again. Collapsing the two would either lock a reader out
+    /// every fifteen minutes or let a password-only session read, and there is no third answer that is both.
+    /// </para>
+    /// </summary>
+    [Test]
+    public void Proof_of_the_factor_outlives_the_freshness_window_and_still_belongs_to_one_session()
+    {
+        var sessionId = Guid.NewGuid();
+        var enrollment = Active(sessionId);
+        var longAfter = Now.Add(StepUpWindow).AddHours(1);
+
+        enrollment.HasProvedFactor(sessionId).ShouldBeTrue();
+        enrollment.HasRecentStepUp(sessionId, longAfter, StepUpWindow).ShouldBeFalse("freshness does expire.");
+        enrollment.HasProvedFactor(sessionId).ShouldBeTrue("proof does not.");
+        enrollment.HasProvedFactor(Guid.NewGuid()).ShouldBeFalse("another session proved nothing.");
+    }
+
+    /// <summary>An unfinished ceremony proves nothing, however recently a code was accepted inside it.</summary>
+    [Test]
+    public void An_enrollment_short_of_its_last_gate_has_proved_nothing()
+    {
+        var sessionId = Guid.NewGuid();
+
+        Verified(sessionId).HasProvedFactor(sessionId).ShouldBeFalse("the recovery codes were never acknowledged.");
+        Active(sessionId).HasProvedFactor(sessionId).ShouldBeTrue();
+    }
+
     [Test]
     public void Step_up_evidence_must_name_a_session()
     {

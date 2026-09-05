@@ -57,8 +57,21 @@ public sealed class RegisterOrganizationCommandHandler(
                     ? new IdentityAccount(identityId, intent.Email, true)
                     : await identities.FindByEmailAsync(intent.Email, ct);
 
-                if (session.IdentityId is null && identity is not null) return await CompleteSubmissionAsync(submission, RegistrationSubmissionOutcome.Accepted, ct);
-                if (await context.OrganizationProfiles.AnyAsync(profile => profile.Cuit == intent.Cuit, ct)) return await CompleteSubmissionAsync(submission, RegistrationSubmissionOutcome.RegistrationConflict, ct);
+                var cuitIsTaken = await context.OrganizationProfiles.AnyAsync(profile => profile.Cuit == intent.Cuit, ct);
+
+                // An anonymous caller is told the same thing whichever of these is true, and creates nothing in
+                // either case. Answering the taken address neutrally and the taken CUIT with a conflict made the
+                // pair an oracle: submitting one occupied CUIT with two different addresses returned two different
+                // answers, so the difference reported whether the address had an account (IA-REQ-029).
+                if (session.IdentityId is null && (identity is not null || cuitIsTaken))
+                {
+                    return await CompleteSubmissionAsync(submission, RegistrationSubmissionOutcome.Accepted, ct);
+                }
+
+                // A signed-in caller may only register for the address their own session proves, so nothing here
+                // can be varied to probe someone else. Telling them the CUIT is already registered is the useful
+                // answer, and it reveals nothing about any identity.
+                if (cuitIsTaken) return await CompleteSubmissionAsync(submission, RegistrationSubmissionOutcome.RegistrationConflict, ct);
 
                 if (identity is null)
                 {

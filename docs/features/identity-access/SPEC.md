@@ -5,6 +5,11 @@
 **Functional source:** external `CleanArchitecture` reference repository, `docs/standards/identity-access`  
 **Related decision:** [ADR-004](../../decisions/ADR-004-Adopt-Multitenant-Identity-Access.md)
 
+Implementation status: the defects R1-R7 and L1 of the [2026-09-05 direct review](CODE-REVIEW-2026-09-05.md) are
+corrected, each with regression evidence recorded in [TRACEABILITY.md](TRACEABILITY.md). This specification remains
+the target; correcting them does not establish full B2B/B2C baseline compliance, and IA-010, IA-011, IA-013 and
+IA-015 remain unimplemented.
+
 ## 1. Objective
 
 Turn this starter into a reusable identity and access foundation for multitenant SaaS applications with an ASP.NET Core backend, PostgreSQL, and React web. Identity is global; access is resolved within an active tenant through memberships, roles, and permissions. The system supports invitations, revocable sessions, a minimal Platform operations slice, and auditability without delegating business rules to ASP.NET Core Identity or the frontend.
@@ -82,9 +87,10 @@ The initial Platform slice does not permit impersonation, destructive deletion, 
 - **IA-REQ-003:** organization registration deterministically follows the caller state below. Every branch that creates an organization writes the identity decision, tenant, organization profile, responsible membership, initial roles, audit, and applicable confirmation/outbox intent in one consistency boundary.
   - An anonymous request for an email with no identity creates an unconfirmed identity plus a pending organization and responsible membership, then returns the neutral `202` response.
   - An anonymous request for an email that already belongs to an identity creates no identity, tenant, membership, or role. It returns the same neutral `202` response and may enqueue a generic sign-in or confirmation notice; the caller must authenticate before creating another organization.
-  - An authenticated request creates another organization for the current identity. Any submitted email must normalize to that identity's email; otherwise the request is rejected. The new tenant and responsible membership belong to the authenticated identity only.
+  - An anonymous request whose normalized CUIT already belongs to an organization creates no identity, tenant, membership, role, outbox or audit effect, and returns that same neutral `202` — whether or not the submitted email already has an identity. Answering one of those two with a conflict and the other neutrally made the pair an oracle: holding an occupied CUIT constant and varying only the address turned the status into a direct reading of whether that address has an account.
+  - An authenticated request creates another organization for the current identity. Any submitted email must normalize to that identity's email; otherwise the request is rejected. The new tenant and responsible membership belong to the authenticated identity only. A request whose normalized CUIT already belongs to an organization creates nothing and returns `409` `registration_conflict`: that caller may register only for the address their own session proves, so nothing they can vary asks about anybody else.
 - **IA-REQ-004:** a partial failure never leaves an organization without its responsible membership. The Application registration service derives a canonical equivalent-submission key from normalized caller scope and normalized registration intent, claims it before effects, and stores the completed neutral response. Sequential or concurrent replay returns the same bodyless `202` and produces one organization, responsible membership, outbox set, and audit set; database uniqueness remains a backstop, not the idempotency mechanism. Distinct conflicting branches in IA-REQ-003 remain unchanged.
-- **IA-REQ-005:** email must be confirmed before inviting members, administering roles, accepting an invitation, or performing a sensitive operation.
+- **IA-REQ-005:** email must be confirmed before inviting members, administering roles, accepting an invitation, or performing a sensitive operation. The delivered confirmation link resolves to a screen that spends its token against `POST /api/identity/confirm-email`; both confirmation messages — an organization registrant's and an invited member's — carry the same link, because both consume that endpoint.
 
 ### Tenancy and authorization
 
@@ -184,7 +190,7 @@ Routes are contractual drafts; generated OpenAPI becomes the implementation sour
 | Method and route | Access | Primary result |
 |---|---|---|
 | `GET /api/identity/antiforgery` | Public bootstrap | `200` request-token DTO + antiforgery cookie |
-| `POST /api/identity/organizations/register` | Public or authenticated + antiforgery | neutral bodyless `202` |
+| `POST /api/identity/organizations/register` | Public or authenticated + antiforgery | neutral bodyless `202`; an authenticated request for an already registered CUIT is `409` Problem Details `registration_conflict`, and an anonymous one is the same neutral `202` |
 | `POST /api/identity/confirm-email` | Public + token + antiforgery | idempotent bodyless `204` |
 | `POST /api/identity/sessions` | Public + antiforgery | bodyless `204` + cookie or Problem Details |
 | `DELETE /api/identity/sessions/current` | Authenticated + antiforgery | bodyless `204`; a session already revoked by a parallel request is `401` `invalid_session` and still deletes the cookie; a lost update that never settles is `409` `session_concurrency_conflict` |
@@ -195,17 +201,21 @@ Routes are contractual drafts; generated OpenAPI becomes the implementation sour
 | `POST /api/invitations/accept` | Authenticated + token + antiforgery | idempotent `200` acceptance DTO |
 | `POST /api/platform/bootstrap/recover` | public bodyless same-origin + antiforgery + rate limit; no identity, email, or replacement recipient input | valid opaque states: neutral bodyless `202`; missing/malformed antiforgery: `400` Problem Details `antiforgery_validation_failed`; exhausted limit: `429` Problem Details `rate_limit_exceeded` + `Retry-After` |
 | `POST /api/platform/invitations/register` | public + Platform invitation token + credential-registration DTO + antiforgery | neutral bodyless `202`; missing identity uses submitted PasswordOptions-valid password, existing identity ignores credentials; issue confirmation, never membership |
-| `POST /api/platform/invitations/confirm` | public + Platform invitation token + email-confirmation token + antiforgery | idempotent bodyless `204`; confirms identity, never membership |
-| `POST /api/platform/mfa/enroll`, `/verify`, and `/recovery-acknowledge` | authenticated, confirmed pending Platform invitee whose normalized email matches its bound one-time invitation token + antiforgery; no active Platform tenant is required before activation | enrollment DTO, then bodyless `204` |
-| `POST /api/platform/mfa/step-up` | Platform administrator + antiforgery | bodyless `204` or Problem Details |
-| `GET /api/platform/organizations` with `limit`/`cursor` | active Platform tenant + `platform.organizations.read` | `200` typed `{ items: PlatformOrganizationResponse[], nextCursor }` |
-| `GET /api/platform/identities` with `limit`/`cursor` | active Platform tenant + `platform.identities.read` | `200` typed `{ items: PlatformIdentityResponse[], nextCursor }` |
+| `POST /api/platform/invitations/confirm` | public + one `confirmationToken` + antiforgery; its sealed envelope identifies the invitation and bound recipient | idempotent bodyless `204`; validates the pending invitation/identity binding and confirms identity, never membership |
+| `POST /api/platform/mfa/enroll`, `/verify`, and `/recovery-acknowledge` | authenticated, confirmed pending Platform invitee whose normalized email matches its bound one-time invitation token + antiforgery; no active Platform tenant is required before activation | enrollment DTO, then bodyless `204`; `/verify` additionally answers `429` Problem Details `rate_limit_exceeded` + `Retry-After` once the identity's verification attempts are exhausted |
+| `POST /api/platform/mfa/step-up` | Platform administrator + antiforgery | bodyless `204` or Problem Details, including `429` `rate_limit_exceeded` + `Retry-After` on the same per-identity budget as `/verify` |
+| `GET /api/platform/organizations` with `limit`/`cursor` | active Platform tenant + `platform.organizations.read` + this session has proved the second factor | `200` typed `{ items: PlatformOrganizationResponse[], nextCursor }`, or `401` Problem Details `recent_mfa_required` |
+| `GET /api/platform/identities` with `limit`/`cursor` | active Platform tenant + `platform.identities.read` + this session has proved the second factor | `200` typed `{ items: PlatformIdentityResponse[], nextCursor }`, or `401` Problem Details `recent_mfa_required` |
 | `GET /api/platform/admins` with `limit`/`cursor` | active Platform tenant + `platform.admins.read` | `200` bounded `{ items, nextCursor }` administrator directory DTO |
 | `GET /api/platform/audit` with `limit`/`cursor` | active Platform tenant + `platform.audit.read` | `200` typed `{ items: PlatformAuditEventResponse[], nextCursor }` |
 | `POST /api/platform/organizations/{tenantId}/suspend`, `/reactivate` | `platform.tenants.manage` + recent MFA | bodyless `204` or `409` Problem Details |
 | `POST /api/platform/admins/invitations`; `POST /api/platform/admins/{membershipId}/revoke` | `platform.admins.manage` + recent MFA | neutral `202` / bodyless `204` |
 
 All non-success responses follow IA-REQ-038. Sign-in, registration, recovery, and invitation flows do not unnecessarily reveal whether an email exists.
+
+Reading a Platform directory requires that the requesting session has proved the second factor at least once; changing something additionally requires that it did so recently (IA-REQ-041/045). The two are deliberately different questions of the same evidence: password sign-in selects a sole active tenant on its own, so tenant and permission alone would admit a session that proved nothing, while asking for freshness on every read would re-prompt an administrator mid-task. `POST /api/platform/mfa/step-up` is what a session with neither answers, and it requires no Platform tenant of its own so it stays reachable.
+
+An authentication cookie whose session is rejected is deleted in the same response that rejects it. Rejection is unchanged — the request stays anonymous and no rejected session is ever accepted — but the browser stops presenting a ticket it cannot use and public flows, which refuse a cookie they cannot validate, become reachable again.
 
 ## 7. React context contract
 

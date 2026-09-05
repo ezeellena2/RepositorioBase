@@ -435,6 +435,7 @@ public static class TestApp
         _platformBootstrapEmail = null;
         // The recovery budget is process state rather than database state, so Respawn does not clear it.
         CleanArchitecture.Infrastructure.Platform.PlatformBootstrapRecoveryRateLimiter.Reset();
+        CleanArchitecture.Infrastructure.Platform.PlatformMfaAttemptLimiter.Reset();
         _confirmationSecretLockBarrier = null;
         _invitationLockBarrier = null;
         lock (_invitationLockBarrierReaders) _invitationLockBarrierReaders.Clear();

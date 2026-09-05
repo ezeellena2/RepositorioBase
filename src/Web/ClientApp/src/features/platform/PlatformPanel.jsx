@@ -17,7 +17,7 @@ import { usePlatformClient } from './invitations/PlatformInvitationPages';
  */
 const REASONS = ['PolicyViolation', 'SecurityIncident', 'BillingHold', 'OperatorRequest'];
 
-function useDirectory(load) {
+function useDirectory(load, enabled = true) {
   const [page, setPage] = useState(null);
   const [problem, setProblem] = useState(null);
 
@@ -34,14 +34,16 @@ function useDirectory(load) {
   }, [load]);
 
   // The first page is loaded inside an async body rather than from the effect directly, so nothing is set
-  // synchronously while the component is still rendering.
+  // synchronously while the component is still rendering. It is not loaded at all while the session still owes
+  // its second factor: asking would produce three refusals the visitor can do nothing about, and the panel
+  // already knows the one thing they can do.
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      if (!cancelled) await refresh(undefined);
+      if (!cancelled && enabled) await refresh(undefined);
     })();
     return () => { cancelled = true; };
-  }, [refresh]);
+  }, [refresh, enabled]);
 
   return { page, problem, refresh };
 }
@@ -55,14 +57,22 @@ export function PlatformPanel() {
   const [pendingAction, setPendingAction] = useState(null);
   const { submit, problem: actionProblem, isBusy } = useSubmit(async (action) => action());
 
-  const organizations = useDirectory(useCallback((options) => platform.listOrganizations(options), [platform]));
-  const administrators = useDirectory(useCallback((options) => platform.listAdministrators(options), [platform]));
-  const audit = useDirectory(useCallback((options) => platform.listAudit(options), [platform]));
+  const identityContext = identity?.context;
+  const mayLoad = identityContext?.activeTenant?.type === 'Platform' &&
+    identityContext?.session?.requiresTwoFactor !== true &&
+    (identityContext?.permissions ?? []).includes('platform.organizations.read');
+  const organizations = useDirectory(useCallback((options) => platform.listOrganizations(options), [platform]), mayLoad);
+  const administrators = useDirectory(useCallback((options) => platform.listAdministrators(options), [platform]), mayLoad);
+  const audit = useDirectory(useCallback((options) => platform.listAudit(options), [platform]), mayLoad);
 
   const permissions = identity?.context?.permissions ?? [];
   const isPlatform = identity?.context?.activeTenant?.type === 'Platform';
+  // The server refuses every directory to a session that has not proved the second factor, so the panel asks for
+  // it instead of rendering three refusals (IA-REQ-045).
+  const requiresStepUp = identity?.context?.session?.requiresTwoFactor === true;
+  const mayRead = Boolean(identity?.isAuthenticated) && isPlatform && permissions.includes('platform.organizations.read');
 
-  if (!identity?.isAuthenticated || !isPlatform || !permissions.includes('platform.organizations.read')) {
+  if (!mayRead) {
     return (
       <section aria-labelledby="platform-panel-heading">
         <h1 id="platform-panel-heading">Platform</h1>
@@ -78,6 +88,33 @@ export function PlatformPanel() {
       await Promise.all([organizations.refresh(undefined), administrators.refresh(undefined), audit.refresh(undefined)]);
     }
   };
+
+  // The one thing a session that has not proved its factor can do here, and the only thing it is offered. The
+  // context is reloaded first, because whether the directories may be read is the server's answer and not this
+  // form's — reading them off a stale context is how a panel starts disagreeing with the API about authority.
+  if (requiresStepUp) {
+    return (
+      <section aria-labelledby="platform-panel-heading">
+        <h1 id="platform-panel-heading">Platform</h1>
+        <ProblemMessage problem={actionProblem} />
+        <p>This session has not proved your second factor yet. Enter a code from your authenticator to continue.</p>
+        <form
+          aria-label="Step up"
+          onSubmit={(event) => {
+            event.preventDefault();
+            run(async () => {
+              await platform.stepUp(stepUpCode);
+              await identity.reload();
+            });
+          }}
+        >
+          <label htmlFor="platform-step-up">Authenticator code</label>
+          <input id="platform-step-up" type="text" inputMode="numeric" value={stepUpCode} onChange={(event) => setStepUpCode(event.target.value)} required />
+          <button type="submit" disabled={isBusy}>Step up</button>
+        </form>
+      </section>
+    );
+  }
 
   return (
     <section aria-labelledby="platform-panel-heading">

@@ -18,6 +18,9 @@ public sealed class OpenApiContractTests : TestBase
         foreach (var status in new[] { "400", "401", "409", "500" }) register.GetProperty(status).GetProperty("content").TryGetProperty("application/problem+json", out _).ShouldBeTrue();
         AssertProblemCodes(register, "400", "antiforgery_validation_failed", "invalid_registration");
         AssertProblemCodes(register, "401", "invalid_session");
+        // Still declared, and still produced — but now only for an authenticated caller whose own CUIT is already
+        // registered. An anonymous caller is answered neutrally in that case, so that a taken address and an
+        // untaken one cannot be told apart (IA-REQ-003). Do not delete this as a dead declaration.
         AssertProblemCodes(register, "409", "registration_conflict");
         AssertProblemCodes(register, "500", "internal_server_error");
         var confirm = paths.GetProperty("/api/identity/confirm-email").GetProperty("post").GetProperty("responses");
@@ -26,6 +29,48 @@ public sealed class OpenApiContractTests : TestBase
         AssertProblemCodes(confirm, "400", "antiforgery_validation_failed", "invalid_confirmation");
         AssertProblemCodes(confirm, "409", "registration_conflict");
         AssertProblemCodes(confirm, "500", "internal_server_error");
+    }
+
+    /// <summary>
+    /// The Platform gates and directories (IA-REQ-041/045).
+    /// <para>
+    /// Two additions carry a decision each. The routes that accept an authenticator code declare a bounded-attempt
+    /// refusal, because a client that cannot tell "wrong code" from "stop asking" will keep asking; the ones that
+    /// accept no code do not, so the declaration says which routes are bounded. And every directory declares the
+    /// second-factor refusal, because holding the permission is no longer enough to read one.
+    /// </para>
+    /// </summary>
+    [Test]
+    public async Task Platform_contracts_declare_the_bounded_code_gates_and_the_second_factor_directories()
+    {
+        var response = await FunctionalTestSetup.HttpClient.GetAsync("/openapi/v1.json");
+        response.EnsureSuccessStatusCode();
+        var paths = JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement.GetProperty("paths");
+
+        foreach (var route in new[] { "/api/platform/mfa/verify", "/api/platform/mfa/step-up" })
+        {
+            var gate = paths.GetProperty(route).GetProperty("post").GetProperty("responses");
+            AssertProblemCodes(gate, "429", "rate_limit_exceeded");
+            gate.GetProperty("429").GetProperty("content").TryGetProperty("application/problem+json", out _).ShouldBeTrue();
+        }
+
+        foreach (var route in new[] { "/api/platform/mfa/enroll", "/api/platform/mfa/recovery-acknowledge" })
+        {
+            paths.GetProperty(route).GetProperty("post").GetProperty("responses")
+                .TryGetProperty("429", out _).ShouldBeFalse($"{route} accepts no code, so it is not the bounded gate.");
+        }
+
+        foreach (var route in new[]
+                 {
+                     "/api/platform/organizations",
+                     "/api/platform/identities",
+                     "/api/platform/admins",
+                     "/api/platform/audit"
+                 })
+        {
+            var directory = paths.GetProperty(route).GetProperty("get").GetProperty("responses");
+            AssertProblemCodes(directory, "401", "authentication_required", "invalid_session", "recent_mfa_required");
+        }
     }
 
     /// <summary>
