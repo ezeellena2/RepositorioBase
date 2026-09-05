@@ -107,6 +107,10 @@ public static class DependencyInjection
         builder.Services.AddScoped<IRegistrationInitialRoleProvisioner, RegistrationInitialRoleProvisioner>();
         builder.Services.AddScoped<IOfferableRoleReader, OfferableRoleReader>();
         builder.Services.AddScoped<IInvitationRoleAssigner, InvitationRoleAssigner>();
+        builder.Services.AddSingleton<CleanArchitecture.Application.IdentityAccess.Platform.IPlatformMfaVerifier, CleanArchitecture.Infrastructure.Security.PlatformTotpSecretProtector>();
+        builder.Services.AddSingleton<CleanArchitecture.Application.IdentityAccess.Platform.IPlatformRecoveryCodeFactory, CleanArchitecture.Infrastructure.Security.PlatformRecoveryCodeHasher>();
+        builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.Platform.IPlatformMembershipActivator, CleanArchitecture.Infrastructure.Platform.PlatformMembershipActivator>();
+        builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.Platform.IRecentMfaVerifier, CleanArchitecture.Infrastructure.Platform.RecentMfaVerifier>();
 
         // The dispatcher and its handlers are registered as scoped units, not as a hosted service. The loop
         // that repeats a pass belongs to the worker process; registering it here would start a poller inside

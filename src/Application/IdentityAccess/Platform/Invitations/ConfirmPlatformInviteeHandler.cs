@@ -1,0 +1,115 @@
+using System.Text.Json;
+using CleanArchitecture.Application.Common.Interfaces;
+using CleanArchitecture.Application.Common.Models;
+using CleanArchitecture.Application.IdentityAccess.Common;
+using CleanArchitecture.Application.IdentityAccess.Organizations;
+using CleanArchitecture.Application.IdentityAccess.Organizations.ConfirmEmail;
+using CleanArchitecture.Application.IdentityAccess.Organizations.RegisterOrganization;
+using CleanArchitecture.Domain.IdentityAccess.Auditing;
+using CleanArchitecture.Domain.IdentityAccess.Outbox;
+using Microsoft.EntityFrameworkCore;
+
+namespace CleanArchitecture.Application.IdentityAccess.Platform.Invitations;
+
+/// <summary>
+/// Confirms the identity a Platform invitation was answered by, and does nothing else (IA-REQ-041).
+/// <para>
+/// It requires both tokens. The confirmation token proves the address received the mail; the invitation token
+/// proves which Platform offer is being answered. Requiring only the first would let a confirmation intended for
+/// one offer complete another, and requiring only the second would let anyone holding an invitation link confirm
+/// an address they do not control.
+/// </para>
+/// <para>
+/// No membership is created here. Activation waits for TOTP enrollment, acknowledged recovery codes and an
+/// MFA-authenticated session, so this handler deliberately has no access to memberships or roles at all.
+/// </para>
+/// </summary>
+public sealed class ConfirmPlatformInviteeCommandHandler(
+    IApplicationTransaction transaction,
+    IApplicationDbContext context,
+    IConfirmationSecretStore secrets,
+    ITokenHasher tokenHasher,
+    IIdentityAccountService identities,
+    TimeProvider timeProvider) : IRequestHandler<ConfirmPlatformInviteeCommand, Result>
+{
+    public Task<Result> Handle(ConfirmPlatformInviteeCommand request, CancellationToken cancellationToken)
+    {
+        if (!ConfirmationToken.IsCanonical(request.ConfirmationToken))
+        {
+            return Task.FromResult(Result.Failure(IdentityAccessErrors.InvalidConfirmation()));
+        }
+
+        return transaction.ExecuteAsync(async ct =>
+        {
+            var now = timeProvider.GetUtcNow();
+            var secret = await secrets.GetByVersionedHashForUpdateAsync(tokenHasher.Hash(request.ConfirmationToken), ct);
+            if (secret is null || !tokenHasher.Verify(request.ConfirmationToken, secret.VersionedHash))
+            {
+                return Result.Failure(IdentityAccessErrors.InvalidConfirmation());
+            }
+
+            if (secret.Status == OutboxSecretStatus.Consumed) return Result.Success();
+            if (secret.Status is not (OutboxSecretStatus.Pending or OutboxSecretStatus.Delivered))
+            {
+                return Result.Failure(IdentityAccessErrors.RegistrationConflict());
+            }
+
+            if (secret.ExpiresAt <= now)
+            {
+                secret.Terminate(OutboxSecretStatus.Expired, "confirmation_expired", now);
+                await context.SaveChangesAsync(ct);
+                return Result.Failure(IdentityAccessErrors.RegistrationConflict());
+            }
+
+            var message = await context.OutboxMessages.SingleOrDefaultAsync(item => item.Id == secret.OutboxMessageId, ct);
+
+            // The purpose is established by message type rather than by the shape of the payload: a shape test
+            // would silently match whichever envelope happened to deserialize, and confirming an organization's
+            // registration through this path would activate a tenant nobody asked it to.
+            if (message is null || !string.Equals(message.Type, PlatformInvitationDelivery.ConfirmationMessageType, StringComparison.Ordinal))
+            {
+                return Result.Failure(IdentityAccessErrors.InvalidConfirmation());
+            }
+
+            if (!TryReadEnvelope(message.Payload, out var envelope))
+            {
+                return Result.Failure(IdentityAccessErrors.InvalidConfirmation());
+            }
+
+            var invitation = await PlatformInvitationDelivery.FindByTokenAsync(context, tokenHasher, request.Token, ct);
+            if (invitation is null || invitation.Id.Value != envelope.InvitationId || invitation.BoundIdentityId != envelope.IdentityId)
+            {
+                return Result.Failure(IdentityAccessErrors.InvalidConfirmation());
+            }
+
+            if (!invitation.IsPendingAt(now))
+            {
+                return Result.Failure(IdentityAccessErrors.RegistrationConflict());
+            }
+
+            await identities.ActivateAsync(envelope.IdentityId, ct);
+            secret.Consume("confirmation_consumed", now);
+
+            // Tenantless, because the identity holds no Platform membership yet and must not appear to.
+            context.AuditEvents.Add(AuditEvent.CreateIdentityConfirmed(envelope.IdentityId, null, $"platform-confirmation-{secret.Id:N}", now));
+            await context.SaveChangesAsync(ct);
+            return Result.Success();
+        }, cancellationToken);
+    }
+
+    private static bool TryReadEnvelope(string payload, out PlatformInvitationDelivery.PlatformConfirmationEnvelope envelope)
+    {
+        envelope = default!;
+        try
+        {
+            var value = JsonSerializer.Deserialize<PlatformInvitationDelivery.PlatformConfirmationEnvelope>(payload);
+            if (value is null || value.IdentityId == Guid.Empty || value.InvitationId == Guid.Empty) return false;
+            envelope = value;
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+}

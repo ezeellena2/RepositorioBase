@@ -22,6 +22,14 @@ public static class Permissions
     public const string PlatformAdminsRead = "platform.admins.read";
     public const string PlatformAdminsManage = "platform.admins.manage";
 
+    /// <summary>
+    /// Enrolling and stepping up the Platform second factor. The SPEC names no code for it, so this one is
+    /// chosen to fit the existing `resource.action` catalogue. It is application-scoped for the same reason
+    /// accepting an invitation is: the invitee holds no membership until the gates complete, so there is no
+    /// tenant to scope it to, and requiring one would make the gates unreachable.
+    /// </summary>
+    public const string PlatformMfaEnroll = "platform.mfa.enroll";
+
     public static IReadOnlyList<PermissionDefinition> Catalog { get; } =
     [
         new(MembersInvite, [TenantType.Organization]),
@@ -45,7 +53,10 @@ public static class Permissions
         IdentityContextSelect,
         // An invitee holds no membership until acceptance succeeds, so accepting cannot be tenant-scoped. It is a
         // self-service capability of the authenticated identity, like reading its own context.
-        IdentityInvitationsAccept
+        IdentityInvitationsAccept,
+        // A Platform invitee holds no membership until the MFA gates complete, so enrolling cannot be
+        // tenant-scoped either. It grants nothing beyond the chance to prove a factor.
+        PlatformMfaEnroll
     };
 
 }

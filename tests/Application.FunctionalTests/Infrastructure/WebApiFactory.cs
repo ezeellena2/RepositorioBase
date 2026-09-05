@@ -79,6 +79,11 @@ public class WebApiFactory(
                     });
                 services.RemoveAll<ICurrentTenant>();
                 services.AddScoped<ICurrentTenant, TestCurrentTenant>();
+                // The real one reads the validated session out of the HttpContext, which a request sent
+                // straight through MediatR does not have. Requests that identify the caller by session — the
+                // Platform MFA gates — would otherwise be untestable at this level.
+                services.RemoveAll<ICurrentSession>();
+                services.AddScoped<ICurrentSession, TestCurrentSession>();
                 services.RemoveAll<IValidatedOptionalSession>();
                 services.AddScoped<IValidatedOptionalSession>(_ => TestApp.GetValidatedOptionalSession());
                 services.RemoveAll<ISecureTokenGenerator>();
@@ -170,6 +175,18 @@ public class WebApiFactory(
     private sealed class TestCurrentTenant : ICurrentTenant
     {
         public TenantId? TenantId => TestApp.GetTenantId();
+    }
+
+    private sealed class TestCurrentSession : ICurrentSession
+    {
+        public CleanArchitecture.Domain.IdentityAccess.Sessions.UserSessionId? SessionId =>
+            TestApp.GetSessionId() is { } id
+                ? CleanArchitecture.Domain.IdentityAccess.Sessions.UserSessionId.From(id)
+                : null;
+
+        public Guid? IdentityId => TestApp.GetUserId();
+
+        public bool IsInvalid => TestApp.GetUserId() is null || TestApp.GetSessionId() is null;
     }
 
     private sealed class TestPermissionEvaluator : IPermissionEvaluator

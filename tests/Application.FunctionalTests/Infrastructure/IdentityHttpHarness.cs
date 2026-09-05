@@ -66,6 +66,14 @@ internal static class IdentityHttpHarness
         return response.Headers.GetValues("Set-Cookie").Single(value => value.StartsWith("__Host-ia-auth=", StringComparison.Ordinal)).Split(';')[0];
     }
 
+    /// <summary>Reads an RFC 9457 body, asserting the media type that makes it one.</summary>
+    internal static async Task<JsonElement> ReadProblemAsync(HttpResponseMessage response)
+    {
+        response.Content.Headers.ContentType!.MediaType.ShouldBe("application/problem+json");
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        return document.RootElement.Clone();
+    }
+
     internal static async Task<JsonElement> ReadJsonAsync(HttpResponseMessage response)
     {
         response.Content.Headers.ContentType!.MediaType.ShouldBe("application/json");

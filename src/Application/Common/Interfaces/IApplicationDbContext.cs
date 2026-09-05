@@ -5,6 +5,7 @@ using CleanArchitecture.Domain.IdentityAccess.Invitations;
 using CleanArchitecture.Domain.IdentityAccess.Memberships;
 using CleanArchitecture.Domain.IdentityAccess.Organizations;
 using CleanArchitecture.Domain.IdentityAccess.Outbox;
+using CleanArchitecture.Domain.IdentityAccess.Platform;
 using CleanArchitecture.Domain.IdentityAccess.Sessions;
 using CleanArchitecture.Domain.IdentityAccess.Tenants;
 
@@ -35,6 +36,10 @@ public interface IApplicationDbContext
     DbSet<Invitation> Invitations { get; }
 
     DbSet<InvitationRole> InvitationRoles { get; }
+
+    DbSet<PlatformAdminInvitation> PlatformAdminInvitations { get; }
+
+    DbSet<PlatformMfaEnrollment> PlatformMfaEnrollments { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken);
 

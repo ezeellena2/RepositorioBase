@@ -3,16 +3,22 @@ using System.Text.Json;
 namespace CleanArchitecture.Application.FunctionalTests.IdentityAccess.Api;
 
 /// <summary>
-/// The three invitation routes are contractual. They are asserted against the document the application actually
-/// serves rather than a checked-in artifact, and the negatives matter as much as the positives: an invitation
-/// route mounted under the identity self-service prefix, or a preview route left behind, would each be a surface
+/// Every invitation route is contractual. They are asserted against the document the application actually serves
+/// rather than a checked-in artifact, and the negatives matter as much as the positives: an invitation route
+/// mounted under the identity self-service prefix, or a preview route left behind, would each be a surface
 /// nobody declared.
+/// <para>
+/// A Platform invitation is a different offer from an organization one and lives under its own prefix, so the
+/// exhaustive list spans both: adding either kind without declaring it here fails.
+/// </para>
 /// </summary>
 public sealed class InvitationRouteContractTests : TestBase
 {
     [TestCase("/api/tenants/{tenantId}/invitations")]
     [TestCase("/api/invitations/register")]
     [TestCase("/api/invitations/accept")]
+    [TestCase("/api/platform/invitations/register")]
+    [TestCase("/api/platform/invitations/confirm")]
     public async Task Invitation_routes_are_declared_exactly_as_specified(string path)
     {
         var paths = await PathsAsync();
@@ -40,7 +46,13 @@ public sealed class InvitationRouteContractTests : TestBase
         declared
             .Where(path => path.Contains("invitation", StringComparison.OrdinalIgnoreCase))
             .Order(StringComparer.Ordinal)
-            .ShouldBe(["/api/invitations/accept", "/api/invitations/register", "/api/tenants/{tenantId}/invitations"]);
+            .ShouldBe([
+                "/api/invitations/accept",
+                "/api/invitations/register",
+                "/api/platform/invitations/confirm",
+                "/api/platform/invitations/register",
+                "/api/tenants/{tenantId}/invitations"
+            ]);
     }
 
     private static async Task<JsonElement> PathsAsync()

@@ -22,6 +22,8 @@ public sealed class MigrationUpgradeTests
     private const string UserSessionsPredecessor = "20260901050000_RegistrationMessaging";
     private const string InvitationsPredecessor = "20260901184054_UserSessions";
     private const string CanonicalFormPredecessor = "20260903170351_Invitations";
+    private const string PlatformInvitationPredecessor = "20260904231855_OutboxDeliverySafety";
+    private const string PlatformMfaPredecessor = "20260905143153_PlatformAdminInvitation";
 
     [Test]
     public async Task Outbox_safety_upgrade_preserves_history_and_bounds_preexisting_attempts_conservatively()
@@ -604,6 +606,75 @@ public sealed class MigrationUpgradeTests
 
         await using var todoCommand = new NpgsqlCommand($"INSERT INTO \"TodoItems\" (\"ListId\", \"Title\", \"Priority\", \"Done\", \"Created\", \"CreatedBy\", \"LastModified\", \"LastModifiedBy\") VALUES (1, 'upgrade sentinel', 0, FALSE, NOW(), '{userId}', NOW(), '{userId}') RETURNING \"Id\";", connection);
         return (int)(await todoCommand.ExecuteScalarAsync())!;
+    }
+
+    /// <summary>
+    /// The Platform schema arrives in two ordered steps, and the order is load-bearing: an MFA enrollment binds
+    /// to an invitation, so a database that had the second table without the first would hold enrollments with
+    /// nothing to bind to. This walks a baseline database up through both and checks that pre-existing rows
+    /// survive, that each step adds only its own tables, and that nothing is left pending at the end.
+    /// </summary>
+    [Test]
+    public async Task Platform_schema_upgrades_in_order_and_preserves_preexisting_data()
+    {
+        var databaseName = $"platform_round_trip_{Guid.NewGuid():N}";
+        string? connectionString = null;
+
+        try
+        {
+            using (var scope = TestServices.CreateScope())
+            {
+                var shared = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>().Database.GetConnectionString()
+                    ?? throw new InvalidOperationException("The test PostgreSQL connection string is required.");
+                connectionString = new NpgsqlConnectionStringBuilder(shared) { Database = databaseName }.ConnectionString;
+                await CreateDatabase(databaseName, shared);
+            }
+
+            var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseNpgsql(connectionString).Options;
+            var userId = Guid.NewGuid();
+            var todoId = await SeedPreRegistrationMessagingData(options, userId, Guid.NewGuid());
+
+            await using (var before = new ApplicationDbContext(options))
+            {
+                await before.Database.GetService<IMigrator>().MigrateAsync(PlatformInvitationPredecessor);
+            }
+
+            await AssertTableAsync(connectionString!, "PlatformAdminInvitations", false);
+            await AssertTableAsync(connectionString!, "PlatformMfaEnrollments", false);
+
+            await using (var invitations = new ApplicationDbContext(options))
+            {
+                await invitations.Database.GetService<IMigrator>().MigrateAsync(PlatformMfaPredecessor);
+            }
+
+            await AssertTableAsync(connectionString!, "PlatformAdminInvitations", true);
+            await AssertTableAsync(connectionString!, "PlatformMfaEnrollments", false,
+                "the MFA step is what adds the enrollment table, and it has not run yet.");
+
+            await using var latest = new ApplicationDbContext(options);
+            await latest.Database.GetService<IMigrator>().MigrateAsync();
+
+            await AssertTableAsync(connectionString!, "PlatformMfaEnrollments", true);
+            await AssertTableAsync(connectionString!, "PlatformRecoveryCodes", true);
+            (await latest.Database.GetPendingMigrationsAsync()).ShouldBeEmpty();
+            (await latest.Users.SingleAsync(user => user.Id == userId)).NormalizedEmail.ShouldBe("ROUNDTRIP@EXAMPLE.TEST");
+            (await latest.TodoItems.SingleAsync(todo => todo.Id == todoId)).CreatedBy.ShouldBe(userId);
+        }
+        finally
+        {
+            if (connectionString is not null)
+            {
+                await DropDatabase(databaseName, connectionString);
+            }
+        }
+    }
+
+    private static async Task AssertTableAsync(string connectionString, string table, bool expected, string? because = null)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        (await Scalar<bool>(connection, $"SELECT to_regclass('public.\"{table}\"') IS NOT NULL;"))
+            .ShouldBe(expected, because ?? $"{table} presence after this step");
     }
 
     private static async Task<int> SeedPreRegistrationMessagingData(DbContextOptions<ApplicationDbContext> options, Guid userId, Guid roleId)

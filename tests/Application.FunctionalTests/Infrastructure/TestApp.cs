@@ -345,6 +345,9 @@ public static class TestApp
     /// </summary>
     public static void SetUserId(Guid? identityId) => _userId = identityId;
 
+    /// <summary>Puts a session behind the request, for the handlers that identify the caller by session.</summary>
+    public static void SetSessionId(Guid? sessionId) => _sessionId = sessionId;
+
     public static async Task<Guid> RunAsDefaultUserAsync()
     {
         return await RunAsUserAsync("test@local", "Testing1234!", []);

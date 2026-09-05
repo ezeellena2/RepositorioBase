@@ -3,6 +3,7 @@ using System;
 using CleanArchitecture.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace CleanArchitecture.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260905143153_PlatformAdminInvitation")]
+    partial class PlatformAdminInvitation
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -653,90 +656,6 @@ namespace CleanArchitecture.Infrastructure.Data.Migrations
                         });
                 });
 
-            modelBuilder.Entity("CleanArchitecture.Domain.IdentityAccess.Platform.PlatformMfaEnrollment", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("EncryptedSecret")
-                        .IsRequired()
-                        .HasMaxLength(1024)
-                        .HasColumnType("character varying(1024)");
-
-                    b.Property<Guid>("IdentityId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTimeOffset?>("LastVerifiedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("LastVerifiedSessionId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTimeOffset?>("RecoveryAcknowledgedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)");
-
-                    b.Property<DateTimeOffset?>("VerifiedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<uint>("Version")
-                        .IsConcurrencyToken()
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("xid")
-                        .HasColumnName("xmin");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("IdentityId")
-                        .IsUnique();
-
-                    b.ToTable("PlatformMfaEnrollments", null, t =>
-                        {
-                            t.HasCheckConstraint("CK_PlatformMfaEnrollments_Ids_NotEmpty", "\"Id\" <> '00000000-0000-0000-0000-000000000000'::uuid AND \"IdentityId\" <> '00000000-0000-0000-0000-000000000000'::uuid AND (\"LastVerifiedSessionId\" IS NULL OR \"LastVerifiedSessionId\" <> '00000000-0000-0000-0000-000000000000'::uuid)");
-
-                            t.HasCheckConstraint("CK_PlatformMfaEnrollments_Lifecycle", "length(\"EncryptedSecret\") > 0 AND ((\"LastVerifiedAt\" IS NULL) = (\"LastVerifiedSessionId\" IS NULL)) AND (\"LastVerifiedAt\" IS NULL OR \"LastVerifiedAt\" >= \"CreatedAt\") AND ((\"Status\" = 'Pending' AND \"VerifiedAt\" IS NULL AND \"RecoveryAcknowledgedAt\" IS NULL AND \"LastVerifiedAt\" IS NULL) OR (\"Status\" = 'Verified' AND \"VerifiedAt\" IS NOT NULL AND \"VerifiedAt\" >= \"CreatedAt\" AND \"RecoveryAcknowledgedAt\" IS NULL) OR (\"Status\" = 'Active' AND \"VerifiedAt\" IS NOT NULL AND \"RecoveryAcknowledgedAt\" IS NOT NULL AND \"RecoveryAcknowledgedAt\" >= \"VerifiedAt\"))");
-                        });
-                });
-
-            modelBuilder.Entity("CleanArchitecture.Domain.IdentityAccess.Platform.PlatformRecoveryCode", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("CodeHash")
-                        .IsRequired()
-                        .HasMaxLength(256)
-                        .HasColumnType("character varying(256)");
-
-                    b.Property<DateTimeOffset?>("ConsumedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("EnrollmentId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("EnrollmentId", "CodeHash")
-                        .IsUnique();
-
-                    b.ToTable("PlatformRecoveryCodes", null, t =>
-                        {
-                            t.HasCheckConstraint("CK_PlatformRecoveryCodes_Ids_NotEmpty", "\"Id\" <> '00000000-0000-0000-0000-000000000000'::uuid AND \"EnrollmentId\" <> '00000000-0000-0000-0000-000000000000'::uuid");
-
-                            t.HasCheckConstraint("CK_PlatformRecoveryCodes_Lifecycle", "length(\"CodeHash\") > 0 AND (\"ConsumedAt\" IS NULL OR \"ConsumedAt\" >= \"CreatedAt\")");
-                        });
-                });
-
             modelBuilder.Entity("CleanArchitecture.Domain.IdentityAccess.Sessions.UserSession", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1190,24 +1109,6 @@ namespace CleanArchitecture.Infrastructure.Data.Migrations
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("CleanArchitecture.Domain.IdentityAccess.Platform.PlatformMfaEnrollment", b =>
-                {
-                    b.HasOne("CleanArchitecture.Infrastructure.Identity.ApplicationUser", null)
-                        .WithMany()
-                        .HasForeignKey("IdentityId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("CleanArchitecture.Domain.IdentityAccess.Platform.PlatformRecoveryCode", b =>
-                {
-                    b.HasOne("CleanArchitecture.Domain.IdentityAccess.Platform.PlatformMfaEnrollment", null)
-                        .WithMany("RecoveryCodes")
-                        .HasForeignKey("EnrollmentId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
             modelBuilder.Entity("CleanArchitecture.Domain.IdentityAccess.Sessions.UserSession", b =>
                 {
                     b.HasOne("CleanArchitecture.Domain.IdentityAccess.Tenants.Tenant", null)
@@ -1281,11 +1182,6 @@ namespace CleanArchitecture.Infrastructure.Data.Migrations
             modelBuilder.Entity("CleanArchitecture.Domain.IdentityAccess.Invitations.Invitation", b =>
                 {
                     b.Navigation("Roles");
-                });
-
-            modelBuilder.Entity("CleanArchitecture.Domain.IdentityAccess.Platform.PlatformMfaEnrollment", b =>
-                {
-                    b.Navigation("RecoveryCodes");
                 });
 #pragma warning restore 612, 618
         }

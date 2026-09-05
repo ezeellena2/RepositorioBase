@@ -44,6 +44,12 @@ public class ExistingApplicationRequestAuthorizationTests
     [TestCase(typeof(GetIdentityContextQuery), "identity.context.read")]
     [TestCase(typeof(SelectTenantCommand), "identity.context.select")]
     [TestCase(typeof(CleanArchitecture.Application.IdentityAccess.Invitations.AcceptInvitation.AcceptInvitationCommand), "identity.invitations.accept")]
+    // A Platform invitee holds no membership until the MFA gates complete, so none of the gates can be
+    // tenant-scoped either. The permission grants nothing beyond the chance to prove a factor.
+    [TestCase(typeof(CleanArchitecture.Application.IdentityAccess.Platform.Mfa.BeginPlatformMfaEnrollmentCommand), "platform.mfa.enroll")]
+    [TestCase(typeof(CleanArchitecture.Application.IdentityAccess.Platform.Mfa.VerifyPlatformMfaEnrollmentCommand), "platform.mfa.enroll")]
+    [TestCase(typeof(CleanArchitecture.Application.IdentityAccess.Platform.Mfa.AcknowledgePlatformRecoveryCodesCommand), "platform.mfa.enroll")]
+    [TestCase(typeof(CleanArchitecture.Application.IdentityAccess.Platform.Mfa.StepUpPlatformMfaCommand), "platform.mfa.enroll")]
     public void Session_context_requests_are_authorized_without_tenant_requirement(Type requestType, string permission)
     {
         var authorizeAttribute = requestType.GetCustomAttributes<AuthorizeAttribute>(false).ShouldHaveSingleItem();
@@ -52,8 +58,12 @@ public class ExistingApplicationRequestAuthorizationTests
         GetRequiredMetadata<bool>(authorizeAttribute, "RequiresTenant").ShouldBeFalse();
     }
 
+    /// <summary>
+    /// The exhaustive inventory. Every request the application answers is named here on purpose, so a new one
+    /// cannot appear without someone deciding, in this file, how it is authorized.
+    /// </summary>
     [Test]
-    public void ExistingRequestInventoryContainsExactlyTheKnownTwentyRequests()
+    public void RequestInventoryContainsExactlyTheDeclaredRequests()
     {
         var actualRequestTypes = GetConcreteRequestTypes(typeof(AuthorizeAttribute).Assembly);
 
@@ -79,6 +89,12 @@ public class ExistingApplicationRequestAuthorizationTests
             typeof(CleanArchitecture.Application.IdentityAccess.Invitations.AcceptInvitation.AcceptInvitationCommand).FullName,
             typeof(CleanArchitecture.Application.IdentityAccess.Invitations.ResendInvitation.ResendInvitationCommand).FullName,
             typeof(CleanArchitecture.Application.IdentityAccess.Invitations.CancelInvitation.CancelInvitationCommand).FullName,
+            typeof(CleanArchitecture.Application.IdentityAccess.Platform.Invitations.RegisterPlatformInviteeCommand).FullName,
+            typeof(CleanArchitecture.Application.IdentityAccess.Platform.Invitations.ConfirmPlatformInviteeCommand).FullName,
+            typeof(CleanArchitecture.Application.IdentityAccess.Platform.Mfa.BeginPlatformMfaEnrollmentCommand).FullName,
+            typeof(CleanArchitecture.Application.IdentityAccess.Platform.Mfa.VerifyPlatformMfaEnrollmentCommand).FullName,
+            typeof(CleanArchitecture.Application.IdentityAccess.Platform.Mfa.AcknowledgePlatformRecoveryCodesCommand).FullName,
+            typeof(CleanArchitecture.Application.IdentityAccess.Platform.Mfa.StepUpPlatformMfaCommand).FullName,
         ];
 
         actualRequestTypes.ShouldBe(expectedRequestTypes.Order());
