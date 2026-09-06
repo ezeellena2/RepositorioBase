@@ -47,13 +47,13 @@ Task 17 has three steps. Two are drafted; the third is the human decision and ha
 |---|---|---|
 | 1 — draft the exact contract delta for C1–C7 | Drafted; C1 accepted, C2–C7 awaiting decision | [SPEC §14](SPEC.md#14-task-17-decision-package-proposed-not-approved), [ADR-004 decisions 18–24](../../decisions/ADR-004-Adopt-Multitenant-Identity-Access.md#proposed-continuation-decisions-task-17--not-accepted) |
 | 2 — map reference adoption at the pinned revision | Drafted, awaiting decision | [SPEC §15](SPEC.md#15-reference-adoption-map-proposed--task-17-step-2) |
-| 3 — structural review, then one human decision | **Partly taken (2026-09-06): C1 accepted, C2–C7 not.** Five amendments are required before C3, C4, C6 and C7 are put forward again | [ADR-004 decision record](../../decisions/ADR-004-Adopt-Multitenant-Identity-Access.md#decision-record--2026-09-06) |
+| 3 — structural review, then one human decision | **Partly taken (2026-09-06): C1, C3 and C7 accepted — C3 and C7 for synthetic data only; C2, C4, C5 and C6 not.** C4 and C6 still carry amendments A2/A3 and A3/A4 | [ADR-004 decision records](../../decisions/ADR-004-Adopt-Multitenant-Identity-Access.md#decision-record--2026-09-06-second-c3-and-c7) |
 
-**Task 17 is not complete.** One entry of seven is accepted. `Drafted` means the text exists and is internally
-consistent; it is not approval and it is not evidence. For C2–C7 no behaviour is implemented and no test named in
-§14 has been written. Amendments A1–A5 in the decision record are changes to the proposals, not open questions:
-each of those blocks must return with its contract already reconciled, because a contradiction left as a note for
-the implementer is not a delivered contract.
+**Task 17 is not complete.** Three entries of seven are accepted — C1, and C3/C7 for synthetic data only. `Drafted`
+means the text exists and is internally consistent; it is not approval and it is not evidence. For C2, C4, C5 and C6
+no behaviour is implemented and no test named in §14 has been written. Amendments A2/A3 and A3/A4 in the decision
+record are changes to those proposals, not open questions: each of those blocks must return with its contract
+already reconciled, because a contradiction left as a note for the implementer is not a delivered contract.
 
 ## Task 18 — done 2026-09-06
 
@@ -97,11 +97,11 @@ are allocated only inside the proposal and become real if and when the decision 
 |---|---|---|---|---|
 | C1 **(accepted 2026-09-06; implemented)** | IA-REQ-048, now normative in [SPEC §4](SPEC.md#4-normative-requirements) | IA-REQ-003, IA-REQ-004, IA-REQ-005 | 18, **done 2026-09-06**; the registration seam 19/20/23 build on | nothing from this entry: the IA-REQ-003 residual is closed on Task 18's paired-sequence evidence |
 | C2 | IA-REQ-049 | IA-REQ-021, IA-REQ-023 | the session half of 21, 22, 23 | the proof half of 21/22, which is C4 |
-| C3 **(A1 folded in 2026-09-06)** | IA-REQ-050, IA-REQ-058 | none; extends IA-REQ-002/044 | 19 and 20 **only together with C7**; the data contracts in 26/27 | IA-REQ-058's dispute, which needs C4 and lands in 26; and real DNI capture, which is C7's gate |
+| C3 **(accepted 2026-09-06, synthetic only)** | IA-REQ-050, IA-REQ-058, now normative in [SPEC §4](SPEC.md#4-normative-requirements) | none; extends IA-REQ-002/044 | 19 and 20, together with C7 | IA-REQ-058's dispute, which needs C4 and lands in 26; real DNI capture, which is the G2 gate; and the §14.3 residual, which was not accepted |
 | C4 **(A2/A3 folded in 2026-09-06)** | IA-REQ-051, IA-REQ-052 | IA-REQ-022 and §8, for one named callback route | 21, 22, 23; the recovery part of 26 | live provider registration, which is per-environment |
 | C5 | IA-REQ-053 | IA-REQ-047, closing its deferred note | 24, 25 | C4, without which ownership transfer has no proof |
 | C6 **(A3/A4 folded in 2026-09-06)** | IA-REQ-054, IA-REQ-055 | makes IA-REQ-020 precise; extends IA-REQ-042 | 26, 27 against synthetic fixtures | live restore release, which needs the external authority |
-| C7 **(A4/A5 folded in 2026-09-06)** | IA-REQ-056, IA-REQ-057 | strengthens IA-REQ-019 to shared, fail-closed state | 19's classification stamp and budget store, 20's public claim budget, then 26 and 27 | real personal data, and production — separate gates in 28 |
+| C7 **(accepted 2026-09-06, synthetic only)** | IA-REQ-056, IA-REQ-057, now normative in [SPEC §4](SPEC.md#4-normative-requirements) | strengthens IA-REQ-019 to shared, fail-closed state | 19's classification stamp and budget store, 20's public claim budget; 26 and 27 stay blocked on C6 | real personal data, and production — separate gates in 28 |
 
 A declined or amended entry blocks only its own consumers. Tasks 1–16 and their recorded `Review` states are
 untouched by this package.
@@ -121,8 +121,10 @@ dispute — both halves — moves to Task 26, because the owner's half requires 
 before Task 22; Tasks 19 and 20 record a document and never offer a way to correct one. Task 19 stays domain and
 persistence with no public route, and every public flow stays in the task that owns it.
 
-**Minimum approval set to continue: C3 and C7, together.** That makes Task 19 and then Task 20 executable, and
-nothing else. C2 and C4 unblock the 21–23 line whenever they are decided; C5 and C6 depend on C4 and come after.
+**Taken 2026-09-06: C3 and C7 accepted together, for synthetic data only.** Task 19 is `Ready`, and Task 20 becomes
+`Ready` once Task 19 is verified. Nothing after Task 20 is authorized. C2 and C4 unblock the 21–23 line whenever they
+are decided; C5 and C6 depend on C4 and come after. Real personal data, production, and the §14.3 residual were
+withheld and are not part of this acceptance.
 
 ## First-increment Review Workload Forecast (historical)
 

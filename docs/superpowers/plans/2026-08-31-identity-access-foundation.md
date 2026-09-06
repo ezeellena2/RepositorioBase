@@ -10,7 +10,7 @@
 
 ---
 
-**Status:** Tasks 1–16 record the implemented Organization/Platform foundation and its historical checks. Their `Review` states and recorded limitations remain unchanged; implementation is not human acceptance or complete B2B/B2C coverage. Task 17 is partly taken: C1 was accepted on 2026-09-06, and [Task 18](#task-18-remove-the-registration-state-oracle-not-only-its-status-difference) is implemented and verified against real PostgreSQL on that approval alone. C2–C7 remain proposals: amendments A1–A5 were folded into C3, C4, C6 and C7 on 2026-09-06, so those entries are reconciled and carry no open gap, but none of them is accepted — [Tasks 19–28](#continuation-to-local-b2bb2c-functional-completion) are still blocked on that decision. The dependencies below were realigned to the reconciled contracts the same day; the smallest set that unblocks anything is **C3 together with C7**, which makes Tasks 19 and 20 executable and nothing else. This continuation was planned against `d6d1b0ab5cf2b66ccff2828b471d7977f540a958`; no verification run is claimed for any task after 18.
+**Status:** Tasks 1–16 record the implemented Organization/Platform foundation and its historical checks. Their `Review` states and recorded limitations remain unchanged; implementation is not human acceptance or complete B2B/B2C coverage. Task 17 is partly taken: C1 was accepted on 2026-09-06, and [Task 18](#task-18-remove-the-registration-state-oracle-not-only-its-status-difference) is implemented and verified against real PostgreSQL on that approval alone. C3 and C7 were accepted on 2026-09-06 for synthetic data only, which makes [Task 19](#task-19-persist-personal-ownership-and-protected-ardni-atomically) `Ready` and, once it is verified, [Task 20](#task-20-deliver-personal-signup-own-profile-and-context-switching). C2, C4, C5 and C6 remain proposals — amendments A2/A3 and A3/A4 still apply to C4 and C6 — so [Tasks 21–28](#continuation-to-local-b2bb2c-functional-completion) are still blocked. Real personal data, production and §14.3's named residual were withheld from that acceptance. This continuation was planned against `d6d1b0ab5cf2b66ccff2828b471d7977f540a958`; no verification run is claimed for any task after 18.
 
 ## First-increment Review Workload Forecast (historical)
 
@@ -1256,7 +1256,7 @@ IA-010, IA-011, IA-013, and IA-015 remain `Proposed` and unimplemented. Expandin
 
 ## Task 17: Approve the continuation contracts and reference scope
 
-**State (2026-09-06): partly taken, not complete.** The package was written into SPEC §14 and ADR-004. C1 was accepted and has left the proposal set; C2–C7 were not accepted. Amendments A1–A5 were folded into C3, C4, C6 and C7 on 2026-09-06, along with the two contradictions C2/C4 and C5/C6 carried, so every entry now states one contract. This task closes when those reconciled entries are answered.
+**State (2026-09-06): partly taken, not complete.** The package was written into SPEC §14 and ADR-004. C1, C3 and C7 have been accepted and left the proposal set — C3 and C7 for synthetic data only. C2, C4, C5 and C6 were not. Amendments A1–A5 were folded into C3, C4, C6 and C7 on 2026-09-06, along with the two contradictions C2/C4 and C5/C6 carried, so every entry states one contract. This task closes when the four remaining entries are answered.
 
 **Visible outcome:** one reviewable contract package makes the following implementation steps executable without repeated product-discovery rounds. This task is documentation and human approval, with no production code.
 
@@ -1316,7 +1316,7 @@ dotnet test tests/Infrastructure.IntegrationTests/Infrastructure.IntegrationTest
 
 **Visible outcome:** one global identity can own exactly one Personal tenant with its own protected profile/document, without creating another account or making its document visible to an Organization.
 
-**Tracking/source:** IA-010; IA-004 persistence; SPEC §2.3, IA-REQ-001/002/006..013/026..029/033..038; BR-ID-003/006/007, BR-REG-001/002, BR-TEN-003/004, BR-INV-003. Dependencies: Task 18 (done 2026-09-06 on the accepted C1) plus **accepted C3 and C7**. C3 supplies the profile and the protected documentary identity. C7 supplies two things this task persists and no later task can retrofit: the server-derived `DataClassification` stamped on every profile and document row at creation, and the shared attempt-budget store that must already exist when Task 20 exposes Personal registration. Actual PII remains disabled.
+**Tracking/source:** IA-010; IA-004 persistence; SPEC §2.3, IA-REQ-001/002/006..013/026..029/033..038; BR-ID-003/006/007, BR-REG-001/002, BR-TEN-003/004, BR-INV-003. Dependencies: Task 18 (done 2026-09-06 on the accepted C1) plus **C3 and C7, accepted 2026-09-06 for synthetic data only**. C3 supplies the profile and the protected documentary identity. C7 supplies two things this task persists and no later task can retrofit: the server-derived `DataClassification` stamped on every profile and document row at creation, and the shared attempt-budget store that must already exist when Task 20 exposes Personal registration. Actual PII remains disabled.
 
 **Files:**
 

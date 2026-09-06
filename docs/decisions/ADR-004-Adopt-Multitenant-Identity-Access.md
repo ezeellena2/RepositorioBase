@@ -3,11 +3,11 @@
 **Status:** Proposed  
 **Date:** 2026-08-31
 
-**Continuation decisions 18-24:** Decision 18 (C1) accepted 2026-09-06 and implemented by Task 18. Amendments A1-A5
-were folded into decisions 20, 21, 23 and 24 and their SPEC entries on 2026-09-06; folding them in changes what is
-being asked, not whether it was answered. Decisions 19-24
-(C2-C7) remain proposed, four of them - C3, C4, C6 and C7 - carrying the five required amendments recorded in the
-acceptance gate below.
+**Continuation decisions 18-24:** Decision 18 (C1) accepted 2026-09-06 and implemented by Task 18. Decisions 20 (C3)
+and 24 (C7) accepted 2026-09-06 for synthetic data only, enabling Tasks 19 and 20 and nothing after them. Amendments
+A1-A5 were folded into decisions 20, 21, 23 and 24 and their SPEC entries before that acceptance; folding them in
+changed what was being asked, not whether it had been answered. Decisions 19, 21, 22 and 23 (C2, C4, C5 and C6)
+remain proposed, two of them - C4 and C6 - carrying required amendments recorded in the acceptance gate below.
 
 ## Context
 
@@ -71,7 +71,7 @@ A decision that is declined or amended blocks only the tasks that consume it.
     constraint, liveness depending on elapsed time. Rejected: counting without serializing, which is a lost update,
     and refusing the sign-in that would exceed the cap.
 
-20. **(Proposed.)** Make a person's own profile a self-service resource of the authenticated identity and nothing
+20. **(Accepted 2026-09-06, for synthetic data only.)** Make a person's own profile a self-service resource of the authenticated identity and nothing
     else: keyed by the identity, reached only through requests carrying no owner parameter, read and edited through
     two proposed application-scoped permissions. Editing covers the full name and display name; the email, ownership
     and the document lie outside it, and a request naming any other member is refused whole under a stable code naming
@@ -148,7 +148,7 @@ A decision that is declined or amended blocks only the tasks that consume it.
     which the restore rewrites; a startup environment variable, which a later restart silently honours; and the
     reference's cloud WORM ledger, unadopted rather than waived.
 
-24. **(Proposed.)** Hold personal data under one deployment-wide mode, keep real personal data behind a separate human
+24. **(Accepted 2026-09-06, for synthetic data only.)** Hold personal data under one deployment-wide mode, keep real personal data behind a separate human
     gate, and record an erasure as evidence rather than an audit payload. The mode — never a caller, never a request
     field — is `Synthetic` unless explicitly `Real`, stamps a server-derived classification on every stored profile
     and document row, and is checked by a startup readiness probe that refuses `Real` without an approved policy
@@ -252,6 +252,29 @@ session route is withdrawn in favour of C2's `{sessionRef}` with C4's proof requ
 `tenant_last_administrator` spelling is withdrawn in favour of C5's `last_administrator_required` with C6's
 `expectedStatus` precondition.
 
-Nothing above authorizes implementation of C2–C7, and folding an amendment in is not accepting the entry that
-carries it: decisions 19–24 are still proposed and still need one answer each. Real personal data and production
-deployment remain the two separate gates named at the top of this section, and decision 18 does not touch either.
+Nothing in the amendment table above authorizes implementation, and folding an amendment in is not accepting the
+entry that carries it.
+
+### Decision record — 2026-09-06 (second): C3 and C7
+
+**Accepted: decisions 20 (C3) and 24 (C7), as reconciled in commit `fba1d23`, for implementation and verification
+against synthetic data only.** IA-REQ-050, IA-REQ-056, IA-REQ-057 and IA-REQ-058 become normative and now live in
+[SPEC §4](../features/identity-access/SPEC.md#4-normative-requirements); SPEC §14.3 and §14.7 are kept as the records
+that produced them. This acceptance enables **Task 19**, and once Task 19 is verified, **Task 20**. It authorizes no
+task after 20.
+
+**What this record does not grant.** Three things were withheld explicitly and none of them may be inferred from the
+acceptance:
+
+- **Real personal data.** `IdentityAccess:PersonalData:Mode` stays `Synthetic`. Switching a deployment to `Real` is
+  the G2 gate, and it still needs the responsible human or legal owner to approve purpose, field scope, access,
+  retention periods, legal holds, deletion evidence and backup/restore treatment (IA-REQ-056).
+- **Production deployment**, which remains the G3 gate with its own prerequisites (IA-REQ-055, per-environment key
+  and certificate ownership, recorded abuse budgets).
+- **The residual named in SPEC §14.3's contention table** — that a person spending one of three daily claims learns
+  the number they typed is recorded somewhere. It is not accepted here. With fabricated documents it is not
+  realized; accepting it is part of the G2 decision.
+
+**Unchanged by this record.** Decision 18 (C1) keeps its acceptance. Decisions 19, 21, 22 and 23 (C2, C4, C5, C6)
+remain proposed and unimplemented; C4 and C6 still carry amendments A2/A3 and A3/A4 respectively. **Task 17 remains
+partially approved and is not complete**: three entries of seven are decided.

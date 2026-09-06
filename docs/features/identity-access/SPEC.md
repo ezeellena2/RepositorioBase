@@ -110,6 +110,8 @@ Three outcomes are deliberately kept apart, and reaching one never authorizes th
 - **IA-REQ-048:** an exclusive durable reservation — a normalized CUIT, an organization profile, a tenant, a membership, a role, a protected documentary identity or a global email identity — is created only by a request that has proved control of the identity it will belong to, and exactly two proofs qualify: a validated persisted session, or a single-use token delivered to that address and spent by the request. What an unproven request leaves behind is observable to nobody but the address owner and an operator: no other caller may be refused by it, answered differently because of it, or able to read it.
 - **IA-REQ-004:** a partial failure never leaves an organization without its responsible membership, and neither registration phase replays into a second graph. The Application registration service derives a canonical equivalent-submission key from normalized caller scope and normalized registration intent, claims it before effects, and stores the completed neutral response, so replayed anonymous initiation returns the same bodyless `202` and produces one intent, one outbox message and one audit record. Finalization is idempotent on its single-use token: the first spend records the intent's terminal outcome and every later spend returns that recorded outcome — including the conflict, because both terminal outcomes spend the envelope and only the intent distinguishes them. Database uniqueness remains a backstop, not the idempotency mechanism.
 - **IA-REQ-005:** email must be confirmed before inviting members, administering roles, accepting an invitation, or performing a sensitive operation. The delivered confirmation link resolves to a screen that spends its token against `POST /api/identity/confirm-email`; the confirmation messages — an anonymous registrant's, an authenticated registrant's and an invited member's — carry the same link, because all three consume that endpoint.
+- **IA-REQ-050:** an identity that owns a `Personal` tenant has exactly one `PersonProfile`, keyed by the identity and readable and editable only by its owner. Self-service editing covers `FullName` and `DisplayName` and nothing else — never the email, the profile's ownership, the document country, type or number — and a request naming any member outside the accepted set is refused whole. The documentary identity is an authenticated-encryption ciphertext of the canonical `country|type|number` tuple plus one keyed, versioned fingerprint row per retained key version; the plaintext leaves the protector at exactly two named seams and reaches no log, audit record, outbox payload, Problem Details body, OpenAPI example or response. The owner sees only a masked status, and no route outside the owner's own resolves a `PersonProfile` or an `IdentityDocument`. A documentary identity is unique among unpurged rows across all retained key versions, and every refusal that would otherwise disclose another identity's data — a duplicate document, or an identity that already owns a `Personal` — answers one indistinguishable `409` `personal_registration_conflict`. The route table, contention table and permission set are in [section 14.3](#143-c3--own-profile-and-protected-ardni-documentary-identity).
+- **IA-REQ-058:** a recorded documentary identity is corrected only by a verified two-party process and never edited in place: the owner opens a dispute over their own document under a live recent proof and never writes a document value, and a Platform operator resolves it under a distinct permission, a recent second factor and an external evidence reference — never for their own identity, and never without a stored dispute. No route writes a document value outside that process. A `corrected` resolution replaces the ciphertext and every retained fingerprint row in one transaction and writes an append-only correction record holding no document value. At most one dispute per identity is open at a time, and a dispute changes nothing about access while it is open. The full contract is in [section 14.3](#143-c3--own-profile-and-protected-ardni-documentary-identity).
 
 ### Tenancy and authorization
 
@@ -150,6 +152,7 @@ Three outcomes are deliberately kept apart, and reaching one never authorizes th
 - **IA-REQ-030:** `401` means an absent or invalid identity; `403` means a valid identity without permission. Cross-tenant access may return `404` to avoid revealing a resource.
 - **IA-REQ-031:** CORS does not use `AllowAnyOrigin`; a same-origin SPA needs no open production policy.
 - **IA-REQ-032:** the project creates no default administrator or password, and startup never deletes the database.
+- **IA-REQ-057:** every attempt budget that bounds guessing is held in shared PostgreSQL state, one budget across instances and restarts, behind the port `ISharedAttemptBudget` with `PostgreSqlAttemptBudget` as its only adapter over the existing database; no new infrastructure product is introduced. An unavailable store fails every budget closed — no attempt is admitted — and the caller is told what actually happened: `503` Problem Details `service_unavailable` with `Retry-After`, never `429` `rate_limit_exceeded`, which stays reserved for a budget a caller really did exhaust. Every route that names a budget carries both answers. Budget writes commit outside any business transaction, and numerical budgets are product defaults recorded per environment.
 
 ### Persistence
 
@@ -158,6 +161,7 @@ Three outcomes are deliberately kept apart, and reaching one never authorizes th
 - **IA-REQ-035:** sensitive mutations use a concurrency token or conditional update and translate a lost update into `409 Conflict`.
 - **IA-REQ-036:** every foreign key declares delete behavior; cascade is not used where it could erase identity, authorization, or audit history.
 - **IA-REQ-037:** migrations are tested from an empty database and from the previous version. `EnsureDeleted`/`EnsureCreated` is not a normal migration strategy.
+- **IA-REQ-056:** the deployment holds exactly one personal-data mode, and the mode — never a caller, never a request field — determines what the system may do with the personal data it stores. `IdentityAccess:PersonalData:Mode` is `Synthetic` or `Real`; absent, blank or unparseable is `Synthetic`, so real handling is never reached by omission or by a typo. Every `PersonProfile` and document row is stamped at creation with the mode as a persisted server-derived `DataClassification`, a column on no request DTO and never on `ApplicationUser`. A retention policy is configuration, never code, and contains no period, threshold or jurisdictional number; with none configured the system performs no destructive action in either mode. A purge erases ciphertext and keyed fingerprint, writes a durable non-audit erasure record and leaves a non-identifying tombstone, so a purged number is reclaimable. A legal hold stops erasure and nothing else: it is not an account state, it suspends nobody, it refuses no sign-in and no authorization decision reads it. The retention endpoints, hold record and erasure evidence are in [section 14.7](#147-c7--personal-data-mode-retention-and-erasure-evidence-and-shared-abuse-control-state).
 
 ### API contract
 
@@ -414,13 +418,14 @@ This protocol is independent from the reference repository's workflow and preser
 
 ## 14. Task 17 decision package (proposed, not approved)
 
-> **C1 IS ACCEPTED (2026-09-06). C2–C7 ARE NOT.** Section 14.1 was accepted as written, is implemented by Task 18,
-> and its requirements now live in section 4; 14.1 is kept as the record of that decision. Everything from 14.2
-> onward is still only proposed. Amendments A1–A5 from
+> **C1, C3 AND C7 ARE ACCEPTED (2026-09-06). C2, C4, C5 AND C6 ARE NOT.** Sections 14.1, 14.3 and 14.7 are accepted
+> and their requirements now live in section 4; those three subsections are kept as the record of the decisions that
+> produced them. C3 and C7 are accepted **for implementation and verification against synthetic data only**: real
+> personal data, production deployment and the acceptance of 14.3's named residual are three separate gates and none
+> of them is granted here. Sections 14.2, 14.4, 14.5 and 14.6 are still only proposed. Amendments A1–A5 from
 > [ADR-004's decision record](../../decisions/ADR-004-Adopt-Multitenant-Identity-Access.md#decision-record--2026-09-06)
-> were folded into 14.3, 14.4, 14.6 and 14.7 on 2026-09-06: each of those entries now states one contract, with no
-> open gap and no note telling an implementer that two fragments disagree. Folding an amendment in is not approval
-> — every entry from 14.2 to 14.7 still awaits one decision. Read the rest of this banner as applying to 14.2–14.7. This section is the Task 17 decision package, entries C1–C7,
+> were folded into 14.3, 14.4, 14.6 and 14.7 on 2026-09-06 before any of them was decided. Read the rest of this
+> banner as applying to 14.2, 14.4, 14.5 and 14.6 only. This section is the Task 17 decision package, entries C1–C7,
 > put forward for approval. No behaviour described here exists; no requirement, permission code, stable error code,
 > route, DTO field, enum member or state name here is implemented; no test named here has been written or run, so
 > nothing here is evidence, and `Proposed` status authorizes no dependent code (section 12). Numbers marked
@@ -550,13 +555,20 @@ This protocol is independent from the reference repository's workflow and preser
 
 ### 14.3 C3 — Own profile and protected AR/DNI documentary identity
 
-> **Amended 2026-09-06 (A1); still proposed, still undecided.** Correction and dispute are now defined and the
+> **ACCEPTED 2026-09-06, for synthetic data only.** IA-REQ-050 and IA-REQ-058 are now normative in
+> [section 4](#4-normative-requirements); what follows is the decision record that produced them, kept for its route,
+> contention and permission tables, which section 4 points at. Where this section and section 4 differ in wording,
+> section 4 governs. The acceptance covers implementation and verification with fabricated documents: it does not
+> enable real personal data, and it does not accept the residual named in the contention table below, which stays
+> with the G2 gate.
+>
+> **Amended 2026-09-06 (A1) before that acceptance.** Correction and dispute are now defined and the
 > "ship no correction route" recommendation is withdrawn: IA-REQ-058 below carries a two-party verified process, and
 > the duplicate-document answer is settled in the contention table rather than left as a gap. Neither free editing
 > nor a support bypass survives — the owner may open a dispute but never write a document, and an operator may
 > resolve one only against a stored dispute and an external evidence reference, never for their own identity.
 
-- **IA-REQ-050 (proposed):** an identity that owns a `Personal` tenant has exactly one `PersonProfile`, keyed by the
+- **IA-REQ-050 (accepted 2026-09-06 for synthetic data; section 4 governs):** an identity that owns a `Personal` tenant has exactly one `PersonProfile`, keyed by the
   identity and readable and editable only by its owner. Self-service editing covers `FullName` and `DisplayName` and
   nothing else — never the email, the profile's ownership, the document country, type or number — and a request naming
   any member outside the accepted set is refused whole. The documentary identity is an authenticated-encryption
@@ -566,7 +578,7 @@ This protocol is independent from the reference repository's workflow and preser
   the owner's own resolves a `PersonProfile` or an `IdentityDocument`, and a recorded document is never edited in
   place — not by its owner, not by an operator acting alone — but only corrected through IA-REQ-058, which exists
   before real personal data is enabled rather than after it.
-- **IA-REQ-058 (proposed):** a recorded documentary identity is corrected only by a verified two-party process, and
+- **IA-REQ-058 (accepted 2026-09-06 for synthetic data; section 4 governs):** a recorded documentary identity is corrected only by a verified two-party process, and
   the two parties are the owner and a Platform operator holding an external case reference. The owner opens a dispute
   over their own document at `POST /api/identity/profile/document/disputes` — authenticated, confirmed,
   `identity.document.dispute`, `RequiresTenant=false`, antiforgery, plus a live C4 proof for action
@@ -891,12 +903,18 @@ with no way back, which is what a tombstone means.
 
 ### 14.7 C7 — Personal-data mode, retention and erasure evidence, and shared abuse-control state
 
-> **Amended 2026-09-06 (A4, A5); still proposed, still undecided.** A legal hold now stops erasure and nothing
+> **ACCEPTED 2026-09-06, for synthetic data only.** IA-REQ-056 and IA-REQ-057 are now normative in
+> [section 4](#4-normative-requirements); what follows is the decision record that produced them, kept for its route,
+> contention and permission tables. Section 4 governs where the wording differs. The acceptance authorizes
+> `Synthetic` mode alone: switching a deployment to `Real` is the G2 gate and is not granted here, and neither is
+> production.
+>
+> **Amended 2026-09-06 (A4, A5) before that acceptance.** A legal hold now stops erasure and nothing
 > else: it is defined here, it is placed and released here, and no lifecycle or authorization branch anywhere reads
 > it. An unavailable abuse-control store still refuses every attempt, and now says so honestly with `503`
 > `service_unavailable` and `Retry-After` instead of telling a person they tried too many times.
 
-- **IA-REQ-056 (proposed; numbered 048 in the C7 fragment):** the deployment holds exactly one personal-data mode, and
+- **IA-REQ-056 (accepted 2026-09-06 for synthetic data; section 4 governs; numbered 048 in the C7 fragment):** the deployment holds exactly one personal-data mode, and
   the mode — never a caller, never a request field — determines what the system may do with the personal data it
   stores. `IdentityAccess:PersonalData:Mode` is `Synthetic` or `Real`; absent, blank or unparseable is `Synthetic`, so
   real handling is never reached by omission or by a typo. Every `PersonProfile` and document row is stamped at
@@ -911,7 +929,7 @@ with no way back, which is what a tombstone means.
   (amendment A4). The document rows it protects are C3's: the child fingerprint table with
   `UX_IdentityDocumentFingerprints_Fingerprint` and the `Ciphertext` column, this entry's earlier partial index on
   `IdentityDocuments` and its `ProtectedNumber` spelling being withdrawn.
-- **IA-REQ-057 (proposed; numbered 049 in the C7 fragment):** every attempt budget that bounds guessing — login by
+- **IA-REQ-057 (accepted 2026-09-06 for synthetic data; section 4 governs; numbered 049 in the C7 fragment):** every attempt budget that bounds guessing — login by
   client address, login by normalized account, Platform second-factor verification and step-up, and Platform bootstrap
   recovery, plus C3's `personal.document.claim` — is held in shared PostgreSQL state, one budget across instances and
   restarts. The port is `ISharedAttemptBudget`, its only adapter `PostgreSqlAttemptBudget` over the existing
