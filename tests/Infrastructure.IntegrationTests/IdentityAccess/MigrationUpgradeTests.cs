@@ -24,6 +24,8 @@ public sealed class MigrationUpgradeTests
     private const string CanonicalFormPredecessor = "20260903170351_Invitations";
     private const string PlatformInvitationPredecessor = "20260904231855_OutboxDeliverySafety";
     private const string PlatformMfaPredecessor = "20260905143153_PlatformAdminInvitation";
+    private const string PersonalIdentityPredecessor = "20260906054156_DeferredRegistrationReservation";
+    private const string SharedBudgetPredecessor = "20260906145245_PersonalIdentity";
 
     [Test]
     public async Task Outbox_safety_upgrade_preserves_history_and_bounds_preexisting_attempts_conservatively()
@@ -659,6 +661,84 @@ public sealed class MigrationUpgradeTests
             (await latest.Database.GetPendingMigrationsAsync()).ShouldBeEmpty();
             (await latest.Users.SingleAsync(user => user.Id == userId)).NormalizedEmail.ShouldBe("ROUNDTRIP@EXAMPLE.TEST");
             (await latest.TodoItems.SingleAsync(todo => todo.Id == todoId)).CreatedBy.ShouldBe(userId);
+        }
+        finally
+        {
+            if (connectionString is not null)
+            {
+                await DropDatabase(databaseName, connectionString);
+            }
+        }
+    }
+
+    [Test]
+    public async Task Personal_identity_and_shared_budget_schema_upgrade_in_order_and_preserve_preexisting_data()
+    {
+        var databaseName = $"personal_round_trip_{Guid.NewGuid():N}";
+        string? connectionString = null;
+
+        try
+        {
+            using (var scope = TestServices.CreateScope())
+            {
+                var shared = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>().Database.GetConnectionString()
+                    ?? throw new InvalidOperationException("The test PostgreSQL connection string is required.");
+                connectionString = new NpgsqlConnectionStringBuilder(shared) { Database = databaseName }.ConnectionString;
+                await CreateDatabase(databaseName, shared);
+            }
+
+            var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseNpgsql(connectionString).Options;
+            var userId = Guid.NewGuid();
+            var todoId = await SeedPreRegistrationMessagingData(options, userId, Guid.NewGuid());
+
+            await using (var before = new ApplicationDbContext(options))
+            {
+                await before.Database.GetService<IMigrator>().MigrateAsync(PersonalIdentityPredecessor);
+            }
+
+            await AssertTableAsync(connectionString!, "PersonProfiles", false);
+            await AssertTableAsync(connectionString!, "IdentityAttemptBudgets", false);
+
+            await using (var people = new ApplicationDbContext(options))
+            {
+                await people.Database.GetService<IMigrator>().MigrateAsync(SharedBudgetPredecessor);
+            }
+
+            await AssertTableAsync(connectionString!, "PersonProfiles", true);
+            await AssertTableAsync(connectionString!, "PersonalTenantOwnerships", true);
+            await AssertTableAsync(connectionString!, "IdentityDocuments", true);
+            await AssertTableAsync(connectionString!, "IdentityDocumentFingerprints", true);
+            await AssertTableAsync(connectionString!, "IdentityAttemptBudgets", false,
+                "the shared budget step is what adds that table, and it has not run yet.");
+
+            await using var latest = new ApplicationDbContext(options);
+            await latest.Database.GetService<IMigrator>().MigrateAsync();
+
+            await AssertTableAsync(connectionString!, "IdentityAttemptBudgets", true);
+            (await latest.Database.GetPendingMigrationsAsync()).ShouldBeEmpty();
+            (await latest.Users.SingleAsync(user => user.Id == userId)).NormalizedEmail.ShouldBe("ROUNDTRIP@EXAMPLE.TEST");
+            (await latest.TodoItems.SingleAsync(todo => todo.Id == todoId)).CreatedBy.ShouldBe(userId);
+
+            await using var connection = new NpgsqlConnection(connectionString);
+            await connection.OpenAsync();
+
+            // The two constraints that make the shape mean something: a document number is unique across every
+            // retained key version, and a fingerprint that does not name its key version is not storable.
+            (await Scalar<bool>(connection, "SELECT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'UX_IdentityDocumentFingerprints_Fingerprint');"))
+                .ShouldBeTrue();
+            (await Scalar<bool>(connection, "SELECT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CK_IdentityDocumentFingerprints_Fingerprint');"))
+                .ShouldBeTrue();
+            (await Scalar<bool>(connection, "SELECT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CK_IdentityDocuments_Document');"))
+                .ShouldBeTrue();
+            (await Scalar<bool>(connection, "SELECT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CK_IdentityAttemptBudgets_Window');"))
+                .ShouldBeTrue();
+
+            var violation = await Should.ThrowAsync<PostgresException>(() => Execute(connection,
+                """
+                INSERT INTO "IdentityDocumentFingerprints" ("IdentityId", "KeyVersion", "Fingerprint")
+                VALUES ('11111111-1111-1111-1111-111111111111', 1, 'plain-text-fingerprint');
+                """));
+            violation.SqlState.ShouldBe(PostgresErrorCodes.CheckViolation);
         }
         finally
         {

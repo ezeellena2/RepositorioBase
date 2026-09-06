@@ -33,7 +33,7 @@ public static class DependencyInjection
         builder.Services.AddScoped<ISaveChangesInterceptor, AuditableEntityInterceptor>();
         builder.Services.AddScoped<ISaveChangesInterceptor, DispatchDomainEventsInterceptor>();
         builder.Services.AddScoped<ISaveChangesInterceptor, TenantAuthorizationAuditInterceptor>();
-        builder.Services.AddScoped<ISaveChangesInterceptor, CleanArchitecture.Infrastructure.Data.Interceptors.TenantTimestampInterceptor>();
+        builder.Services.AddScoped<ISaveChangesInterceptor, CleanArchitecture.Infrastructure.Data.Interceptors.OperationalTimestampInterceptor>();
 
         builder.Services.AddDbContext<ApplicationDbContext>((sp, options) =>
         {
@@ -157,6 +157,11 @@ public static class DependencyInjection
         builder.Services.AddSingleton<ISecureTokenGenerator, SecureTokenGenerator>();
         builder.Services.AddSingleton<ITokenHasher, VersionedTokenHasher>();
         builder.Services.AddSingleton<IOutboxSecretWriter, OutboxSecretWriter>();
+        builder.Services.AddSingleton<CleanArchitecture.Application.IdentityAccess.People.IIdentityDocumentProtector, CleanArchitecture.Infrastructure.IdentityAccess.People.IdentityDocumentProtector>();
+        builder.Services.AddSingleton<CleanArchitecture.Application.IdentityAccess.People.IIdentityDocumentFingerprint, CleanArchitecture.Infrastructure.IdentityAccess.People.IdentityDocumentFingerprintFactory>();
+        builder.Services.Configure<CleanArchitecture.Infrastructure.IdentityAccess.People.IdentityDocumentProtectionOptions>(
+            builder.Configuration.GetSection(CleanArchitecture.Infrastructure.IdentityAccess.People.IdentityDocumentProtectionOptions.SectionName));
+        builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.Security.ISharedAttemptBudget, CleanArchitecture.Infrastructure.IdentityAccess.Security.PostgreSqlAttemptBudget>();
         builder.Services.AddScoped<IValidatedOptionalSession, ValidatedOptionalSession>();
         builder.Services.AddScoped<ICurrentSession, CurrentSession>();
         builder.Services.AddScoped<SessionCookieEvents>();

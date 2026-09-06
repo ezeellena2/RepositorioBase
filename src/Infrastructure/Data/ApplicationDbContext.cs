@@ -8,6 +8,7 @@ using CleanArchitecture.Domain.IdentityAccess.Platform;
 using CleanArchitecture.Domain.IdentityAccess.Memberships;
 using CleanArchitecture.Domain.IdentityAccess.Organizations;
 using CleanArchitecture.Domain.IdentityAccess.Outbox;
+using CleanArchitecture.Domain.IdentityAccess.People;
 using CleanArchitecture.Domain.IdentityAccess.Sessions;
 using CleanArchitecture.Domain.IdentityAccess.Tenants;
 using CleanArchitecture.Infrastructure.Identity;
@@ -36,6 +37,16 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
     public DbSet<RegistrationSubmission> RegistrationSubmissions => Set<RegistrationSubmission>();
 
     public DbSet<PendingRegistrationIntent> PendingRegistrationIntents => Set<PendingRegistrationIntent>();
+
+    public DbSet<PersonProfile> PersonProfiles => Set<PersonProfile>();
+
+    public DbSet<PersonalTenantOwnership> PersonalTenantOwnerships => Set<PersonalTenantOwnership>();
+
+    public DbSet<IdentityDocument> IdentityDocuments => Set<IdentityDocument>();
+
+    public DbSet<IdentityDocumentFingerprint> IdentityDocumentFingerprints => Set<IdentityDocumentFingerprint>();
+
+    public DbSet<CleanArchitecture.Infrastructure.IdentityAccess.Security.IdentityAttemptBudget> IdentityAttemptBudgets => Set<CleanArchitecture.Infrastructure.IdentityAccess.Security.IdentityAttemptBudget>();
 
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
 

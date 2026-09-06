@@ -35,7 +35,8 @@ public sealed class IdentityAccessArchitectureTests
     [
         "CleanArchitecture.Domain.IdentityAccess.Sessions",
         "CleanArchitecture.Domain.IdentityAccess.Invitations",
-        "CleanArchitecture.Domain.IdentityAccess.Platform"
+        "CleanArchitecture.Domain.IdentityAccess.Platform",
+        "CleanArchitecture.Domain.IdentityAccess.People"
     ];
 
     [Test]

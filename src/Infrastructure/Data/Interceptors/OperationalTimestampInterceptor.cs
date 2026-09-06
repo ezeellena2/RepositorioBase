@@ -1,3 +1,4 @@
+using CleanArchitecture.Domain.IdentityAccess.People;
 using CleanArchitecture.Domain.IdentityAccess.Tenants;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
@@ -5,7 +6,8 @@ using Microsoft.EntityFrameworkCore.Diagnostics;
 namespace CleanArchitecture.Infrastructure.Data.Interceptors;
 
 /// <summary>
-/// Stamps when a tenant row was created and last changed.
+/// Stamps when a row was created and last changed, for the aggregates whose timestamps are operational metadata
+/// rather than domain state.
 /// <para>
 /// They are shadow properties rather than aggregate members on purpose. No domain rule depends on them — nothing
 /// refuses a transition because of when the last one happened — and the Platform projection needs them only as
@@ -13,7 +15,7 @@ namespace CleanArchitecture.Infrastructure.Data.Interceptors;
 /// factory and transition to satisfy a reader, which is the tail wagging the dog.
 /// </para>
 /// </summary>
-public sealed class TenantTimestampInterceptor(TimeProvider timeProvider) : SaveChangesInterceptor
+public sealed class OperationalTimestampInterceptor(TimeProvider timeProvider) : SaveChangesInterceptor
 {
     internal const string CreatedAt = "CreatedAt";
     internal const string UpdatedAt = "UpdatedAt";
@@ -38,7 +40,14 @@ public sealed class TenantTimestampInterceptor(TimeProvider timeProvider) : Save
         if (context is null) return;
         var now = timeProvider.GetUtcNow();
 
-        foreach (var entry in context.ChangeTracker.Entries<Tenant>())
+        Stamp<Tenant>(context, now);
+        Stamp<PersonProfile>(context, now);
+    }
+
+    private static void Stamp<TEntity>(DbContext context, DateTimeOffset now)
+        where TEntity : class
+    {
+        foreach (var entry in context.ChangeTracker.Entries<TEntity>())
         {
             if (entry.State == EntityState.Added)
             {

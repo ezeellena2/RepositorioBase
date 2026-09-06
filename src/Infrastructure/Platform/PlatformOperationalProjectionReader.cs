@@ -43,8 +43,8 @@ public sealed class PlatformOperationalProjectionReader(ApplicationDbContext con
                 tenant.Slug.Value,
                 tenant.Type.ToString(),
                 tenant.Status.ToString(),
-                EF.Property<DateTimeOffset>(tenant, TenantTimestampInterceptor.CreatedAt),
-                EF.Property<DateTimeOffset>(tenant, TenantTimestampInterceptor.UpdatedAt),
+                EF.Property<DateTimeOffset>(tenant, OperationalTimestampInterceptor.CreatedAt),
+                EF.Property<DateTimeOffset>(tenant, OperationalTimestampInterceptor.UpdatedAt),
                 tenant.SuspensionReason == null ? null : tenant.SuspensionReason.ToString(),
                 tenant.SuspendedAt,
                 tenant.AuthorizationVersion))

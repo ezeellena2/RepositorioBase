@@ -3,6 +3,7 @@ using System;
 using CleanArchitecture.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace CleanArchitecture.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260906145245_PersonalIdentity")]
+    partial class PersonalIdentity
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1092,35 +1095,6 @@ namespace CleanArchitecture.Infrastructure.Data.Migrations
                     b.ToTable("AspNetUsers", null, t =>
                         {
                             t.HasCheckConstraint("CK_AspNetUsers_Id_NotEmpty", "\"Id\" <> '00000000-0000-0000-0000-000000000000'::uuid");
-                        });
-                });
-
-            modelBuilder.Entity("CleanArchitecture.Infrastructure.IdentityAccess.Security.IdentityAttemptBudget", b =>
-                {
-                    b.Property<string>("Scope")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
-                    b.Property<string>("KeyHash")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
-                    b.Property<DateTimeOffset>("WindowStart")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("Count")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTimeOffset>("ExpiresAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Scope", "KeyHash", "WindowStart");
-
-                    b.HasIndex("ExpiresAt");
-
-                    b.ToTable("IdentityAttemptBudgets", null, t =>
-                        {
-                            t.HasCheckConstraint("CK_IdentityAttemptBudgets_Window", "\"Count\" >= 0 AND \"ExpiresAt\" > \"WindowStart\" AND \"Scope\" <> '' AND \"KeyHash\" <> ''");
                         });
                 });
 
