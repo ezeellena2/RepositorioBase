@@ -24,6 +24,9 @@ var web = builder.AddProject<Projects.Web>(Services.WebApi)
     .WithEnvironment(context => context.EnvironmentVariables["IdentityAccess__Platform__BootstrapOwnerEmail"] =
         builder.Configuration["IdentityAccess:Platform:BootstrapOwnerEmail"] ?? string.Empty)
     .WithEnvironment(ForwardEmailSettings)
+    // Only the web application records documents, so only it needs the fingerprint keys. Forwarding them to the
+    // worker as well would spread key material to a process that has no use for it.
+    .WithEnvironment(ForwardDocumentProtectionSettings)
     .WithUrlForEndpoint("http", url =>
     {
         url.DisplayText = "Scalar API Reference";
@@ -69,6 +72,25 @@ void ForwardEmailSettings(EnvironmentCallbackContext context)
         if (builder.Configuration[$"IdentityAccess:DataProtection:{key}"] is { Length: > 0 } value)
         {
             context.EnvironmentVariables[$"IdentityAccess__DataProtection__{key}"] = value;
+        }
+    }
+}
+
+// The fingerprint keys a person's documentary identity is looked up by. There is deliberately no default: a
+// digest under a key everybody knows is not keyed, and a development default would silently become a production
+// one. A deployment that configures none simply cannot record a document, which is the safe way to be wrong.
+void ForwardDocumentProtectionSettings(EnvironmentCallbackContext context)
+{
+    if (builder.Configuration["IdentityAccess:People:DocumentProtection:CurrentKeyVersion"] is { Length: > 0 } version)
+    {
+        context.EnvironmentVariables["IdentityAccess__People__DocumentProtection__CurrentKeyVersion"] = version;
+    }
+
+    foreach (var key in builder.Configuration.GetSection("IdentityAccess:People:DocumentProtection:FingerprintKeys").GetChildren())
+    {
+        if (key.Value is { Length: > 0 } material)
+        {
+            context.EnvironmentVariables[$"IdentityAccess__People__DocumentProtection__FingerprintKeys__{key.Key}"] = material;
         }
     }
 }
