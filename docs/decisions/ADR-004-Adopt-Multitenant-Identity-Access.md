@@ -4,10 +4,10 @@
 **Date:** 2026-08-31
 
 **Continuation decisions 18-24:** Decision 18 (C1) accepted 2026-09-06 and implemented by Task 18. Decisions 20 (C3)
-and 24 (C7) accepted 2026-09-06 for synthetic data only, enabling Tasks 19 and 20 and nothing after them. Amendments
-A1-A5 were folded into decisions 20, 21, 23 and 24 and their SPEC entries before that acceptance; folding them in
-changed what was being asked, not whether it had been answered. Decisions 19, 21, 22 and 23 (C2, C4, C5 and C6)
-remain proposed, two of them - C4 and C6 - carrying required amendments recorded in the acceptance gate below.
+and 24 (C7) accepted 2026-09-06 for synthetic data only, enabling Tasks 19 and 20, both since delivered. Decisions 19
+(C2) and 21 (C4) accepted 2026-09-06 on the same terms, enabling Tasks 21, 22 and 23. Amendments A1-A5 were folded
+into decisions 20, 21, 23 and 24 and their SPEC entries before any of those acceptances. Decisions 22 (C5) and 23
+(C6) remain proposed, and C6 still carries amendments A3 and A4.
 
 ## Context
 
@@ -59,7 +59,7 @@ A decision that is declined or amended blocks only the tasks that consume it.
     third bullet promised none. Rejected: keeping pre-confirmation aggregate creation and hiding only the status
     difference, which still leaks through the durable CUIT claim and the attacker's context.
 
-19. **(Proposed.)** Let an identity's sessions coexist under a serialized cap instead of revoking them all at sign-in:
+19. **(Accepted 2026-09-06, for synthetic data only.)** Let an identity's sessions coexist under a serialized cap instead of revoking them all at sign-in:
     at most five live sessions, the sign-in that would exceed that revoking the oldest by creation time then
     identifier and committing the new one in the same transaction. Serialize every request that issues, rotates or
     mass-revokes a session behind a transaction-scoped advisory lock keyed by that identity, in the two-argument lock
@@ -89,7 +89,7 @@ A decision that is declined or amended blocks only the tasks that consume it.
     the real-personal-data gate rather than hidden. Rejected: a partial index on one fingerprint column, which cannot
     hold two retained key versions; free editing of a recorded document; and an operator route that needs no dispute.
 
-21. **(Proposed.)** Make "prove it is still you" a single-use server-side artifact rather than a re-typed password or
+21. **(Accepted 2026-09-06, for synthetic data only.)** Make "prove it is still you" a single-use server-side artifact rather than a re-typed password or
     a trusted cookie: a recent identity proof binds one identity, one session, one action and the identity's security
     version, is issued only by the current password or a fresh challenge to a linked provider, never travels to the
     client, and is consumed by a conditional update that re-checks the bound session; a provider-only identity
@@ -276,5 +276,30 @@ acceptance:
   realized; accepting it is part of the G2 decision.
 
 **Unchanged by this record.** Decision 18 (C1) keeps its acceptance. Decisions 19, 21, 22 and 23 (C2, C4, C5, C6)
-remain proposed and unimplemented; C4 and C6 still carry amendments A2/A3 and A3/A4 respectively. **Task 17 remains
-partially approved and is not complete**: three entries of seven are decided.
+remained proposed at the time of this record; C2 and C4 were accepted later the same day in the record below.
+
+### Decision record — 2026-09-06 (third): C2 and C4
+
+**Accepted: decisions 19 (C2) and 21 (C4), as the SPEC and this ADR now state them, for implementation and
+verification against synthetic data only.** IA-REQ-049, IA-REQ-051 and IA-REQ-052 become normative and now live in
+[SPEC §4](../features/identity-access/SPEC.md#4-normative-requirements); SPEC §14.2 and §14.4 are kept as the records
+that produced them. This acceptance enables **Tasks 21, 22 and 23**, each to be completed and verified before the
+next begins. It authorizes no task after 23.
+
+**What it covers**, restated so nothing wider can be read into it: up to five simultaneous sessions with the sixth
+evicting the oldest; listing and revoking one's own sessions, with the recent identity proof C4 defines for the
+sensitive ones; password recovery and authenticated change with their effects on sessions; and Google sign-in with
+explicit linking and unlinking, never an automatic merge on a matching address.
+
+**What it does not grant.**
+
+- **The reactivation half of the `Recovery` purpose.** C4 defines the purpose; wiring it to a disabled account's
+  return is C6's contract and Task 26's work. Accepting C4 does not accept C6.
+- **Real personal data**, which stays at the G2 gate, and **production deployment**, which stays at G3.
+- **Live provider registration.** The OAuth client, its secret and its redirect URIs belong to a Google account this
+  repository does not hold. The protocol is implemented and verified against the framework's own test seam; that is
+  implementation verified, not integration proved against Google.
+
+**Unchanged.** Decisions 18, 20 and 24 (C1, C3, C7) keep their acceptances. Decisions 22 and 23 (C5, C6) remain
+proposed, and C6 still carries amendments A3 and A4. **Task 17 remains partially approved and is not complete**:
+five entries of seven are decided.

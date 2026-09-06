@@ -142,6 +142,9 @@ Three outcomes are deliberately kept apart, and reaching one never authorizes th
 - **IA-REQ-023:** initial defaults are a 30-minute idle lifetime, a 12-hour absolute lifetime, and no remember-me option.
 - **IA-REQ-024:** sign-out revokes the persisted session and deletes the authentication cookie. A revoked or expired session returns `401`.
 - **IA-REQ-025:** React does not store authentication cookies, tickets, JWTs, invitation tokens, or antiforgery request tokens in `localStorage` or `sessionStorage`.
+- **IA-REQ-049:** an identity may hold at most five live `UserSession` rows at any committed instant **(product default)**. Issuance is serialized per identity; at the cap it revokes the oldest live sessions in `(CreatedAt ascending, Id ascending)` order until four remain and commits the new session in the same consistency boundary. Authentication does not revoke the identity's other live sessions. An identity may list, revoke individually and revoke collectively its own sessions through self-service requests that resolve the owner only from the validated persisted session and address rows by an opaque reference that is never the identifier the cookie carries. A password reset revokes every persisted session and issues none; an authenticated password change revokes every other live session and rotates the acting one into a new row that inherits nothing — not its identifier, its antiforgery pair, a recent identity proof or second-factor evidence. Every transition that happened is audited once and a denied revoke once as a denial, and no such record carries an IP address, a raw `User-Agent`, a cookie, a ticket, a proof value or another identity's row. The route table, contention table and device-label rules are in [section 14.2](#142-c2--session-coexistence-deterministic-cap-eviction-and-own-session-revocation).
+- **IA-REQ-051:** a sensitive self-service change requires a recent identity proof: a single-use server-side record bound to one identity, one `UserSession`, one action and the identity's security version at issue, living five minutes **(product default)**. A valid session cookie alone is never proof. Only the identity's current password or a fresh challenge to a provider already linked to it issues one, both requiring a confirmed identity, and a proof never travels to the client: the request looks up the live unconsumed proof for `(identity, current session, action)` and consumes it with a conditional update. Every credential or authenticator change increments a Domain-owned security version that invalidates every outstanding proof. Platform step-up stays separately session-bound and neither proof satisfies the other. The proof-requiring actions and the contention rules are in [section 14.4](#144-c4--recent-identity-proof-password-recovery-and-provider-linking-with-a-two-part-callback-carve-out).
+- **IA-REQ-052:** an identity may hold at most one link per external provider, established only by explicit consent plus a recent primary proof, a confirmed identity and a provider-verified email. A provider identity is never auto-linked by a matching email address (BR-ID-005/006) — and an authenticated, confirmed identity that links its own provider account with consent and a live proof is not auto-linking, so it is never refused merely because the provider's verified address is the one it already owns. No unlink may leave an identity without a usable authenticator. `Login`, `Link`, `Proof` and `Recovery` purposes live in server-side state and never cross; `Recovery` is the one purpose bound to no session, and it exists for a person who cannot obtain one. The provider callback is the one documented exception to IA-REQ-022, to section 8 and to the rule that a usable token never travels in a URL query string: it performs no business mutation, and the validations replacing the origin check are one-use purpose-bound `state`, the framework correlation cookie, `nonce`, PKCE `S256` with a server-held verifier, and validated issuer, audience, signature and expiry.
 
 ### Audit, outbox, and security
 
@@ -430,14 +433,16 @@ This protocol is independent from the reference repository's workflow and preser
 
 ## 14. Task 17 decision package (proposed, not approved)
 
-> **C1, C3 AND C7 ARE ACCEPTED (2026-09-06). C2, C4, C5 AND C6 ARE NOT.** Sections 14.1, 14.3 and 14.7 are accepted
-> and their requirements now live in section 4; those three subsections are kept as the record of the decisions that
-> produced them. C3 and C7 are accepted **for implementation and verification against synthetic data only**: real
-> personal data, production deployment and the acceptance of 14.3's named residual are three separate gates and none
-> of them is granted here. Sections 14.2, 14.4, 14.5 and 14.6 are still only proposed. Amendments A1–A5 from
+> **C1, C2, C3, C4 AND C7 ARE ACCEPTED (2026-09-06). C5 AND C6 ARE NOT.** Sections 14.1, 14.2, 14.3, 14.4 and 14.7
+> are accepted and their requirements now live in section 4; those subsections are kept as the record of the
+> decisions that produced them, and section 4 governs where the wording differs. Every acceptance is **for
+> implementation and verification against synthetic data only**: real personal data and production deployment are two
+> separate gates, and neither is granted by any of them. Sections 14.5 and 14.6 are still only proposed. Amendments
+> A1–A5 from
 > [ADR-004's decision record](../../decisions/ADR-004-Adopt-Multitenant-Identity-Access.md#decision-record--2026-09-06)
-> were folded into 14.3, 14.4, 14.6 and 14.7 on 2026-09-06 before any of them was decided. Read the rest of this
-> banner as applying to 14.2, 14.4, 14.5 and 14.6 only. This section is the Task 17 decision package, entries C1–C7,
+> were folded into 14.3, 14.4, 14.6 and 14.7 before any of them was decided; A2 and A3 are part of what C4's
+> acceptance carries, while A3's other half and A4 still await C6. Read the rest of this banner as applying to 14.5
+> and 14.6 only. This section is the Task 17 decision package, entries C1–C7,
 > put forward for approval. No behaviour described here exists; no requirement, permission code, stable error code,
 > route, DTO field, enum member or state name here is implemented; no test named here has been written or run, so
 > nothing here is evidence, and `Proposed` status authorizes no dependent code (section 12). Numbers marked
@@ -517,7 +522,11 @@ This protocol is independent from the reference repository's workflow and preser
 
 ### 14.2 C2 — Session coexistence, deterministic cap eviction, and own-session revocation
 
-- **IA-REQ-049 (proposed):** an identity may hold at most five live `UserSession` rows at any committed instant
+> **ACCEPTED 2026-09-06, for synthetic data only.** IA-REQ-049 is now normative in
+> [section 4](#4-normative-requirements); what follows is the decision record that produced it, kept for its state,
+> route and contention tables, which section 4 points at. Section 4 governs where the wording differs.
+
+- **IA-REQ-049 (accepted 2026-09-06 for synthetic data; section 4 governs):** an identity may hold at most five live `UserSession` rows at any committed instant
   **(product default)**. Issuance is serialized per identity; at the cap it revokes the oldest live sessions in
   `(CreatedAt ascending, Id ascending)` order until four remain and commits the new session in the same
   `IApplicationTransaction`. An identity may list, revoke individually and revoke collectively its own sessions
@@ -538,7 +547,7 @@ This protocol is independent from the reference repository's workflow and preser
 
 | Method and route | Access | Primary result |
 |---|---|---|
-| `GET /api/identity/sessions` | Authenticated + `identity.sessions.manage`, `RequiresTenant=false` | `200` `SessionListResponse` carrying exactly `sessionRef`, `isCurrent`, `deviceLabel`, `createdAt`, `lastSeenAt`, `expiresAt` (`IdleExpiresAt`) per live session of this identity, ordered `isCurrent`, then `lastSeenAt` descending, then `sessionRef`, minute-truncated, with no `limit`, `cursor` or e.nvelope Backed by the additive `IdentitySessionCoexistence` columns `PublicRef` (128 bits, written once, unique, never the `UserSessionId` the ticket carries) and `DeviceLabel` (closed server-side allowlist, never a request field; the raw `User-Agent` is never persisted). |
+| `GET /api/identity/sessions` | Authenticated + `identity.sessions.manage`, `RequiresTenant=false` | `200` `SessionListResponse` carrying exactly `sessionRef`, `isCurrent`, `deviceLabel`, `createdAt`, `lastSeenAt`, `expiresAt` (`IdleExpiresAt`) per live session of this identity, ordered `isCurrent`, then `lastSeenAt` descending, then `sessionRef`, minute-truncated, with no `limit`, `cursor` and no envelope. Backed by the additive `IdentitySessionCoexistence` columns `PublicRef` (128 bits, written once, unique, never the `UserSessionId` the ticket carries) and `DeviceLabel` (closed server-side allowlist, never a request field; the raw `User-Agent` is never persisted). |
 | `DELETE /api/identity/sessions/{sessionRef}`; `DELETE /api/identity/sessions/others` | Authenticated + `identity.sessions.manage`, `RequiresTenant=false` + exact-origin + antiforgery; no body | bodyless `204` when a session of this identity carrying that reference is now revoked, including when it was already revoked or expired; `404` Problem Details `session_not_found` when no session of this identity carries it; `409` `session_concurrency_conflict` when the write never settles. Naming the caller's own current session produces exactly the `/sessions/current` contract, including its `401` `invalid_session`, and deletes the cookie and antiforgery pair in the same response. `/others` is idempotent — a repeat with nothing left to revoke is still `204`, writes no `session.revoked` row and never touches the acting session |
 | `POST /api/identity/sessions` | Public + antiforgery, unchanged | its existing row, plus `429` `rate_limit_exceeded` with `Retry-After` on an exhausted lock wait; it no longer supersedes the identity's other sessions |
 
@@ -669,14 +678,20 @@ This protocol is independent from the reference repository's workflow and preser
 
 ### 14.4 C4 — Recent identity proof, password recovery, and provider linking with a two-part callback carve-out
 
-> **Amended 2026-09-06 (A2, A3); still proposed, still undecided.** Automatic linking and explicit linking are now
+> **ACCEPTED 2026-09-06, for synthetic data only.** IA-REQ-051 and IA-REQ-052 are now normative in
+> [section 4](#4-normative-requirements); what follows is the decision record that produced them, kept for its
+> caller-state, route and contention tables. Section 4 governs where the wording differs. Two things this acceptance
+> does not carry: live provider registration, which is per-environment, and the reactivation half of the `Recovery`
+> purpose, which belongs to 14.6 and to Task 26 — accepting C4 does not accept C6.
+>
+> **Amended 2026-09-06 (A2, A3) before that acceptance.** Automatic linking and explicit linking are now
 > separate rows: a `Login` is still refused when an unlinked subject's address already belongs to a local identity,
 > and a `Link` by a confirmed, authenticated identity whose own address is the match is now explicitly allowed — that
 > is the ordinary case, not the forbidden one. Recovery is reconciled with 14.6: two purposes, two route pairs, one
 > stated answer per account state, a `Recovery` OIDC purpose that needs no session, and a reset that never lifts a
 > suspension and never skips a second factor.
 
-- **IA-REQ-051 (proposed):** a sensitive self-service change requires a recent identity proof: a single-use
+- **IA-REQ-051 (accepted 2026-09-06 for synthetic data; section 4 governs):** a sensitive self-service change requires a recent identity proof: a single-use
   server-side record bound to one identity, one `UserSession`, one action and the identity's security version at
   issue. A valid session cookie alone is never proof, and only the identity's current password or a fresh challenge to
   a provider already linked to it (IA-REQ-052, purpose `Proof`) issues one, both requiring a confirmed identity; the
@@ -686,7 +701,7 @@ This protocol is independent from the reference repository's workflow and preser
   `sessions.revoke-others`, `sessions.revoke-one` when the handle is not the current session, `ownership.transfer`
   (C5), `identity.lifecycle` and `platform.mfa.recover` (C6); Platform step-up stays separately session-bound and
   neither proof satisfies the other.
-- **IA-REQ-052 (proposed):** an identity may hold at most one link per external provider, established only by explicit
+- **IA-REQ-052 (accepted 2026-09-06 for synthetic data; section 4 governs):** an identity may hold at most one link per external provider, established only by explicit
   consent plus a recent primary proof, a confirmed identity and a provider-verified email. `Login`, `Link`, `Proof`
   and `Recovery` purposes live in server-side state and never cross; a provider identity is never auto-linked by a
   matching email address (BR-ID-005/006) — and an authenticated, confirmed identity that links its own provider

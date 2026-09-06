@@ -166,7 +166,7 @@ are allocated only inside the proposal and become real if and when the decision 
 | C1 **(accepted 2026-09-06; implemented)** | IA-REQ-048, now normative in [SPEC §4](SPEC.md#4-normative-requirements) | IA-REQ-003, IA-REQ-004, IA-REQ-005 | 18, **done 2026-09-06**; the registration seam 19/20/23 build on | nothing from this entry: the IA-REQ-003 residual is closed on Task 18's paired-sequence evidence |
 | C2 | IA-REQ-049 | IA-REQ-021, IA-REQ-023 | the session half of 21, 22, 23 | the proof half of 21/22, which is C4 |
 | C3 **(accepted 2026-09-06, synthetic only)** | IA-REQ-050, IA-REQ-058, now normative in [SPEC §4](SPEC.md#4-normative-requirements) | none; extends IA-REQ-002/044 | 19 and 20, together with C7 | IA-REQ-058's dispute, which needs C4 and lands in 26; real DNI capture, which is the G2 gate; and the §14.3 residual, which was not accepted |
-| C4 **(A2/A3 folded in 2026-09-06)** | IA-REQ-051, IA-REQ-052 | IA-REQ-022 and §8, for one named callback route | 21, 22, 23; the recovery part of 26 | live provider registration, which is per-environment |
+| C4 **(accepted 2026-09-06, synthetic only)** | IA-REQ-051, IA-REQ-052, now normative in [SPEC §4](SPEC.md#4-normative-requirements) | IA-REQ-022 and §8, for one named callback route | 21, 22, 23 | live provider registration, which is per-environment; and the reactivation half of `Recovery`, which is C6's and Task 26's |
 | C5 | IA-REQ-053 | IA-REQ-047, closing its deferred note | 24, 25 | C4, without which ownership transfer has no proof |
 | C6 **(A3/A4 folded in 2026-09-06)** | IA-REQ-054, IA-REQ-055 | makes IA-REQ-020 precise; extends IA-REQ-042 | 26, 27 against synthetic fixtures | live restore release, which needs the external authority |
 | C7 **(accepted 2026-09-06, synthetic only)** | IA-REQ-056, IA-REQ-057, now normative in [SPEC §4](SPEC.md#4-normative-requirements) | strengthens IA-REQ-019 to shared, fail-closed state | 19's classification stamp and budget store, 20's public claim budget; 26 and 27 stay blocked on C6 | real personal data, and production — separate gates in 28 |
@@ -189,10 +189,10 @@ dispute — both halves — moves to Task 26, because the owner's half requires 
 before Task 22; Tasks 19 and 20 record a document and never offer a way to correct one. Task 19 stays domain and
 persistence with no public route, and every public flow stays in the task that owns it.
 
-**Taken 2026-09-06: C3 and C7 accepted together, for synthetic data only.** Tasks 19 and 20 are both done and
-verified, which is the whole of what that acceptance authorized. Nothing after Task 20 is. C2 and C4 unblock the 21–23 line whenever they
-are decided; C5 and C6 depend on C4 and come after. Real personal data, production, and the §14.3 residual were
-withheld and are not part of this acceptance.
+**Taken 2026-09-06: C3 and C7, then C2 and C4, all for synthetic data only.** Tasks 19 and 20 are done and verified
+on the first pair; the second enables Tasks 21, 22 and 23. C5 and C6 remain undecided, so nothing after Task 23 is
+authorized. Real personal data, production, §14.3's residual, live provider registration and the reactivation half of
+C4's `Recovery` purpose were all withheld.
 
 ## First-increment Review Workload Forecast (historical)
 

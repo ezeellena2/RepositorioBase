@@ -10,7 +10,7 @@
 
 ---
 
-**Status:** Tasks 1–16 record the implemented Organization/Platform foundation and its historical checks. Their `Review` states and recorded limitations remain unchanged; implementation is not human acceptance or complete B2B/B2C coverage. Task 17 is partly taken: C1 was accepted on 2026-09-06, and [Task 18](#task-18-remove-the-registration-state-oracle-not-only-its-status-difference) is implemented and verified against real PostgreSQL on that approval alone. C3 and C7 were accepted on 2026-09-06 for synthetic data only. [Task 19](#task-19-persist-personal-ownership-and-protected-ardni-atomically) and [Task 20](#task-20-deliver-personal-signup-own-profile-and-context-switching) are **done and verified**; that is the whole of what this acceptance authorized. C2, C4, C5 and C6 remain proposals — amendments A2/A3 and A3/A4 still apply to C4 and C6 — so [Tasks 21–28](#continuation-to-local-b2bb2c-functional-completion) are still blocked. Real personal data, production and §14.3's named residual were withheld from that acceptance. This continuation was planned against `d6d1b0ab5cf2b66ccff2828b471d7977f540a958`; no verification run is claimed for any task after 18.
+**Status:** Tasks 1–16 record the implemented Organization/Platform foundation and its historical checks. Their `Review` states and recorded limitations remain unchanged; implementation is not human acceptance or complete B2B/B2C coverage. Task 17 is partly taken: C1 was accepted on 2026-09-06, and [Task 18](#task-18-remove-the-registration-state-oracle-not-only-its-status-difference) is implemented and verified against real PostgreSQL on that approval alone. C3 and C7 were accepted on 2026-09-06 for synthetic data only, and [Task 19](#task-19-persist-personal-ownership-and-protected-ardni-atomically) and [Task 20](#task-20-deliver-personal-signup-own-profile-and-context-switching) are **done and verified** on them. C2 and C4 were accepted the same day on the same terms, which makes Tasks 21, 22 and 23 executable in that order. C5 and C6 remain proposals — A3 and A4 still apply to C6 — so [Tasks 24–28](#continuation-to-local-b2bb2c-functional-completion) are still blocked. Real personal data, production, §14.3's named residual, live provider registration and the reactivation half of C4's `Recovery` purpose were all withheld. This continuation was planned against `d6d1b0ab5cf2b66ccff2828b471d7977f540a958`; no verification run is claimed for any task after 18.
 
 ## First-increment Review Workload Forecast (historical)
 
@@ -1228,7 +1228,7 @@ These are the historical first-increment criteria, not a claim that all are clos
 | 18 | Registration cannot disclose an address through durable CUIT side effects | IA-006; IA-009 evidence | 17: C1 |
 | 19 | Atomic Personal ownership and protected, unique AR/DNI persistence, and the shared attempt-budget store the first public Personal route will need | IA-010; IA-004 persistence | **Done 2026-09-06.** 17: C3 and C7; 18 registration seam |
 | 20 | Personal signup, own profile, and mixed Personal/Organization context journey | IA-010; IA-009 evidence | **Done 2026-09-06.** 19, which carries the C3/C7 approval this task inherits and adds nothing to |
-| 21 | Own-device session list/revocation and reusable recent reauthentication | IA-011; IA-007 sessions | 17: C2/C4 |
+| 21 | Own-device session list/revocation and reusable recent reauthentication | IA-011; IA-007 sessions | 17: C2/C4, both accepted 2026-09-06 |
 | 22 | Delivered password recovery and authenticated password change | IA-011; IA-009 evidence | 21; 17: C4 |
 | 23 | Google login, explicit linking, and safe last-authenticator handling | IA-013; IA-009 evidence | 20–22; 17: C4 |
 | 24 | Custom Organization roles through the existing permission evaluator | IA-005 continuation; IA-009 evidence | 17: C5 |
@@ -1256,7 +1256,7 @@ IA-010, IA-011, IA-013, and IA-015 remain `Proposed` and unimplemented. Expandin
 
 ## Task 17: Approve the continuation contracts and reference scope
 
-**State (2026-09-06): partly taken, not complete.** The package was written into SPEC §14 and ADR-004. C1, C3 and C7 have been accepted and left the proposal set — C3 and C7 for synthetic data only. C2, C4, C5 and C6 were not. Amendments A1–A5 were folded into C3, C4, C6 and C7 on 2026-09-06, along with the two contradictions C2/C4 and C5/C6 carried, so every entry states one contract. This task closes when the four remaining entries are answered.
+**State (2026-09-06): partly taken, not complete.** The package was written into SPEC §14 and ADR-004. C1, C2, C3, C4 and C7 have been accepted and left the proposal set, all for synthetic data only. C5 and C6 were not. Amendments A1–A5 were folded into C3, C4, C6 and C7 on 2026-09-06, along with the two contradictions C2/C4 and C5/C6 carried, so every entry states one contract. This task closes when the two remaining entries are answered.
 
 **Visible outcome:** one reviewable contract package makes the following implementation steps executable without repeated product-discovery rounds. This task is documentation and human approval, with no production code.
 
