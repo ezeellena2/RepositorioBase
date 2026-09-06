@@ -36,6 +36,66 @@ public sealed class RolePermissionMappingTests
         Permissions.PlatformAdminsRead.ShouldNotBe(Permissions.PlatformAdminsManage);
     }
 
+    /// <summary>
+    /// Amendment D1's backfill. Organizations registered before C5 hold an `Owner` role with no permissions at
+    /// all, and C5's ceiling makes that unrecoverable from inside the product: an actor may grant only what it
+    /// holds, so an owner holding nothing can never grant itself anything. The catalogue synchronizer is where it
+    /// is repaired, because that is already the one place the code-owned catalogue is written to the database,
+    /// and because doing it there is idempotent for free.
+    /// </summary>
+    [Test]
+    public async Task Catalog_synchronization_backfills_an_organization_owner_that_predates_the_decision()
+    {
+        using var scope = TestServices.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var synchronizer = scope.ServiceProvider.GetRequiredService<PermissionCatalogSynchronizer>();
+        await synchronizer.SynchronizeAsync(CancellationToken.None);
+
+        // Exactly the shape the old provisioner left behind: the role and the assignment, and nothing granted.
+        var tenant = Tenant.CreateOrganization(TenantSlug.From($"backfill-{Guid.NewGuid():N}"));
+        tenant.Activate();
+        var ownerRole = Role.CreateSystem(tenant, "Owner");
+        context.AddRange(tenant, ownerRole);
+        await context.SaveChangesAsync();
+
+        await synchronizer.SynchronizeAsync(CancellationToken.None);
+
+        var granted = await context.RolePermissions
+            .Where(permission => permission.TenantId == tenant.Id && permission.RoleId == ownerRole.Id)
+            .Select(permission => permission.PermissionCode)
+            .ToArrayAsync();
+        granted.ShouldBe(Permissions.OrganizationOwnerCodes, ignoreOrder: true);
+
+        await synchronizer.SynchronizeAsync(CancellationToken.None);
+        (await context.RolePermissions.CountAsync(permission => permission.TenantId == tenant.Id))
+            .ShouldBe(Permissions.OrganizationOwnerCodes.Count, "running it again grants nothing a second time");
+    }
+
+    [Test]
+    public async Task Catalog_synchronization_leaves_a_role_that_is_not_a_system_owner_alone()
+    {
+        using var scope = TestServices.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var synchronizer = scope.ServiceProvider.GetRequiredService<PermissionCatalogSynchronizer>();
+        await synchronizer.SynchronizeAsync(CancellationToken.None);
+
+        var tenant = Tenant.CreateOrganization(TenantSlug.From($"custom-{Guid.NewGuid():N}"));
+        tenant.Activate();
+        var custom = Role.Create(tenant, "Owner");
+        var personal = Tenant.CreatePersonal(TenantSlug.From($"personal-{Guid.NewGuid():N}"));
+        personal.Activate();
+        var personalOwner = Role.CreateSystem(personal, "Owner");
+        context.AddRange(tenant, custom, personal, personalOwner);
+        await context.SaveChangesAsync();
+
+        await synchronizer.SynchronizeAsync(CancellationToken.None);
+
+        (await context.RolePermissions.CountAsync(permission => permission.RoleId == custom.Id))
+            .ShouldBe(0, "a custom role that happens to be named Owner is somebody's own role, not the system one");
+        (await context.RolePermissions.CountAsync(permission => permission.RoleId == personalOwner.Id))
+            .ShouldBe(0, "the backfill is an Organization rule and Personal administers nothing");
+    }
+
     [Test]
     public void Model_maps_tenant_scoped_role_associations_with_composite_foreign_keys()
     {

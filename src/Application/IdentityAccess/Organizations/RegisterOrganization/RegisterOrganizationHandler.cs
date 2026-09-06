@@ -89,7 +89,7 @@ public sealed class RegisterOrganizationCommandHandler(
 
                 var tenant = Tenant.CreateOrganization(TenantSlug.From($"org-{intent.Cuit.Value}"));
                 var membership = TenantMembership.CreateResponsible(tenant, identity.Id);
-                initialRoles.AssignResponsibleOwner(tenant, membership);
+                await initialRoles.AssignResponsibleOwnerAsync(tenant, membership, ct);
                 var organization = OrganizationProfile.Create(tenant, intent.LegalName, intent.Cuit);
                 var rawToken = tokens.Generate();
                 var now = timeProvider.GetUtcNow();

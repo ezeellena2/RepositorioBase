@@ -57,22 +57,52 @@ public static class Permissions
     /// <summary>Linking and unlinking a person's own provider accounts. Self-service for the same reason.</summary>
     public const string IdentityExternalManage = "identity.external.manage";
 
+    /// <summary>
+    /// Handing an `Organization` to somebody else. Deliberately not `tenant.manage`: managing a tenant and giving
+    /// it away are different powers, and one administrator holding the first must not thereby hold the second
+    /// (IA-REQ-053). Necessary but never sufficient — the actor must also be the current owner.
+    /// </summary>
+    public const string TenantOwnershipTransfer = "tenant.ownership.transfer";
+
+    /// <summary>
+    /// Every permission the backend defines, and for each one the answer to "does an `Organization`'s system
+    /// `Owner` role hold it?"
+    /// <para>
+    /// That third argument is positional on purpose (amendment D1). C5's grant ceiling says an actor may grant
+    /// only what it holds, which makes the answer load-bearing: a code no owner holds is a code no administrator
+    /// in any organization can ever grant. Making it automatic — "every future addition goes to `Owner`" — would
+    /// widen every existing owner's authority as a side effect of shipping an unrelated feature. Making it a
+    /// parameter means adding a permission does not compile until somebody has answered.
+    /// </para>
+    /// </summary>
     public static IReadOnlyList<PermissionDefinition> Catalog { get; } =
     [
-        new(MembersInvite, [TenantType.Organization]),
-        new(MembersManage, [TenantType.Organization]),
-        new(MembersRead, [TenantType.Organization]),
-        new(PlatformAdminsManage, [TenantType.Platform]),
-        new(PlatformAdminsRead, [TenantType.Platform]),
-        new(PlatformAuditRead, [TenantType.Platform]),
-        new(PlatformIdentitiesRead, [TenantType.Platform]),
-        new(PlatformOrganizationsRead, [TenantType.Platform]),
-        new(PlatformTenantsManage, [TenantType.Platform]),
-        new(RolesManage, [TenantType.Organization, TenantType.Platform]),
-        new(RolesRead, [TenantType.Organization, TenantType.Platform]),
-        new(TenantManage, [TenantType.Organization, TenantType.Platform]),
-        new(TenantRead, [TenantType.Organization, TenantType.Platform])
+        new(MembersInvite, [TenantType.Organization], OrganizationOwner.Holds),
+        new(MembersManage, [TenantType.Organization], OrganizationOwner.Holds),
+        new(MembersRead, [TenantType.Organization], OrganizationOwner.Holds),
+        // Platform's roles are provisioned by its own bootstrap and reach no Organization owner.
+        new(PlatformAdminsManage, [TenantType.Platform], OrganizationOwner.NotApplicable),
+        new(PlatformAdminsRead, [TenantType.Platform], OrganizationOwner.NotApplicable),
+        new(PlatformAuditRead, [TenantType.Platform], OrganizationOwner.NotApplicable),
+        new(PlatformIdentitiesRead, [TenantType.Platform], OrganizationOwner.NotApplicable),
+        new(PlatformOrganizationsRead, [TenantType.Platform], OrganizationOwner.NotApplicable),
+        new(PlatformTenantsManage, [TenantType.Platform], OrganizationOwner.NotApplicable),
+        new(RolesManage, [TenantType.Organization, TenantType.Platform], OrganizationOwner.Holds),
+        new(RolesRead, [TenantType.Organization, TenantType.Platform], OrganizationOwner.Holds),
+        new(TenantManage, [TenantType.Organization, TenantType.Platform], OrganizationOwner.Holds),
+        new(TenantOwnershipTransfer, [TenantType.Organization], OrganizationOwner.Holds),
+        new(TenantRead, [TenantType.Organization, TenantType.Platform], OrganizationOwner.Holds)
     ];
+
+    /// <summary>
+    /// What the system `Owner` role of an `Organization` is provisioned with, derived from the one place the
+    /// answer is recorded rather than restated as a second list that could drift from it.
+    /// </summary>
+    public static IReadOnlyList<string> OrganizationOwnerCodes { get; } =
+        Catalog.Where(definition => definition.OrganizationOwner == OrganizationOwner.Holds)
+            .Select(definition => definition.Code)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
 
     public static IReadOnlySet<string> ApplicationScopedCodes { get; } = new HashSet<string>(StringComparer.Ordinal)
     {
@@ -117,4 +147,24 @@ public static class Permissions
 
 }
 
-public sealed record PermissionDefinition(string Code, IReadOnlyCollection<TenantType> AllowedTenantTypes);
+/// <summary>Whether an `Organization`'s system `Owner` role is provisioned with a permission (amendment D1).</summary>
+public enum OrganizationOwner
+{
+    /// <summary>The owner holds it, for existing organizations by backfill and for new ones at provisioning.</summary>
+    Holds,
+
+    /// <summary>
+    /// Deliberately withheld from the owner although an `Organization` may hold it — so it can only reach anybody
+    /// through a role somebody who already holds it grants, which under C5's ceiling means nobody, until this
+    /// answer changes. Recorded rather than omitted, so the withholding is visible.
+    /// </summary>
+    Withheld,
+
+    /// <summary>The catalogue does not allow it to an `Organization` at all, so the question does not arise.</summary>
+    NotApplicable
+}
+
+public sealed record PermissionDefinition(
+    string Code,
+    IReadOnlyCollection<TenantType> AllowedTenantTypes,
+    OrganizationOwner OrganizationOwner);

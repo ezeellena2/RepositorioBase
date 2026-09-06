@@ -164,6 +164,39 @@ public static class IdentityAccessErrors
     /// Removing it would leave the person with no way in at all. It is refused rather than warned about, because
     /// the state it would produce has no route back that does not involve an operator.
     /// </summary>
+    /// <summary>
+    /// Every way a role change can be refused for what it is rather than for who asked: a system or retired role,
+    /// a name that is not a name, a code the catalogue does not allow this tenant type, and — the one that
+    /// matters — a code the actor does not itself effectively hold. They are one code because naming which
+    /// permission the actor was missing would describe somebody else's authority to them (IA-REQ-053).
+    /// </summary>
+    /// <summary>A role this tenant does not have. Another tenant's role reaches a caller this way (IA-REQ-030).</summary>
+    public static ApplicationError RoleNotFound() =>
+        new("not_found", ApplicationErrorCategory.NotFound, "That role is not available.");
+
+    public static ApplicationError InvalidRoleOperation() =>
+        new("invalid_role_operation", ApplicationErrorCategory.Validation, "That role change is not valid.");
+
+    public static ApplicationError InvalidMembershipOperation() =>
+        new("invalid_membership_operation", ApplicationErrorCategory.Validation, "That membership change is not valid.");
+
+    public static ApplicationError RoleConcurrencyConflict() =>
+        new("role_concurrency_conflict", ApplicationErrorCategory.Conflict, "The role was changed by another request. Refresh it and try again.");
+
+    public static ApplicationError MembershipConcurrencyConflict() =>
+        new("membership_concurrency_conflict", ApplicationErrorCategory.Conflict, "The membership was changed by another request. Refresh it and try again.");
+
+    /// <summary>
+    /// The change would have left the organization with nobody able to administer it. Refused rather than warned
+    /// about, because the state it would produce has no way back that does not involve an operator (IA-REQ-053).
+    /// </summary>
+    public static ApplicationError LastAdministratorRequired() =>
+        new("last_administrator_required", ApplicationErrorCategory.Conflict, "An organization must keep at least one administrator.");
+
+    /// <summary>Holding the ownership permission is necessary and never sufficient: it has to be your own.</summary>
+    public static ApplicationError OwnerRequired() =>
+        new("owner_required", ApplicationErrorCategory.Authorization, "Only the current owner can transfer ownership.");
+
     public static ApplicationError LastAuthenticatorRequired() =>
         new("last_authenticator_required", ApplicationErrorCategory.Conflict, "An identity must keep at least one way to sign in.");
 }

@@ -330,6 +330,59 @@ The account page also no longer guesses which providers exist: `GET /api/identit
 deployment configured, so a deployment without a Google client offers nothing instead of spending a password on
 a proof for a round trip that cannot start.
 
+## Task 24 — done 2026-09-06
+
+**Visible outcome met:** an administrator creates, renames, edits and retires custom roles from `/roles`, sees
+what each one confers, and watches authorization change on the very next request — with no role-name checks
+anywhere.
+
+**The finding that had to be fixed first.** Registering an Organization made you its `Owner` of a role created
+with **no permissions at all**: `RegistrationInitialRoleProvisioner` wrote the role and the assignment and zero
+`RolePermission` rows, and effective permissions come only from those rows. A real registered owner could not
+invite anybody, and no test noticed, because every test granted itself the permissions it needed. C5's ceiling
+makes that unrecoverable from inside the product — an actor may grant only what it holds — which is why amendment
+D1 exists. `OrganizationOwnerAuthorityTests` now pins what a registration actually produces.
+
+| Step | What happened |
+|---|---|
+| RED | `RoleAdministrationTests` over the production HTTP pipeline; `OrganizationOwnerAuthorityTests` for what a registration produces; `OrganizationOwnerCatalogTests` for D1's decision |
+| GREEN | `PermissionDefinition` gained the positional `OrganizationOwner` answer; `PermissionCatalogSynchronizer` backfills existing owners; `IRoleAdministrationStore` and `RoleAdministrationStore`; `RoleRequests`/`RoleHandlers` with the ceiling, the floor and offer cancellation; `RoleEndpoints`; `RolesPage` |
+| REFACTOR | The floor is counted from flushed state and refuses by rolling the write back, since a check made after a write can be honoured no other way |
+
+**Commands run, all four from the plan.**
+
+```powershell
+dotnet test tests/Domain.UnitTests/Domain.UnitTests.csproj --filter RolePermissionTests
+dotnet test tests/Infrastructure.IntegrationTests/Infrastructure.IntegrationTests.csproj --filter "RolePermissionMappingTests|MigrationUpgradeTests"
+dotnet test tests/Application.FunctionalTests/Application.FunctionalTests.csproj --filter "RoleAdministrationTests|RoleMembershipAuditTests"
+npm test --prefix src/Web/ClientApp -- RolesPage.test.jsx
+```
+
+Whole solution afterwards: Domain 175, Application.Unit 196, Infrastructure.Integration 261, Application.Functional
+489, browser acceptance 21; client 166 with lint clean; Release build 0 errors.
+
+**Contracts proved:** a created role confers exactly what was asked for; nobody can put a permission into a role
+they do not hold themselves, while removing one they do not hold is allowed because narrowing is not granting; the
+catalogue tells each caller which codes they could grant, and it is the same list for everybody; a system role is
+neither editable nor retirable; a stale `version` answers `role_concurrency_conflict` and changes nothing;
+another tenant's role is `404` rather than `403`; a change that would leave nobody holding both `roles.manage` and
+`members.manage` answers `last_administrator_required` and leaves the role exactly as it was; every write spends a
+recent proof and is refused without one; widening a role withdraws every offer that named it and audits
+`role-widened`, while narrowing leaves those offers standing; retiring withdraws them too, is idempotent, and the
+retired role grants nothing on the very next request.
+
+**Evidence rather than green.** The ceiling and the floor were each verified by removing the rule from the handler
+and confirming the test fails, then restoring it. So was D1's backfill.
+
+**Named limitations.**
+
+- **`AssignableRoleCatalog` was not built.** The plan reserved a migration for catalogue metadata; D1's answer is a
+  code-owned catalogue field and needs no column, so no migration was written. Nothing else in Task 24 needed one.
+- **Members, ownership and the invitation lifecycle are Task 25.** C5 covers them and they are approved; they are
+  simply not built yet, so `/roles` is the only C5 screen today.
+- **`last_administrator_required` on C6's deactivate route stays unreachable**, because that route is C6's and C6
+  is not accepted.
+
 ### Proposed requirements and the tasks they unblock
 
 Each entry proposes its own requirement numbers. IA-REQ-048 was accepted on 2026-09-06 and is normative in

@@ -182,6 +182,7 @@ public static class DependencyInjection
         builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.Credentials.IIdentityCredentialService, CleanArchitecture.Infrastructure.IdentityAccess.IdentityCredentialService>();
         builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.ExternalLogins.IExternalIdentityService, CleanArchitecture.Infrastructure.IdentityAccess.ExternalIdentityService>();
         builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.ExternalLogins.IExternalSubjectLock, CleanArchitecture.Infrastructure.IdentityAccess.ExternalSubjectLock>();
+        builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.Roles.IRoleAdministrationStore, CleanArchitecture.Infrastructure.IdentityAccess.RoleAdministrationStore>();
         builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.ExternalLogins.IExternalCallbackRecorder, CleanArchitecture.Application.IdentityAccess.ExternalLogins.ExternalCallbackRecorder>();
         builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.ExternalLogins.IExternalHandoffContext, CleanArchitecture.Infrastructure.IdentityAccess.NoExternalHandoffContext>();
     }

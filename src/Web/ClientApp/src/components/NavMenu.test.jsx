@@ -53,6 +53,7 @@ describe('navigation', () => {
     renderMenu();
 
     await waitFor(() => expect(screen.getByRole('link', { name: 'Your access' })).toBeInTheDocument());
+    expect(screen.queryByRole('link', { name: 'Roles' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Invite a member' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Platform' })).not.toBeInTheDocument();
   });

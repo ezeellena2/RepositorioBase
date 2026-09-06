@@ -63,6 +63,19 @@ public static class ApiProblemMetadata
 
     public static readonly ApiProblemContract LastAuthenticatorRequired = new(StatusCodes.Status409Conflict, "last_authenticator_required");
 
+    public static readonly ApiProblemContract InvalidRoleOperation = new(StatusCodes.Status400BadRequest, "invalid_role_operation");
+
+    public static readonly ApiProblemContract InvalidMembershipOperation = new(StatusCodes.Status400BadRequest, "invalid_membership_operation");
+
+    public static readonly ApiProblemContract RoleConcurrencyConflict = new(StatusCodes.Status409Conflict, "role_concurrency_conflict");
+
+    public static readonly ApiProblemContract MembershipConcurrencyConflict = new(StatusCodes.Status409Conflict, "membership_concurrency_conflict");
+
+    /// <summary>The floor C5 refuses to commit through: one identity holding both halves of administration.</summary>
+    public static readonly ApiProblemContract LastAdministratorRequired = new(StatusCodes.Status409Conflict, "last_administrator_required");
+
+    public static readonly ApiProblemContract OwnerRequired = new(StatusCodes.Status403Forbidden, "owner_required");
+
 
     public static RouteHandlerBuilder WithApiProblemDetails(this RouteHandlerBuilder builder, params ApiProblemContract[] contracts)
     {

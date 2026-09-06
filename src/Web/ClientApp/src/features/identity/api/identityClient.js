@@ -86,6 +86,30 @@ export function createIdentityClient(transport = createApiTransport()) {
     }),
     unlinkExternal: (provider) => send(`/api/identity/external/${encodeURIComponent(provider)}`, { method: 'DELETE' }),
 
+    // Custom roles inside one Organization. Every route is addressed by tenant and the server compares that
+    // address against the session's own active tenant, so naming another one is refused rather than honoured.
+    listPermissionCatalog: (tenantId) => send(`/api/tenants/${encodeURIComponent(tenantId)}/permission-catalog`, {
+      expectArray: true,
+      expect: ['code', 'grantable'],
+    }),
+    listRoles: (tenantId) => send(`/api/tenants/${encodeURIComponent(tenantId)}/roles`, {
+      expect: ['items', 'nextCursor'],
+    }),
+    createRole: (tenantId, name, permissions) => send(`/api/tenants/${encodeURIComponent(tenantId)}/roles`, {
+      method: 'POST',
+      body: { name, permissions },
+      expect: ['roleId', 'name', 'isSystem', 'isRetired', 'permissions', 'version'],
+    }),
+    updateRole: (tenantId, roleId, name, permissions, version) => send(`/api/tenants/${encodeURIComponent(tenantId)}/roles/${encodeURIComponent(roleId)}`, {
+      method: 'PUT',
+      body: { name, permissions, version },
+      expect: ['roleId', 'name', 'isSystem', 'isRetired', 'permissions', 'version'],
+    }),
+    retireRole: (tenantId, roleId, version) => send(`/api/tenants/${encodeURIComponent(tenantId)}/roles/${encodeURIComponent(roleId)}/retire`, {
+      method: 'POST',
+      body: { version },
+    }),
+
     registerPersonal: (request) => send('/api/identity/personal/register', { method: 'POST', body: request }),
     createPersonalContext: (request) => send('/api/identity/personal', { method: 'POST', body: request }),
     getPersonalProfile: () => send('/api/identity/profile', {

@@ -13,6 +13,7 @@ import { ExternalAccountsPage, ExternalReturnPage } from "./features/identity/cr
 import { ConfirmEmailPage } from "./features/identity/register/ConfirmEmailPage";
 import { TenantSelector } from "./features/identity/tenants/TenantSelector";
 import { InviteMemberPage } from "./features/identity/invitations/InviteMemberPage";
+import { RolesPage } from "./features/identity/roles/RolesPage";
 import { AcceptInvitationPage, RegisterFromInvitationPage } from "./features/identity/invitations/InvitationPages";
 import { IdentityContextPage } from "./features/identity/context/IdentityContextPage";
 import { PlatformPanel } from "./features/platform/PlatformPanel";
@@ -59,6 +60,7 @@ const AppRoutes = [
   { path: '/identity', element: <ProtectedRoute><IdentityContextPage /></ProtectedRoute> },
   { path: '/organizations/select', element: <ProtectedRoute><TenantSelector /></ProtectedRoute> },
   { path: '/members/invite', element: <ProtectedRoute><InviteMemberPage /></ProtectedRoute> },
+  { path: '/roles', element: <ProtectedRoute><RolesPage /></ProtectedRoute> },
   { path: '/platform/invitations/register', element: <RegisterPlatformInviteePage /> },
   { path: '/platform/invitations/confirm', element: <ConfirmPlatformInviteePage /> },
   { path: '/platform/bootstrap/recover', element: <RecoverPlatformBootstrapPage /> },

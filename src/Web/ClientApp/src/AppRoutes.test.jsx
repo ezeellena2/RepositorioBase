@@ -35,7 +35,9 @@ describe('identity routes', () => {
     ['/identity/external', 'Sign-in providers'],
   ])('renders the protected route %s for a signed-in visitor', async (path, heading) => {
     server.use(antiforgery(), contextIs(signedInContext()));
-    server.use(http.get('/api/identity/external', () => HttpResponse.json({ items: [] })));
+    server.use(http.get('/api/identity/external', () => HttpResponse.json({ items: [], available: [] })));
+    server.use(http.get('/api/tenants/tenant-1/roles', () => HttpResponse.json({ items: [], nextCursor: null })));
+    server.use(http.get('/api/tenants/tenant-1/permission-catalog', () => HttpResponse.json([])));
     renderAt(path);
 
     expect(await screen.findByRole('heading', { name: heading })).toBeInTheDocument();

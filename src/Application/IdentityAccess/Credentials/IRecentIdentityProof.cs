@@ -15,13 +15,28 @@ public static class ProofActions
     public const string RevokeOtherSessions = "sessions.revoke-others";
     public const string RevokeOneSession = "sessions.revoke-one";
 
+    /// <summary>
+    /// Changing what a role confers, and changing which roles a member holds (amendment D2). They are two actions
+    /// rather than one for the same reason the rest of this set is split: proving in order to edit a role is not
+    /// permission to hand that role to somebody.
+    /// </summary>
+    public const string RoleChange = "roles.change";
+
+    public const string MemberRoleChange = "members.roles.change";
+
+    /// <summary>Giving the organization away, which is the one change nobody can undo alone.</summary>
+    public const string OwnershipTransfer = "tenant.ownership.transfer";
+
     public static IReadOnlySet<string> All { get; } = new HashSet<string>(StringComparer.Ordinal)
     {
         PasswordChange,
         ExternalLink,
         ExternalUnlink,
         RevokeOtherSessions,
-        RevokeOneSession
+        RevokeOneSession,
+        RoleChange,
+        MemberRoleChange,
+        OwnershipTransfer
     };
 }
 

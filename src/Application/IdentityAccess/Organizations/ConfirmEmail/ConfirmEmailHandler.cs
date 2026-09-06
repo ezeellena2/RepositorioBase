@@ -167,7 +167,7 @@ public sealed class ConfirmEmailCommandHandler(
 
         var tenant = Tenant.CreateOrganization(TenantSlug.From($"org-{intent.Cuit.Value}"));
         var membership = TenantMembership.CreateResponsible(tenant, identityId);
-        initialRoles.AssignResponsibleOwner(tenant, membership);
+        await initialRoles.AssignResponsibleOwnerAsync(tenant, membership, cancellationToken);
         tenant.Activate();
         membership.Activate(tenant);
 

@@ -28,5 +28,10 @@ public interface IOutboxSecretWriter
 
 public interface IRegistrationInitialRoleProvisioner
 {
-    void AssignResponsibleOwner(Tenant tenant, TenantMembership membership);
+    /// <summary>
+    /// Creates the system `Owner` role, grants it the codes the catalogue says an `Organization` owner holds, and
+    /// assigns it to the responsible membership. The grant is not decoration: C5's ceiling lets an actor grant
+    /// only what it effectively holds, so an owner provisioned with nothing could never begin (amendment D1).
+    /// </summary>
+    Task AssignResponsibleOwnerAsync(Tenant tenant, TenantMembership membership, CancellationToken cancellationToken);
 }

@@ -23,6 +23,12 @@ const MESSAGES = {
   external_login_conflict: 'That provider account cannot be used here. Sign in and link it from your account.',
   provider_already_linked: 'That provider is already linked to this account.',
   last_authenticator_required: 'You cannot remove your only way to sign in. Add another one first.',
+  invalid_role_operation: 'That role change is not allowed. You can only grant permissions you hold yourself.',
+  invalid_membership_operation: 'That membership change is not allowed right now.',
+  role_concurrency_conflict: 'That role changed while you were editing it. Refresh and try again.',
+  membership_concurrency_conflict: 'That member changed while you were editing. Refresh and try again.',
+  last_administrator_required: 'This would leave the organization with no administrator. Give somebody else those permissions first.',
+  owner_required: 'Only the current owner can do that.',
   rate_limit_exceeded: 'Too many attempts. Wait a moment and try again.',
   internal_server_error: 'Something went wrong. Try again.',
 };
