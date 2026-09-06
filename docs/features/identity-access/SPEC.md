@@ -414,17 +414,19 @@ This protocol is independent from the reference repository's workflow and preser
 
 ## 14. Task 17 decision package (proposed, not approved)
 
-> **C1 IS ACCEPTED (2026-09-06). C2–C7 ARE NOT.** Section 14.1 is accepted as written and is implemented by Task 18;
-> once that task lands, its requirements move into section 4 and 14.1 becomes a record of the decision. Everything
-> from 14.2 onward is still only proposed, and five of those entries carry required amendments recorded in
-> [ADR-004's decision record](../../decisions/ADR-004-Adopt-Multitenant-Identity-Access.md#decision-record--2026-09-06);
-> they must be put forward again, reconciled, before any of them is consumed. Read the rest of this banner as
-> applying to 14.2–14.7. This section is the Task 17 decision package, entries C1–C7,
+> **C1 IS ACCEPTED (2026-09-06). C2–C7 ARE NOT.** Section 14.1 was accepted as written, is implemented by Task 18,
+> and its requirements now live in section 4; 14.1 is kept as the record of that decision. Everything from 14.2
+> onward is still only proposed. Amendments A1–A5 from
+> [ADR-004's decision record](../../decisions/ADR-004-Adopt-Multitenant-Identity-Access.md#decision-record--2026-09-06)
+> were folded into 14.3, 14.4, 14.6 and 14.7 on 2026-09-06: each of those entries now states one contract, with no
+> open gap and no note telling an implementer that two fragments disagree. Folding an amendment in is not approval
+> — every entry from 14.2 to 14.7 still awaits one decision. Read the rest of this banner as applying to 14.2–14.7. This section is the Task 17 decision package, entries C1–C7,
 > put forward for approval. No behaviour described here exists; no requirement, permission code, stable error code,
 > route, DTO field, enum member or state name here is implemented; no test named here has been written or run, so
 > nothing here is evidence, and `Proposed` status authorizes no dependent code (section 12). Numbers marked
-> **(product default)** are this project's choices, not legal or external-standard requirements. IA-REQ-048..057
-> are allocated once here; C7's fragment numbered its two requirements 048/049 provisionally.
+> **(product default)** are this project's choices, not legal or external-standard requirements. IA-REQ-048..058
+> are allocated once here; C7's fragment numbered its two requirements 048/049 provisionally, and IA-REQ-058 was
+> added on 2026-09-06 by amendment A1.
 
 ### 14.1 C1 — Registration reservation: no exclusive durable claim before proved control of the address
 
@@ -541,16 +543,18 @@ This protocol is independent from the reference repository's workflow and preser
 - **Amends.** IA-REQ-021 gains two sentences: authentication does not revoke the identity's other live sessions, and a
   new session inherits nothing from a predecessor — not its identifier, C4's recent-identity proof, Platform
   second-factor evidence or its antiforgery pair. IA-REQ-023's four values stand unchanged, pointing at IA-REQ-049.
-- **Note — fragments disagree.** C4 also requires a recent proof (IA-REQ-051) for `sessions.revoke-others` and for
-  revoking a non-current session, and names that route `{handle}`; the proof requirement is kept under `{sessionRef}`.
+- **Reconciled with C4.** C4 also requires a recent proof (IA-REQ-051) for `sessions.revoke-others` and for revoking
+  a non-current session, and names that route `{handle}`. Decided: the proof requirement is kept and the route stays
+  `{sessionRef}`. C4's `{handle}` spelling is withdrawn; there is one route and one requirement, not two readings.
 - **Consumed by** the session half of Tasks 21, 22 and 23.
 
 ### 14.3 C3 — Own profile and protected AR/DNI documentary identity
 
-> **Amendment A1 required before this entry is put forward again.** Verified document correction and dispute
-> must be defined before real data is enabled, including the answer to a duplicate document; neither free
-> editing nor a support bypass is acceptable. This supersedes the "no correction route" recommendation and the
-> `Gap` on the duplicate answer below.
+> **Amended 2026-09-06 (A1); still proposed, still undecided.** Correction and dispute are now defined and the
+> "ship no correction route" recommendation is withdrawn: IA-REQ-058 below carries a two-party verified process, and
+> the duplicate-document answer is settled in the contention table rather than left as a gap. Neither free editing
+> nor a support bypass survives — the owner may open a dispute but never write a document, and an operator may
+> resolve one only against a stored dispute and an external evidence reference, never for their own identity.
 
 - **IA-REQ-050 (proposed):** an identity that owns a `Personal` tenant has exactly one `PersonProfile`, keyed by the
   identity and readable and editable only by its owner. Self-service editing covers `FullName` and `DisplayName` and
@@ -559,8 +563,34 @@ This protocol is independent from the reference repository's workflow and preser
   ciphertext of the canonical `country|type|number` tuple plus one keyed, versioned fingerprint row per retained key
   version; the plaintext leaves the protector at exactly two named seams and reaches no log, audit record, outbox
   payload, Problem Details body, OpenAPI example or response. The owner sees only a masked status, no route outside
-  the owner's own resolves a `PersonProfile` or an `IdentityDocument`, and correcting a recorded document requires a
-  separately authorized verified process this slice does not build, so that capability is absent rather than failing.
+  the owner's own resolves a `PersonProfile` or an `IdentityDocument`, and a recorded document is never edited in
+  place — not by its owner, not by an operator acting alone — but only corrected through IA-REQ-058, which exists
+  before real personal data is enabled rather than after it.
+- **IA-REQ-058 (proposed):** a recorded documentary identity is corrected only by a verified two-party process, and
+  the two parties are the owner and a Platform operator holding an external case reference. The owner opens a dispute
+  over their own document at `POST /api/identity/profile/document/disputes` — authenticated, confirmed,
+  `identity.document.dispute`, `RequiresTenant=false`, antiforgery, plus a live C4 proof for action
+  `identity.document.dispute` — with `OpenDocumentDisputeRequest { claimedCountry, claimedType, claimedNumber,
+  reasonCode }`, whose claimed tuple is protected on arrival exactly like the recorded one and is never echoed,
+  logged, audited, returned or written into an outbox payload; the answer is `201` carrying an opaque `disputeId`,
+  `409` `document_dispute_conflict` when one is already open, `401` `recent_proof_required`, and `404`
+  `personal_profile_not_found` when this identity records no document. A Platform operator resolves it at
+  `POST /api/platform/identities/{identityId}/document-disputes/{disputeId}/resolve` —
+  `platform.identities.documents.resolve`, an active `Platform` tenant, recent MFA step-up and antiforgery — with
+  `ResolveDocumentDisputeRequest { outcome, evidenceReference }`, `outcome` from the closed set `corrected` and
+  `rejected` and `evidenceReference` matching `^[A-Za-z0-9._:-]{1,64}$` (**product default** on the 64), carrying no
+  free text and no personal data and naming a case held outside this system. No route writes a document without a
+  stored dispute, and an operator may not resolve a dispute whose subject is their own identity (`403`
+  `self_resolution_refused`): those two absences are what "no support bypass" means here. A `corrected` resolution
+  replaces the ciphertext and every retained fingerprint row in one transaction under the same uniqueness that refuses
+  a duplicate at creation — answering the operator `409` `document_already_recorded` when the claimed tuple belongs to
+  another identity, a fact an audited, MFA-proved operator may be told and no self-service caller ever is — and writes
+  an append-only `IdentityDocumentCorrectionRecord { RecordId, SubjectIdentityId, DisputeId, ResolvedAt,
+  ResolvedByMembershipId, EvidenceReference, PreviousKeyVersions }` holding no document value. At most one dispute per
+  identity is open at a time, and the owner's own `PersonalProfileResponse` reports `document.correctionAvailable`
+  `false` while one is open and `true` otherwise — their own data, saying nothing about anyone else. A dispute changes
+  nothing about access: the account keeps signing in, the `Personal` tenant keeps working, and the recorded document
+  keeps its value until a resolution commits.
 
 | Caller | Personal state | `GET /api/identity/profile` | `PUT /api/identity/profile` | Can read the document number |
 |---|---|---|---|---|
@@ -577,29 +607,46 @@ This protocol is independent from the reference repository's workflow and preser
 | Contended write | Winner | Loser's answer |
 |---|---|---|
 | Two profile edits on one row | the first to commit, through a conditional update against the `xmin` row version echoed as the opaque `version` | `409` `personal_profile_concurrency_conflict`; no field is written — no merge, no partial write. The additive `PersonalIdentity` migration creates `PersonProfiles` (PK `IdentityId`, `FullName` varchar 200, `DisplayName` varchar 60, `CreatedAt`, `UpdatedAt`, shadow `xmin` `Version`), `IdentityDocuments` (PK `IdentityId`, `Country` `CHECK = 'AR'`, `DocumentType` `CHECK = 'DNI'`, `Ciphertext`, `RecordedAt`, `PurgedAt`, `Version`; no `DigitCount`) and `IdentityDocumentFingerprints` (PK `(IdentityId, KeyVersion)`, `Fingerprint` varchar(64) = `"k" + KeyVersion + ":v1:" + Base64(HMACSHA256(fingerprintKey[KeyVersion], canonical tuple))` under a format `CHECK`), one fingerprint row per retained key version, backfilled before that version becomes the insert version. |
-| Two identities recording the same normalized document at Personal creation | the first to commit, through `UX_IdentityDocumentFingerprints_Fingerprint` | **Gap:** what the loser is told is a security decision owned by C1/Task 19 and is settled in no fragment; any answer distinguishing "already recorded" is a documentary-identity oracle parallel to the CUIT oracle IA-REQ-003 closes. |
+| Two identities recording the same normalized document at Personal creation | the first to commit, through `UX_IdentityDocumentFingerprints_Fingerprint` | `409` `personal_registration_conflict` — the one code every refused `Personal` claim receives, whatever refused it: this identity already owns a `Personal` tenant, the document is already recorded, or the claim exceeded its budget. No field, header or status distinguishes them, and IA-REQ-058's dispute route is offered from the profile screen unconditionally rather than from this response, so the answer never says which case occurred. Claims are bounded by C7's `ISharedAttemptBudget` under scope `personal.document.claim`, 3 per identity per 24 hours (**product default**), and every refusal is audited. **Residual, named rather than hidden:** a person spending one of those three attempts still learns that the number they typed is recorded somewhere. It is bounded, costed — each identity costs a confirmed address — and audited, but it is not closed; accepting it belongs to the G2 real-personal-data gate, not to this decision. |
 
 - **Permissions.** `identity.profile.read`, `identity.profile.manage` (PROPOSED, application-scoped,
   `RequiresTenant=false`, in `ApplicationScopedCodes` and `SelfServiceCodes`, never in `Permissions.Catalog`);
   `identity.context.read`, `platform.identities.read` (tenant-scoped `Platform`) and `members.read` (tenant-scoped
-  `Organization`) EXIST, unchanged and not widened; `identity.document.correct` is declined.
+  `Organization`) EXIST, unchanged and not widened. IA-REQ-058 adds `identity.document.dispute` (PROPOSED,
+  application-scoped self-service, in `ApplicationScopedCodes` and `SelfServiceCodes`) and
+  `platform.identities.documents.resolve` (PROPOSED, tenant-scoped `Platform`, in `Permissions.Catalog`, implied by
+  neither `platform.identities.read` nor C6's `platform.identities.manage`). A permission that would let anybody write
+  a document value directly is still declined, and `PUT /api/identity/profile` still refuses every document member
+  with `profile_field_not_editable`.
 - **Audit and outbox (proposed).** One event, `identity.profile.updated`, written only when a field actually changed,
   with `code = identity.profile.updated`, `outcome` from the closed set `full-name`, `display-name`,
   `full-name.display-name`, the owner as actor, the current `SessionId`, `TenantId` null, inside the update
-  transaction; a refused or no-op edit writes none. **Outbox: none.**
+  transaction; a refused or no-op edit writes none. IA-REQ-058 adds `identity.document.dispute.opened` (`opened`),
+  `identity.document.dispute.resolved` (`corrected`, `rejected`), `identity.document.dispute.refused`
+  (`already_open`, `self_resolution`, `already_recorded`, `proof_stale`) and `personal.document.claim.refused`
+  (`conflict`), each carrying identifiers only — never a document value, a claimed value or a fingerprint — with the
+  resolution events also carrying the `Platform` tenant id and the resolving membership. **Outbox:**
+  `identity.document.dispute.resolved.notice.requested`, tokenless, telling the owner their dispute was decided.
 - **Amends.** Extends IA-REQ-026, whose list omits profile changes, and changes the meaning of section 7,
   where `GET /api/identity/context` now prefers `PersonProfile.DisplayName` over the email it returns today;
-  it adds no exception to IA-REQ-044 and must not increment `Tenant.AuthorizationVersion`.
-- **Note — fragments disagree.** C7 puts documentary uniqueness in a partial index on `IdentityDocuments` and calls
-  the ciphertext `ProtectedNumber`; C3's child-table `UNIQUE` and `Ciphertext` are kept as more restrictive.
-- **Consumed by** Tasks 19 and 20, and the data contracts in Tasks 26 and 27.
+  it adds no exception to IA-REQ-044 and must not increment `Tenant.AuthorizationVersion`. IA-REQ-058 adds the
+  stable codes `document_dispute_conflict`, `self_resolution_refused`, `document_already_recorded` and
+  `personal_registration_conflict`, the last of which is deliberately shared by every reason a `Personal` claim can
+  be refused; none of them widens IA-REQ-030's `401`/`403`/`404` meanings.
+- **Reconciled with C7.** C7's fragment put documentary uniqueness in a partial index on `IdentityDocuments` and
+  called the ciphertext `ProtectedNumber`. Decided: C3's child-table `UNIQUE` and `Ciphertext` stand, because one
+  partial index cannot hold two retained key versions; C7's spelling and index are withdrawn, and 14.7 says so.
+- **Consumed by** Tasks 19 and 20, and the data contracts in Tasks 26 and 27. IA-REQ-058's owner half lands with
+  Task 19's document capture; its operator half and the correction record belong to Task 26.
 
 ### 14.4 C4 — Recent identity proof, password recovery, and provider linking with a two-part callback carve-out
 
-> **Amendments A2 and A3 required before this entry is put forward again.** The callback table must not refuse an
-> authenticated, confirmed identity that explicitly links its own provider account with consent and a live proof
-> merely because the provider address matches its own; automatic linking is what BR-ID-005/006 forbid. Recovery
-> must be reconciled with 14.6 on one route name and one answer per account state.
+> **Amended 2026-09-06 (A2, A3); still proposed, still undecided.** Automatic linking and explicit linking are now
+> separate rows: a `Login` is still refused when an unlinked subject's address already belongs to a local identity,
+> and a `Link` by a confirmed, authenticated identity whose own address is the match is now explicitly allowed — that
+> is the ordinary case, not the forbidden one. Recovery is reconciled with 14.6: two purposes, two route pairs, one
+> stated answer per account state, a `Recovery` OIDC purpose that needs no session, and a reset that never lifts a
+> suspension and never skips a second factor.
 
 - **IA-REQ-051 (proposed):** a sensitive self-service change requires a recent identity proof: a single-use
   server-side record bound to one identity, one `UserSession`, one action and the identity's security version at
@@ -612,9 +659,16 @@ This protocol is independent from the reference repository's workflow and preser
   (C5), `identity.lifecycle` and `platform.mfa.recover` (C6); Platform step-up stays separately session-bound and
   neither proof satisfies the other.
 - **IA-REQ-052 (proposed):** an identity may hold at most one link per external provider, established only by explicit
-  consent plus a recent primary proof, a confirmed identity and a provider-verified email. `Login`, `Link` and `Proof`
-  purposes live in server-side state and never cross; a provider identity is never auto-linked by a matching email
-  address (BR-ID-005/006); no unlink may leave an identity without a usable authenticator. The provider callback is
+  consent plus a recent primary proof, a confirmed identity and a provider-verified email. `Login`, `Link`, `Proof`
+  and `Recovery` purposes live in server-side state and never cross; a provider identity is never auto-linked by a
+  matching email address (BR-ID-005/006) — and an authenticated, confirmed identity that links its own provider
+  account with consent and a live proof is not auto-linking, so it is never refused merely because the provider's
+  verified address is the one it already owns; no unlink may leave an identity without a usable authenticator.
+  `Recovery` is the one purpose bound to no session, because it exists for a person who cannot obtain one: it is
+  started publicly against a pending 14.6 reactivation ticket — the only ticket that asks for a current
+  authenticator rather than mailbox control alone — and completing it proves only that the caller controls a
+  provider subject already linked to the identity that ticket names. It issues no session and no cookie, grants no `RecentIdentityProof`, satisfies no other action, and is
+  consumed by the one ticket it was started for. The provider callback is
   the one documented exception to IA-REQ-022 and section 8 and to the rule that a usable token never travels in a URL
   query string; it performs no business mutation, and the validations replacing the origin check are one-use
   purpose-bound `state` (10 minutes, **product default**), the framework correlation cookie (`Secure`, `HttpOnly`,
@@ -623,24 +677,28 @@ This protocol is independent from the reference repository's workflow and preser
 
 | Purpose | Caller and provider state at `POST /api/identity/external/complete` | Effect | Response |
 |---|---|---|---|
-| any | handoff record missing, expired, consumed or purpose-mismatched; `email_verified = false`; a `Login` whose linked identity is unconfirmed (IA-REQ-020) or disabled; or a `Proof` whose subject matches no link on this identity | none | `400` `invalid_external_login` |
+| any | handoff record missing, expired, consumed or purpose-mismatched; `email_verified = false`; a `Login` whose linked identity is unconfirmed (IA-REQ-020) or disabled; a `Proof` whose subject matches no link on this identity; or a `Recovery` whose ticket is spent, expired or terminal, or whose named identity holds no link for this provider | none | `400` `invalid_external_login` |
 | `Login` | verified, subject already linked, identity active and email-confirmed | issue session through `SessionIssuer` (C2 cap applies); rotate the antiforgery pair; audit `session.created`, `identity.external.login.succeeded` | `204` + session cookie |
 | `Login` | verified, subject not linked, no local identity for that email | create the identity with `EmailConfirmed = true` from the provider assertion, no password, no tenant, no membership; create the link; issue the session; audit `identity.created`, `identity.external.linked`, `session.created` | `204` + session cookie |
-| `Login` or `Link` | verified, an unlinked subject whose email already belongs to a local identity, or a subject owned by another identity | none — no link, no session, no identity (BR-ID-005/006) | `409` `external_login_conflict` |
-| `Link` | authenticated but unconfirmed (IA-REQ-005); or confirmed + live proof for `external.link` + consent with `email_verified = false`; or confirmed + proof + consent, verified, subject unowned and no link for this provider | nothing in the first two; in the third, create the link, consume the proof, increment the security version, revoke the identity's other sessions, audit `identity.external.linked`, notify | `403` `email_confirmation_required`; `400` `invalid_external_login`; `204` |
+| `Login` | verified, an unlinked subject whose email already belongs to a local identity | none — no link, no session, no identity: BR-ID-005/006 forbid linking a provider identity **automatically** on a matching address, and an unattended `Login` is exactly that path | `409` `external_login_conflict` |
+| `Login` or `Link` | verified, a subject already owned by another identity | none | `409` `external_login_conflict` |
+| `Link` | verified, subject unowned, but the provider's verified address belongs to a **different** local identity than the caller's | none — linking would give this identity a sign-in path carrying somebody else's address | `409` `external_login_conflict` |
+| `Link` | authenticated but unconfirmed (IA-REQ-005); or confirmed + live proof for `external.link` + consent with `email_verified = false`; or confirmed + proof + consent, verified, subject unowned and no link for this provider — **including, and most commonly, when the provider's verified address is this identity's own**, which is explicit linking by the person who owns both sides and is not what BR-ID-005/006 forbid | nothing in the first two; in the third, create the link, consume the proof, increment the security version, revoke the identity's other sessions, audit `identity.external.linked`, notify | `403` `email_confirmation_required`; `400` `invalid_external_login`; `204` |
 | `Link` | same, subject already linked to this identity | none, idempotent | `204` |
 | `Link` | same, subject unowned, identity already has a different link for this provider | none | `409` `provider_already_linked` |
 | `Link` | proof expired, consumed or bound to another session or action; or anonymous, the starting session being gone | none | `401` `recent_proof_required`; `401` `authentication_required` respectively |
 | `Proof` | authenticated + confirmed, provider already linked to this identity, subject matches that link | issue a `RecentIdentityProof` with `Method = ExternalProvider` for the action named in the handoff record | `204` |
+| `Recovery` | anonymous or authenticated; a live handoff whose ticket is still pending, whose identity holds a link for this provider, and whose subject matches that link | mark that one ticket's provider proof satisfied — no session, no cookie, no `RecentIdentityProof`, no lifecycle change | `204` |
 
 | Method and route | Access | Primary result |
 |---|---|---|
-| `POST /api/identity/credentials/reauthenticate`; `PUT /api/identity/credentials/password` | both authenticated + antiforgery, `RequiresTenant=false`, `identity.credentials.manage`; `ReauthenticateCommand { action, password }` and `ChangePasswordCommand { newPassword }` — no `currentPassword` field exists anywhere — both `ISensitiveRequest`, the change additionally requiring a live proof | bodyless `204`; `400` `invalid_credential_proof` for a wrong password or unknown action; `403` `email_confirmation_required`; `429` `rate_limit_exceeded` + `Retry-After`. The change answers bodyless `204` plus a rotated session cookie and antiforgery pair, `401` `recent_proof_required`, `409` `session_concurrency_conflict` |
+| `POST /api/identity/credentials/reauthenticate`; `PUT /api/identity/credentials/password` | both authenticated + antiforgery, `RequiresTenant=false`, `identity.credentials.manage`; `ReauthenticateCommand { action, password }` and `ChangePasswordCommand { newPassword }` — no `currentPassword` field exists anywhere — both `ISensitiveRequest`, the change additionally requiring a live proof | bodyless `204`; `400` `invalid_credential_proof` for a wrong password or unknown action; `403` `email_confirmation_required`; `429` `rate_limit_exceeded` + `Retry-After` for an exhausted budget and `503` `service_unavailable` + `Retry-After` when the shared budget store is unreachable (IA-REQ-057). The change answers bodyless `204` plus a rotated session cookie and antiforgery pair, `401` `recent_proof_required`, `409` `session_concurrency_conflict` |
 | `GET /api/identity/credentials`; `GET /api/identity/external` | Authenticated + `identity.credentials.manage` / `identity.external.manage` | `200` `{ hasPassword, passwordUpdatedAt }`; `200` `{ items: [{ handle, provider, providerEmail, linkedAt }] }` with no envelope, `handle` opaque and no provider token, claim set or profile payload |
-| `POST /api/identity/credentials/password/recovery`; `POST /api/identity/credentials/password/reset` | both public + antiforgery, `IPublicRequest`; recovery rate-limited with `RequestPasswordRecoveryCommand { email }`, reset carrying the fragment token with `ResetPasswordCommand { token, newPassword }`, `ISensitiveRequest` | recovery: neutral bodyless `202` for every valid state, `400` `antiforgery_validation_failed`, `429` `rate_limit_exceeded` + `Retry-After` on the caller budget only and never on the per-address budget. Reset: bodyless `204`, `400` `invalid_credential_token` for unknown, expired, consumed, superseded or wrong-purpose, `400` `validation_failed` with field-indexed errors for `PasswordOptions` |
+| `POST /api/identity/credentials/password/recovery`; `POST /api/identity/credentials/password/reset` | both public + antiforgery, `IPublicRequest`; recovery rate-limited with `RequestPasswordRecoveryCommand { email }`, reset carrying the fragment token with `ResetPasswordCommand { token, newPassword }`, `ISensitiveRequest` | recovery: neutral bodyless `202` for every valid request and every account state, `400` `antiforgery_validation_failed`, `429` `rate_limit_exceeded` + `Retry-After` on the caller budget only and never on the per-address budget, and `503` `service_unavailable` + `Retry-After` when the shared budget store is unreachable (IA-REQ-057). What is enqueued behind that one answer is fixed by account state and is stated once, here and in 14.6: `PendingConfirmation`, `Active`, `SelfDeactivated` and `AdministrativelySuspended` each enqueue a reset token; `Closed` enqueues nothing. Reset: bodyless `204`, `400` `invalid_credential_token` for unknown, expired, consumed, superseded or wrong-purpose, `400` `validation_failed` with field-indexed errors for `PasswordOptions`. A completed reset changes the password, increments the security version, revokes every session and issues none — and it changes no lifecycle state, so a suspended account is still suspended and a self-deactivated one is still deactivated; it never sets `LastVerifiedAt`, never marks a session as having proved a second factor and never removes a `PlatformMfaEnrollment`, so the next sign-in meets exactly the gates it met before |
+| `POST /api/identity/external/{provider}/recovery/start` | Public + antiforgery, `IPublicRequest`, rate-limited; `StartExternalRecoveryCommand { ticket }`, the ticket being the fragment-delivered 14.6 reactivation token, hash-compared and never echoed | `200` `{ authorizationRequestUri }`, `Cache-Control: no-store`, for a live ticket whose identity holds a link for that provider; `400` `invalid_credential_token` for every other case, worded identically so the route reveals nothing about the ticket, the identity or its links; `429` `rate_limit_exceeded` + `Retry-After`; `503` `service_unavailable` + `Retry-After` when the shared budget store is unreachable |
 | `POST /api/identity/external/{provider}/login/start`, `/link/start`, `/proof/start` | login public + antiforgery (`IPublicRequest`); link authenticated + antiforgery + proof + `StartExternalLinkCommand { consent: true }` + `identity.external.manage`; proof authenticated + antiforgery + `StartExternalProofCommand { action }` + `identity.credentials.manage`; all `RequiresTenant=false` | `200` `{ authorizationRequestUri }`, `Cache-Control: no-store`; `401` `recent_proof_required` on link; `404` `not_found` on proof when this identity has no link for that provider |
-| `/api/identity/external/{provider}/callback` | The carve-out: no `Origin`, no antiforgery, no Application request sent | `302` to an allowlisted local path carrying at most one closed-set outcome slug (`linked`, `signed_in`, `proved`, `onboarding_required`, `link_required`, `refused`), plus the framework external-scheme handoff cookie (2 minutes, **product default**) |
-| `POST /api/identity/external/complete` | Same-origin + antiforgery + handoff cookie; no body fields; three requests selected by the record's purpose — `CompleteExternalLoginCommand` (`IPublicRequest`), `CompleteExternalLinkCommand` and `CompleteExternalProofCommand` (both `[Authorize(..., requiresTenant: false)]`) | per the caller/state table above |
+| `/api/identity/external/{provider}/callback` | The carve-out: no `Origin`, no antiforgery, no Application request sent | `302` to an allowlisted local path carrying at most one closed-set outcome slug (`linked`, `signed_in`, `proved`, `recovered`, `onboarding_required`, `link_required`, `refused`), plus the framework external-scheme handoff cookie (2 minutes, **product default**) |
+| `POST /api/identity/external/complete` | Same-origin + antiforgery + handoff cookie; no body fields; four requests selected by the record's purpose — `CompleteExternalLoginCommand` and `CompleteExternalRecoveryCommand` (both `IPublicRequest`), `CompleteExternalLinkCommand` and `CompleteExternalProofCommand` (both `[Authorize(..., requiresTenant: false)]`) | per the caller/state table above |
 | `DELETE /api/identity/external/{provider}` | Authenticated + antiforgery + proof, `RequiresTenant=false`, `identity.external.manage` | bodyless `204`; `409` `last_authenticator_required`; `401` `recent_proof_required`; `404` `not_found` |
 
 | Contended write | Winner | Loser's answer |
@@ -660,7 +718,8 @@ This protocol is independent from the reference repository's workflow and preser
 - **Audit and outbox (proposed).** Audit `identity.proof.issued`, `.consumed`, `.refused`,
   `identity.password.recovery.requested`, `identity.password.reset`, `identity.password.changed`,
   `identity.external.login.started`, `.callback.refused`, `.login.succeeded`, `.login.refused`,
-  `identity.external.linked`, `.link.refused`, `identity.external.unlinked`; refusals collapse into allowlisted
+  `identity.external.linked`, `.link.refused`, `identity.external.unlinked`, `identity.external.recovery.started`
+  and `.recovery.completed`; refusals collapse into allowlisted
   `email_unverified`, `subject_owned_elsewhere`, `local_email_exists`, `provider_already_linked`, `purpose_mismatch`,
   `state_invalid`, `proof_stale`, `session_revoked`, `superseded`, `last_authenticator`, `email_unconfirmed`. Outbox
   `identity.password.recovery.requested` (the only one with an `OutboxSecret`), `identity.password.changed.notified`,
@@ -670,8 +729,11 @@ This protocol is independent from the reference repository's workflow and preser
   provider `email_verified = true` establishes local `EmailConfirmed` only for an identity created by that sign-in;
   IA-REQ-030 gains `recent_proof_required`; IA-REQ-035 is amended where a spent proof or token maps to `401`/`400`;
   section 6's neutrality sentence is amended; and section 5 gains `RecentIdentityProof`, `IdentitySecurityState`,
-  `PasswordResetRequest`, `ExternalLoginLink` and `ExternalAuthorizationRequest`.
-- **Consumed by** Tasks 21, 22 and 23, and the recovery portion of Task 26.
+  `PasswordResetRequest`, `ExternalLoginLink` and `ExternalAuthorizationRequest`. Amendment A3 adds the `Recovery`
+  purpose, which is what gives a provider-only identity a way back without the session it cannot obtain, and pins the
+  per-state recovery answer that 14.6 repeats rather than restates differently.
+- **Consumed by** Tasks 21, 22 and 23, and the recovery portion of Task 26. Its `Recovery` purpose is also what
+  14.6's reactivation route depends on, so C6 cannot be implemented without this half of C4.
 
 ### 14.5 C5 — Delegated Organization administration
 
@@ -732,23 +794,27 @@ This protocol is independent from the reference repository's workflow and preser
 - **Amends.** Replaces IA-REQ-047's closing deferred-control clause: a widened role no longer reaches acceptance, the
   widening cancelling every pending offer referencing it while a delivered token is refused on status as `400`
   `invalid_invitation`. The bounded `limit`/`cursor` shape on `/api/tenants/*` amends IA-REQ-038 and IA-REQ-045.
-- **Note — fragments disagree.** C6 names the same refusal `tenant_last_administrator` and adds an `expectedStatus`
-  precondition plus a recent C4 proof on the membership routes; C5 owns the definition, so
-  `last_administrator_required` and the echoed `version` are kept, with C6's proof requirement.
+- **Reconciled with C6.** C6 named the same refusal `tenant_last_administrator` and added an `expectedStatus`
+  precondition plus a recent C4 proof on the membership routes. Decided: C5 owns the definition, so
+  `last_administrator_required` and the echoed `version` stand and C6's second spelling is withdrawn; C6's
+  `expectedStatus` precondition and proof requirement are kept, because they narrow rather than contradict.
 - **Consumed by** Tasks 24 and 25.
 
 ### 14.6 C6 — Finite identity and membership lifecycle, and a fail-closed restore admission guard
 
-> **Amendments A3 and A4 required before this entry is put forward again.** The provider-only return path must be
-> defined rather than left as a disagreement, recovering a credential must not lift an administrative suspension
-> or skip a second factor, and a legal hold must stop erasure without suspending an account or blocking
-> reactivation as a side effect.
+> **Amended 2026-09-06 (A3, A4); still proposed, still undecided.** The provider-only return path is now defined
+> and lives in C4 as the `Recovery` purpose, which binds to a ticket rather than to a session. Recovering a
+> credential no longer touches lifecycle: a reset leaves a suspension standing and leaves every second factor in
+> place. And a legal hold has left the state table entirely — it stops erasure, it does not stop access.
 
 - **IA-REQ-054 (proposed):** identity account state and tenant membership state are finite, explicit, and the only
   source of the "active identity" condition IA-REQ-020 already states. Every transition is a conditional mutation,
   is audited, and either commits with its session, token and outbox effects or commits none of them. Every
   non-terminal disabled state has a named actor, a named proof and a named endpoint; a terminal state has none and
-  says so.
+  says so. Retention is not lifecycle: a legal hold stops erasure and nothing else, is never an account state, never
+  refuses a sign-in and never blocks a reactivation (amendment A4). Recovering a credential is not lifecycle either:
+  a completed password reset or provider recovery changes what the person can prove, never what their account is
+  allowed to do, so it lifts no administrative suspension and skips no second factor that would otherwise apply.
 - **IA-REQ-055 (proposed):** a restored deployment admits no public ingress, issues no session, accepts no restored
   session or one-time token and dispatches no outbox delivery until an operator-controlled admission record held
   outside the restored database is verified against an operator-held key supplied by environment configuration.
@@ -763,14 +829,26 @@ This protocol is independent from the reference repository's workflow and preser
 | `SelfDeactivated` (proposed) | the person parked their own account | no | `Active`, by the person |
 | `AdministrativelySuspended` (proposed **rename** of the existing `Suspended`) | a Platform operator stopped the account, under closed-set `IdentitySuspensionReason` `PolicyViolation`, `SecurityIncident`, `BillingHold`, `OperatorRequest`, recorded only in audit | no | `PendingConfirmation`, `Active` or `SelfDeactivated`, by a Platform operator |
 | `Closed` (proposed) | erasure executed; terminal tombstone | never | `SelfDeactivated`, `AdministrativelySuspended` |
-| `LegalHoldAt` (proposed marker, not a state) | blocks every purge and every reactivation while set | — | **Gap:** C6 proposes no actor, permission or endpoint that sets or clears it — that belongs to C7 — so every branch reading it is unreachable |
+
+**A legal hold is not one of these states and no longer appears in this table (A4).** It is C7's `RetentionLegalHold`
+record, placed and released by an operator holding `platform.retention.manage` under an active `Platform` tenant, a
+recent MFA step-up and antiforgery — the actor, permission and endpoint this entry previously left unnamed. Its only
+effect is to stop erasure: a held subject is skipped by every purge, and because `Closed` is reached only by an
+executed erasure, a hold keeps that transition from happening at all — there is no close route for it to refuse. It
+suspends nobody, refuses no sign-in, blocks no reactivation and takes part in no authorization decision.
+
+**The three disabled cases, named once so nothing else has to say "case (a)".** (a) `SelfDeactivated`: the person
+returns through the public reactivation pair below, proving a current authenticator — their password, or a provider
+through C4's `Recovery` purpose, which needs no session. (b) `AdministrativelySuspended`: only a Platform operator
+lifts it; no self-service route reaches it, and recovering a credential does not touch it. (c) `Closed`: terminal,
+with no way back, which is what a tombstone means.
 
 | Method and route | Access | Primary result |
 |---|---|---|
 | `POST /api/identity/account/deactivate` | Authenticated + `identity.account.manage`, `RequiresTenant=false` + antiforgery + recent C4 primary proof; `DeactivateAccountRequest { proofToken }` | bodyless `204`, revoking every persisted session, consuming C4 proofs, incrementing the security version, clearing `LastVerifiedAt`/`LastVerifiedSessionId` and terminalizing token-bearing intents over this identity's own credentials, while memberships and invitations addressed to its email stay untouched; `409` `identity_concurrency_conflict`; `409` `platform_last_owner`; `409` `last_administrator_required` (defined by C5) |
-| `POST /api/identity/account/reactivation-requests`; `POST /api/identity/account/reactivate` | both `IPublicRequest` + antiforgery + rate limit; `RequestAccountReactivationRequest { email }`; `ReactivateAccountRequest { reactivationToken, password?, providerProofToken? }`, exactly one of the last two, the token single-use, hash-compared, 30 minutes **(product default)**, superseded on reissue | neutral bodyless `202` for every valid state, only a `SelfDeactivated` identity enqueuing anything; then bodyless `204` with no session and no cookie; `400` `invalid_reactivation` for a bad, spent, expired or terminal-state token and for a failed proof, worded identically; `400` `antiforgery_validation_failed`; `429` `rate_limit_exceeded` + `Retry-After` |
+| `POST /api/identity/account/reactivation-requests`; `POST /api/identity/account/reactivate` | both `IPublicRequest` + antiforgery + rate limit; `RequestAccountReactivationRequest { email }`; `ReactivateAccountRequest { reactivationToken, password?, providerProofToken? }`, exactly one of the last two, the token single-use, hash-compared, 30 minutes **(product default)**, superseded on reissue; `providerProofToken` is the single-use handle returned by completing a C4 `Recovery` handoff started from this same reactivation ticket, which is how an identity that only ever signs in through a provider proves a current authenticator without the session it is being denied | neutral bodyless `202` for every valid request and every account state, only a `SelfDeactivated` identity enqueuing anything; then bodyless `204` with no session and no cookie, restoring the pre-disable state and never lifting an administrative suspension — a suspended or `Closed` identity has no self-service way back and this route does not become one; `400` `invalid_reactivation` for a bad, spent, expired or terminal-state token and for a failed proof, worded identically; `400` `antiforgery_validation_failed`; `429` `rate_limit_exceeded` + `Retry-After`; `503` `service_unavailable` + `Retry-After` when the shared budget store is unreachable (IA-REQ-057) |
 | `POST /api/tenants/{tenantId}/members/{membershipId}/suspend`, `/reactivate` | `members.manage` (`Organization` only) + antiforgery + recent C4 proof; `SuspendMembershipRequest`/`ReactivateMembershipRequest { expectedStatus }` | bodyless `204`; `409` `membership_concurrency_conflict`; `409` `last_administrator_required` (defined by C5) |
-| `POST /api/platform/identities/{identityId}/suspend`, `/reactivate`; `POST /api/platform/mfa/recover` | the first pair needs `platform.identities.manage` + active Platform tenant + recent MFA step-up + antiforgery, with `SuspendIdentityRequest { reason, expectedStatus }` and `ReactivateIdentityRequest { expectedStatus, acknowledgeSelfDeactivation }`; recovery needs an authenticated confirmed identity + `platform.mfa.enroll` + antiforgery + fresh C4 proof + one unused `PlatformRecoveryCode` (`RecoverPlatformMfaRequest { recoveryCode, proofToken }`) and no active Platform tenant | bodyless `204`; `409` `identity_concurrency_conflict`; `403` `identity_reactivation_unavailable` for `Closed` or legal hold; `404` for an unknown identity id; `401` `recent_mfa_required`. Recovery answers `200` with the enrollment DTO shown once, the factor replaced in place on the single enrollment row by a proposed `Recover(...)` transition gated on `Status == Active` and a spent code, with no `Retired` status and no index change; `409` `platform_mfa_concurrency_conflict`; `429` `rate_limit_exceeded` + `Retry-After` on the same per-identity budget as `/verify` |
+| `POST /api/platform/identities/{identityId}/suspend`, `/reactivate`; `POST /api/platform/mfa/recover` | the first pair needs `platform.identities.manage` + active Platform tenant + recent MFA step-up + antiforgery, with `SuspendIdentityRequest { reason, expectedStatus }` and `ReactivateIdentityRequest { expectedStatus, acknowledgeSelfDeactivation }`; recovery needs an authenticated confirmed identity + `platform.mfa.enroll` + antiforgery + fresh C4 proof + one unused `PlatformRecoveryCode` (`RecoverPlatformMfaRequest { recoveryCode, proofToken }`) and no active Platform tenant | bodyless `204`; `409` `identity_concurrency_conflict`; `403` `identity_reactivation_unavailable` for `Closed` alone — a legal hold no longer blocks any reactivation (A4); `404` for an unknown identity id; `401` `recent_mfa_required`. Recovery answers `200` with the enrollment DTO shown once, the factor replaced in place on the single enrollment row by a proposed `Recover(...)` transition gated on `Status == Active` and a spent code, with no `Retired` status and no index change; `409` `platform_mfa_concurrency_conflict`; `429` `rate_limit_exceeded` + `Retry-After` on the same per-identity budget as `/verify`, and `503` `service_unavailable` + `Retry-After` when that shared store is unreachable (IA-REQ-057) |
 
 | Contended write | Winner | Loser's answer |
 |---|---|---|
@@ -799,16 +877,20 @@ This protocol is independent from the reference repository's workflow and preser
   non-`Active`, renames `IdentityAccountStatus.Suspended` (safe only while that enum has no persisted column and no
   reader), extends IA-REQ-042's last-owner rule to self-deactivation and administrative suspension under a new
   `platform_last_owner` code, and proposes that revocation write `MembershipStatus.Revoked` instead of `Suspend`,
-  existing rows reclassified only by an operator decision.
-- **Note — fragments disagree.** Case (a)'s provider alternative needs a third, non-session-bound OIDC purpose that
-  C4 as drafted does not contain; without it a provider-only identity has no self-service way back.
+  existing rows reclassified only by an operator decision. Amendment A4 removes the proposed `LegalHoldAt` marker
+  from this entry altogether: retention holds are C7's record and C7's endpoints, and no lifecycle branch reads them.
+- **Reconciled with C4 (A3).** Case (a)'s provider alternative needed an OIDC purpose bound to something other than
+  a session, which C4 as first drafted did not contain. Decided: C4 now defines `Recovery`, started publicly against
+  a pending ticket and consumed by it, issuing no session and granting no proof for anything else. A provider-only
+  identity therefore has a self-service way back, and C6 cannot be implemented before that half of C4.
 - **Consumed by** Tasks 26 and 27, and the production gate in Task 28.
 
 ### 14.7 C7 — Personal-data mode, retention and erasure evidence, and shared abuse-control state
 
-> **Amendments A4 and A5 required before this entry is put forward again.** Retaining data and blocking access are
-> separate; and an unavailable abuse-control store answers `503` `service_unavailable` with `Retry-After`, keeping
-> the refusal but not calling an outage "too many attempts".
+> **Amended 2026-09-06 (A4, A5); still proposed, still undecided.** A legal hold now stops erasure and nothing
+> else: it is defined here, it is placed and released here, and no lifecycle or authorization branch anywhere reads
+> it. An unavailable abuse-control store still refuses every attempt, and now says so honestly with `503`
+> `service_unavailable` and `Retry-After` instead of telling a person they tried too many times.
 
 - **IA-REQ-056 (proposed; numbered 048 in the C7 fragment):** the deployment holds exactly one personal-data mode, and
   the mode — never a caller, never a request field — determines what the system may do with the personal data it
@@ -818,13 +900,22 @@ This protocol is independent from the reference repository's workflow and preser
   `ApplicationUser`. A retention policy is configuration, never code, and contains no period, threshold or
   jurisdictional number; with none configured the system performs no destructive action in either mode. A purge erases
   ciphertext and keyed fingerprint, writes a durable non-audit erasure record and leaves a non-identifying tombstone,
-  so a purged number is reclaimable.
+  so a purged number is reclaimable. A legal hold is this entry's `RetentionLegalHold` record and this entry's two
+  endpoints, and its whole effect is to stop erasure: a held subject is skipped by every purge and therefore never
+  reaches C6's `Closed`, which only an executed erasure produces. It is not an account state, it
+  suspends nobody, it refuses no sign-in, it blocks no reactivation and no authorization decision reads it
+  (amendment A4). The document rows it protects are C3's: the child fingerprint table with
+  `UX_IdentityDocumentFingerprints_Fingerprint` and the `Ciphertext` column, this entry's earlier partial index on
+  `IdentityDocuments` and its `ProtectedNumber` spelling being withdrawn.
 - **IA-REQ-057 (proposed; numbered 049 in the C7 fragment):** every attempt budget that bounds guessing — login by
   client address, login by normalized account, Platform second-factor verification and step-up, and Platform bootstrap
   recovery — is held in shared PostgreSQL state, one budget across instances and restarts. The port is
-  `ISharedAttemptBudget`, the only adapter `PostgreSqlAttemptBudget` over the existing database; no new infrastructure
-  product is introduced. An unavailable store fails every budget closed, budget writes commit outside any business
-  transaction, and numerical budgets are product defaults recorded per environment.
+  `PostgreSqlAttemptBudget` over the existing database; no new infrastructure
+  product is introduced. An unavailable store fails every budget closed — no attempt is admitted — and the caller is
+  told what actually happened: `503` Problem Details `service_unavailable` with `Retry-After`, never `429`
+  `rate_limit_exceeded`, which stays reserved for a budget a caller really did exhaust (amendment A5). Every route
+  that names a budget carries both answers. Budget writes commit outside any business transaction, and numerical
+  budgets are product defaults recorded per environment.
 
 | Caller state | `GET .../retention/policy` | `POST .../retention/holds` | `DELETE .../retention/holds/{holdId}` |
 |---|---|---|---|
@@ -836,14 +927,14 @@ This protocol is independent from the reference repository's workflow and preser
 | Method and route | Access | Primary result |
 |---|---|---|
 | `GET /api/platform/retention/policy` | active Platform tenant + `platform.retention.read` + this session has proved the second factor | `200` `PlatformRetentionPolicyResponse { policyId, version, approvedOn, source, personalDataMode, activeHoldCount, categories[] { category, retentionPeriod, trigger, action, evidenceRequired } }`; `401` Problem Details `recent_mfa_required` when the session never proved a factor. The configured policy carries `PolicyId`, `Version`, `Owner`, `ApprovedOn`, `Source`, a `Category` from the closed set `PersonalProfileNames`, `PersonalIdentityDocument`, `SessionRecords`, `AuditEvents`, `OutboxMessages`, `OutboxSecrets`, `DeliveryEvidence`, `PlatformMfaMaterial`, a `RetentionPeriod` ISO-8601 duration with **no default and none proposed**, a `Trigger` of `RecordCreation`/`LastActivity`/`AccountClosure`, an `Action` of `Retain`/`Anonymise`/`Erase`, `EvidenceRequired`, `LegalHolds[]` of `{ HoldId, SubjectIdentityId, ReasonCode, Reference, PlacedAt, PlacedByMembershipId, ReleasedAt }` and declarative `BackupTreatment`; each purge writes an append-only `PersonalDataErasureRecord { RecordId, SubjectIdentityId, Category, PolicyId, PolicyVersion, ExecutedAt, AffectedRowCount }` with a `Restrict` FK in the destructive write's transaction, nulls ciphertext and fingerprint, stamps `PurgedAt`/`PurgePolicyId`/`PurgePolicyVersion` and terminalizes the subject's envelopes and unleased undelivered messages, a leased one still being deliverable. `PersonalDataReadiness : IHostedService` refuses to start on `Real` without `RetentionPolicy:PolicyId`/`Version`/`Owner`/`ApprovedOn`, on `Synthetic` holding a `Real`-classified row, and on `Synthetic` with `IdentityAccess:Deployment:ServesRealUsers=true`; a `Real` deployment with leftover `Synthetic` rows starts, those rows staying ineligible. `GET /api/identity/context` gains `personalData: { "mode": "Synthetic" }`. |
-| `POST /api/platform/retention/holds`; `DELETE /api/platform/retention/holds/{holdId}` | active Platform tenant + `platform.retention.manage` + recent MFA step-up + antiforgery; `PlatformRetentionHoldRequest { subjectIdentityId, reasonCode, reference }`, `reference` constrained to `^[A-Za-z0-9._:-]{1,64}$` **(product default on the 64)** | `201` `PlatformRetentionHoldResponse { holdId, subjectIdentityId, reasonCode, reference, placedAt, placedByMembershipId, releasedAt, version }` + `Location`; `409` `retention_hold_conflict` when an active hold with that subject and reason exists; `409` `retention_hold_subject_purged` when a purge committed first; `404` when the subject identity does not exist. Release is a bodyless `204`, idempotent for an already-released or unknown `holdId`, with no conflict status |
+| `POST /api/platform/retention/holds`; `DELETE /api/platform/retention/holds/{holdId}` | active Platform tenant + `platform.retention.manage` + recent MFA step-up + antiforgery; `PlatformRetentionHoldRequest { subjectIdentityId, reasonCode, reference }`, `reference` constrained to `^[A-Za-z0-9._:-]{1,64}$` **(product default on the 64)** | `201` `PlatformRetentionHoldResponse { holdId, subjectIdentityId, reasonCode, reference, placedAt, placedByMembershipId, releasedAt, version }` + `Location`; `409` `retention_hold_conflict` when an active hold with that subject and reason exists; `409` `retention_hold_subject_purged` when a purge committed first; `404` when the subject identity does not exist. Release is a bodyless `204`, idempotent for an already-released or unknown `holdId`, with no conflict status. Neither route changes the subject's account state, its sessions, its permissions or its ability to sign in: placing a hold stops the subject's rows being erased and does nothing else, and releasing one restores nothing but eligibility for erasure |
 
 | Contended write | Winner | Loser's answer |
 |---|---|---|
 | Two maintenance instances claim the same subject | the instance whose conditional claim affects one row; the claim is a lease (`PurgeLeaseOwner`, `PurgeLeaseExpiresAt`) taken like `OutboxDispatcher`'s five-minute lease, so a crashed instance's claim expires | the subject is skipped and stays reclaimable |
 | Hold placement racing a purge | whichever takes `SELECT … FOR UPDATE` on the subject's retention-eligible rows first | a winning hold makes the purge affect zero rows and the cycle records `reason=legal_hold`; a winning purge makes the hold answer `409` `retention_hold_subject_purged`. A hold cannot be made retroactive |
 | Two concurrent holds with the same subject and reason, and two concurrent releases of one hold | the partial unique index on `(SubjectIdentityId, ReasonCode) WHERE "ReleasedAt" IS NULL`; release is the conditional `UPDATE … SET "ReleasedAt" = @now WHERE "HoldId" = @id AND "ReleasedAt" IS NULL` | `409` `retention_hold_conflict` for the second hold; both releases receive `204`, the second affecting zero rows |
-| Parallel attempts at a budget threshold | the single `INSERT … ON CONFLICT ("Scope","KeyHash","WindowStart") DO UPDATE SET "Count" = "Count" + 1 WHERE "Count" < @budget RETURNING "Count"`, decided by PostgreSQL row locking | exactly the budget is admitted; every further caller receives `429` `rate_limit_exceeded` with `Retry-After` derived from the same row. `IdentityAttemptBudgets` holds `Scope`, `KeyHash`, `WindowStart`, `Count`, `ExpiresAt` under PK `(Scope, KeyHash, WindowStart)`; **product defaults** recorded per environment are client 20 per 5 minutes, account 10 per 15 minutes, MFA 5 per 15 minutes and bootstrap recovery 5 per 15 minutes, with a fixed `Retry-After: 30` when the store is unavailable, fixed windows keeping the inherited `2 × budget` boundary, and bootstrap recovery's key moving to the trusted forwarded-headers address. |
+| Parallel attempts at a budget threshold | the single `INSERT … ON CONFLICT ("Scope","KeyHash","WindowStart") DO UPDATE SET "Count" = "Count" + 1 WHERE "Count" < @budget RETURNING "Count"`, decided by PostgreSQL row locking | exactly the budget is admitted; every further caller receives `429` `rate_limit_exceeded` with `Retry-After` derived from the same row. `IdentityAttemptBudgets` holds `Scope`, `KeyHash`, `WindowStart`, `Count`, `ExpiresAt` under PK `(Scope, KeyHash, WindowStart)`; **product defaults** recorded per environment are client 20 per 5 minutes, account 10 per 15 minutes, MFA 5 per 15 minutes, bootstrap recovery 5 per 15 minutes and C3's `personal.document.claim` 3 per identity per 24 hours, with a fixed `Retry-After: 30` on the `503` an unreachable store produces, fixed windows keeping the inherited `2 × budget` boundary, and bootstrap recovery's key moving to the trusted forwarded-headers address. |
 
 - **Permissions.** `platform.retention.read`, `platform.retention.manage` (PROPOSED, tenant-scoped `Platform`, in
   `Permissions.Catalog` and in neither application-scoped set; manage does not imply read); `platform.identities.read`
@@ -857,7 +948,10 @@ This protocol is independent from the reference repository's workflow and preser
   worker events, a reserved non-impersonating system actor; individual denials are not audited. **Outbox: none.**
 - **Amends.** Extends IA-REQ-044's allowlist with the retention event types and the two hold DTOs while adding no
   metadata key, `AuditEvent` still admitting only `reason`, `code` and `outcome`, which is why erasure evidence is a
-  separate record; and amends IA-REQ-026, which requires an audit record for every sensitive denial.
+  separate record; and amends IA-REQ-026, which requires an audit record for every sensitive denial. Amendment A5
+  adds `service_unavailable` as a stable code — the first `503` any Application request produces — leaving
+  `rate_limit_exceeded` to mean only an exhausted budget; and amendment A4 removes the `LegalHoldAt` marker C6
+  proposed, this entry's `RetentionLegalHold` record being the only legal hold there is.
 - **Consumed by** Task 26's retention work, Task 27's budgets and Task 28's G1 local closure; G2 (real personal data)
   and G3 (production) stay blocked behind their own owners.
 

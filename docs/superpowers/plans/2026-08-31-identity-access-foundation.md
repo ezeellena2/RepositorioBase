@@ -10,7 +10,7 @@
 
 ---
 
-**Status:** Tasks 1–16 record the implemented Organization/Platform foundation and its historical checks. Their `Review` states and recorded limitations remain unchanged; implementation is not human acceptance or complete B2B/B2C coverage. Task 17 is partly taken: C1 was accepted on 2026-09-06, and [Task 18](#task-18-remove-the-registration-state-oracle-not-only-its-status-difference) is implemented and verified against real PostgreSQL on that approval alone. C2–C7 remain proposals — five of them carry required amendments (A1–A5, recorded in ADR-004) — so [Tasks 19–28](#continuation-to-local-b2bb2c-functional-completion) are still blocked on that decision. This continuation was planned against `d6d1b0ab5cf2b66ccff2828b471d7977f540a958`; no verification run is claimed for any task after 18.
+**Status:** Tasks 1–16 record the implemented Organization/Platform foundation and its historical checks. Their `Review` states and recorded limitations remain unchanged; implementation is not human acceptance or complete B2B/B2C coverage. Task 17 is partly taken: C1 was accepted on 2026-09-06, and [Task 18](#task-18-remove-the-registration-state-oracle-not-only-its-status-difference) is implemented and verified against real PostgreSQL on that approval alone. C2–C7 remain proposals: amendments A1–A5 were folded into C3, C4, C6 and C7 on 2026-09-06, so those entries are reconciled and carry no open gap, but none of them is accepted — [Tasks 19–28](#continuation-to-local-b2bb2c-functional-completion) are still blocked on that decision. This continuation was planned against `d6d1b0ab5cf2b66ccff2828b471d7977f540a958`; no verification run is claimed for any task after 18.
 
 ## First-increment Review Workload Forecast (historical)
 
@@ -1256,7 +1256,7 @@ IA-010, IA-011, IA-013, and IA-015 remain `Proposed` and unimplemented. Expandin
 
 ## Task 17: Approve the continuation contracts and reference scope
 
-**State (2026-09-06): partly taken, not complete.** The package was written into SPEC §14 and ADR-004. C1 was accepted and has left the proposal set; C2–C7 were not accepted, and C3/C4/C6/C7 carry required amendments A1–A5. This task closes only when those entries are re-presented amended and answered.
+**State (2026-09-06): partly taken, not complete.** The package was written into SPEC §14 and ADR-004. C1 was accepted and has left the proposal set; C2–C7 were not accepted. Amendments A1–A5 were folded into C3, C4, C6 and C7 on 2026-09-06, along with the two contradictions C2/C4 and C5/C6 carried, so every entry now states one contract. This task closes when those reconciled entries are answered.
 
 **Visible outcome:** one reviewable contract package makes the following implementation steps executable without repeated product-discovery rounds. This task is documentation and human approval, with no production code.
 

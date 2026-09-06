@@ -131,17 +131,19 @@ says `Not implemented` on purpose. Nothing here is coverage, and nothing here is
 decision, and it has not been taken. If an entry is declined or amended, only the tasks in its Consumers column
 change; the approved requirements above are unaffected except where a row says explicitly that it would amend one.
 
-One row is struck through: C1 was accepted and implemented, so IA-REQ-048 is no longer a proposal. The other nine
-remain proposals, and four of their entries carry required amendments (A1–A5 in the ADR decision record) that must
-land before those entries are put forward again.
+One row is struck through: C1 was accepted and implemented, so IA-REQ-048 is no longer a proposal. The other ten
+remain proposals. Amendments A1–A5 were folded into C3, C4, C6 and C7 on 2026-09-06, which added IA-REQ-058 and
+changed what IA-REQ-052, IA-REQ-054, IA-REQ-056 and IA-REQ-057 say; the Scope column below reflects the amended
+wording. None of that is a decision, and every row still reads `Not implemented`.
 
 | Proposed requirement | Decision entry | Scope | Would amend | Consumers | Planned evidence | Evidence |
 |---|---|---|---|---|---|---|
 | ~~IA-REQ-048~~ | C1 | **Accepted 2026-09-06 and implemented by Task 18.** It has left this table: its requirement is in SPEC §4 and its evidence is in the IA-REQ-003 and IA-REQ-004 rows above | — | — | — | Implemented |
 | IA-REQ-049 | C2 | bounded session coexistence, own-session list and revocation | IA-REQ-021, IA-REQ-023 | 21, 22, 23 | eviction and tie-break, serialized concurrent sign-in, revoke-one/others, cookie behaviour over real HTTP | Not implemented |
 | IA-REQ-050 | C3 | own profile and protected AR/DNI document | none (extends IA-REQ-002/044) | 19, 20; data contracts in 26/27 | mapping and constraint tests, masked projection, refusal to change the document through the ordinary edit | Not implemented |
+| IA-REQ-058 | C3, added by amendment A1 | verified two-party document correction and dispute, and one indistinguishable refusal for every rejected `Personal` claim | none (extends IA-REQ-026 with the dispute events) | 19 for the owner half, 26 for the operator half | dispute lifecycle and single-open-dispute rule, operator self-resolution refusal, correction atomicity across ciphertext and every retained fingerprint row, and a paired-claim test proving a duplicate document and an already-owned `Personal` are answered identically | Not implemented |
 | IA-REQ-051 | C4 | single-use recent proof for sensitive self-service actions | none (extends IA-REQ-019..025) | 21, 22; recovery parts of 26 | proof binding, single-use consumption, expiry, invalidation on credential change | Not implemented |
-| IA-REQ-052 | C4 | external provider sign-in and explicit linking | none (extends IA-REQ-022 for one callback route) | 23 | callback validation, no-auto-link, purpose crossing, last-authenticator refusal | Not implemented |
+| IA-REQ-052 | C4 | external provider sign-in, explicit linking, and (A2/A3) the `Recovery` purpose that binds to a ticket rather than a session | none (extends IA-REQ-022 for one callback route) | 23; the reactivation route in 26 | callback validation, no-auto-link, purpose crossing, last-authenticator refusal, an explicit self-link on a matching own address succeeding, and a provider-only identity returning with no session | Not implemented |
 | IA-REQ-053 | C5 | delegated Organization role and membership administration | IA-REQ-047 (closes its deferred note) | 24, 25 | delegation ceiling, last-effective-administrator, offer cancellation on widening, ownership transfer atomicity | Not implemented |
 | IA-REQ-054 | C6 | identity and membership lifecycle, including reactivation | IA-REQ-020 (states the disabled case explicitly) | 26 | each transition's actor and proof, reactivation without a session, terminal states refused | Not implemented |
 | IA-REQ-055 | C6 | fail-closed restore admission guard | none | 26, 27; gate in 28 | synthetic-evidence guard tests; the live gate is not closed by them | Not implemented |

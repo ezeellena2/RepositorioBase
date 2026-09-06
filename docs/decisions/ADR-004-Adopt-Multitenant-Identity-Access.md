@@ -3,7 +3,9 @@
 **Status:** Proposed  
 **Date:** 2026-08-31
 
-**Continuation decisions 18-24:** Decision 18 (C1) accepted 2026-09-06 and implemented by Task 18. Decisions 19-24
+**Continuation decisions 18-24:** Decision 18 (C1) accepted 2026-09-06 and implemented by Task 18. Amendments A1-A5
+were folded into decisions 20, 21, 23 and 24 and their SPEC entries on 2026-09-06; folding them in changes what is
+being asked, not whether it was answered. Decisions 19-24
 (C2-C7) remain proposed, five of them with required amendments recorded in the acceptance gate below.
 
 ## Context
@@ -77,8 +79,14 @@ A decision that is declined or amended blocks only the tasks that consume it.
     table, so a purge deletes those rows in the transaction that clears the ciphertext and a rotation carries the old
     and new value at once. The plaintext leaves the protector at exactly two named seams, the owner's own read and an
     offline rotation adapter with no route and no permission, and no Organization or Platform route resolves a profile
-    or document. Accept that a mistyped document stays uncorrectable until a separately authorized verified process
-    exists. Rejected: a partial index on one fingerprint column, which cannot hold two retained key versions.
+    or document. **Amended 2026-09-06 (A1):** correction is defined rather than deferred, as a two-party verified
+    process — the owner opens a dispute over their own document and can never write one; a Platform operator resolves
+    it under a distinct permission, a recent second factor and an external case reference, and may not resolve a
+    dispute whose subject is themselves. There is no route that writes a document without a stored dispute, which is
+    what "no support bypass" means. A duplicate document at Personal creation receives the same refusal every other
+    refused claim receives, under a small per-identity budget, and the residual it still leaks is named and left to
+    the real-personal-data gate rather than hidden. Rejected: a partial index on one fingerprint column, which cannot
+    hold two retained key versions; free editing of a recorded document; and an operator route that needs no dispute.
 
 21. **(Proposed.)** Make "prove it is still you" a single-use server-side artifact rather than a re-typed password or
     a trusted cookie: a recent identity proof binds one identity, one session, one action and the identity's security
@@ -86,12 +94,24 @@ A decision that is declined or amended blocks only the tasks that consume it.
     client, and is consumed by a conditional update that re-checks the bound session; a provider-only identity
     therefore needs its own proof start route, or the rule would demand a credential it cannot have. Every credential
     or authenticator change increments a Domain-owned security version that invalidates all outstanding proofs,
-    Identity's `SecurityStamp` still rotating but not being the authority. Adopt external providers through the
+    Identity's `SecurityStamp` still rotating but not being the authority. **Amended 2026-09-06 (A3):** that
+    provider-only proof route is not enough for someone who cannot sign in at all, so a fourth purpose, `Recovery`,
+    binds to a pending reactivation ticket instead of a session, issues nothing, and is consumed by that ticket
+    alone; and one recovery contract is stated once for both this decision and decision 23 — the neutral
+    answer never varies, what is enqueued is fixed per account state, and a completed reset revokes sessions and
+    changes a credential without lifting an administrative suspension or clearing a second factor.
+    Adopt external providers through the
     framework's OpenID Connect middleware with explicit linking only, and exempt the callback from two rules rather
     than one — exact-origin plus antiforgery, which a top-level cross-site GET cannot carry, and the
     no-token-in-a-query-string rule, which the authorization code breaks — as an allowlist of one path, narrow because
-    that callback mutates nothing. Rejected: treating an unexpired cookie as proof, and a current-password field a
-    provider-only identity can never fill.
+    that callback mutates nothing. **Amended 2026-09-06 (A2):** "explicit linking only" is now written as two
+    separate rules rather than one refusal. Refuse the automatic path — an unattended sign-in that would adopt a
+    local identity because the addresses match — and refuse any subject another identity already owns. Allow the
+    explicit path: a confirmed, authenticated person linking their own provider account with consent and a live
+    proof, which is the ordinary case and stays allowed precisely when the provider's verified address is their own.
+    A `Link` is still refused when the provider's address belongs to somebody else's local identity. Rejected:
+    treating an unexpired cookie as proof; a current-password field a provider-only identity can never fill; and one
+    conflict rule covering both linking paths, which refused the person the feature exists for.
 
 22. **(Proposed.)** Delegate `Organization` administration through the existing evaluator with one grant-time ceiling
     and one effective-administrator floor. An actor may cause an identity to hold only permissions the actor itself
@@ -109,11 +129,17 @@ A decision that is declined or amended blocks only the tasks that consume it.
 23. **(Proposed.)** Make identity and membership lifecycle finite, and give every non-terminal disabled state a
     reactivation path that does not require the session it denies. Account state becomes a closed set that renames the
     existing `Suspended` member rather than adding to it — safe only while that enum has no persisted column and no
-    reader — with a legal hold modelled as an orthogonal marker whose actor, permission and endpoint belong to
-    decision 24, so it is not a working control. Only `Active` satisfies IA-REQ-020, which makes any "sign in and then
+    reader. **Amended 2026-09-06 (A4):** a legal hold is not part of this decision at all. It is decision 24's record,
+    with decision 24's actor, permission and endpoints, and its whole effect is to stop erasure; it is never an
+    account state, never refuses a sign-in and never blocks a reactivation, so retaining data and blocking access stay
+    separate concerns. Only `Active` satisfies IA-REQ-020, which makes any "sign in and then
     reactivate" design circular; a person recovers instead through the public, neutral, rate-limited shape already
     built for bootstrap and password recovery, combined with a current authenticator, because mailbox control alone
-    already resets a password. Reactivation issues no session and restores the pre-disable state, and no transition
+    already resets a password. **Amended 2026-09-06 (A3):** that current authenticator is a password or decision 21's
+    `Recovery` purpose, which is what an identity that only ever signed in through a provider uses; the three disabled
+    cases are named once — self-deactivation returns by this public route, administrative suspension is lifted only by
+    an operator, and a closed account is a tombstone with no way back — and no credential recovery lifts a suspension
+    or skips a second factor. Reactivation issues no session and restores the pre-disable state, and no transition
     out of `Active` may strand a tenant without an effective administrator. Make restore admission fail closed against
     evidence the backup cannot contain: closed on every process start until an operator-controlled record held outside
     the restored database, verified against an operator-held key, advances the epoch — stored only at the release
@@ -131,10 +157,14 @@ A decision that is declined or amended blocks only the tasks that consume it.
     restore-admission gate produces no destructive action at all. A destructive write commits with an append-only
     erasure record carrying only opaque identifiers, category, policy version and a row count, because audit admits
     three safe keys and widening them would dismantle the guard keeping PII out of audit. A purge erases ciphertext
-    and keyed fingerprint alike, so a purged document number is reclaimable with no retained link. Move every guessing
-    budget onto shared PostgreSQL state through one port and one conditional upsert, failing closed when the store is
-    unreachable. Rejected: erasure evidence in the audit endpoint, which `AuditEvent` cannot carry, and a
-    subject-indexed erasure directory.
+    and keyed fingerprint alike, so a purged document number is reclaimable with no retained link. **Amended
+    2026-09-06 (A4):** the legal hold this decision owns stops erasure and nothing else — it does not suspend an
+    account, refuse a sign-in or block a reactivation, and no lifecycle or authorization branch reads it. Move every
+    guessing budget onto shared PostgreSQL state through one port and one conditional upsert, failing closed when the
+    store is unreachable. **Amended 2026-09-06 (A5):** failing closed keeps the refusal but changes the answer — an
+    unreachable budget store returns `503` `service_unavailable` with `Retry-After`, and `429` `rate_limit_exceeded`
+    is left to mean what it says. Rejected: erasure evidence in the audit endpoint, which `AuditEvent` cannot carry;
+    a subject-indexed erasure directory; and calling an outage "too many attempts".
 
 ## Rejected alternatives
 
@@ -192,9 +222,10 @@ is kept as the decision record that produced them. Task 18 was the only task thi
 implemented and verified the same day. Task 17 is **not** complete and decisions 19–24 are **not** accepted; nothing
 else in §14 or §15 is approved by this record.
 
-**Amendments required before decisions 19–24 are put forward again.** Each is a change to the proposal, not a
-question about it, and each block must arrive with its contract already reconciled — a contradiction left as a note
-for the implementer is not a delivered contract.
+**Amendments required before decisions 19–24 are put forward again** — recorded 2026-09-06 and folded into the
+proposals the same day, as the table after them records. Each is a change to the proposal, not a question about it,
+and each block arrives with its contract already reconciled: a contradiction left as a note for the implementer is
+not a delivered contract.
 
 | # | Entry | Required amendment |
 |---|---|---|
@@ -204,5 +235,22 @@ for the implementer is not a delivered contract.
 | A4 | C6 and C7 (§14.6, §14.7) | Separate retaining data from blocking access. A legal hold must stop erasure; it must not suspend an account or block reactivation as a side effect. §14.6's `LegalHoldAt` row, which blocks every reactivation path and names no actor that sets or clears it, is amended by this. |
 | A5 | C7 (§14.7) | Keep the safe refusal when the shared abuse-control store is unavailable, and change the answer: `503` `service_unavailable` with `Retry-After`, not `429` `rate_limit_exceeded`. A person meeting an outage is told it is an outage. |
 
-Nothing above authorizes implementation of C2–C7. Real personal data and production deployment remain the two
-separate gates named at the top of this section, and decision 18 does not touch either.
+**Folded in — 2026-09-06.** Each amendment was written into the entry it names, and each contradiction those entries
+carried was decided rather than passed on. What changed, and where to read it:
+
+| # | Landed in | What it now says |
+|---|---|---|
+| A1 | SPEC §14.3, IA-REQ-058; decision 20 | The owner opens a dispute; a Platform operator resolves it under a distinct permission, a second factor and an external case reference, never for themselves. A duplicate document gets the same refusal every refused `Personal` claim gets, under a 3-per-day budget, with the remaining leak named and left to the real-data gate. |
+| A2 | SPEC §14.4 callback table; decision 21 | Automatic linking is refused, explicit linking is allowed — including, and especially, when the provider's verified address is the caller's own. A `Link` is still refused when that address belongs to another local identity. |
+| A3 | SPEC §14.4 and §14.6; decisions 21 and 23 | One `Recovery` OIDC purpose bound to a ticket rather than a session, so a provider-only identity can return. One neutral answer, one enqueue rule per account state, stated once. A reset never lifts a suspension and never clears a second factor. |
+| A4 | SPEC §14.6 and §14.7; decisions 23 and 24 | `LegalHoldAt` is gone from the lifecycle table. A hold is C7's record with C7's endpoints, it stops erasure, and it changes nothing about access. |
+| A5 | SPEC §14.7, IA-REQ-057; decision 24 | An unreachable budget store still refuses every attempt and now answers `503` `service_unavailable` with `Retry-After`. |
+
+Two contradictions outside the amendment list were decided the same way rather than left as notes: C4's `{handle}`
+session route is withdrawn in favour of C2's `{sessionRef}` with C4's proof requirement, and C6's
+`tenant_last_administrator` spelling is withdrawn in favour of C5's `last_administrator_required` with C6's
+`expectedStatus` precondition.
+
+Nothing above authorizes implementation of C2–C7, and folding an amendment in is not accepting the entry that
+carries it: decisions 19–24 are still proposed and still need one answer each. Real personal data and production
+deployment remain the two separate gates named at the top of this section, and decision 18 does not touch either.
