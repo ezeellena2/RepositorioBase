@@ -541,7 +541,7 @@ internal sealed class TestValidatedOptionalSession(Guid? identityId, string? ema
 }
 
 /// <summary>The persistence step of a session request that a test wants a competing writer to race against.</summary>
-public enum SessionWriteStage { Validation, Revocation, TenantSelection, TenantClearing, Supersession }
+public enum SessionWriteStage { Validation, Revocation, TenantSelection, TenantClearing, Eviction }
 
 /// <summary>A competing tenant selection, and optionally a membership suspension, armed for one session write.</summary>
 public sealed record ConcurrentSessionSelection(SessionWriteStage Stage, TenantId TenantId, TenantId? SuspendMembershipOf);

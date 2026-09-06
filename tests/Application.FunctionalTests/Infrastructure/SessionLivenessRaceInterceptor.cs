@@ -22,19 +22,19 @@ public sealed class SessionLivenessRaceInterceptor : DbCommandInterceptor
         if (eventData.Context is ApplicationDbContext context &&
             command.CommandText.StartsWith("UPDATE \"UserSessions\"", StringComparison.Ordinal))
         {
-            // The supersession is the only statement that is both an ExecuteUpdate — which EF emits with a table
+            // The cap eviction is the only statement that is both an ExecuteUpdate — which EF emits with a table
             // alias, unlike a SaveChanges update — and one that assigns ActiveTenantId, which the liveness touch
             // never mentions. Matching both keeps a revocation or tenant selection out of this branch.
             if (IsSupersession(command.CommandText))
             {
-                if (TestApp.ConsumeConcurrentSessionRevoke(SessionWriteStage.Supersession))
+                if (TestApp.ConsumeConcurrentSessionRevoke(SessionWriteStage.Eviction))
                 {
                     await CompeteWithSignOutAsync(context, cancellationToken);
                 }
-                else if (TestApp.ConsumeConcurrentSessionSelection(SessionWriteStage.Supersession) is { } selection)
+                else if (TestApp.ConsumeConcurrentSessionSelection(SessionWriteStage.Eviction) is { } selection)
                 {
                     // A tenant selection rotates the concurrency token without revoking, so it is the writer that
-                    // proves whether the supersession advances the token or overwrites it with a stale value.
+                    // proves whether the eviction advances the token or overwrites it with a stale value.
                     await CompeteWithSelectionAsync(context, selection.TenantId, cancellationToken);
                 }
 
@@ -58,14 +58,20 @@ public sealed class SessionLivenessRaceInterceptor : DbCommandInterceptor
         return await base.NonQueryExecutingAsync(command, eventData, result, cancellationToken);
     }
 
-    /// <summary>A parallel tenant selection on the session a sign-in is about to supersede.</summary>
+    /// <summary>A parallel tenant selection on the session the cap is about to evict.</summary>
     private static async Task CompeteWithSelectionAsync(ApplicationDbContext context, CleanArchitecture.Domain.IdentityAccess.Tenants.TenantId tenantId, CancellationToken cancellationToken)
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseNpgsql(context.Database.GetConnectionString())
             .Options;
         await using var competingContext = new ApplicationDbContext(options);
-        var live = await competingContext.UserSessions.SingleAsync(session => session.RevokedAt == null, cancellationToken);
+        // The oldest live row is the one the eviction is writing, and it is the only one a competing write can
+        // race. Sessions coexist now, so "the live session" is no longer a thing there is one of (IA-REQ-049).
+        var live = await competingContext.UserSessions
+            .Where(session => session.RevokedAt == null)
+            .OrderBy(session => session.CreatedAt)
+            .ThenBy(session => session.Id)
+            .FirstAsync(cancellationToken);
         live.SelectTenant(tenantId, live.LastSeenAt);
         await competingContext.SaveChangesAsync(cancellationToken);
     }
@@ -74,19 +80,19 @@ public sealed class SessionLivenessRaceInterceptor : DbCommandInterceptor
         commandText.StartsWith("UPDATE \"UserSessions\" AS ", StringComparison.Ordinal) &&
         commandText.Contains("\"ActiveTenantId\"", StringComparison.Ordinal);
 
-    /// <summary>A parallel sign-out that revokes exactly the sessions a sign-in is about to supersede.</summary>
+    /// <summary>A parallel sign-out of exactly the session the cap is about to evict.</summary>
     private static async Task CompeteWithSignOutAsync(ApplicationDbContext context, CancellationToken cancellationToken)
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseNpgsql(context.Database.GetConnectionString())
             .Options;
         await using var competingContext = new ApplicationDbContext(options);
-        var live = await competingContext.UserSessions.Where(session => session.RevokedAt == null).ToListAsync(cancellationToken);
-        foreach (var session in live)
-        {
-            session.Revoke(session.LastSeenAt);
-        }
-
+        var oldest = await competingContext.UserSessions
+            .Where(session => session.RevokedAt == null)
+            .OrderBy(session => session.CreatedAt)
+            .ThenBy(session => session.Id)
+            .FirstAsync(cancellationToken);
+        oldest.Revoke(oldest.LastSeenAt);
         await competingContext.SaveChangesAsync(cancellationToken);
     }
 

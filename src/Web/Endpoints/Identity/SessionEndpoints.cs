@@ -1,4 +1,6 @@
+using CleanArchitecture.Application.IdentityAccess.Credentials.Reauthenticate;
 using CleanArchitecture.Application.IdentityAccess.Sessions.CreateSession;
+using CleanArchitecture.Application.IdentityAccess.Sessions.ManageSessions;
 using CleanArchitecture.Application.IdentityAccess.Sessions.RevokeCurrentSession;
 using CleanArchitecture.Web.Endpoints;
 using CleanArchitecture.Web.Infrastructure;
@@ -20,10 +22,63 @@ internal static class SessionEndpoints
             .Produces(StatusCodes.Status204NoContent)
             .WithApiProblemDetails(ApiProblemMetadata.AntiforgeryValidationFailed, ApiProblemMetadata.InvalidRequest, ApiProblemMetadata.RateLimitExceeded, ApiProblemMetadata.InternalServerError)
             .WithBodyBindingFailureCode(ApiProblemMetadata.InvalidRequest.Code);
+        group.MapGet("/sessions", List)
+            .RequireAuthorization()
+            .Produces<IReadOnlyList<OwnSessionResponse>>(StatusCodes.Status200OK)
+            .WithApiProblemDetails(ApiProblemMetadata.AuthenticationRequired, ApiProblemMetadata.InvalidSession, ApiProblemMetadata.PermissionDenied, ApiProblemMetadata.InternalServerError);
+
+        // The literal routes are declared before the parameterised one so `current` and `others` keep their own
+        // contracts; ASP.NET prefers a literal segment anyway, and stating it here keeps that from being luck.
         group.MapDelete("/sessions/current", Revoke)
             .RequireAuthorization()
             .Produces(StatusCodes.Status204NoContent)
             .WithApiProblemDetails(ApiProblemMetadata.AntiforgeryValidationFailed, ApiProblemMetadata.AuthenticationRequired, ApiProblemMetadata.InvalidSession, ApiProblemMetadata.SessionConcurrencyConflict, ApiProblemMetadata.InternalServerError);
+
+        group.MapDelete("/sessions/others", RevokeOthers)
+            .RequireAuthorization()
+            .Produces(StatusCodes.Status204NoContent)
+            .WithApiProblemDetails(ApiProblemMetadata.AntiforgeryValidationFailed, ApiProblemMetadata.AuthenticationRequired, ApiProblemMetadata.InvalidSession, ApiProblemMetadata.PermissionDenied, ApiProblemMetadata.RecentProofRequired, ApiProblemMetadata.RateLimitExceeded, ApiProblemMetadata.InternalServerError);
+
+        group.MapDelete("/sessions/{sessionRef}", RevokeOne)
+            .RequireAuthorization()
+            .Produces(StatusCodes.Status204NoContent)
+            .WithApiProblemDetails(ApiProblemMetadata.AntiforgeryValidationFailed, ApiProblemMetadata.AuthenticationRequired, ApiProblemMetadata.InvalidSession, ApiProblemMetadata.PermissionDenied, ApiProblemMetadata.RecentProofRequired, ApiProblemMetadata.SessionNotFound, ApiProblemMetadata.SessionConcurrencyConflict, ApiProblemMetadata.InternalServerError);
+
+        group.MapPost("/credentials/reauthenticate", Reauthenticate)
+            .RequireAuthorization()
+            .Produces(StatusCodes.Status204NoContent)
+            .WithApiProblemDetails(ApiProblemMetadata.AntiforgeryValidationFailed, ApiProblemMetadata.AuthenticationRequired, ApiProblemMetadata.InvalidSession, ApiProblemMetadata.PermissionDenied, ApiProblemMetadata.EmailConfirmationRequired, ApiProblemMetadata.InvalidCredentialProof, ApiProblemMetadata.RateLimitExceeded, ApiProblemMetadata.InternalServerError)
+            .WithBodyBindingFailureCode(ApiProblemMetadata.InvalidCredentialProof.Code);
+    }
+
+    private static async Task<IResult> List(HttpContext context, ApiProblemDetailsMapper problems, ISender sender)
+    {
+        var result = await sender.Send(new ListOwnSessionsQuery(), context.RequestAborted);
+        return result.IsSuccess ? Results.Ok(result.Value!) : problems.ToHttpResult(result.Error!);
+    }
+
+    private static async Task<IResult> RevokeOne(HttpContext context, IAntiforgery antiforgery, ApiProblemDetailsMapper problems, ISender sender, string sessionRef)
+    {
+        var antiforgeryFailure = await Identity.ValidateAntiforgery(context, antiforgery, problems);
+        if (antiforgeryFailure is not null) return antiforgeryFailure;
+        var result = await sender.Send(new RevokeOwnSessionCommand(sessionRef), context.RequestAborted);
+        return result.IsSuccess ? Results.NoContent() : problems.ToHttpResult(result.Error!);
+    }
+
+    private static async Task<IResult> RevokeOthers(HttpContext context, IAntiforgery antiforgery, ApiProblemDetailsMapper problems, ISender sender)
+    {
+        var antiforgeryFailure = await Identity.ValidateAntiforgery(context, antiforgery, problems);
+        if (antiforgeryFailure is not null) return antiforgeryFailure;
+        var result = await sender.Send(new RevokeOtherSessionsCommand(), context.RequestAborted);
+        return result.IsSuccess ? Results.NoContent() : problems.ToHttpResult(result.Error!);
+    }
+
+    private static async Task<IResult> Reauthenticate(HttpContext context, IAntiforgery antiforgery, ApiProblemDetailsMapper problems, ISender sender, ReauthenticateCommand command)
+    {
+        var antiforgeryFailure = await Identity.ValidateAntiforgery(context, antiforgery, problems);
+        if (antiforgeryFailure is not null) return antiforgeryFailure;
+        var result = await sender.Send(command, context.RequestAborted);
+        return result.IsSuccess ? Results.NoContent() : problems.ToHttpResult(result.Error!);
     }
 
     private static async Task<IResult> Create(HttpContext context, IAntiforgery antiforgery, ApiProblemDetailsMapper problems, ISender sender, CreateSessionCommand command)

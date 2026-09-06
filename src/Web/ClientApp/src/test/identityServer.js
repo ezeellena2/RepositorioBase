@@ -12,6 +12,7 @@ export const signedInContext = (overrides = {}) => ({
   ],
   permissions: ['members.view', 'members.invite'],
   session: { expiresAt: '2026-12-31T00:00:00Z', requiresTwoFactor: false },
+  personalData: { mode: 'Synthetic' },
   ...overrides,
 });
 

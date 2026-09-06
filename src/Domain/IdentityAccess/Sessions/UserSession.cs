@@ -8,6 +8,13 @@ public sealed class UserSession : BaseEntity<UserSessionId>
     private UserSession() { }
 
     public Guid IdentityId { get; private set; }
+
+    /// <summary>What a client addresses this session by. Never the identifier the cookie carries (IA-REQ-049).</summary>
+    public SessionReference PublicRef { get; private set; }
+
+    /// <summary>A value from the closed server-side set, so a list of devices describes without identifying.</summary>
+    public string DeviceLabel { get; private set; } = SessionDeviceLabel.Other;
+
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset LastSeenAt { get; private set; }
     public DateTimeOffset IdleExpiresAt { get; private set; }
@@ -16,7 +23,7 @@ public sealed class UserSession : BaseEntity<UserSessionId>
     public TenantId? ActiveTenantId { get; private set; }
     public int Version { get; private set; }
 
-    public static UserSession Create(Guid identityId, DateTimeOffset createdAt, TimeSpan idleLifetime, TimeSpan absoluteLifetime)
+    public static UserSession Create(Guid identityId, DateTimeOffset createdAt, TimeSpan idleLifetime, TimeSpan absoluteLifetime, string? deviceLabel = null)
     {
         if (identityId == Guid.Empty) throw new ArgumentException("Identity identifiers cannot be empty.", nameof(identityId));
         if (idleLifetime <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(idleLifetime));
@@ -27,6 +34,8 @@ public sealed class UserSession : BaseEntity<UserSessionId>
         {
             Id = UserSessionId.New(),
             IdentityId = identityId,
+            PublicRef = SessionReference.New(),
+            DeviceLabel = SessionDeviceLabel.Normalize(deviceLabel),
             CreatedAt = createdAt,
             LastSeenAt = createdAt,
             IdleExpiresAt = Min(createdAt.Add(idleLifetime), absoluteExpiresAt),

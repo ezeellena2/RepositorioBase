@@ -56,6 +56,10 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
 
     public DbSet<UserSession> UserSessions => Set<UserSession>();
 
+    public DbSet<RecentIdentityProof> RecentIdentityProofs => Set<RecentIdentityProof>();
+
+    public DbSet<IdentitySecurityState> IdentitySecurityStates => Set<IdentitySecurityState>();
+
     public DbSet<Role> TenantRoles => Set<Role>();
 
     public DbSet<Permission> Permissions => Set<Permission>();

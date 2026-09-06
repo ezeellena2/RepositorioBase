@@ -7,6 +7,7 @@ import { LoginPage } from "./features/identity/login/LoginPage";
 import { RegisterOrganizationPage } from "./features/identity/register/RegisterOrganizationPage";
 import { ChooseContextPage } from "./features/identity/register/ChooseContextPage";
 import { PersonalRegisterPage, PersonalProfilePage } from "./features/identity/people/PersonalPages";
+import { SessionsPage } from "./features/identity/sessions/SessionsPage";
 import { ConfirmEmailPage } from "./features/identity/register/ConfirmEmailPage";
 import { TenantSelector } from "./features/identity/tenants/TenantSelector";
 import { InviteMemberPage } from "./features/identity/invitations/InviteMemberPage";
@@ -38,6 +39,7 @@ const AppRoutes = [
   { path: '/organizations/register', element: <RegisterOrganizationPage /> },
   { path: '/personal/register', element: <PersonalRegisterPage /> },
   { path: '/identity/profile', element: <ProtectedRoute><PersonalProfilePage /></ProtectedRoute> },
+  { path: '/identity/sessions', element: <ProtectedRoute><SessionsPage /></ProtectedRoute> },
   // Where both confirmation emails point. It is public because confirming is what an identity does before it can
   // sign in at all, so requiring a session here would make the link impossible to answer.
   { path: '/confirm-email', element: <ConfirmEmailPage /> },

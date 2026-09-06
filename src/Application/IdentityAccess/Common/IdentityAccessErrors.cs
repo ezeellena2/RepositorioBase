@@ -99,4 +99,32 @@ public static class IdentityAccessErrors
     /// </summary>
     public static ApplicationError ServiceUnavailable(int retryAfterSeconds) =>
         new("service_unavailable", ApplicationErrorCategory.Unavailable, "The service is temporarily unavailable. Try again shortly.", retryAfterSeconds: retryAfterSeconds);
+
+    /// <summary>
+    /// No session of this identity carries that reference. A reference belonging to somebody else answers the same
+    /// way as one that never existed, so nothing about whose it might be is disclosed (IA-REQ-030).
+    /// </summary>
+    public static ApplicationError SessionNotFound() =>
+        new("session_not_found", ApplicationErrorCategory.NotFound, "No session of this identity carries that reference.");
+
+    /// <summary>
+    /// The action needs a proof this session does not hold: never issued, already spent, expired, or invalidated by
+    /// a credential change. It is terminal rather than a conflict — retrying the same proof cannot succeed.
+    /// </summary>
+    public static ApplicationError RecentProofRequired() =>
+        new("recent_proof_required", ApplicationErrorCategory.Authentication, "This operation requires a recent identity proof.");
+
+    /// <summary>A wrong password, or an action this system does not consider sensitive. One answer for both.</summary>
+    public static ApplicationError InvalidCredentialProof() =>
+        new("invalid_credential_proof", ApplicationErrorCategory.Validation, "The credential proof is not valid.");
+
+    /// <summary>
+    /// The per-identity session lock was not granted within its bounded wait. It answers `429` deliberately: a
+    /// status only a valid credential could reach would say something a wrong password does not.
+    /// </summary>
+    public static ApplicationError SessionLockUnavailable() =>
+        new("rate_limit_exceeded", ApplicationErrorCategory.RateLimited, "Too many concurrent session changes. Try again.", retryAfterSeconds: 1);
+
+    public static ApplicationError EmailConfirmationRequired() =>
+        new("email_confirmation_required", ApplicationErrorCategory.Authorization, "This operation requires a confirmed email address.");
 }

@@ -40,6 +40,18 @@ public static class ApiProblemMetadata
 
     public static readonly ApiProblemContract ProfileFieldNotEditable = new(StatusCodes.Status400BadRequest, "profile_field_not_editable");
 
+    public static readonly ApiProblemContract SessionNotFound = new(StatusCodes.Status404NotFound, "session_not_found");
+
+    /// <summary>
+    /// The action needs a proof this session does not hold. It is `401` rather than `409` because retrying the
+    /// same proof cannot succeed: the caller has to prove again (IA-REQ-051).
+    /// </summary>
+    public static readonly ApiProblemContract RecentProofRequired = new(StatusCodes.Status401Unauthorized, "recent_proof_required");
+
+    public static readonly ApiProblemContract InvalidCredentialProof = new(StatusCodes.Status400BadRequest, "invalid_credential_proof");
+
+    public static readonly ApiProblemContract EmailConfirmationRequired = new(StatusCodes.Status403Forbidden, "email_confirmation_required");
+
     public static RouteHandlerBuilder WithApiProblemDetails(this RouteHandlerBuilder builder, params ApiProblemContract[] contracts)
     {
         ArgumentNullException.ThrowIfNull(contracts);

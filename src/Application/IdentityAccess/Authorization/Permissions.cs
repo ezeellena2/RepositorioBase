@@ -48,6 +48,12 @@ public static class Permissions
 
     public const string IdentityProfileManage = "identity.profile.manage";
 
+    /// <summary>
+    /// Proving it is still you, and changing what you prove it with. Application-scoped for the same reason the
+    /// rest of self-service is: the request carries no subject and resolves the caller's own credentials.
+    /// </summary>
+    public const string IdentityCredentialsManage = "identity.credentials.manage";
+
     public static IReadOnlyList<PermissionDefinition> Catalog { get; } =
     [
         new(MembersInvite, [TenantType.Organization]),
@@ -80,7 +86,8 @@ public static class Permissions
         // tenant-scoped either. It grants nothing beyond the chance to prove a factor.
         PlatformMfaEnroll,
         IdentityProfileRead,
-        IdentityProfileManage
+        IdentityProfileManage,
+        IdentityCredentialsManage
     };
 
     /// <summary>
@@ -99,7 +106,8 @@ public static class Permissions
         IdentityInvitationsAccept,
         PlatformMfaEnroll,
         IdentityProfileRead,
-        IdentityProfileManage
+        IdentityProfileManage,
+        IdentityCredentialsManage
     };
 
 }

@@ -717,6 +717,8 @@ public sealed class MigrationUpgradeTests
             await AssertTableAsync(connectionString!, "IdentityAttemptBudgets", true);
             await AssertTableAsync(connectionString!, "pending_personal_intents", true,
                 "the personal signup's unproved phase needs its own intent table, added after the budget step.");
+            await AssertTableAsync(connectionString!, "RecentIdentityProofs", true);
+            await AssertTableAsync(connectionString!, "IdentitySecurityStates", true);
             (await latest.Database.GetPendingMigrationsAsync()).ShouldBeEmpty();
             (await latest.Users.SingleAsync(user => user.Id == userId)).NormalizedEmail.ShouldBe("ROUNDTRIP@EXAMPLE.TEST");
             (await latest.TodoItems.SingleAsync(todo => todo.Id == todoId)).CreatedBy.ShouldBe(userId);
@@ -734,6 +736,13 @@ public sealed class MigrationUpgradeTests
                 .ShouldBeTrue();
             (await Scalar<bool>(connection, "SELECT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CK_IdentityAttemptBudgets_Window');"))
                 .ShouldBeTrue();
+
+            // Sessions that predate the coexistence change were backfilled with a reference of their own rather
+            // than the empty default the column was added with, so the unique index holds over old rows too.
+            (await Scalar<bool>(connection, "SELECT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'IX_UserSessions_PublicRef');"))
+                .ShouldBeTrue();
+            (await Scalar<long>(connection, "SELECT count(*) FROM \"UserSessions\" WHERE \"PublicRef\" = '';"))
+                .ShouldBe(0);
 
             var violation = await Should.ThrowAsync<PostgresException>(() => Execute(connection,
                 """

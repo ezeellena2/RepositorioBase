@@ -53,7 +53,7 @@ export async function readProblem(response) {
  * contract; a body that carries none of them, or that is shaped like an internal Result or a universal envelope,
  * is refused rather than half-read.
  */
-export async function readSuccess(response, expectedMembers) {
+export async function readSuccess(response, expectedMembers, { asArray = false } = {}) {
   if (response.status === 204 || response.headers.get('Content-Length') === '0') return null;
 
   const raw = await response.text();
@@ -66,6 +66,24 @@ export async function readSuccess(response, expectedMembers) {
     throw new Error('The success response was not valid JSON.');
   }
 
+  // A top-level array is allowed only where the caller declared one, and the elements are policed exactly as an
+  // object body would be. The rule it relaxes exists to catch a pagination envelope arriving where the identity
+  // contract promised none; a bare list of a person's own devices is that promise kept, not broken (IA-REQ-049).
+  if (asArray) {
+    if (!Array.isArray(body)) throw new Error('This endpoint answers with an array.');
+    body.forEach((element) => policeMembers(element, expectedMembers));
+    return body;
+  }
+
+  if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+    throw new Error('An identity endpoint answers with an object.');
+  }
+
+  policeMembers(body, expectedMembers);
+  return body;
+}
+
+function policeMembers(body, expectedMembers) {
   if (body === null || typeof body !== 'object' || Array.isArray(body)) {
     throw new Error('An identity endpoint answers with an object.');
   }
@@ -80,6 +98,4 @@ export async function readSuccess(response, expectedMembers) {
   if (missing.length > 0) {
     throw new Error(`The response is missing ${missing.join(', ')}.`);
   }
-
-  return body;
 }

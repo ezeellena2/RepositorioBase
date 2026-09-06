@@ -44,6 +44,10 @@ public interface IApplicationDbContext
 
     DbSet<UserSession> UserSessions { get; }
 
+    DbSet<RecentIdentityProof> RecentIdentityProofs { get; }
+
+    DbSet<IdentitySecurityState> IdentitySecurityStates { get; }
+
     DbSet<Invitation> Invitations { get; }
 
     DbSet<InvitationRole> InvitationRoles { get; }

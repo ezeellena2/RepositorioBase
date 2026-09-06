@@ -187,27 +187,31 @@ public sealed class SessionConcurrencyTests : TestBase
     }
 
     [Test]
-    public async Task Signing_in_while_a_parallel_sign_out_revokes_the_prior_session_still_creates_the_new_session()
+    public async Task Signing_in_at_the_cap_while_a_parallel_sign_out_revokes_the_oldest_still_creates_the_new_session()
     {
         using var harness = CreateProductionHarness();
         var client = harness.Client;
         const string host = "https://session-race-signin-supersede.localhost";
         const string email = "race-signin-supersede@example.test";
         var identityId = await SeedConfirmedUserAsync(email, "Testing1234!");
+
+        // The eviction only happens at the cap, so the race needs the cap. Before C2 every sign-in revoked every
+        // other session and this race was reachable with two; IA-REQ-049 moved it to the sixth.
         var firstCookie = await SignInAsync(client, host, email, "Testing1234!");
-        TestApp.EnableConcurrentSessionRevoke(SessionWriteStage.Supersession);
+        for (var attempt = 0; attempt < 4; attempt++) await SignInAsync(client, host, email, "Testing1234!");
+        TestApp.EnableConcurrentSessionRevoke(SessionWriteStage.Eviction);
 
-        var secondCookie = await SignInAsync(client, host, email, "Testing1234!");
+        var sixthCookie = await SignInAsync(client, host, email, "Testing1234!");
 
-        TestApp.HasPendingConcurrentSessionRevoke.ShouldBeFalse("the competing sign-out must fire while the supersession is persisted");
-        secondCookie.ShouldNotBe(firstCookie);
+        TestApp.HasPendingConcurrentSessionRevoke.ShouldBeFalse("the competing sign-out must fire while the eviction is persisted");
+        sixthCookie.ShouldNotBe(firstCookie);
         var sessions = await ListAsync<UserSession>();
-        sessions.Count.ShouldBe(2);
-        sessions.Count(session => session.RevokedAt is null).ShouldBe(1, "only the session this sign-in created stays live");
-        sessions.Single(session => session.RevokedAt is null).IdentityId.ShouldBe(identityId);
+        sessions.Count.ShouldBe(6);
+        sessions.Count(session => session.RevokedAt is null).ShouldBe(5, "the cap holds: five live, never six");
+        sessions.ShouldAllBe(session => session.IdentityId == identityId);
         (await ListAsync<AuditEvent>()).Count(item => item.EventType == "session.revoked")
             .ShouldBe(0, "the competing sign-out performed the revocation, so this sign-in must not claim it");
-        (await ListAsync<AuditEvent>()).Count(item => item.EventType == "signin.succeeded").ShouldBe(2);
+        (await ListAsync<AuditEvent>()).Count(item => item.EventType == "signin.succeeded").ShouldBe(6);
 
         using var staleClient = harness.Factory.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions { HandleCookies = false, AllowAutoRedirect = false });
         staleClient.DefaultRequestHeaders.Add("Cookie", firstCookie);
@@ -216,7 +220,7 @@ public sealed class SessionConcurrencyTests : TestBase
     }
 
     [Test]
-    public async Task Superseding_a_prior_session_advances_its_concurrency_token_past_a_parallel_tenant_selection()
+    public async Task Evicting_a_prior_session_advances_its_concurrency_token_past_a_parallel_tenant_selection()
     {
         using var harness = CreateProductionHarness();
         var client = harness.Client;
@@ -227,20 +231,22 @@ public sealed class SessionConcurrencyTests : TestBase
         var competingTenant = await SeedActiveMembershipAsync(identityId, Permissions.MembersInvite);
         await SeedActiveMembershipAsync(identityId, Permissions.RolesManage);
         await SignInAsync(client, host, email, "Testing1234!");
-        var prior = await GetOnlySessionAsync();
+        var prior = (await ListAsync<UserSession>()).Single();
         prior.ActiveTenantId.ShouldBeNull("two active memberships suppress the automatic selection");
+        for (var attempt = 0; attempt < 4; attempt++) await SignInAsync(client, host, email, "Testing1234!");
+
         // The competing selection rotates the token without revoking, exactly between the moment the sign-in reads
-        // the prior session and the moment it writes the supersession.
-        TestApp.EnableConcurrentSessionSelection(SessionWriteStage.Supersession, competingTenant);
+        // the oldest session and the moment it writes the eviction.
+        TestApp.EnableConcurrentSessionSelection(SessionWriteStage.Eviction, competingTenant);
 
         await SignInAsync(client, host, email, "Testing1234!");
 
-        TestApp.HasPendingConcurrentSessionSelection.ShouldBeFalse("the competing selection must fire while the supersession is persisted");
-        var superseded = (await ListAsync<UserSession>()).Single(session => session.Id == prior.Id);
-        superseded.RevokedAt.ShouldNotBeNull();
-        superseded.Version.ShouldBeGreaterThan(
+        TestApp.HasPendingConcurrentSessionSelection.ShouldBeFalse("the competing selection must fire while the eviction is persisted");
+        var evicted = (await ListAsync<UserSession>()).Single(session => session.Id == prior.Id);
+        evicted.RevokedAt.ShouldNotBeNull();
+        evicted.Version.ShouldBeGreaterThan(
             prior.Version + 1,
-            "the supersession must advance the token past the competing selection; writing the version this request " +
+            "the eviction must advance the token past the competing selection; writing the version this request " +
             "loaded would roll the token back and let a later stale update believe it still won");
     }
 

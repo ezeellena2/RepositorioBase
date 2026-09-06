@@ -32,7 +32,7 @@ export function createApiTransport() {
     return requestToken;
   };
 
-  const send = async (path, { method = 'GET', body, expect = [] } = {}) => {
+  const send = async (path, { method = 'GET', body, expect = [], expectArray = false } = {}) => {
     const mutation = method !== 'GET';
     if (mutation && requestToken === null) await bootstrapAntiforgery();
 
@@ -46,7 +46,7 @@ export function createApiTransport() {
       body: body === undefined ? undefined : JSON.stringify(body),
     });
 
-    if (response.ok) return readSuccess(response, expect);
+    if (response.ok) return readSuccess(response, expect, { asArray: expectArray });
     if (!isProblem(response)) throw new Error(`The API answered ${response.status} without a problem document.`);
 
     const problem = await readProblem(response);

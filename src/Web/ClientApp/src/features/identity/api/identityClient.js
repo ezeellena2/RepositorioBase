@@ -40,6 +40,18 @@ export function createIdentityClient(transport = createApiTransport()) {
 
     // A person's own context. The signup is neutral and bodyless like the organization one; the two authenticated
     // calls name the members they are allowed to read, so a response that grew a field would be refused here.
+    // A person's own devices. The list is a bare array by contract, so nothing here declares an envelope.
+    listSessions: () => send('/api/identity/sessions', {
+      expectArray: true,
+      expect: ['sessionRef', 'isCurrent', 'deviceLabel', 'createdAt', 'lastSeenAt', 'expiresAt'],
+    }),
+    revokeSession: (sessionRef) => send(`/api/identity/sessions/${encodeURIComponent(sessionRef)}`, { method: 'DELETE' }),
+    revokeOtherSessions: () => send('/api/identity/sessions/others', { method: 'DELETE' }),
+    reauthenticate: (action, password) => send('/api/identity/credentials/reauthenticate', {
+      method: 'POST',
+      body: { action, password },
+    }),
+
     registerPersonal: (request) => send('/api/identity/personal/register', { method: 'POST', body: request }),
     createPersonalContext: (request) => send('/api/identity/personal', { method: 'POST', body: request }),
     getPersonalProfile: () => send('/api/identity/profile', {

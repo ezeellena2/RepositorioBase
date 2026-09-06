@@ -174,6 +174,10 @@ public static class DependencyInjection
         builder.Services.AddScoped<IEffectivePermissionReader, EffectivePermissionReader>();
         builder.Services.AddScoped<ICurrentTenant, CurrentTenant>();
         builder.Services.AddScoped<ISecurityDenialAuditWriter, SecurityDenialAuditWriter>();
+        builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.Sessions.ISessionLock, CleanArchitecture.Infrastructure.IdentityAccess.SessionLock>();
+        builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.Sessions.ISessionIssuer, CleanArchitecture.Application.IdentityAccess.Sessions.SessionIssuer>();
+        builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.Sessions.IDeviceLabel, CleanArchitecture.Infrastructure.IdentityAccess.DeviceLabelResolver>();
+        builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.Credentials.IRecentIdentityProofStore, CleanArchitecture.Infrastructure.IdentityAccess.RecentIdentityProofStore>();
     }
 
     private sealed class EmailReadiness(IServiceProvider services, IHostEnvironment environment) : IHostedService

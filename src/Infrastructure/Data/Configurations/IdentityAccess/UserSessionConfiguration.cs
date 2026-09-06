@@ -14,12 +14,18 @@ public sealed class UserSessionConfiguration : IEntityTypeConfiguration<UserSess
         builder.HasKey(session => session.Id);
         builder.Property(session => session.Id).HasConversion(id => id.Value, value => UserSessionId.From(value)).ValueGeneratedNever();
         builder.Property(session => session.IdentityId).IsRequired();
+        builder.Property(session => session.PublicRef)
+            .HasConversion(reference => reference.Value, value => SessionReference.FromPersistedValue(value))
+            .HasMaxLength(32)
+            .IsRequired();
+        builder.Property(session => session.DeviceLabel).HasMaxLength(32).IsRequired();
         builder.Property(session => session.ActiveTenantId).HasConversion<Guid?>(id => id.HasValue ? id.Value.Value : null, value => value.HasValue ? TenantId.From(value.Value) : null).IsRequired(false);
         builder.Property(session => session.CreatedAt).IsRequired();
         builder.Property(session => session.LastSeenAt).IsRequired();
         builder.Property(session => session.IdleExpiresAt).IsRequired();
         builder.Property(session => session.AbsoluteExpiresAt).IsRequired();
         builder.Property(session => session.Version).IsConcurrencyToken().IsRequired();
+        builder.HasIndex(session => session.PublicRef).IsUnique();
         builder.HasIndex(session => session.IdentityId);
         builder.HasIndex(session => new { session.IdentityId, session.RevokedAt, session.AbsoluteExpiresAt });
         builder.HasOne<ApplicationUser>().WithMany().HasForeignKey(session => session.IdentityId).OnDelete(DeleteBehavior.Restrict);

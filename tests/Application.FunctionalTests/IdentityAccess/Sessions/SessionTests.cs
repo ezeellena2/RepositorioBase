@@ -223,7 +223,7 @@ public sealed class SessionTests : TestBase
     }
 
     [Test]
-    public async Task Repeated_sign_in_rotates_the_persisted_session_and_rejects_the_previous_cookie()
+    public async Task Repeated_sign_in_issues_a_new_session_and_leaves_the_previous_cookie_working()
     {
         using var harness = CreateProductionHarness();
         var client = harness.Client;
@@ -238,19 +238,17 @@ public sealed class SessionTests : TestBase
         {
             previousClient.DefaultRequestHeaders.Add("Cookie", first);
             var previousContext = await previousClient.GetAsync($"{host}/api/identity/context");
-            previousContext.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+
+            // Until C2 this was `Unauthorized`: a sign-in revoked every other session, so a second device signed
+            // the first one out. IA-REQ-049 replaced that with a bounded coexistence, and this is the assertion
+            // that changed with it — the eviction case is `SessionManagementTests.The_sixth_sign_in_...`.
+            previousContext.StatusCode.ShouldBe(HttpStatusCode.OK);
         }
 
-        (await ListAsync<UserSession>()).Count(session => session.RevokedAt is null).ShouldBe(1);
-        var sessions = await ListAsync<UserSession>();
-        var superseded = sessions.Single(session => session.RevokedAt is not null);
-        var survivor = sessions.Single(session => session.RevokedAt is null);
+        (await ListAsync<UserSession>()).Count(session => session.RevokedAt is null).ShouldBe(2);
         var audits = await ListAsync<AuditEvent>();
-        var supersededAudit = audits.Single(item => item.EventType == "session.revoked");
-        supersededAudit.ActorId.ShouldBe(superseded.IdentityId);
-        supersededAudit.SessionId.ShouldBe(superseded.Id.Value);
-        supersededAudit.Metadata.ShouldBe(new Dictionary<string, string> { ["code"] = "session.revoked", ["outcome"] = "superseded" });
-        supersededAudit.CorrelationId.ShouldBe(audits.Single(item => item.EventType == "signin.succeeded" && item.SessionId == survivor.Id.Value).CorrelationId);
+        audits.ShouldNotContain(item => item.EventType == "session.revoked", "nothing was revoked, so nothing is audited as revoked");
+        audits.Count(item => item.EventType == "session.created").ShouldBe(2);
         (await client.GetAsync($"{host}/api/identity/context")).StatusCode.ShouldBe(HttpStatusCode.OK);
     }
 
@@ -980,7 +978,7 @@ public sealed class SessionTests : TestBase
     }
 
     [Test]
-    public async Task Sign_in_supersedes_only_live_sessions_and_leaves_expired_ones_untouched()
+    public async Task Sign_in_leaves_live_sessions_alone_and_never_touches_an_expired_one()
     {
         var clock = new ControlledTimeProvider(new DateTimeOffset(2030, 1, 6, 0, 0, 0, TimeSpan.Zero));
         using var harness = CreateProductionHarness(clock);
@@ -1001,10 +999,12 @@ public sealed class SessionTests : TestBase
 
         await SignInAsync(client, host, "supersede-live@example.test", "Testing1234!");
 
-        (await ListAsync<UserSession>()).Single(session => session.Id == live.Id).RevokedAt.ShouldNotBeNull();
-        var audits = await ListAsync<AuditEvent>();
-        audits.Count(item => item.EventType == "session.revoked").ShouldBe(1);
-        audits.Single(item => item.EventType == "session.revoked").SessionId.ShouldBe(live.Id.Value);
+        // Under C2 a third sign-in adds a third session rather than ending the second: only the cap ends one, and
+        // an idle-expired row is already dead so it is neither counted nor revoked (IA-REQ-049).
+        (await ListAsync<UserSession>()).Single(session => session.Id == live.Id).RevokedAt.ShouldBeNull();
+        (await ListAsync<UserSession>()).Single(session => session.Id == expired.Id).RevokedAt.ShouldBeNull();
+        (await ListAsync<AuditEvent>()).Count(item => item.EventType == "session.revoked").ShouldBe(0);
+        (await ListAsync<UserSession>()).Count.ShouldBe(3);
     }
 
     [Test]
