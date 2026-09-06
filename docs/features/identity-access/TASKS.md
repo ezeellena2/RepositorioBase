@@ -86,6 +86,40 @@ leaves no orphan tenant, profile, membership, role, audit or claim.
 to any address that can be typed, and no per-address or per-CUIT budget bounds that. It is the same exposure as
 before this task and is scoped to C6/C7 and Task 27, not closed here.
 
+## Task 19 — done 2026-09-06
+
+**Visible outcome met:** one identity can own exactly one Personal tenant with its own protected profile and
+document, and neither the tenant nor the document can be doubled by a race. Nothing here is reachable over HTTP;
+Task 20 is what exposes it.
+
+| Step | What happened |
+|---|---|
+| RED | `PersonalIdentityMappingTests` 5 of 5 failing, by name rather than by compiler: "The model does not map CleanArchitecture.Domain.IdentityAccess.People.PersonProfile". Then `PersonalIdentityTests` 7 of 11 failing against skeletons with no guards, and `PersonalDocumentProtectionTests` + `SharedAttemptBudgetTests` 8 of 16 failing with the adapters absent |
+| GREEN | `People` domain slice (profile, ownership, document, fingerprint, `NormalizedDocument`, `DataClassification`); four EF configurations; the additive `PersonalIdentity` and `SharedIdentityAttemptBudgets` migrations; `IdentityDocumentProtector` and `IdentityDocumentFingerprintFactory` over the existing Data Protection key ring; `PostgreSqlAttemptBudget` behind `ISharedAttemptBudget` |
+| REFACTOR | The timestamp interceptor now stamps profiles as well as tenants and was renamed `OperationalTimestampInterceptor` for what it does. The architecture test that refuses an unclassified Domain slice was answered by classifying `People`, not by relaxing it |
+
+**Commands run, both from the plan.**
+
+```powershell
+dotnet test tests/Domain.UnitTests/Domain.UnitTests.csproj --filter PersonalIdentityTests
+dotnet test tests/Infrastructure.IntegrationTests/Infrastructure.IntegrationTests.csproj --filter "PersonalIdentityMappingTests|PersonalDocumentProtectionTests|SharedAttemptBudgetTests|MigrationUpgradeTests"
+```
+
+11/11 and 33/33. Whole solution afterwards: Domain 173, Application.Unit 192, Infrastructure.Integration 258,
+Application.Functional 401; Debug and Release builds 0 errors.
+
+**Effects proved on real PostgreSQL:** two identities claiming one documentary identity leave one row, and so do a
+claim made after the first person's tenant is suspended and a claim made inside a transaction that then rolls back;
+only a purge frees the number, and it deletes the fingerprints rather than blanking them; a payload sealed for the
+outbox purpose is refused rather than read; absent, too-short, non-Base64 and unversioned fingerprint key material is
+refused; exactly the budget is admitted at a threshold and a spent window stays spent for an adapter that never saw
+it spent.
+
+**Not claimed.** `SharedAttemptBudgetTests` runs its adapters in one process. That is persistence evidence, not
+evidence that a budget holds across service instances or restarts — Task 27 owns that, and this task does not
+anticipate it. Fingerprint key material is read from configuration with no default; recording it per environment is
+also Task 27's.
+
 ### Proposed requirements and the tasks they unblock
 
 Each entry proposes its own requirement numbers. IA-REQ-048 was accepted on 2026-09-06 and is normative in
