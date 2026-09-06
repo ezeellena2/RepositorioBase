@@ -15,6 +15,7 @@ public sealed record IdentityContext(
     IReadOnlyList<TenantContext> AvailableTenants,
     IReadOnlyList<string> Permissions,
     DateTimeOffset SessionExpiresAt,
-    bool RequiresTwoFactor);
+    bool RequiresTwoFactor,
+    string PersonalDataMode);
 
 public sealed record TenantContext(Guid Id, string Type, string Name);

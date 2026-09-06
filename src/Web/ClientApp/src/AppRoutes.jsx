@@ -5,6 +5,8 @@ import { Home } from "./components/Home";
 import { ProtectedRoute } from "./components/api-authorization/ProtectedRoute";
 import { LoginPage } from "./features/identity/login/LoginPage";
 import { RegisterOrganizationPage } from "./features/identity/register/RegisterOrganizationPage";
+import { ChooseContextPage } from "./features/identity/register/ChooseContextPage";
+import { PersonalRegisterPage, PersonalProfilePage } from "./features/identity/people/PersonalPages";
 import { ConfirmEmailPage } from "./features/identity/register/ConfirmEmailPage";
 import { TenantSelector } from "./features/identity/tenants/TenantSelector";
 import { InviteMemberPage } from "./features/identity/invitations/InviteMemberPage";
@@ -30,7 +32,12 @@ const AppRoutes = [
   { path: '/weather', element: <ProtectedRoute><Weather /></ProtectedRoute> },
   { path: '/todo', element: <ProtectedRoute><Tasks /></ProtectedRoute> },
   { path: '/login', element: <LoginPage /> },
+  // Where a visitor chooses what they are registering. It exists because the two answers are different products
+  // for the same person, and guessing for them is how somebody ends up with the wrong one.
+  { path: '/register', element: <ChooseContextPage /> },
   { path: '/organizations/register', element: <RegisterOrganizationPage /> },
+  { path: '/personal/register', element: <PersonalRegisterPage /> },
+  { path: '/identity/profile', element: <ProtectedRoute><PersonalProfilePage /></ProtectedRoute> },
   // Where both confirmation emails point. It is public because confirming is what an identity does before it can
   // sign in at all, so requiring a session here would make the link impossible to answer.
   { path: '/confirm-email', element: <ConfirmEmailPage /> },

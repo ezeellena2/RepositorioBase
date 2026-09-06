@@ -30,6 +30,8 @@ public interface IApplicationDbContext
 
     DbSet<PendingRegistrationIntent> PendingRegistrationIntents { get; }
 
+    DbSet<PendingPersonalIntent> PendingPersonalIntents { get; }
+
     DbSet<PersonProfile> PersonProfiles { get; }
 
     DbSet<PersonalTenantOwnership> PersonalTenantOwnerships { get; }

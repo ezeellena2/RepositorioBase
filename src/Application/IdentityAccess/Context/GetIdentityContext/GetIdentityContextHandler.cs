@@ -16,7 +16,8 @@ public sealed class GetIdentityContextQueryHandler(
     ICurrentSession currentSession,
     IIdentityAccountService identities,
     IEffectivePermissionReader permissions,
-    IPlatformMfaSessionProof platformMfa) : IRequestHandler<GetIdentityContextQuery, Result<IdentityContext>>
+    IPlatformMfaSessionProof platformMfa,
+    CleanArchitecture.Application.IdentityAccess.People.IPersonalDataMode personalDataMode) : IRequestHandler<GetIdentityContextQuery, Result<IdentityContext>>
 {
     public async Task<Result<IdentityContext>> Handle(GetIdentityContextQuery request, CancellationToken cancellationToken)
     {
@@ -47,6 +48,24 @@ public sealed class GetIdentityContextQueryHandler(
         // (IA-REQ-045). It is asked only for Platform, because it is the only tenant type that requires it.
         var requiresTwoFactor = activeTenant is { Type: nameof(TenantType.Platform) } &&
                                 !await platformMfa.HasProvedFactorAsync(cancellationToken);
-        return Result<IdentityContext>.Success(new IdentityContext(identity.Id, identity.Email, identity.IsActive, activeTenant, tenants, effectivePermissions, session.AbsoluteExpiresAt, requiresTwoFactor));
+        // A person who told us their name is called by it. The email stays the identifier, but it is not a name,
+        // and showing it where a name belongs is how an address ends up on a screen somebody else can see
+        // (IA-REQ-050 amends this section).
+        var displayName = await context.PersonProfiles
+            .AsNoTracking()
+            .Where(profile => profile.IdentityId == identity.Id)
+            .Select(profile => profile.DisplayName)
+            .SingleOrDefaultAsync(cancellationToken) ?? identity.Email;
+
+        return Result<IdentityContext>.Success(new IdentityContext(
+            identity.Id,
+            displayName,
+            identity.IsActive,
+            activeTenant,
+            tenants,
+            effectivePermissions,
+            session.AbsoluteExpiresAt,
+            requiresTwoFactor,
+            personalDataMode.Classification.ToString()));
     }
 }

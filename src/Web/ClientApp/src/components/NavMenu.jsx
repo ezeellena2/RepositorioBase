@@ -23,7 +23,7 @@ function IdentityLinks() {
     return (
       <>
         <li><Link to="/login">Log in</Link></li>
-        <li><Link to="/organizations/register">Register</Link></li>
+        <li><Link to="/register">Register</Link></li>
       </>
     );
   }
@@ -32,6 +32,7 @@ function IdentityLinks() {
   return (
     <>
       <li><Link to="/identity">Your access</Link></li>
+      <li><Link to="/identity/profile">Your profile</Link></li>
       <li><Link to="/organizations/select">Organizations</Link></li>
       {permissions.includes('members.invite') && <li><Link to="/members/invite">Invite a member</Link></li>}
       {/* Offered only to a session already operating as Platform. It is a convenience, not a control: the

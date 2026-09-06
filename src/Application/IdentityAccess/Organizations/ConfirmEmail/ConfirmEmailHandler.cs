@@ -21,6 +21,11 @@ public sealed class ConfirmEmailCommandHandler(
     IConfirmationSecretStore secrets,
     ITokenHasher tokenHasher,
     IIdentityAccountService identities,
+    CleanArchitecture.Application.IdentityAccess.People.IPersonalDocumentRegistry personalDocuments,
+    CleanArchitecture.Application.IdentityAccess.People.IIdentityDocumentProtector documentProtector,
+    CleanArchitecture.Application.IdentityAccess.People.IIdentityDocumentFingerprint documentFingerprints,
+    CleanArchitecture.Application.IdentityAccess.People.IPersonalDataMode personalDataMode,
+    CleanArchitecture.Application.IdentityAccess.Security.ISharedAttemptBudget attemptBudget,
     IRegistrationIdempotencyStore idempotencyStore,
     IRegistrationInitialRoleProvisioner initialRoles,
     TimeProvider timeProvider) : IRequestHandler<ConfirmEmailCommand, Result>
@@ -85,6 +90,13 @@ public sealed class ConfirmEmailCommandHandler(
             if (string.Equals(message.Type, RegisterOrganizationCommandHandler.IntentConfirmationMessageType, StringComparison.Ordinal))
             {
                 return await FinalizeRegistrationAsync(message.Payload, secret, now, ct);
+            }
+
+            // The same proof, for a person instead of a company. It is the same endpoint and the same envelope
+            // because a confirmation link is a confirmation link (IA-REQ-005); only what it finalizes differs.
+            if (string.Equals(message.Type, CleanArchitecture.Application.IdentityAccess.People.RegisterPersonal.RegisterPersonalCommandHandler.IntentConfirmationMessageType, StringComparison.Ordinal))
+            {
+                return await FinalizePersonalAsync(message.Payload, secret, now, ct);
             }
 
             if (!string.Equals(message.Type, ConfirmationMessageType, StringComparison.Ordinal)) return Result.Failure(IdentityAccessErrors.InvalidConfirmation());
@@ -172,6 +184,127 @@ public sealed class ConfirmEmailCommandHandler(
         context.AuditEvents.Add(AuditEvent.CreateIdentityConfirmed(identityId, tenant.Id, correlation, now));
         await context.SaveChangesAsync(cancellationToken);
         return Result.Success();
+    }
+
+    /// <summary>
+    /// Turns a proved personal intent into the context it asked for.
+    /// <para>
+    /// The order is the organization finalization's, with one addition: the claim budget is spent before anything
+    /// is looked at, because a refused claim must still cost an attempt. As there, the identity is created before
+    /// the documentary identity is checked — somebody who proved their own address has earned their account even
+    /// when the document is already recorded, and they can then correct it through the process Task 26 builds.
+    /// </para>
+    /// </summary>
+    private async Task<Result> FinalizePersonalAsync(string payload, OutboxSecret secret, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        if (!TryReadPersonalEnvelope(payload, out var envelope)) return Result.Failure(IdentityAccessErrors.InvalidConfirmation());
+
+        var intent = await context.PendingPersonalIntents.SingleOrDefaultAsync(item => item.Id == envelope.IntentId, cancellationToken);
+        if (intent is null) return Result.Failure(IdentityAccessErrors.InvalidConfirmation());
+        if (intent.Outcome is { } settled) return PersonalResultFor(settled);
+
+        var decision = await attemptBudget.SpendAsync(
+            CleanArchitecture.Application.IdentityAccess.People.PersonalAttemptBudgets.DocumentClaim,
+            intent.NormalizedEmail,
+            cancellationToken);
+        if (BudgetRefusal(decision) is { } refusal) return Result.Failure(refusal);
+
+        var document = documentProtector.Reveal(intent.DocumentCiphertext);
+        if (document is null)
+        {
+            // The envelope outlived the key that sealed it. Nothing can be created from it, and it is settled so
+            // the same dead link cannot keep asking.
+            return await SettlePersonalConflictAsync(intent, secret, null, now, cancellationToken);
+        }
+
+        var fingerprints = documentFingerprints.ForRetainedKeys(document.Value);
+        var correlation = $"personal-intent-{intent.Id:N}";
+        await idempotencyStore.CoordinateBusinessIntentAsync(intent.NormalizedEmail, fingerprints[0].Value, cancellationToken);
+
+        if (await identities.FindByEmailAsync(intent.NormalizedEmail, cancellationToken) is not null)
+        {
+            return await SettlePersonalConflictAsync(intent, secret, null, now, cancellationToken);
+        }
+
+        var creation = await identities.CreatePendingFromHashAsync(intent.NormalizedEmail, intent.PasswordHash, cancellationToken);
+        if (creation.IsValidationFailure || creation.Account is null)
+        {
+            return await SettlePersonalConflictAsync(intent, secret, null, now, cancellationToken);
+        }
+
+        var identityId = creation.Account.Id;
+        await identities.ActivateAsync(identityId, cancellationToken);
+
+        if (await personalDocuments.IsRecordedAsync(fingerprints, cancellationToken))
+        {
+            // The account stands; only the context is lost, and the person is told the one thing every refused
+            // claim is told. That code says nothing about whose document it is (SPEC section 14.3).
+            return await SettlePersonalConflictAsync(intent, secret, identityId, now, cancellationToken);
+        }
+
+        CleanArchitecture.Application.IdentityAccess.People.PersonalContextFactory.Add(
+            context,
+            identityId,
+            intent.FullName,
+            intent.DisplayName,
+            intent.DocumentCiphertext,
+            fingerprints,
+            personalDataMode.Classification,
+            correlation,
+            now);
+
+        intent.Complete(PendingRegistrationIntentOutcome.Created, now);
+        secret.Consume("confirmation_consumed", now);
+        context.AuditEvents.Add(AuditEvent.CreateIdentityConfirmed(identityId, null, correlation, now));
+        await context.SaveChangesAsync(cancellationToken);
+        return Result.Success();
+    }
+
+    private async Task<Result> SettlePersonalConflictAsync(
+        CleanArchitecture.Domain.IdentityAccess.People.PendingPersonalIntent intent,
+        OutboxSecret secret,
+        Guid? actorId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        intent.Complete(PendingRegistrationIntentOutcome.Conflicted, now);
+        secret.Consume("confirmation_consumed", now);
+        var correlation = $"personal-intent-{intent.Id:N}";
+        context.AuditEvents.Add(AuditEvent.CreateRegistrationConflicted(correlation, "personal_conflict", actorId, now));
+        if (actorId is { } identityId) context.AuditEvents.Add(AuditEvent.CreateIdentityConfirmed(identityId, null, correlation, now));
+        await context.SaveChangesAsync(cancellationToken);
+        return Result.Failure(IdentityAccessErrors.PersonalRegistrationConflict());
+    }
+
+    private static Result PersonalResultFor(PendingRegistrationIntentOutcome outcome) => outcome switch
+    {
+        PendingRegistrationIntentOutcome.Created => Result.Success(),
+        _ => Result.Failure(IdentityAccessErrors.PersonalRegistrationConflict())
+    };
+
+    private static ApplicationError? BudgetRefusal(CleanArchitecture.Application.IdentityAccess.Security.AttemptBudgetDecision decision) =>
+        decision.Outcome switch
+        {
+            CleanArchitecture.Application.IdentityAccess.Security.AttemptBudgetOutcome.Admitted => null,
+            CleanArchitecture.Application.IdentityAccess.Security.AttemptBudgetOutcome.Exhausted =>
+                IdentityAccessErrors.AttemptsExhausted(Math.Max(1, (int)Math.Ceiling(decision.RetryAfter.TotalSeconds))),
+            _ => IdentityAccessErrors.ServiceUnavailable(Math.Max(1, (int)Math.Ceiling(decision.RetryAfter.TotalSeconds)))
+        };
+
+    private static bool TryReadPersonalEnvelope(string payload, out CleanArchitecture.Application.IdentityAccess.People.RegisterPersonal.RegisterPersonalCommandHandler.IntentEnvelope envelope)
+    {
+        envelope = default!;
+        try
+        {
+            var value = JsonSerializer.Deserialize<CleanArchitecture.Application.IdentityAccess.People.RegisterPersonal.RegisterPersonalCommandHandler.IntentEnvelope>(payload);
+            if (value is null || value.IntentId == Guid.Empty) return false;
+            envelope = value;
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
     }
 
     /// <summary>

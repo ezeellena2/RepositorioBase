@@ -78,6 +78,7 @@ public sealed class ApiProblemDetailsMapper : IProblemDetailsService
         ApplicationErrorCategory.NotFound => StatusCodes.Status404NotFound,
         ApplicationErrorCategory.Conflict => StatusCodes.Status409Conflict,
         ApplicationErrorCategory.RateLimited => StatusCodes.Status429TooManyRequests,
+        ApplicationErrorCategory.Unavailable => StatusCodes.Status503ServiceUnavailable,
         _ => throw new ArgumentOutOfRangeException(nameof(category), category, "Unknown expected error category.")
     };
 
@@ -92,6 +93,7 @@ public sealed class ApiProblemDetailsMapper : IProblemDetailsService
         StatusCodes.Status404NotFound => "Not Found",
         StatusCodes.Status409Conflict => "Conflict",
         StatusCodes.Status429TooManyRequests => "Too Many Requests",
+        StatusCodes.Status503ServiceUnavailable => "Service Unavailable",
         _ => "Internal Server Error"
     };
 

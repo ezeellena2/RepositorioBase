@@ -39,6 +39,15 @@ public static class Permissions
     /// </summary>
     public const string PlatformMfaEnroll = "platform.mfa.enroll";
 
+    /// <summary>
+    /// A person's own profile and their own `Personal` context. Both are application-scoped self-service: the
+    /// requests carry no owner parameter and resolve the caller's own rows, and creating the context is what
+    /// produces the tenant, so requiring one would make it unreachable (IA-REQ-050).
+    /// </summary>
+    public const string IdentityProfileRead = "identity.profile.read";
+
+    public const string IdentityProfileManage = "identity.profile.manage";
+
     public static IReadOnlyList<PermissionDefinition> Catalog { get; } =
     [
         new(MembersInvite, [TenantType.Organization]),
@@ -69,7 +78,9 @@ public static class Permissions
         IdentityInvitationsAccept,
         // A Platform invitee holds no membership until the MFA gates complete, so enrolling cannot be
         // tenant-scoped either. It grants nothing beyond the chance to prove a factor.
-        PlatformMfaEnroll
+        PlatformMfaEnroll,
+        IdentityProfileRead,
+        IdentityProfileManage
     };
 
     /// <summary>
@@ -86,7 +97,9 @@ public static class Permissions
         IdentityContextRead,
         IdentityContextSelect,
         IdentityInvitationsAccept,
-        PlatformMfaEnroll
+        PlatformMfaEnroll,
+        IdentityProfileRead,
+        IdentityProfileManage
     };
 
 }

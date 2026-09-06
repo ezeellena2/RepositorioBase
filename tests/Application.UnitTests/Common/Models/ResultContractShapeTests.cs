@@ -39,7 +39,8 @@ public sealed class ResultContractShapeTests
             nameof(ApplicationErrorCategory.Authorization),
             nameof(ApplicationErrorCategory.NotFound),
             nameof(ApplicationErrorCategory.Conflict),
-            nameof(ApplicationErrorCategory.RateLimited)
+            nameof(ApplicationErrorCategory.RateLimited),
+            nameof(ApplicationErrorCategory.Unavailable)
         ]);
     }
 }

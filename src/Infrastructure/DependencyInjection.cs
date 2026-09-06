@@ -134,6 +134,8 @@ public static class DependencyInjection
         builder.Services.AddScoped<IOutboxDeliveryHandler, SignInNoticeDeliveryHandler>();
         builder.Services.AddScoped<IOutboxDeliveryHandler, RegistrationIntentConfirmationDeliveryHandler>();
         builder.Services.AddScoped<IOutboxDeliveryHandler, RegistrationIntentSignInNoticeDeliveryHandler>();
+        builder.Services.AddScoped<IOutboxDeliveryHandler, PersonalIntentConfirmationDeliveryHandler>();
+        builder.Services.AddScoped<IOutboxDeliveryHandler, PersonalIntentSignInNoticeDeliveryHandler>();
         builder.Services.AddScoped<IOutboxDeliveryHandler, PlatformInvitationDeliveryHandler>();
         builder.Services.AddScoped<IOutboxDeliveryHandler, PlatformConfirmationDeliveryHandler>();
         builder.Services.AddScoped<IOutboxDeliveryHandler, PlatformSignInNoticeDeliveryHandler>();
@@ -162,6 +164,9 @@ public static class DependencyInjection
         builder.Services.Configure<CleanArchitecture.Infrastructure.IdentityAccess.People.IdentityDocumentProtectionOptions>(
             builder.Configuration.GetSection(CleanArchitecture.Infrastructure.IdentityAccess.People.IdentityDocumentProtectionOptions.SectionName));
         builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.Security.ISharedAttemptBudget, CleanArchitecture.Infrastructure.IdentityAccess.Security.PostgreSqlAttemptBudget>();
+        builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.People.IPersonalDocumentRegistry, CleanArchitecture.Infrastructure.IdentityAccess.People.PersonalDocumentRegistry>();
+        builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.People.IPersonalProfileStamps, CleanArchitecture.Infrastructure.IdentityAccess.People.PersonalProfileStamps>();
+        builder.Services.AddSingleton<CleanArchitecture.Application.IdentityAccess.People.IPersonalDataMode, CleanArchitecture.Infrastructure.IdentityAccess.People.PersonalDataMode>();
         builder.Services.AddScoped<IValidatedOptionalSession, ValidatedOptionalSession>();
         builder.Services.AddScoped<ICurrentSession, CurrentSession>();
         builder.Services.AddScoped<SessionCookieEvents>();

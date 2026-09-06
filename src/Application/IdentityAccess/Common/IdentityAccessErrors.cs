@@ -70,4 +70,33 @@ public static class IdentityAccessErrors
         new("rate_limit_exceeded", ApplicationErrorCategory.RateLimited, "Too many verification attempts. Try again later.", retryAfterSeconds: retryAfterSeconds);
 
     public static ApplicationError SessionConcurrencyConflict() => new("session_concurrency_conflict", ApplicationErrorCategory.Conflict, "The session was changed by another request. Try again.");
+
+    /// <summary>
+    /// Everything that stops a `Personal` context being recorded collapses to one code: this identity already owns
+    /// one, or the documentary identity is already recorded. Telling those two apart would let an authenticated
+    /// caller vary the number they submit and read back whether it belongs to somebody (SPEC section 14.3).
+    /// </summary>
+    public static ApplicationError PersonalRegistrationConflict() =>
+        new("personal_registration_conflict", ApplicationErrorCategory.Conflict, "The personal context cannot be created in its current state.");
+
+    /// <summary>This identity has no `Personal` context. No route resolves anybody else's, so there is nothing else to say.</summary>
+    public static ApplicationError PersonalProfileNotFound() =>
+        new("personal_profile_not_found", ApplicationErrorCategory.NotFound, "This identity has no personal profile.");
+
+    public static ApplicationError PersonalProfileConcurrencyConflict() =>
+        new("personal_profile_concurrency_conflict", ApplicationErrorCategory.Conflict, "The profile was changed by another request. Refresh it and try again.");
+
+    /// <summary>Names the rejected member and never its value, so a refusal cannot echo what was submitted.</summary>
+    public static ApplicationError ProfileFieldNotEditable(string member) =>
+        new("profile_field_not_editable", ApplicationErrorCategory.Validation, $"The member '{member}' cannot be edited through this request.");
+
+    public static ApplicationError AttemptsExhausted(int retryAfterSeconds) =>
+        new("rate_limit_exceeded", ApplicationErrorCategory.RateLimited, "Too many attempts. Try again later.", retryAfterSeconds: retryAfterSeconds);
+
+    /// <summary>
+    /// The shared abuse-control store is unreachable, so the attempt was refused without being counted. It answers
+    /// `503` rather than `429` because nobody spent anything (amendment A5).
+    /// </summary>
+    public static ApplicationError ServiceUnavailable(int retryAfterSeconds) =>
+        new("service_unavailable", ApplicationErrorCategory.Unavailable, "The service is temporarily unavailable. Try again shortly.", retryAfterSeconds: retryAfterSeconds);
 }

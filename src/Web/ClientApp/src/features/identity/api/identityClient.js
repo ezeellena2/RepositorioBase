@@ -23,7 +23,7 @@ export function createIdentityClient(transport = createApiTransport()) {
     // activeTenant is genuinely absent for an identity that holds no membership yet, so it is not required.
     // Demanding it would read "you belong to nothing" as "the contract drifted".
     getContext: () => send('/api/identity/context', {
-      expect: ['user', 'availableTenants', 'permissions', 'session'],
+      expect: ['user', 'availableTenants', 'permissions', 'session', 'personalData'],
     }),
 
     signIn: (email, password) => send('/api/identity/sessions', { method: 'POST', body: { email, password } }),
@@ -32,11 +32,24 @@ export function createIdentityClient(transport = createApiTransport()) {
     selectTenant: (tenantId) => send('/api/identity/context/tenant', {
       method: 'PUT',
       body: { tenantId },
-      expect: ['user', 'availableTenants', 'permissions', 'session'],
+      expect: ['user', 'availableTenants', 'permissions', 'session', 'personalData'],
     }),
 
     registerOrganization: (request) => send('/api/identity/organizations/register', { method: 'POST', body: request }),
     confirmEmail: (token) => send('/api/identity/confirm-email', { method: 'POST', body: { token } }),
+
+    // A person's own context. The signup is neutral and bodyless like the organization one; the two authenticated
+    // calls name the members they are allowed to read, so a response that grew a field would be refused here.
+    registerPersonal: (request) => send('/api/identity/personal/register', { method: 'POST', body: request }),
+    createPersonalContext: (request) => send('/api/identity/personal', { method: 'POST', body: request }),
+    getPersonalProfile: () => send('/api/identity/profile', {
+      expect: ['fullName', 'displayName', 'email', 'personalTenantId', 'document', 'version', 'updatedAt'],
+    }),
+    updatePersonalProfile: (request) => send('/api/identity/profile', {
+      method: 'PUT',
+      body: request,
+      expect: ['fullName', 'displayName', 'email', 'personalTenantId', 'document', 'version', 'updatedAt'],
+    }),
 
     inviteMember: (tenantId, email, roleIds) => send(`/api/tenants/${encodeURIComponent(tenantId)}/invitations`, {
       method: 'POST',

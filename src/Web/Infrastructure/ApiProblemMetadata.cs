@@ -25,6 +25,21 @@ public static class ApiProblemMetadata
     public static readonly ApiProblemContract InternalServerError = new(StatusCodes.Status500InternalServerError, "internal_server_error");
     public static readonly ApiProblemContract RateLimitExceeded = new(StatusCodes.Status429TooManyRequests, "rate_limit_exceeded", true);
 
+    /// <summary>
+    /// The shared abuse-control store is unreachable, so the attempt was refused without being counted. It is a
+    /// distinct contract from <see cref="RateLimitExceeded"/> because a caller who spent nothing must not be told
+    /// they tried too often (amendment A5).
+    /// </summary>
+    public static readonly ApiProblemContract ServiceUnavailable = new(StatusCodes.Status503ServiceUnavailable, "service_unavailable", true);
+
+    public static readonly ApiProblemContract PersonalRegistrationConflict = new(StatusCodes.Status409Conflict, "personal_registration_conflict");
+
+    public static readonly ApiProblemContract PersonalProfileNotFound = new(StatusCodes.Status404NotFound, "personal_profile_not_found");
+
+    public static readonly ApiProblemContract PersonalProfileConcurrencyConflict = new(StatusCodes.Status409Conflict, "personal_profile_concurrency_conflict");
+
+    public static readonly ApiProblemContract ProfileFieldNotEditable = new(StatusCodes.Status400BadRequest, "profile_field_not_editable");
+
     public static RouteHandlerBuilder WithApiProblemDetails(this RouteHandlerBuilder builder, params ApiProblemContract[] contracts)
     {
         ArgumentNullException.ThrowIfNull(contracts);

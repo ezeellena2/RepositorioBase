@@ -715,6 +715,8 @@ public sealed class MigrationUpgradeTests
             await latest.Database.GetService<IMigrator>().MigrateAsync();
 
             await AssertTableAsync(connectionString!, "IdentityAttemptBudgets", true);
+            await AssertTableAsync(connectionString!, "pending_personal_intents", true,
+                "the personal signup's unproved phase needs its own intent table, added after the budget step.");
             (await latest.Database.GetPendingMigrationsAsync()).ShouldBeEmpty();
             (await latest.Users.SingleAsync(user => user.Id == userId)).NormalizedEmail.ShouldBe("ROUNDTRIP@EXAMPLE.TEST");
             (await latest.TodoItems.SingleAsync(todo => todo.Id == todoId)).CreatedBy.ShouldBe(userId);

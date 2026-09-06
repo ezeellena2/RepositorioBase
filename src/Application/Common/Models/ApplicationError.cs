@@ -30,9 +30,9 @@ public sealed class ApplicationError
             throw new ArgumentOutOfRangeException(nameof(retryAfterSeconds), "Retry-After must be positive when supplied.");
         }
 
-        if (retryAfterSeconds is not null && category != ApplicationErrorCategory.RateLimited)
+        if (retryAfterSeconds is not null && category is not (ApplicationErrorCategory.RateLimited or ApplicationErrorCategory.Unavailable))
         {
-            throw new ArgumentException("Retry-After is only valid for rate-limited failures.", nameof(retryAfterSeconds));
+            throw new ArgumentException("Retry-After is only valid for rate-limited and unavailable failures.", nameof(retryAfterSeconds));
         }
 
         Code = code.Trim();

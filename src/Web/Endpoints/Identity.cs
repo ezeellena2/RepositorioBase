@@ -20,6 +20,7 @@ public sealed class Identity : IEndpointGroup
     {
         global::CleanArchitecture.Web.IdentityEndpoints.SessionEndpoints.Map(group);
         global::CleanArchitecture.Web.IdentityEndpoints.ContextEndpoints.Map(group);
+        global::CleanArchitecture.Web.IdentityEndpoints.PersonalEndpoints.Map(group);
         group.MapGet("/antiforgery", GetAntiforgery)
             .Produces<AntiforgeryResponse>()
             .WithApiProblemDetails(ApiProblemMetadata.InternalServerError);

@@ -71,6 +71,10 @@ public class ExistingApplicationRequestAuthorizationTests
         [
             typeof(ConfirmEmailCommand).FullName,
             typeof(RegisterOrganizationCommand).FullName,
+            typeof(CleanArchitecture.Application.IdentityAccess.People.RegisterPersonal.RegisterPersonalCommand).FullName,
+            typeof(CleanArchitecture.Application.IdentityAccess.People.CreatePersonalContext.CreatePersonalContextCommand).FullName,
+            typeof(CleanArchitecture.Application.IdentityAccess.People.Profile.GetPersonalProfileQuery).FullName,
+            typeof(CleanArchitecture.Application.IdentityAccess.People.Profile.UpdatePersonalProfileCommand).FullName,
             typeof(CleanArchitecture.Application.IdentityAccess.Sessions.CreateSession.CreateSessionCommand).FullName,
             typeof(RevokeCurrentSessionCommand).FullName,
             typeof(GetIdentityContextQuery).FullName,

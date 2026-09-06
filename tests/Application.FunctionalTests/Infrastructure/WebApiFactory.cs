@@ -28,10 +28,17 @@ public class WebApiFactory(
     bool useTestIdentityAccessDoubles = true,
     TimeProvider? timeProvider = null) : WebApplicationFactory<Program>
 {
+    /// <summary>A fixed 32-byte key. This suite never handles a real document, so nothing here needs protecting.</summary>
+    private const string TestDocumentFingerprintKey = "dGVzdC1maW5nZXJwcmludC1rZXktMzItYnl0ZXMhISE=";
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseSetting("ConnectionStrings:CleanArchitectureDb", connectionString);
         builder.UseSetting("IdentityAccess:Email:PublicOrigin", "https://app.example.test");
+        // Fingerprint key material has no default by design, so the host that records documents has to be given
+        // some. It is a fixed test key: this suite never handles a real document.
+        builder.UseSetting("IdentityAccess:People:DocumentProtection:CurrentKeyVersion", "1");
+        builder.UseSetting("IdentityAccess:People:DocumentProtection:FingerprintKeys:1", TestDocumentFingerprintKey);
         if (!string.IsNullOrWhiteSpace(environmentName))
         {
             builder.UseEnvironment(environmentName);
@@ -66,6 +73,14 @@ public class WebApiFactory(
                         .Build();
                 });
             }
+            // The shared budget is real everywhere except when a test asks for the outage, which cannot be
+            // produced by configuration and is the one behaviour a caller is promised at the edge of the store.
+            services.RemoveAll<CleanArchitecture.Application.IdentityAccess.Security.ISharedAttemptBudget>();
+            services.AddScoped<CleanArchitecture.Application.IdentityAccess.Security.ISharedAttemptBudget>(provider =>
+                new TestSharedAttemptBudget(new CleanArchitecture.Infrastructure.IdentityAccess.Security.PostgreSqlAttemptBudget(
+                    provider.GetRequiredService<CleanArchitecture.Infrastructure.Data.ApplicationDbContext>(),
+                    provider.GetRequiredService<TimeProvider>())));
+
             if (useTestIdentityAccessDoubles)
             {
                 services

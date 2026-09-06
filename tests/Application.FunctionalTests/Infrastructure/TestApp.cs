@@ -349,11 +349,20 @@ public static class TestApp
     public static void SetSessionId(Guid? sessionId) => _sessionId = sessionId;
 
     private static string? _platformBootstrapEmail;
+    private static bool _attemptBudgetUnavailable;
 
     /// <summary>The one address a deployment may configure for the Platform bootstrap ceremony.</summary>
     public static string? GetPlatformBootstrapEmail() => _platformBootstrapEmail;
 
     public static void SetPlatformBootstrapEmail(string? email) => _platformBootstrapEmail = email;
+
+    /// <summary>
+    /// Makes the shared attempt-budget store unreachable for the rest of the test. It is the only way to exercise
+    /// the promise a bounded route makes at the edge of that store: refuse, and say it is an outage.
+    /// </summary>
+    public static void ForceAttemptBudgetUnavailable() => _attemptBudgetUnavailable = true;
+
+    public static bool IsAttemptBudgetUnavailable() => _attemptBudgetUnavailable;
 
     public static async Task<Guid> RunAsDefaultUserAsync()
     {
@@ -436,6 +445,7 @@ public static class TestApp
         // The recovery budget is process state rather than database state, so Respawn does not clear it.
         CleanArchitecture.Infrastructure.Platform.PlatformBootstrapRecoveryRateLimiter.Reset();
         CleanArchitecture.Infrastructure.Platform.PlatformMfaAttemptLimiter.Reset();
+        _attemptBudgetUnavailable = false;
         _confirmationSecretLockBarrier = null;
         _invitationLockBarrier = null;
         lock (_invitationLockBarrierReaders) _invitationLockBarrierReaders.Clear();

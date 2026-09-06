@@ -38,6 +38,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
 
     public DbSet<PendingRegistrationIntent> PendingRegistrationIntents => Set<PendingRegistrationIntent>();
 
+    public DbSet<PendingPersonalIntent> PendingPersonalIntents => Set<PendingPersonalIntent>();
+
     public DbSet<PersonProfile> PersonProfiles => Set<PersonProfile>();
 
     public DbSet<PersonalTenantOwnership> PersonalTenantOwnerships => Set<PersonalTenantOwnership>();

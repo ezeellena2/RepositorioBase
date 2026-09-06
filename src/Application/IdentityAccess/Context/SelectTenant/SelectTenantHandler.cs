@@ -19,6 +19,7 @@ public sealed class SelectTenantCommandHandler(
     IIdentityAccountService identities,
     IEffectivePermissionReader permissions,
     IPlatformMfaSessionProof platformMfa,
+    CleanArchitecture.Application.IdentityAccess.People.IPersonalDataMode personalDataMode,
     TimeProvider timeProvider) : IRequestHandler<SelectTenantCommand, Result<IdentityContext>>
 {
     public Task<Result<IdentityContext>> Handle(SelectTenantCommand request, CancellationToken cancellationToken)
@@ -74,7 +75,22 @@ public sealed class SelectTenantCommandHandler(
                 // this session proved the second factor, so the answer says whether it still has to (IA-REQ-045).
                 var requiresTwoFactor = selectedEntity.Type == TenantType.Platform &&
                                         !await platformMfa.HasProvedFactorAsync(ct);
-                return Result<IdentityContext>.Success(new IdentityContext(account.Id, account.Email, account.IsActive, selected, tenants, effectivePermissions, session.AbsoluteExpiresAt, requiresTwoFactor));
+                var displayName = await context.PersonProfiles
+                    .AsNoTracking()
+                    .Where(profile => profile.IdentityId == account.Id)
+                    .Select(profile => profile.DisplayName)
+                    .SingleOrDefaultAsync(ct) ?? account.Email;
+
+                return Result<IdentityContext>.Success(new IdentityContext(
+                    account.Id,
+                    displayName,
+                    account.IsActive,
+                    selected,
+                    tenants,
+                    effectivePermissions,
+                    session.AbsoluteExpiresAt,
+                    requiresTwoFactor,
+                    personalDataMode.Classification.ToString()));
             }
 
             return Result<IdentityContext>.Failure(IdentityAccessErrors.SessionConcurrencyConflict());
