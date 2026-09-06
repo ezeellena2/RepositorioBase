@@ -1,4 +1,4 @@
-﻿using System.Reflection;
+using System.Reflection;
 using CleanArchitecture.Application.Common.Interfaces;
 using CleanArchitecture.Domain.Entities;
 using CleanArchitecture.Domain.IdentityAccess.Auditing;
@@ -34,6 +34,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
     public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
 
     public DbSet<RegistrationSubmission> RegistrationSubmissions => Set<RegistrationSubmission>();
+
+    public DbSet<PendingRegistrationIntent> PendingRegistrationIntents => Set<PendingRegistrationIntent>();
 
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
 

@@ -94,6 +94,22 @@ public sealed class IdentityAccountService(
             : new IdentityAccountCreationResult(null, true);
     }
 
+    public string HashPassword(string password) => passwordHasher.HashPassword(DecoyUser, password);
+
+    public async Task<IdentityAccountCreationResult> CreatePendingFromHashAsync(string normalizedEmail, string passwordHash, CancellationToken cancellationToken)
+    {
+        var user = NewPendingUser(normalizedEmail);
+        user.PasswordHash = passwordHash;
+
+        // The overload without a password skips password validation — the policy was applied when the hash was
+        // produced — while still running the user validators, so a normalized address that has been taken since
+        // initiation fails here rather than creating a second identity for it.
+        var result = await userManager.CreateAsync(user);
+        return result.Succeeded
+            ? new IdentityAccountCreationResult(new IdentityAccount(user.Id, user.Email!, false), false)
+            : new IdentityAccountCreationResult(null, true);
+    }
+
     public async Task ActivateAsync(Guid identityId, CancellationToken cancellationToken)
     {
         var user = await userManager.FindByIdAsync(identityId.ToString()) ?? throw new InvalidOperationException("identity_not_found");

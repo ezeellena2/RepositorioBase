@@ -3,6 +3,7 @@ using CleanArchitecture.Application.IdentityAccess.Organizations.RegisterOrganiz
 using CleanArchitecture.Domain.IdentityAccess.Auditing;
 using CleanArchitecture.Domain.IdentityAccess.Authorization;
 using CleanArchitecture.Domain.IdentityAccess.Memberships;
+using CleanArchitecture.Domain.IdentityAccess.Organizations;
 using CleanArchitecture.Domain.IdentityAccess.Outbox;
 using CleanArchitecture.Domain.IdentityAccess.Tenants;
 using CleanArchitecture.Infrastructure.Identity;
@@ -113,7 +114,7 @@ public sealed class ConfirmEmailTests : TestBase
         result.IsFailure.ShouldBeTrue();
         result.Error!.Code.ShouldBe("invalid_confirmation");
         TestApp.ConfirmationTokenHashInvocationCount.ShouldBe(0);
-        await AssertPendingGraphAsync();
+        await AssertUnspentIntentAsync();
     }
 
     [TestCase("")]
@@ -127,7 +128,7 @@ public sealed class ConfirmEmailTests : TestBase
 
         result.IsFailure.ShouldBeTrue();
         result.Error!.Code.ShouldBe("invalid_confirmation");
-        await AssertPendingGraphAsync();
+        await AssertUnspentIntentAsync();
     }
 
     [Test]
@@ -140,9 +141,13 @@ public sealed class ConfirmEmailTests : TestBase
 
         result.IsFailure.ShouldBeTrue();
         result.Error!.Code.ShouldBe("invalid_confirmation");
-        await AssertPendingGraphAsync();
+        await AssertUnspentIntentAsync();
     }
 
+    /// <summary>
+    /// A dead envelope settles the registration it carried. Leaving the intent open would keep a row whose meaning
+    /// depends on a clock rather than on a decision, and would let the same expired link go on asking.
+    /// </summary>
     [Test]
     public async Task Expired_confirmation_is_rejected_without_activation_or_successful_consumption()
     {
@@ -155,7 +160,8 @@ public sealed class ConfirmEmailTests : TestBase
         result.Error!.Code.ShouldBe("registration_conflict");
         var secret = (await TestApp.ListAsync<OutboxSecret>()).Single();
         secret.Status.ShouldBe(OutboxSecretStatus.Expired);
-        await AssertPendingGraphAsync(expectExpiredSecret: true);
+        (await TestApp.ListAsync<PendingRegistrationIntent>()).Single().Outcome.ShouldBe(PendingRegistrationIntentOutcome.Expired);
+        await AssertNothingWasCreatedAsync();
     }
 
     [TestCase(TenantStatus.Suspended, "PendingConfirmation")]
@@ -164,7 +170,7 @@ public sealed class ConfirmEmailTests : TestBase
     [TestCase(TenantStatus.Active, "Revoked")]
     public async Task Suspended_or_terminal_lifecycle_states_reject_without_confirmation_or_secret_consumption(TenantStatus tenantStatus, string membershipStatus)
     {
-        await RegisterAsync();
+        await RegisterAsSignedInCallerAsync();
         await TestApp.SetConfirmationLifecycleAsync(tenantStatus, membershipStatus);
 
         var result = await TestApp.SendAsync(new ConfirmEmailCommand(TestApp.GetRegistrationRawToken()));
@@ -176,6 +182,11 @@ public sealed class ConfirmEmailTests : TestBase
         (await TestApp.ListAsync<ApplicationUser>()).Single().EmailConfirmed.ShouldBeFalse();
     }
 
+    /// <summary>
+    /// Finalization is the request that creates the identity, so a failure inside it must take the identity back
+    /// with everything else. An account left standing for an address whose organization never existed would let
+    /// the retry find its own half-finished work and refuse the person their own registration.
+    /// </summary>
     [Test]
     public async Task Failure_after_identity_activation_rolls_back_every_confirmation_effect_and_retry_succeeds_once()
     {
@@ -185,10 +196,13 @@ public sealed class ConfirmEmailTests : TestBase
 
         await Should.ThrowAsync<InvalidOperationException>(() => TestApp.SendAsync(command));
 
-        await AssertPendingGraphAsync();
+        await AssertUnspentIntentAsync();
         (await TestApp.SendAsync(command)).IsSuccess.ShouldBeTrue();
         (await TestApp.ListAsync<AuditEvent>()).Count(item => item.EventType == "identity.confirmed").ShouldBe(1);
         (await TestApp.ListAsync<ApplicationUser>()).Single().EmailConfirmed.ShouldBeTrue();
+        (await TestApp.CountAsync<Tenant>()).ShouldBe(1);
+        (await TestApp.CountAsync<TenantMembership>()).ShouldBe(1);
+        (await TestApp.CountAsync<MembershipRole>()).ShouldBe(1);
     }
 
     private static async Task<RegistrationInput> RegisterAsync()
@@ -200,14 +214,75 @@ public sealed class ConfirmEmailTests : TestBase
         return input;
     }
 
-    private static async Task AssertPendingGraphAsync(bool expectExpiredSecret = false)
+    /// <summary>
+    /// The authenticated branch, the only one that still mails a confirmation for a tenant and a membership that
+    /// already exist and wait. A case about that lifecycle has to be born from the handler that owns it, because
+    /// rows written by hand would let the assertion keep passing after the handler stopped producing them.
+    /// </summary>
+    private static async Task RegisterAsSignedInCallerAsync()
     {
-        (await TestApp.ListAsync<ApplicationUser>()).Single().EmailConfirmed.ShouldBeFalse();
-        (await TestApp.ListAsync<Tenant>()).Single().Status.ShouldBe(TenantStatus.PendingConfirmation);
-        (await TestApp.ListAsync<TenantMembership>()).Single().Status.ShouldBe(MembershipStatus.PendingConfirmation);
-        (await TestApp.CountAsync<MembershipRole>()).ShouldBe(1);
-        var secret = (await TestApp.ListAsync<OutboxSecret>()).Single();
-        secret.Status.ShouldBe(expectExpiredSecret ? OutboxSecretStatus.Expired : OutboxSecretStatus.Pending);
+        var email = $"confirm-{Guid.NewGuid():N}@example.test";
+        var identityId = await TestApp.RunAsUserAsync(email, "Testing1234!", []);
+        TestApp.SetValidatedOptionalSession(identityId, email);
+        var result = await TestApp.SendAsync(new RegisterOrganizationCommand(email, "Testing1234!", "Confirmation Org", "30-12345678-9"));
+        result.IsSuccess.ShouldBeTrue();
+    }
+
+    /// <summary>
+    /// A conflicted finalization keeps answering that it conflicted.
+    /// <para>
+    /// Both terminal outcomes spend the envelope, so the envelope alone cannot tell them apart — the intent's
+    /// recorded outcome is what a replay must read. Answering the success shortcut here would tell a person whose
+    /// organization was lost that it had been created, and would do it every time they clicked the link again.
+    /// </para>
+    /// </summary>
+    [Test]
+    public async Task Replaying_a_conflicted_finalization_returns_the_conflict_it_recorded()
+    {
+        var registration = await RegisterAsync();
+        var token = TestApp.GetRegistrationRawToken();
+
+        // The CUIT is taken by somebody who proved their address first, which is the race the intent settles on.
+        var winner = $"winner-{Guid.NewGuid():N}@example.test";
+        var winnerId = await TestApp.RunAsUserAsync(winner, "Testing1234!", []);
+        TestApp.SetValidatedOptionalSession(winnerId, winner);
+        (await TestApp.SendAsync(new RegisterOrganizationCommand(winner, "Testing1234!", "Winning Org", registration.Cuit)))
+            .IsSuccess.ShouldBeTrue();
+        TestApp.SetUserId(null);
+        TestApp.SetValidatedOptionalSession(null, null);
+
+        var command = new ConfirmEmailCommand(token);
+        var first = await TestApp.SendAsync(command);
+        var replay = await TestApp.SendAsync(command);
+
+        first.Error!.Code.ShouldBe("registration_conflict");
+        replay.Error!.Code.ShouldBe("registration_conflict", "a replay returns the outcome the intent recorded, not the envelope's.");
+        (await TestApp.ListAsync<PendingRegistrationIntent>())
+            .Single(intent => intent.NormalizedEmail == registration.Email)
+            .Outcome.ShouldBe(PendingRegistrationIntentOutcome.Conflicted);
+
+        // The proof still earned the account, and neither the first answer nor the replay created a second one.
+        (await TestApp.ListAsync<ApplicationUser>()).Count(user => user.Email == registration.Email).ShouldBe(1);
+        (await TestApp.CountAsync<Tenant>()).ShouldBe(1, "the winner's organization is the only one.");
+    }
+
+    /// <summary>
+    /// The state a refused confirmation must leave: the intent still finalizable by the person who holds the token,
+    /// its envelope still spendable exactly once, and none of the claims that only a spent proof may create.
+    /// </summary>
+    private static async Task AssertUnspentIntentAsync()
+    {
+        (await TestApp.ListAsync<PendingRegistrationIntent>()).Single().Outcome.ShouldBeNull();
+        (await TestApp.ListAsync<OutboxSecret>()).Single().Status.ShouldBe(OutboxSecretStatus.Pending);
+        await AssertNothingWasCreatedAsync();
+    }
+
+    private static async Task AssertNothingWasCreatedAsync()
+    {
+        (await TestApp.CountAsync<ApplicationUser>()).ShouldBe(0);
+        (await TestApp.CountAsync<Tenant>()).ShouldBe(0);
+        (await TestApp.CountAsync<TenantMembership>()).ShouldBe(0);
+        (await TestApp.CountAsync<MembershipRole>()).ShouldBe(0);
         (await TestApp.ListAsync<AuditEvent>()).Count(item => item.EventType == "identity.confirmed").ShouldBe(0);
     }
 

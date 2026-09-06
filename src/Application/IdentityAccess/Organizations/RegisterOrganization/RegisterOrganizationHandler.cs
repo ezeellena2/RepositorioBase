@@ -27,6 +27,21 @@ public sealed class RegisterOrganizationCommandHandler(
     IRegistrationInitialRoleProvisioner initialRoles,
     TimeProvider timeProvider) : IRequestHandler<RegisterOrganizationCommand, Result>
 {
+    /// <summary>Carries the intent's confirmation token to the address that must prove it owns itself.</summary>
+    public const string IntentConfirmationMessageType = "identity.registration.confirmation.requested";
+
+    /// <summary>The tokenless notice an address that already has an account receives instead.</summary>
+    public const string IntentSignInNoticeMessageType = "identity.registration.signin.notice.requested";
+
+    /// <summary>
+    /// How long an unproved initiation stays finalizable. It matches the sealed envelope's own window so a person
+    /// meets one deadline rather than two; the envelope's expiry is the one that actually refuses a late token.
+    /// </summary>
+    private static readonly TimeSpan IntentWindow = TimeSpan.FromHours(24);
+
+    /// <summary>Named only by its identifier: the payload is stored in the clear and holds no address or CUIT.</summary>
+    public sealed record IntentEnvelope(Guid IntentId);
+
     public async Task<Result> Handle(RegisterOrganizationCommand request, CancellationToken cancellationToken)
     {
         if (!TryNormalize(request, out var intent)) return Result.Failure(IdentityAccessErrors.InvalidRegistration());
@@ -42,9 +57,7 @@ public sealed class RegisterOrganizationCommandHandler(
             return Result.Failure(IdentityAccessErrors.InvalidRegistration());
         }
 
-        try
-        {
-            return await transaction.ExecuteAsync(async ct =>
+        return await transaction.ExecuteAsync(async ct =>
             {
                 var scope = session.IdentityId?.ToString("N") ?? "anonymous";
                 var canonicalKey = CanonicalKey(scope, intent);
@@ -52,32 +65,26 @@ public sealed class RegisterOrganizationCommandHandler(
                 if (!claim.IsOwner) return Replay(claim.Submission);
 
                 var submission = claim.Submission;
-                await idempotencyStore.CoordinateBusinessIntentAsync(intent.Email, intent.Cuit.Value, ct);
-                var identity = session.IdentityId is { } identityId
-                    ? new IdentityAccount(identityId, intent.Email, true)
-                    : await identities.FindByEmailAsync(intent.Email, ct);
 
-                var cuitIsTaken = await context.OrganizationProfiles.AnyAsync(profile => profile.Cuit == intent.Cuit, ct);
-
-                // An anonymous caller is told the same thing whichever of these is true, and creates nothing in
-                // either case. Answering the taken address neutrally and the taken CUIT with a conflict made the
-                // pair an oracle: submitting one occupied CUIT with two different addresses returned two different
-                // answers, so the difference reported whether the address had an account (IA-REQ-029).
-                if (session.IdentityId is null && (identity is not null || cuitIsTaken))
+                // The anonymous phase reserves nothing, so it takes no business lock and asks no question whose
+                // answer could vary the work it does. Everything below this branch belongs to a caller whose
+                // identity is already proved by their session (IA-REQ-048).
+                if (session.IdentityId is null)
                 {
+                    await InitiateAsync(request, intent, submission, ct);
                     return await CompleteSubmissionAsync(submission, RegistrationSubmissionOutcome.Accepted, ct);
                 }
 
+                await idempotencyStore.CoordinateBusinessIntentAsync(intent.Email, intent.Cuit.Value, ct);
+                var identity = new IdentityAccount(session.IdentityId.Value, intent.Email, true);
+
                 // A signed-in caller may only register for the address their own session proves, so nothing here
                 // can be varied to probe someone else. Telling them the CUIT is already registered is the useful
-                // answer, and it reveals nothing about any identity.
-                if (cuitIsTaken) return await CompleteSubmissionAsync(submission, RegistrationSubmissionOutcome.RegistrationConflict, ct);
-
-                if (identity is null)
+                // answer, and it reveals nothing about any identity — and it can no longer be composed with an
+                // anonymous probe, because the anonymous phase now leaves no claim for this answer to depend on.
+                if (await context.OrganizationProfiles.AnyAsync(profile => profile.Cuit == intent.Cuit, ct))
                 {
-                    var creation = await identities.CreatePendingAsync(intent.Email, request.Password, ct);
-                    if (creation.IsValidationFailure || creation.Account is null) throw new ExpectedIdentityValidationFailureException();
-                    identity = creation.Account;
+                    return await CompleteSubmissionAsync(submission, RegistrationSubmissionOutcome.RegistrationConflict, ct);
                 }
 
                 var tenant = Tenant.CreateOrganization(TenantSlug.From($"org-{intent.Cuit.Value}"));
@@ -98,11 +105,46 @@ public sealed class RegisterOrganizationCommandHandler(
                 await context.SaveChangesAsync(ct);
                 return await CompleteSubmissionAsync(submission, RegistrationSubmissionOutcome.Accepted, ct);
             }, cancellationToken);
-        }
-        catch (ExpectedIdentityValidationFailureException)
+    }
+
+    /// <summary>
+    /// The anonymous phase. It writes one intent, one outbox message and one tenantless audit event, and it writes
+    /// the same number of each whether or not the address has an account and whether or not the CUIT is taken —
+    /// only the message differs, and only its own recipient can read that. It creates no identity, no tenant, no
+    /// profile, no membership and no role, so nothing it leaves behind can refuse or answer another caller
+    /// (IA-REQ-003/048).
+    /// </summary>
+    private async Task InitiateAsync(RegisterOrganizationCommand request, RegistrationIntent intent, RegistrationSubmission submission, CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        var expiresAt = now.Add(IntentWindow);
+        var existing = await identities.FindByEmailAsync(intent.Email, cancellationToken);
+
+        // The password is hashed on every anonymous request, before the address is looked up, so neither the answer
+        // nor the work done varies with what the system knows about it. The plaintext is not stored.
+        var passwordHash = identities.HashPassword(request.Password);
+
+        PendingRegistrationIntent pending;
+        OutboxMessage outbox;
+        if (existing is null)
         {
-            return Result.Failure(IdentityAccessErrors.InvalidRegistration());
+            pending = PendingRegistrationIntent.Open(submission.Id, intent.Email, intent.LegalName, intent.Cuit, passwordHash, now, expiresAt);
+            outbox = OutboxMessage.Create(IntentConfirmationMessageType, JsonSerializer.Serialize(new IntentEnvelope(pending.Id)), now);
+            var rawToken = tokens.Generate();
+            context.OutboxSecrets.Add(OutboxSecret.Create(outbox.Id, tokenHasher.Hash(rawToken), secretWriter.Encrypt(rawToken), expiresAt));
         }
+        else
+        {
+            // The address owner is told they can sign in. The notice carries no token, so holding this link grants
+            // nothing and the submitted password is never applied to an account the caller may not own.
+            pending = PendingRegistrationIntent.Notify(submission.Id, intent.Email, intent.LegalName, intent.Cuit, now, expiresAt);
+            outbox = OutboxMessage.Create(IntentSignInNoticeMessageType, JsonSerializer.Serialize(new IntentEnvelope(pending.Id)), now);
+        }
+
+        context.PendingRegistrationIntents.Add(pending);
+        context.OutboxMessages.Add(outbox);
+        context.AuditEvents.Add(AuditEvent.CreateRegistrationIntentRecorded(Correlation(submission.CanonicalKey), now));
+        await context.SaveChangesAsync(cancellationToken);
     }
 
     private async Task<Result> CompleteSubmissionAsync(RegistrationSubmission submission, RegistrationSubmissionOutcome outcome, CancellationToken cancellationToken)
@@ -144,5 +186,4 @@ public sealed class RegisterOrganizationCommandHandler(
     private static string Correlation(string canonicalKey) => $"registration-{canonicalKey[..16].ToLowerInvariant()}";
     private readonly record struct RegistrationIntent(string Email, string LegalName, NormalizedCuit Cuit);
     private sealed record ConfirmationEnvelope(Guid IdentityId, Guid TenantId, Guid MembershipId);
-    private sealed class ExpectedIdentityValidationFailureException : Exception;
 }

@@ -25,5 +25,22 @@ public interface IIdentityAccountService
 
     Task<IdentityAccountCreationResult> CreatePendingAsync(string normalizedEmail, string password, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// The irreversible hash the configured hasher produces for this password, computed without reading any state.
+    /// <para>
+    /// Registration takes the password once, at initiation, and must not keep it: the account it belongs to does
+    /// not exist yet and may never exist. Keeping the hash lets the later, proved request create the identity with
+    /// the credential the person actually chose, while nothing recoverable is ever stored.
+    /// </para>
+    /// </summary>
+    string HashPassword(string password);
+
+    /// <summary>
+    /// Creates the unconfirmed identity from a hash this service produced earlier. The password policy was applied
+    /// when that hash was computed, so it is not re-applied here; what is still enforced is the uniqueness of the
+    /// normalized address, which is why this can fail.
+    /// </summary>
+    Task<IdentityAccountCreationResult> CreatePendingFromHashAsync(string normalizedEmail, string passwordHash, CancellationToken cancellationToken);
+
     Task ActivateAsync(Guid identityId, CancellationToken cancellationToken);
 }

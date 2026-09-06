@@ -37,20 +37,28 @@ public sealed class RegistrationInputValidationTests : TestBase
         await AssertNoRegistrationEffectsAsync();
     }
 
+    /// <summary>
+    /// The counterpart to the refusals above, so they cannot pass by refusing everything: valid input still writes
+    /// the durable record of the request. What an unproved request may write is the intent and the message that
+    /// carries its proof, and nothing else.
+    /// </summary>
     [Test]
-    public async Task Valid_registration_input_still_creates_the_registration_graph()
+    public async Task Valid_registration_input_still_records_the_registration_intent()
     {
         var result = await TestApp.SendAsync(new RegisterOrganizationCommand("owner@example.test", "Testing1234!", "Northwind", "30-12345678-9"));
 
         result.IsSuccess.ShouldBeTrue();
         (await TestApp.CountAsync<RegistrationSubmission>()).ShouldBe(1);
-        (await TestApp.CountAsync<ApplicationUser>()).ShouldBe(1);
-        (await TestApp.CountAsync<Tenant>()).ShouldBe(1);
+        (await TestApp.CountAsync<PendingRegistrationIntent>()).ShouldBe(1);
+        (await TestApp.CountAsync<OutboxMessage>()).ShouldBe(1);
+        (await TestApp.CountAsync<ApplicationUser>()).ShouldBe(0);
+        (await TestApp.CountAsync<Tenant>()).ShouldBe(0);
     }
 
     private static async Task AssertNoRegistrationEffectsAsync()
     {
         (await TestApp.CountAsync<RegistrationSubmission>()).ShouldBe(0);
+        (await TestApp.CountAsync<PendingRegistrationIntent>()).ShouldBe(0);
         (await TestApp.CountAsync<ApplicationUser>()).ShouldBe(0);
         (await TestApp.CountAsync<Tenant>()).ShouldBe(0);
         (await TestApp.CountAsync<OrganizationProfile>()).ShouldBe(0);

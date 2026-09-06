@@ -54,11 +54,30 @@ The following capabilities remain part of the baseline but are delivered in late
 - custom roles and complete membership administration;
 - lifecycle/recovery, retention, and advanced operational controls from the standard.
 
-Until the applicable controls are complete, the starter must not claim full baseline compliance or enable real PII or production use.
+Until the applicable controls are complete, the starter must not claim full baseline compliance or enable real PII or production use. The contracts these slices need are proposed for approval in §14 and are not approved by being written there.
 
 ### 2.4 Explicit non-goals
 
 The initial Platform slice does not permit impersonation, destructive deletion, tenant-private or business-data reading, a client-selected tenant context, a global boolean/claim/role bypass, or a default administrator credential.
+
+### 2.5 Continuation scope and its three separate gates
+
+The roadmap in §2.3 is now planned as Tasks 17–28 of the
+[implementation plan](../../superpowers/plans/2026-08-31-identity-access-foundation.md#continuation-to-local-b2bb2c-functional-completion).
+Task 17 is the decision: §14 below holds its proposed contracts, and none of them is approved by being written
+down. Until a contract is approved, its dependent task is not `Ready`; if one is declined or amended, only the
+tasks that consume it change.
+
+Three outcomes are deliberately kept apart, and reaching one never authorizes the next:
+
+1. **Local functional closure with synthetic data.** Every journey works end to end against fictitious people,
+   fictitious documents and an isolated mail sink. This is what Tasks 18–28 can close on their own.
+2. **Use of real personal data.** Requires the responsible human or legal owner to approve purpose, field scope,
+   access, retention periods, legal holds, deletion evidence and backup/restore treatment (IA-REQ-056). Until
+   then `Personal` runs on synthetic fixtures and real collection is refused by configuration that fails closed.
+3. **Production deployment and full reference compliance.** Requires the restore admission authority and its
+   external record (IA-REQ-055), per-environment key and certificate ownership, and the abuse budgets recorded
+   for that environment. A green local suite is evidence for outcome 1 only.
 
 ## 3. Domain language
 
@@ -84,13 +103,13 @@ The initial Platform slice does not permit impersonation, destructive deletion, 
 
 - **IA-REQ-001:** one normalized email identifies at most one active local identity.
 - **IA-REQ-002:** `ApplicationUser` does not contain `TenantId`, role, DNI, CUIT, or a B2C/B2B discriminator.
-- **IA-REQ-003:** organization registration deterministically follows the caller state below. Every branch that creates an organization writes the identity decision, tenant, organization profile, responsible membership, initial roles, audit, and applicable confirmation/outbox intent in one consistency boundary.
-  - An anonymous request for an email with no identity creates an unconfirmed identity plus a pending organization and responsible membership, then returns the neutral `202` response.
-  - An anonymous request for an email that already belongs to an identity creates no identity, tenant, membership, or role. It returns the same neutral `202` response and may enqueue a generic sign-in or confirmation notice; the caller must authenticate before creating another organization.
-  - An anonymous request whose normalized CUIT already belongs to an organization creates no identity, tenant, membership, role, outbox or audit effect, and returns that same neutral `202` — whether or not the submitted email already has an identity. Answering one of those two with a conflict and the other neutrally made the pair an oracle: holding an occupied CUIT constant and varying only the address turned the status into a direct reading of whether that address has an account.
-  - An authenticated request creates another organization for the current identity. Any submitted email must normalize to that identity's email; otherwise the request is rejected. The new tenant and responsible membership belong to the authenticated identity only. A request whose normalized CUIT already belongs to an organization creates nothing and returns `409` `registration_conflict`: that caller may register only for the address their own session proves, so nothing they can vary asks about anybody else.
-- **IA-REQ-004:** a partial failure never leaves an organization without its responsible membership. The Application registration service derives a canonical equivalent-submission key from normalized caller scope and normalized registration intent, claims it before effects, and stores the completed neutral response. Sequential or concurrent replay returns the same bodyless `202` and produces one organization, responsible membership, outbox set, and audit set; database uniqueness remains a backstop, not the idempotency mechanism. Distinct conflicting branches in IA-REQ-003 remain unchanged.
-- **IA-REQ-005:** email must be confirmed before inviting members, administering roles, accepting an invitation, or performing a sensitive operation. The delivered confirmation link resolves to a screen that spends its token against `POST /api/identity/confirm-email`; both confirmation messages — an organization registrant's and an invited member's — carry the same link, because both consume that endpoint.
+- **IA-REQ-003:** organization registration deterministically follows the caller state below, and no branch reachable without proof of control of the submitted address creates an exclusive durable claim on a CUIT, identity, tenant, organization profile, membership or role.
+  - An anonymous request records one bounded, expiring `PendingRegistrationIntent`, enqueues one outbox message to the submitted address and returns the neutral `202`. It creates no identity, tenant, organization profile, membership, role or CUIT claim, and no state another caller can observe or be refused by. It behaves identically whatever the system knows of that address and that CUIT; only the delivered message differs — a confirmation link carrying the intent's single-use token when the address has no identity, and a tokenless sign-in notice when it already has one, which only that address can read.
+  - An authenticated request creates another organization for the current identity. Any submitted email must normalize to that identity's email; otherwise the request is rejected, and a session the server cannot validate is rejected as invalid rather than treated as anonymous. The new tenant and responsible membership belong to the authenticated identity only. A request whose normalized CUIT already belongs to an organization creates nothing and returns `409` `registration_conflict`: that caller may register only for the address their own session proves, so nothing they can vary asks about anybody else — and it can no longer be composed with an anonymous probe, because the anonymous phase leaves no claim for this answer to depend on.
+  - Spending an intent's token proves control of the submitted address, and only that proof may create the identity, tenant, organization profile, responsible membership, initial roles, audit and outbox effects. They are written in one consistency boundary: every branch that creates an organization writes that whole graph or none of it. A proof that arrives after the CUIT was taken still creates and activates the identity, because the person proved their own address; the organization is refused with `409` `registration_conflict`. A proof that arrives after the address gained an identity creates nothing and never applies the submitted password to an account the caller may not own.
+- **IA-REQ-048:** an exclusive durable reservation — a normalized CUIT, an organization profile, a tenant, a membership, a role, a protected documentary identity or a global email identity — is created only by a request that has proved control of the identity it will belong to, and exactly two proofs qualify: a validated persisted session, or a single-use token delivered to that address and spent by the request. What an unproven request leaves behind is observable to nobody but the address owner and an operator: no other caller may be refused by it, answered differently because of it, or able to read it.
+- **IA-REQ-004:** a partial failure never leaves an organization without its responsible membership, and neither registration phase replays into a second graph. The Application registration service derives a canonical equivalent-submission key from normalized caller scope and normalized registration intent, claims it before effects, and stores the completed neutral response, so replayed anonymous initiation returns the same bodyless `202` and produces one intent, one outbox message and one audit record. Finalization is idempotent on its single-use token: the first spend records the intent's terminal outcome and every later spend returns that recorded outcome — including the conflict, because both terminal outcomes spend the envelope and only the intent distinguishes them. Database uniqueness remains a backstop, not the idempotency mechanism.
+- **IA-REQ-005:** email must be confirmed before inviting members, administering roles, accepting an invitation, or performing a sensitive operation. The delivered confirmation link resolves to a screen that spends its token against `POST /api/identity/confirm-email`; the confirmation messages — an anonymous registrant's, an authenticated registrant's and an invited member's — carry the same link, because all three consume that endpoint.
 
 ### Tenancy and authorization
 
@@ -190,8 +209,8 @@ Routes are contractual drafts; generated OpenAPI becomes the implementation sour
 | Method and route | Access | Primary result |
 |---|---|---|
 | `GET /api/identity/antiforgery` | Public bootstrap | `200` request-token DTO + antiforgery cookie |
-| `POST /api/identity/organizations/register` | Public or authenticated + antiforgery | neutral bodyless `202`; an authenticated request for an already registered CUIT is `409` Problem Details `registration_conflict`, and an anonymous one is the same neutral `202` |
-| `POST /api/identity/confirm-email` | Public + token + antiforgery | idempotent bodyless `204` |
+| `POST /api/identity/organizations/register` | Public or authenticated + antiforgery | neutral bodyless `202` for every anonymous request, whatever the address and whatever the CUIT, reserving nothing; an authenticated request for an already registered CUIT is `409` Problem Details `registration_conflict`; a submitted email that does not normalize to the session's is `400` `invalid_registration`; a session the server cannot validate is `401` `invalid_session` |
+| `POST /api/identity/confirm-email` | Public + token + antiforgery | bodyless `204` when the registration finalizes or already did; `409` Problem Details `registration_conflict` when the CUIT was taken first, when the address gained an identity first, or when the envelope expired — including on replay; `400` `invalid_confirmation` for an unknown or malformed token |
 | `POST /api/identity/sessions` | Public + antiforgery | bodyless `204` + cookie or Problem Details |
 | `DELETE /api/identity/sessions/current` | Authenticated + antiforgery | bodyless `204`; a session already revoked by a parallel request is `401` `invalid_session` and still deletes the cookie; a lost update that never settles is `409` `session_concurrency_conflict` |
 | `GET /api/identity/context` | Authenticated | `200` identity-context DTO |
@@ -358,8 +377,11 @@ Scenario: Platform directories are bounded operational projections
 
 - Production email delivery uses Resend's REST API with an externally supplied domain-scoped Sending access API key. The maintainer delegated this implementation choice for the Task 10/11 corrections. No account, paid subscription, DNS change, or real send is part of local implementation. Identical message-ID replay is bounded by the provider's 24-hour retention; the worker fails closed after that window or on payload/credential drift. A credential-derived hash participates only in the combined request fingerprint; no API key is persisted with the message.
 - `OutboxSecret` key wrapping outside explicit `Development`, `Test`, and `Testing` environments uses an externally configured X.509 certificate and a shared durable ASP.NET Core Data Protection key repository. This includes Production, Staging, and custom deployment environments. Web and worker use the exact same application discriminator; existing deployments preserve their previous discriminator and key material. Configuration and activation prerequisites are documented in [EMAIL-SETUP.md](EMAIL-SETUP.md).
-- Legal PII policy before enabling `Personal` tenants and real DNI values.
-- Redis or another distributed cache; the first version may resolve permissions from PostgreSQL and add caching only after measurement.
+- Legal PII policy before enabling `Personal` tenants and real DNI values. Proposed IA-REQ-056 (§14.7) states the
+  contract this policy must fill and keeps `Personal` on synthetic fixtures until a named owner approves it; the
+  policy itself is not proposed here, and no jurisdictional period is invented.
+- Redis or another distributed cache; the first version may resolve permissions from PostgreSQL and add caching only after measurement. Proposed IA-REQ-057 (§14.7) keeps shared abuse-control state on the existing PostgreSQL stack for the same reason and adds no product.
+- Per-environment records that proposed §14 requires before the slice that consumes them: the abuse budgets and store timeout (IA-REQ-057), Data Protection key and certificate ownership (already §11 above), the OIDC client registration and its redirect URIs (IA-REQ-052), and the restore admission authority and its key (IA-REQ-055). Each is operator-owned; none is satisfied by a local run.
 
 The remaining open decisions must be resolved before the slice that consumes them. Deployment prerequisites and provider activation remain operator-owned and do not authorize insecure fallbacks.
 
@@ -389,3 +411,498 @@ This protocol is independent from the reference repository's workflow and preser
 - audit and outbox behavior are included when applicable;
 - build completes without warnings and relevant suites pass;
 - deferred controls and limitations are documented without false compliance claims.
+
+## 14. Task 17 decision package (proposed, not approved)
+
+> **C1 IS ACCEPTED (2026-09-06). C2–C7 ARE NOT.** Section 14.1 is accepted as written and is implemented by Task 18;
+> once that task lands, its requirements move into section 4 and 14.1 becomes a record of the decision. Everything
+> from 14.2 onward is still only proposed, and five of those entries carry required amendments recorded in
+> [ADR-004's decision record](../../decisions/ADR-004-Adopt-Multitenant-Identity-Access.md#decision-record--2026-09-06);
+> they must be put forward again, reconciled, before any of them is consumed. Read the rest of this banner as
+> applying to 14.2–14.7. This section is the Task 17 decision package, entries C1–C7,
+> put forward for approval. No behaviour described here exists; no requirement, permission code, stable error code,
+> route, DTO field, enum member or state name here is implemented; no test named here has been written or run, so
+> nothing here is evidence, and `Proposed` status authorizes no dependent code (section 12). Numbers marked
+> **(product default)** are this project's choices, not legal or external-standard requirements. IA-REQ-048..057
+> are allocated once here; C7's fragment numbered its two requirements 048/049 provisionally.
+
+### 14.1 C1 — Registration reservation: no exclusive durable claim before proved control of the address
+
+> **Accepted 2026-09-06 and implemented by Task 18.** Section 4 now carries IA-REQ-048 and the amended
+> IA-REQ-003/004/005; what follows is the decision record that produced them, kept for its state tables and its
+> account of the defect. Where this section and section 4 differ in wording, section 4 governs.
+
+- **IA-REQ-048 (accepted; section 4 governs):** an exclusive durable reservation — a normalized CUIT, an organization profile, a tenant,
+  a membership, a role, a protected documentary identity or a global email identity — is created only by a request
+  that has proved control of the identity it will belong to, and exactly two proofs qualify: a validated persisted
+  session, or a single-use token delivered to that address and spent by the request. What an unproven request leaves
+  behind must be observable to nobody but the address owner and an operator: no other caller may be refused by it,
+  answered differently because of it, or able to read it.
+- **IA-REQ-003 (accepted amended wording; section 4 governs):** organization registration deterministically follows the caller
+  state below, and no branch reachable without proof of control of the submitted address creates an exclusive
+  durable claim on a CUIT, identity, tenant, organization profile, membership or role.
+  - An anonymous request records one bounded, expiring, protected `PendingRegistrationIntent`, enqueues one
+    outbox message to the submitted address and returns the neutral `202`, creating no identity, tenant,
+    organization profile, membership, role or CUIT claim and no state another caller can observe or be refused
+    by. It behaves identically whatever the system knows of that address and that CUIT, except in the delivered
+    message, the intent's recorded outcome and that message's envelope.
+  - An authenticated request creates another organization for the current identity, unchanged: a submitted
+    email must normalize to that identity's email, an unvalidatable session is rejected as invalid, and an
+    already registered CUIT creates nothing, returning `409` `registration_conflict`.
+- **IA-REQ-004 (accepted amended wording; section 4 governs):** a partial failure never leaves an organization without its responsible
+  membership, and neither phase replays into a second graph. The canonical equivalent-submission key, derived from
+  normalized caller scope and registration intent, is claimed before effects and stores the completed neutral
+  response, so replayed anonymous initiation returns the same bodyless `202` and produces one intent, one outbox
+  message and one audit record. Finalization is idempotent on its single-use token: the first spend records the
+  terminal outcome and every later spend returns it. Database uniqueness is a backstop, not the mechanism.
+
+| # | Phase and caller | Address and CUIT at this moment | Durable effect | Response |
+|---|---|---|---|---|
+| 1–2 | Initiation, anonymous | no identity; CUIT free or already registered | one `PendingRegistrationIntent` (`Pending`), one `OutboxMessage` `identity.registration.confirmation.requested`, one `OutboxSecret` sealing its single-use token, one tenantless audit event | neutral bodyless `202`. The intent stores `Id`, the owning `RegistrationSubmission` canonical key, `NormalizedEmail`, `NormalizedLegalName`, `NormalizedCuit`, `PasswordHash`, `CreatedAt`, `ExpiresAt` = `CreatedAt + 24 hours` (**product default**; the envelope's governs) and nullable `Outcome`/`CompletedAt`, and carries no unique index on `NormalizedCuit` or `NormalizedEmail`. |
+| 3–4 | Initiation, anonymous | has an identity; CUIT free or already registered | one `PendingRegistrationIntent` recorded terminal `Notified`, one `OutboxMessage` `identity.registration.signin.notice.requested` and no `OutboxSecret`, one tenantless audit event | neutral bodyless `202` |
+| 5 | Initiation, authenticated, session email matches | the caller's own, proven by the validated session; CUIT free | identity decision, tenant, organization profile, responsible membership, initial roles, audit, confirmation outbox — unchanged, including the `PendingConfirmation` tenant and membership | neutral bodyless `202` |
+| 6–8 | Initiation, authenticated: CUIT already registered; submitted email not normalizing to the session's; or a session the server cannot validate or a half-populated one | the caller's own | none in all three | `409` `registration_conflict`; `400` `invalid_registration`; `401` `invalid_session` respectively, the last failing closed and never treated as anonymous |
+| 9 | Finalization, holder of the intent token | proven by the token; no identity exists; CUIT free | one transaction: identity created and activated, tenant, organization profile, responsible membership, initial roles, audit, intent `Created` | bodyless `204` |
+| 10–11 | Finalization, holder of the intent token | proven; no identity exists and the CUIT was taken since initiation, or an identity now exists for the address (CUIT free or taken) | the identity is created and activated in the first case only, intent `Conflicted`, audit — no tenant, profile, membership or role, no second identity, and the submitted password is never applied to a pre-existing identity | `409` `registration_conflict` |
+| 12–14 | Finalization: the same token replayed; a token whose sealed envelope has expired; or an unknown, malformed or non-canonical token | — | the intent's recorded outcome; envelope terminalized `confirmation_expired` and intent `Expired`; nothing at all | `204` after row 9 and `409` `registration_conflict` after rows 10–11; `409` `registration_conflict`; `400` `invalid_confirmation` |
+| 15 | Finalization, a pre-upgrade `identity.confirmation.requested` token | — | unchanged: identity activated, tenant and membership activated, secret consumed | bodyless `204`, and `204` on replay |
+
+| Method and route | Access | Primary result |
+|---|---|---|
+| `POST /api/identity/organizations/register` | Public or authenticated + antiforgery; `IPublicRequest` + `ISensitiveRequest` | neutral bodyless `202` for every anonymous request, whatever the address and whatever the CUIT, reserving nothing; an authenticated request for an already registered CUIT is `409` Problem Details `registration_conflict`; a submitted email that does not normalize to the session's is `400` `invalid_registration`; a session the server cannot validate is `401` `invalid_session` |
+| `POST /api/identity/confirm-email` | Public + intent token from the link fragment + antiforgery; `IPublicRequest` + `ISensitiveRequest` | bodyless `204` when the intent finalizes, when a pre-upgrade confirmation activates its identity/tenant/membership, or when either already did; `409` Problem Details `registration_conflict` when the CUIT was taken first, when the address gained an identity first, or when the envelope expired; `400` `invalid_confirmation` for an unknown or malformed token |
+
+| Contended write | Winner | Loser's answer |
+|---|---|---|
+| Two intents for the same normalized CUIT finalizing concurrently | the transaction committing the `OrganizationProfile` insert first, serialized by a **proposed** finalization-side `pg_advisory_xact_lock` pair over normalized email and normalized CUIT (`IRegistrationIdempotencyStore.CoordinateBusinessIntentAsync`, today called only from `RegisterOrganizationCommandHandler`), with the unique CUIT index as backstop | `409` `registration_conflict`, intent `Conflicted`; its identity is still created and activated, so the person can sign in |
+| Two equivalent anonymous initiations, same canonical key | the claim owner, through the existing `INSERT … ON CONFLICT ("CanonicalKey") DO NOTHING` in `RegistrationIdempotencyStore.TryClaimAsync` | the same neutral bodyless `202` replayed from the recorded outcome; one intent, one message, one audit record |
+| The same intent token spent twice, sequentially or concurrently; or an intent finalizing while its address gains an identity from an unrelated registration | the first spend, through the existing `IConfirmationSecretStore.GetByVersionedHashForUpdateAsync` row lock on the `OutboxSecret`; and whichever transaction commits the identity first, through the normalized-email half of the proposed lock pair plus the unique normalized-email index, that row lock guarding one token and not one address | the intent's recorded outcome — `204` after `Created`, `409` `registration_conflict` after `Conflicted` or `Expired`; and a `Conflicted` settlement with `409` `registration_conflict` and no second identity |
+
+- **Permissions.** No new code; finalization is authorized by the token it spends. `members.invite` (EXISTS,
+  tenant-scoped `Organization`) is the remedy named for a refused registrant, `platform.audit.read` (EXISTS,
+  tenant-scoped `Platform`) alone reads the distinguishing outcome, and `identity.organizations.create` (PROPOSED,
+  application-scoped) is declined.
+- **Audit and outbox (proposed).** Audit `organization.registration.intent.created` (rows 1–4, tenantless,
+  `outcome=pending_proof`), `organization.registration.requested` (`outcome=registered` at finalization,
+  `outcome=pending_confirmation` on the authenticated branch — a change to today's single value),
+  `organization.registration.conflicted` (rows 10–11, `outcome=cuit_taken` or `identity_exists`, never shown to the
+  caller) and `identity.confirmed` unchanged, the tenantless events needing a tenantless factory. Outbox
+  `identity.registration.confirmation.requested` `{ intentId }` with an `OutboxSecret`,
+  `identity.registration.signin.notice.requested` `{ intentId }` without, `identity.confirmation.requested` unchanged;
+  both need a handler reading `NormalizedEmail` from the intent.
+- **Amends.** IA-REQ-003 loses its first bullet, generalizes its second and is **contradicted** in its third, every
+  anonymous request — occupied CUIT included — now writing one intent, one outbox message and one tenantless audit
+  event where the approved text promised none; IA-REQ-004's replay promise yields one intent, not one organization;
+  IA-REQ-005 gains a third confirmation message type and the `409` answer on `confirm-email`.
+- **Consumed by** Task 18; it supplies the registration seam Tasks 19, 20 and 23 build on.
+
+### 14.2 C2 — Session coexistence, deterministic cap eviction, and own-session revocation
+
+- **IA-REQ-049 (proposed):** an identity may hold at most five live `UserSession` rows at any committed instant
+  **(product default)**. Issuance is serialized per identity; at the cap it revokes the oldest live sessions in
+  `(CreatedAt ascending, Id ascending)` order until four remain and commits the new session in the same
+  `IApplicationTransaction`. An identity may list, revoke individually and revoke collectively its own sessions
+  through self-service requests resolving the owner only from the validated persisted session. A password reset
+  revokes every persisted session and issues none; an authenticated password change revokes every other live session
+  and rotates the acting one into a new row inheriting no identifier, antiforgery pair, proof or second-factor
+  evidence. Every transition that happened is audited once and a denied revoke once as a denial, and nothing here
+  carries an IP address, a raw `User-Agent`, a cookie, a ticket, a proof value or another identity's row.
+
+| Caller state at issuance | Live sessions at `now` | Result |
+|---|---|---|
+| Valid credentials, identity active and email confirmed | 0–4 | one new live session; nothing revoked; other devices stay signed in |
+| Valid credentials | 5, or more than 5 from a defect or a lowered cap | the oldest `max(0, live − 4)` live sessions are revoked (`session.revoked` / `evicted`), then one new live session; five remain |
+| Valid credentials, per-identity lock not granted within the bounded wait | any | no session is issued; `429` Problem Details `rate_limit_exceeded` with `Retry-After` |
+| Valid credentials, security version changed between validation and issuance | any | no session; the generic `invalid_session` answer of IA-REQ-019. **Conditional on C4** supplying that version |
+| Invalid credentials, unconfirmed email, locked out, or disabled identity | any | unchanged: no session, no eviction, one `signin.failed` audit row |
+| Authenticated password change, or a consumed password reset (Task 22) | any | a change revokes every other live session (`password_changed`), revokes the acting session (`rotated`), issues one replacement and rotates the antiforgery pair, ending at one live session; a reset revokes every live session (`password_reset`) and issues none, the person signing in afterwards |
+
+| Method and route | Access | Primary result |
+|---|---|---|
+| `GET /api/identity/sessions` | Authenticated + `identity.sessions.manage`, `RequiresTenant=false` | `200` `SessionListResponse` carrying exactly `sessionRef`, `isCurrent`, `deviceLabel`, `createdAt`, `lastSeenAt`, `expiresAt` (`IdleExpiresAt`) per live session of this identity, ordered `isCurrent`, then `lastSeenAt` descending, then `sessionRef`, minute-truncated, with no `limit`, `cursor` or e.nvelope Backed by the additive `IdentitySessionCoexistence` columns `PublicRef` (128 bits, written once, unique, never the `UserSessionId` the ticket carries) and `DeviceLabel` (closed server-side allowlist, never a request field; the raw `User-Agent` is never persisted). |
+| `DELETE /api/identity/sessions/{sessionRef}`; `DELETE /api/identity/sessions/others` | Authenticated + `identity.sessions.manage`, `RequiresTenant=false` + exact-origin + antiforgery; no body | bodyless `204` when a session of this identity carrying that reference is now revoked, including when it was already revoked or expired; `404` Problem Details `session_not_found` when no session of this identity carries it; `409` `session_concurrency_conflict` when the write never settles. Naming the caller's own current session produces exactly the `/sessions/current` contract, including its `401` `invalid_session`, and deletes the cookie and antiforgery pair in the same response. `/others` is idempotent — a repeat with nothing left to revoke is still `204`, writes no `session.revoked` row and never touches the acting session |
+| `POST /api/identity/sessions` | Public + antiforgery, unchanged | its existing row, plus `429` `rate_limit_exceeded` with `Retry-After` on an exhausted lock wait; it no longer supersedes the identity's other sessions |
+
+| Contended write | Winner | Loser's answer |
+|---|---|---|
+| Two sign-ins of one identity at the cap | the first to commit, serialized by a per-identity `pg_advisory_xact_lock(int4, int4)` in a session lock space distinct from the existing one-argument space | both succeed: the second blocks, re-reads the committed set and evicts against it; five live sessions remain, never six |
+| A sign-in whose lock wait exceeds `lock_timeout` (3 s, **product default**) | the lock holder | `429` `rate_limit_exceeded` with `Retry-After`, deliberately not a status only valid credentials can reach |
+| Sign-in eviction vs. the evicted session's own sign-out, and `revoke-one` vs. `revoke-others` on one session | whichever conditional `ExecuteUpdate` on the liveness predicate matches rows; one transition and one `session.revoked` row | the other matches zero rows and writes no audit, a sign-out answering `401` `invalid_session` while still deleting the cookie; the losing revoke is a no-op and still answers `204`, the requested end state holding |
+| Revocation vs. the target's in-flight `Touch`, vs. `PUT /api/identity/context/tenant`, a password-change rotation vs. cap eviction, and a password change or reset vs. a parallel sign-in | revocation on commit order; tenant selection uses the `Version` token and `SessionWriteRetry.Attempts` = 3; rotation runs in one lock and one transaction; a credential change wins when it commits first, through the same lock plus an in-lock security-version re-read | a later `Touch` matches zero rows and fails closed with `401`; a selection that never settles is `409` `session_concurrency_conflict`; no eviction runs after a rotation; the sign-in re-reads the changed version and issues nothing. **Conditional on C4**: validation runs before the lock |
+
+- **Permissions.** `identity.sessions.manage` (EXISTS, application-scoped self-service, `RequiresTenant=false`, in
+  `ApplicationScopedCodes` and `SelfServiceCodes`, correctly absent from `Permissions.Catalog` and required to stay
+  absent) covers all three requests. No new code; sign-in stays `IPublicRequest`.
+- **Audit and outbox (proposed).** All rows use `AuditEvent.CreateSessionEvent`, whose `OccurredAt` comes from
+  `DateTimeOffset.UtcNow`, not `TimeProvider`. `session.revoked` gains `evicted`, `revoked_by_owner`,
+  `password_changed`, `rotated`, `password_reset`; `superseded` is retired, existing rows unrewritten; new
+  `session.revoke_requested` carries `requested` (one row naming the acting session per request that revoked at least
+  one) and `not_found` (a denial, the HTTP answer staying byte-identical `404`). **Outbox: none.**
+- **Amends.** IA-REQ-021 gains two sentences: authentication does not revoke the identity's other live sessions, and a
+  new session inherits nothing from a predecessor — not its identifier, C4's recent-identity proof, Platform
+  second-factor evidence or its antiforgery pair. IA-REQ-023's four values stand unchanged, pointing at IA-REQ-049.
+- **Note — fragments disagree.** C4 also requires a recent proof (IA-REQ-051) for `sessions.revoke-others` and for
+  revoking a non-current session, and names that route `{handle}`; the proof requirement is kept under `{sessionRef}`.
+- **Consumed by** the session half of Tasks 21, 22 and 23.
+
+### 14.3 C3 — Own profile and protected AR/DNI documentary identity
+
+> **Amendment A1 required before this entry is put forward again.** Verified document correction and dispute
+> must be defined before real data is enabled, including the answer to a duplicate document; neither free
+> editing nor a support bypass is acceptable. This supersedes the "no correction route" recommendation and the
+> `Gap` on the duplicate answer below.
+
+- **IA-REQ-050 (proposed):** an identity that owns a `Personal` tenant has exactly one `PersonProfile`, keyed by the
+  identity and readable and editable only by its owner. Self-service editing covers `FullName` and `DisplayName` and
+  nothing else — never the email, the profile's ownership, the document country, type or number — and a request naming
+  any member outside the accepted set is refused whole. The documentary identity is an authenticated-encryption
+  ciphertext of the canonical `country|type|number` tuple plus one keyed, versioned fingerprint row per retained key
+  version; the plaintext leaves the protector at exactly two named seams and reaches no log, audit record, outbox
+  payload, Problem Details body, OpenAPI example or response. The owner sees only a masked status, no route outside
+  the owner's own resolves a `PersonProfile` or an `IdentityDocument`, and correcting a recorded document requires a
+  separately authorized verified process this slice does not build, so that capability is absent rather than failing.
+
+| Caller | Personal state | `GET /api/identity/profile` | `PUT /api/identity/profile` | Can read the document number |
+|---|---|---|---|---|
+| Anonymous | any | `401` `invalid_session` | `401` `invalid_session` | no |
+| Authenticated, no `Personal` tenant | absent | `404` `personal_profile_not_found` | `404` `personal_profile_not_found` | no |
+| Authenticated owner, with no active tenant selected or with that `Personal`, an `Organization` or `Platform` active | `Personal` exists | `200` `PersonalProfileResponse`, masked document — one identical body in all four cases | `200` updated `PersonalProfileResponse` | no — masked only |
+| Another identity; an Organization operator holding `members.read`/`members.manage` in the owner's Organization; or a Platform operator holding `platform.identities.read` with a proved second factor | any | its own `200`/`404`, never the target's | its own, never the target's | no — no route exists |
+
+| Method and route | Access | Primary result |
+|---|---|---|
+| `GET /api/identity/profile` | Authenticated + `identity.profile.read` (application-scoped, `RequiresTenant=false`); no subject parameter | `200` `PersonalProfileResponse` carrying exactly `fullName`, `displayName`, `email`, `personalTenantId`, `document { country, type, status, maskedNumber, correctionAvailable }` or `null`, `version` (opaque) and `updatedAt`, where `maskedNumber` is `(length − 2)` `U+2022` bullets plus the final two digits and `documentNumber`, `cuit`, `fingerprint`, `keyVersion`, `digitCount`, `identityId` and `ownerId` never appear; `401` `invalid_session`; `404` Problem Details `personal_profile_not_found` |
+| `PUT /api/identity/profile` | Authenticated + `identity.profile.manage` (application-scoped, `RequiresTenant=false`) + antiforgery + exact origin; `UpdatePersonalProfileRequest` accepts exactly `fullName` (1–200 characters, **product default**), `displayName` (1–60, **product default**) and `version` | `200` updated `PersonalProfileResponse`; `400` `validation_failed` with field-indexed `errors`, including a `version` this server never issued; `400` `profile_field_not_editable` naming the rejected member and never its value, mapped deliberately by Web from `UnmappedMemberHandling = Disallow`; `400` `antiforgery_validation_failed`; `401` `invalid_session`; `404` `personal_profile_not_found`; `409` `personal_profile_concurrency_conflict` |
+
+| Contended write | Winner | Loser's answer |
+|---|---|---|
+| Two profile edits on one row | the first to commit, through a conditional update against the `xmin` row version echoed as the opaque `version` | `409` `personal_profile_concurrency_conflict`; no field is written — no merge, no partial write. The additive `PersonalIdentity` migration creates `PersonProfiles` (PK `IdentityId`, `FullName` varchar 200, `DisplayName` varchar 60, `CreatedAt`, `UpdatedAt`, shadow `xmin` `Version`), `IdentityDocuments` (PK `IdentityId`, `Country` `CHECK = 'AR'`, `DocumentType` `CHECK = 'DNI'`, `Ciphertext`, `RecordedAt`, `PurgedAt`, `Version`; no `DigitCount`) and `IdentityDocumentFingerprints` (PK `(IdentityId, KeyVersion)`, `Fingerprint` varchar(64) = `"k" + KeyVersion + ":v1:" + Base64(HMACSHA256(fingerprintKey[KeyVersion], canonical tuple))` under a format `CHECK`), one fingerprint row per retained key version, backfilled before that version becomes the insert version. |
+| Two identities recording the same normalized document at Personal creation | the first to commit, through `UX_IdentityDocumentFingerprints_Fingerprint` | **Gap:** what the loser is told is a security decision owned by C1/Task 19 and is settled in no fragment; any answer distinguishing "already recorded" is a documentary-identity oracle parallel to the CUIT oracle IA-REQ-003 closes. |
+
+- **Permissions.** `identity.profile.read`, `identity.profile.manage` (PROPOSED, application-scoped,
+  `RequiresTenant=false`, in `ApplicationScopedCodes` and `SelfServiceCodes`, never in `Permissions.Catalog`);
+  `identity.context.read`, `platform.identities.read` (tenant-scoped `Platform`) and `members.read` (tenant-scoped
+  `Organization`) EXIST, unchanged and not widened; `identity.document.correct` is declined.
+- **Audit and outbox (proposed).** One event, `identity.profile.updated`, written only when a field actually changed,
+  with `code = identity.profile.updated`, `outcome` from the closed set `full-name`, `display-name`,
+  `full-name.display-name`, the owner as actor, the current `SessionId`, `TenantId` null, inside the update
+  transaction; a refused or no-op edit writes none. **Outbox: none.**
+- **Amends.** Extends IA-REQ-026, whose list omits profile changes, and changes the meaning of section 7,
+  where `GET /api/identity/context` now prefers `PersonProfile.DisplayName` over the email it returns today;
+  it adds no exception to IA-REQ-044 and must not increment `Tenant.AuthorizationVersion`.
+- **Note — fragments disagree.** C7 puts documentary uniqueness in a partial index on `IdentityDocuments` and calls
+  the ciphertext `ProtectedNumber`; C3's child-table `UNIQUE` and `Ciphertext` are kept as more restrictive.
+- **Consumed by** Tasks 19 and 20, and the data contracts in Tasks 26 and 27.
+
+### 14.4 C4 — Recent identity proof, password recovery, and provider linking with a two-part callback carve-out
+
+> **Amendments A2 and A3 required before this entry is put forward again.** The callback table must not refuse an
+> authenticated, confirmed identity that explicitly links its own provider account with consent and a live proof
+> merely because the provider address matches its own; automatic linking is what BR-ID-005/006 forbid. Recovery
+> must be reconciled with 14.6 on one route name and one answer per account state.
+
+- **IA-REQ-051 (proposed):** a sensitive self-service change requires a recent identity proof: a single-use
+  server-side record bound to one identity, one `UserSession`, one action and the identity's security version at
+  issue. A valid session cookie alone is never proof, and only the identity's current password or a fresh challenge to
+  a provider already linked to it (IA-REQ-052, purpose `Proof`) issues one, both requiring a confirmed identity; the
+  lifetime is five minutes **(product default)**. A proof never travels to the client: the request looks up the live
+  unconsumed proof for `(identity, current session, action)` and consumes it with a conditional update.
+  Proof-requiring actions: `credentials.password.change`, `external.link`, `external.unlink`,
+  `sessions.revoke-others`, `sessions.revoke-one` when the handle is not the current session, `ownership.transfer`
+  (C5), `identity.lifecycle` and `platform.mfa.recover` (C6); Platform step-up stays separately session-bound and
+  neither proof satisfies the other.
+- **IA-REQ-052 (proposed):** an identity may hold at most one link per external provider, established only by explicit
+  consent plus a recent primary proof, a confirmed identity and a provider-verified email. `Login`, `Link` and `Proof`
+  purposes live in server-side state and never cross; a provider identity is never auto-linked by a matching email
+  address (BR-ID-005/006); no unlink may leave an identity without a usable authenticator. The provider callback is
+  the one documented exception to IA-REQ-022 and section 8 and to the rule that a usable token never travels in a URL
+  query string; it performs no business mutation, and the validations replacing the origin check are one-use
+  purpose-bound `state` (10 minutes, **product default**), the framework correlation cookie (`Secure`, `HttpOnly`,
+  `SameSite=Lax`, host-only, deleted on use), `nonce`, PKCE `S256` with a server-held verifier, and validated issuer,
+  audience, signature and expiry.
+
+| Purpose | Caller and provider state at `POST /api/identity/external/complete` | Effect | Response |
+|---|---|---|---|
+| any | handoff record missing, expired, consumed or purpose-mismatched; `email_verified = false`; a `Login` whose linked identity is unconfirmed (IA-REQ-020) or disabled; or a `Proof` whose subject matches no link on this identity | none | `400` `invalid_external_login` |
+| `Login` | verified, subject already linked, identity active and email-confirmed | issue session through `SessionIssuer` (C2 cap applies); rotate the antiforgery pair; audit `session.created`, `identity.external.login.succeeded` | `204` + session cookie |
+| `Login` | verified, subject not linked, no local identity for that email | create the identity with `EmailConfirmed = true` from the provider assertion, no password, no tenant, no membership; create the link; issue the session; audit `identity.created`, `identity.external.linked`, `session.created` | `204` + session cookie |
+| `Login` or `Link` | verified, an unlinked subject whose email already belongs to a local identity, or a subject owned by another identity | none — no link, no session, no identity (BR-ID-005/006) | `409` `external_login_conflict` |
+| `Link` | authenticated but unconfirmed (IA-REQ-005); or confirmed + live proof for `external.link` + consent with `email_verified = false`; or confirmed + proof + consent, verified, subject unowned and no link for this provider | nothing in the first two; in the third, create the link, consume the proof, increment the security version, revoke the identity's other sessions, audit `identity.external.linked`, notify | `403` `email_confirmation_required`; `400` `invalid_external_login`; `204` |
+| `Link` | same, subject already linked to this identity | none, idempotent | `204` |
+| `Link` | same, subject unowned, identity already has a different link for this provider | none | `409` `provider_already_linked` |
+| `Link` | proof expired, consumed or bound to another session or action; or anonymous, the starting session being gone | none | `401` `recent_proof_required`; `401` `authentication_required` respectively |
+| `Proof` | authenticated + confirmed, provider already linked to this identity, subject matches that link | issue a `RecentIdentityProof` with `Method = ExternalProvider` for the action named in the handoff record | `204` |
+
+| Method and route | Access | Primary result |
+|---|---|---|
+| `POST /api/identity/credentials/reauthenticate`; `PUT /api/identity/credentials/password` | both authenticated + antiforgery, `RequiresTenant=false`, `identity.credentials.manage`; `ReauthenticateCommand { action, password }` and `ChangePasswordCommand { newPassword }` — no `currentPassword` field exists anywhere — both `ISensitiveRequest`, the change additionally requiring a live proof | bodyless `204`; `400` `invalid_credential_proof` for a wrong password or unknown action; `403` `email_confirmation_required`; `429` `rate_limit_exceeded` + `Retry-After`. The change answers bodyless `204` plus a rotated session cookie and antiforgery pair, `401` `recent_proof_required`, `409` `session_concurrency_conflict` |
+| `GET /api/identity/credentials`; `GET /api/identity/external` | Authenticated + `identity.credentials.manage` / `identity.external.manage` | `200` `{ hasPassword, passwordUpdatedAt }`; `200` `{ items: [{ handle, provider, providerEmail, linkedAt }] }` with no envelope, `handle` opaque and no provider token, claim set or profile payload |
+| `POST /api/identity/credentials/password/recovery`; `POST /api/identity/credentials/password/reset` | both public + antiforgery, `IPublicRequest`; recovery rate-limited with `RequestPasswordRecoveryCommand { email }`, reset carrying the fragment token with `ResetPasswordCommand { token, newPassword }`, `ISensitiveRequest` | recovery: neutral bodyless `202` for every valid state, `400` `antiforgery_validation_failed`, `429` `rate_limit_exceeded` + `Retry-After` on the caller budget only and never on the per-address budget. Reset: bodyless `204`, `400` `invalid_credential_token` for unknown, expired, consumed, superseded or wrong-purpose, `400` `validation_failed` with field-indexed errors for `PasswordOptions` |
+| `POST /api/identity/external/{provider}/login/start`, `/link/start`, `/proof/start` | login public + antiforgery (`IPublicRequest`); link authenticated + antiforgery + proof + `StartExternalLinkCommand { consent: true }` + `identity.external.manage`; proof authenticated + antiforgery + `StartExternalProofCommand { action }` + `identity.credentials.manage`; all `RequiresTenant=false` | `200` `{ authorizationRequestUri }`, `Cache-Control: no-store`; `401` `recent_proof_required` on link; `404` `not_found` on proof when this identity has no link for that provider |
+| `/api/identity/external/{provider}/callback` | The carve-out: no `Origin`, no antiforgery, no Application request sent | `302` to an allowlisted local path carrying at most one closed-set outcome slug (`linked`, `signed_in`, `proved`, `onboarding_required`, `link_required`, `refused`), plus the framework external-scheme handoff cookie (2 minutes, **product default**) |
+| `POST /api/identity/external/complete` | Same-origin + antiforgery + handoff cookie; no body fields; three requests selected by the record's purpose — `CompleteExternalLoginCommand` (`IPublicRequest`), `CompleteExternalLinkCommand` and `CompleteExternalProofCommand` (both `[Authorize(..., requiresTenant: false)]`) | per the caller/state table above |
+| `DELETE /api/identity/external/{provider}` | Authenticated + antiforgery + proof, `RequiresTenant=false`, `identity.external.manage` | bodyless `204`; `409` `last_authenticator_required`; `401` `recent_proof_required`; `404` `not_found` |
+
+| Contended write | Winner | Loser's answer |
+|---|---|---|
+| Proof consumption | first commit of `UPDATE "RecentIdentityProof" … WHERE "ConsumedAt" IS NULL AND "ExpiresAt" > now AND "SecurityVersion" = @v` with a live-session check, under the partial unique index on `(IdentityId, SessionId, Action) WHERE ConsumedAt IS NULL` | `401` `recent_proof_required` — terminal, not `409`, because retrying the same proof cannot succeed. `RecentIdentityProof` holds `Id`, `IdentityId`, `SessionId`, `Action`, `Method` (`Password` or `ExternalProvider`), `SecurityVersion`, `IssuedAt`, `ExpiresAt` = `IssuedAt + 5 min`, `ConsumedAt`, `ConsumedReason`, `Version`; `IdentitySecurityState` holds `IdentityId` PK, `SecurityVersion`, `UpdatedAt` and a concurrency token, is Domain-owned rather than a column on `ApplicationUser`, and is not backfilled, an absent row meaning `SecurityVersion = 0`. |
+| Reset token consumption | first commit of the same conditional update on the reset row, whose token is stored only as `VersionedTokenHash` | `400` `invalid_credential_token`, indistinguishable from expired, superseded or unknown. The token is fragment-delivered, single-use and lives 30 minutes (**product default**). |
+| Reset issuance vs. reissue | the later commit, under the partial unique index `("IdentityId") WHERE "Status" = 'Pending'`, inserting only after the prior record and its `OutboxSecret` are superseded (`Terminate(Failed, "superseded", now)`) in the same transaction | one bounded retry, then the same neutral `202`; never two live tokens |
+| Reset vs. authenticated change, and reset vs. a concurrent sign-in | the first to commit; all take the `IdentitySecurityState` row for update | the loser's proof or token no longer matches `SecurityVersion` (`recent_proof_required` / `invalid_credential_token`); a sign-in that won is revoked by the change that follows |
+| Two identities linking the same subject, and two links for one identity on one provider | first commit, under the existing `AspNetUserLogins ("LoginProvider","ProviderKey")` primary key and the new additive unique index `UX_AspNetUserLogins_LoginProvider_UserId` respectively | `409` `external_login_conflict`; `409` `provider_already_linked` |
+| Two concurrent unlinks | first commit; the authenticator count is read after taking the `IdentitySecurityState` row inside the transaction | `409` `last_authenticator_required` |
+| Handoff record consumption | first commit of the conditional single-use update on the `ExternalAuthorizationRequest` record | `400` `invalid_external_login` |
+
+- **Permissions.** `identity.credentials.manage`, `identity.external.manage` (PROPOSED, application-scoped
+  self-service, in `ApplicationScopedCodes` and `SelfServiceCodes`, never in `Permissions.Catalog`);
+  `identity.sessions.manage` (EXISTS) unchanged. `IPublicRequest` carries `RequestPasswordRecovery`, `ResetPassword`,
+  `StartExternalLogin` and `CompleteExternalLogin`; the callback carries neither a permission nor the marker.
+- **Audit and outbox (proposed).** Audit `identity.proof.issued`, `.consumed`, `.refused`,
+  `identity.password.recovery.requested`, `identity.password.reset`, `identity.password.changed`,
+  `identity.external.login.started`, `.callback.refused`, `.login.succeeded`, `.login.refused`,
+  `identity.external.linked`, `.link.refused`, `identity.external.unlinked`; refusals collapse into allowlisted
+  `email_unverified`, `subject_owned_elsewhere`, `local_email_exists`, `provider_already_linked`, `purpose_mismatch`,
+  `state_invalid`, `proof_stale`, `session_revoked`, `superseded`, `last_authenticator`, `email_unconfirmed`. Outbox
+  `identity.password.recovery.requested` (the only one with an `OutboxSecret`), `identity.password.changed.notified`,
+  `.external.linked.notified`, `.external.unlinked.notified`.
+- **Amends.** IA-REQ-022 and section 8 gain one named exception at the provider callback, as does the rule that a
+  usable token never travels in a query string; IA-REQ-019 becomes explicitly local; IA-REQ-020 is amended so a
+  provider `email_verified = true` establishes local `EmailConfirmed` only for an identity created by that sign-in;
+  IA-REQ-030 gains `recent_proof_required`; IA-REQ-035 is amended where a spent proof or token maps to `401`/`400`;
+  section 6's neutrality sentence is amended; and section 5 gains `RecentIdentityProof`, `IdentitySecurityState`,
+  `PasswordResetRequest`, `ExternalLoginLink` and `ExternalAuthorizationRequest`.
+- **Consumed by** Tasks 21, 22 and 23, and the recovery portion of Task 26.
+
+### 14.5 C5 — Delegated Organization administration
+
+- **IA-REQ-053 (proposed):** delegated administration of an `Organization` is exercised through custom roles,
+  membership lifecycle and one explicit ownership reference. A role is `Active` or `Retired`, retirement is terminal,
+  `Role.IsSystem` is an orthogonal protection flag, and there is no `Draft` state. An actor may cause an identity to
+  hold only permissions the actor itself effectively holds in that tenant at commit time and that
+  `PermissionDefinition.AllowedTenantTypes` permits — evaluated on the added codes when a role's set changes, on the
+  whole set when a role is assigned or offered, never at acceptance — so a code nobody holds can never be granted, and
+  the system `Owner` role must be provisioned with every `Organization`-allowed catalogue code, existing tenants
+  backfilled and every future addition carrying that step. No request may commit a state with zero effective
+  administrators, computed from the flushed post-change state inside the same transaction against the permission
+  projection. An `Organization` has exactly one owner held as a single tenant reference; transfer requires the current
+  owner, the ownership permission, a confirmed active same-tenant recipient and recent primary proof, in one
+  transaction or none. Widening or retiring a role cancels in that transaction every pending invitation offering it
+  and retires any still-undelivered `OutboxSecret`. Every mutation leaves `Tenant.AuthorizationVersion` strictly
+  greater than the value it loaded.
+
+| Caller state | `roles.read` | `roles.manage` | `members.read` | `members.manage` | `members.invite` | `tenant.ownership.transfer` |
+|---|---|---|---|---|---|---|
+| Anonymous | `401` | `401` | `401` | `401` | `401` | `401` |
+| Authenticated, no active tenant; permission absent; membership `Suspended`/`Revoked`; or tenant not `Active` | `403` | `403` | `403` | `403` | `403` | `403` |
+| Active tenant is `Personal`, then `Platform` | `403`; `400` `invalid_role_operation` | `403`; `400` `invalid_role_operation` | `403`; `403` | `403`; `403` | unchanged (IA-REQ-014) | `403`; `403` |
+| Active `Organization`, permission held, identity unconfirmed; or a route `tenantId` differing from the session's active tenant | `400` | `400` | `400` | `400` | unchanged (IA-REQ-005/014) | `400` |
+| Active `Organization`, permission held, actor not the owner | n/a | n/a | n/a | n/a | n/a | `403` `owner_required` |
+
+| Method and route | Access | Primary result |
+|---|---|---|
+| `GET /api/tenants/{tenantId}/permission-catalog`; `GET .../roles` with `limit` (1–100) / `cursor`; `GET .../roles/{roleId}` | `roles.read` | `200` `PermissionCatalogEntryResponse[] { code, grantable }`; `200` typed `{ items: RoleResponse[], nextCursor }`; `200` `RoleResponse { roleId, name, isSystem, isRetired, permissions, version }`, another tenant's role being `404` (IA-REQ-030) |
+| `POST /api/tenants/{tenantId}/roles`; `POST .../roles/{roleId}/retire` | `roles.manage` + antiforgery; `CreateRoleRequest { name, permissions }`; `RetireRoleRequest { version }` | `201` `RoleResponse` + `Location`, or bodyless `204` for a retirement, already retired with a current `version` being an idempotent `204`; ceiling refusal `400` `invalid_role_operation`; duplicate normalized name or stale `version` `409` `role_concurrency_conflict`; `409` `last_administrator_required` |
+| `PUT /api/tenants/{tenantId}/roles/{roleId}` | `roles.manage` + antiforgery; `UpdateRoleRequest { name, permissions, version }` | `200` `RoleResponse`; ceiling, system-role or retired-role refusal `400` `invalid_role_operation`; stale `version` `409` `role_concurrency_conflict`; removing the last effective administrator `409` `last_administrator_required` |
+| `GET /api/tenants/{tenantId}/members`; `GET .../invitations`, both with `limit` (1–100) / `cursor` | `members.read` | `200` typed `{ items: MemberResponse[], nextCursor }` with `MemberResponse { membershipId, identityId, displayName, normalizedEmail, status, roleIds, isOwner, version }`; `200` typed `{ items: InvitationSummaryResponse[], nextCursor }` with `InvitationSummaryResponse { invitationId, normalizedEmail, status, createdAt, expiresAt, roleIds }` |
+| `PUT /api/tenants/{tenantId}/members/{membershipId}/roles` | `members.manage` + antiforgery; `UpdateMemberRolesRequest { roleIds, version }` | `200` `MemberResponse`; ceiling refusal `400` `invalid_membership_operation`; stale `409` `membership_concurrency_conflict`; `409` `last_administrator_required` |
+| `POST /api/tenants/{tenantId}/members/{membershipId}/suspend`, `/reactivate`, `/revoke` | `members.manage` + antiforgery; `MemberStatusRequest { version }` | bodyless `204`, idempotent for the already-held state with a current `version`; a `Revoked` membership reactivated, or the owner's membership suspended or revoked before transfer, is `400` `invalid_membership_operation`; `409` `membership_concurrency_conflict`; `409` `last_administrator_required` |
+| `POST /api/tenants/{tenantId}/ownership/transfer` | `tenant.ownership.transfer` + antiforgery + recent proof (C4); `TransferOwnershipRequest { toMembershipId, version }` plus C4's proof field | bodyless `204`, idempotent when the recipient is already the owner and `version` matches; `403` `owner_required`; `400` `invalid_membership_operation`; `409` `membership_concurrency_conflict`; `409` `last_administrator_required` |
+
+| Contended write | Winner | Loser's answer |
+|---|---|---|
+| Two administrators editing one role's permissions, or a rename racing a permission edit | the first to commit; the arbiter is the forced conditional update of `Roles.xmin` when `version` is enforced, otherwise `Tenants.xmin`, which every such mutation writes and which is reached first | `409` `role_concurrency_conflict`; role edits are whole-role replacements, never a per-permission merge |
+| Role edit racing an invitation acceptance | the first to commit, on `Tenants.xmin`, not `Invitations.xmin` | acceptance first: the widening answers `409` `role_concurrency_conflict` and its retry cancels nothing. Widening first: acceptance answers `409` `invitation_conflict`, and its retry reads `Cancelled` and answers `400` `invalid_invitation` |
+| Two last-administrator-affecting changes, an ownership transfer racing a role edit, or two transfers | the first to commit, on `Tenants.xmin`, where `OwnerMembershipId` also lives. The floor is `{ roles.manage, members.manage }` in one identity, counted over DISTINCT identities by the proposed `IEffectiveAdministratorReader.CountAsync(TenantId, …)` after an explicit `SaveChangesAsync` flush inside the mutating transaction, lockout excluded. `Tenants.OwnerMembershipId` is an additive nullable column with composite FK `(TenantId, OwnerMembershipId) → TenantMemberships(TenantId, Id)`, `ON DELETE RESTRICT`; "an `Organization` always has an owner" is an Application transaction invariant plus a migration backfill, not a `CHECK`. Proposed transitions `TenantMembership.Reactivate`, `Revoke` and `Reinstate` — `Revoked → Active` only through a fresh invitation, after deleting every prior `MembershipRole` row | `409` `membership_concurrency_conflict`; a retry may then answer `409` `last_administrator_required` |
+| Two acceptances of one offer | unchanged: `Invitations.xmin` and the `TenantMemberships` unique index | unchanged (IA-REQ-016/017) |
+
+- **Permissions.** `roles.read`, `roles.manage`, `members.read`, `members.manage`, `members.invite` and
+  `tenant.manage` all EXIST, tenant-scoped and unchanged — narrowing the first two would break
+  `PermissionCatalogSynchronizer.ValidateCatalog` at startup, and `tenant.manage` is named only to say it is not the
+  ownership permission; `tenant.ownership.transfer` is PROPOSED, tenant-scoped `Organization`, necessary but never
+  sufficient. Every stable code here but `permission_denied`, `invalid_invitation`, `invitation_conflict` and
+  `recent_mfa_required` is PROPOSED: the two `invalid_*_operation` codes are `Validation` (`400`), the two
+  `*_concurrency_conflict` codes and `last_administrator_required` are `Conflict` (`409`), `owner_required` is
+  `Authorization` (`403`).
+- **Audit and outbox (proposed).** No new audit type: the interceptor keeps writing `role.changed`
+  (`granted`/`revoked`/`changed`/`retired`) and `membership.changed` (`granted`/`revoked`/`changed`) per changed row
+  with a null actor, while handlers write actor-attributed `membership.changed` with `suspended`, `reactivated`,
+  `revoked`, `reinstated` or `ownership-transferred`, and `invitation.cancelled` with `role-widened` or
+  `role-retired`, one per cancelled offer. Outbox adds `identity.ownership.transferred.notice.requested` — tenant and
+  the two membership ids, no token, no `OutboxSecret`.
+- **Amends.** Replaces IA-REQ-047's closing deferred-control clause: a widened role no longer reaches acceptance, the
+  widening cancelling every pending offer referencing it while a delivered token is refused on status as `400`
+  `invalid_invitation`. The bounded `limit`/`cursor` shape on `/api/tenants/*` amends IA-REQ-038 and IA-REQ-045.
+- **Note — fragments disagree.** C6 names the same refusal `tenant_last_administrator` and adds an `expectedStatus`
+  precondition plus a recent C4 proof on the membership routes; C5 owns the definition, so
+  `last_administrator_required` and the echoed `version` are kept, with C6's proof requirement.
+- **Consumed by** Tasks 24 and 25.
+
+### 14.6 C6 — Finite identity and membership lifecycle, and a fail-closed restore admission guard
+
+> **Amendments A3 and A4 required before this entry is put forward again.** The provider-only return path must be
+> defined rather than left as a disagreement, recovering a credential must not lift an administrative suspension
+> or skip a second factor, and a legal hold must stop erasure without suspending an account or blocking
+> reactivation as a side effect.
+
+- **IA-REQ-054 (proposed):** identity account state and tenant membership state are finite, explicit, and the only
+  source of the "active identity" condition IA-REQ-020 already states. Every transition is a conditional mutation,
+  is audited, and either commits with its session, token and outbox effects or commits none of them. Every
+  non-terminal disabled state has a named actor, a named proof and a named endpoint; a terminal state has none and
+  says so.
+- **IA-REQ-055 (proposed):** a restored deployment admits no public ingress, issues no session, accepts no restored
+  session or one-time token and dispatches no outbox delivery until an operator-controlled admission record held
+  outside the restored database is verified against an operator-held key supplied by environment configuration.
+  Absent, unreadable, expired, wrongly signed, wrong-deployment or non-advancing evidence keeps admission closed on
+  every process start, not only the first, and no value read from the restored database or contained in the backup can
+  open it.
+
+| Identity account state | Meaning | May sign in (IA-REQ-020) | Reachable from |
+|---|---|---|---|
+| `PendingConfirmation` (existing) | created, email not confirmed | no | registration, invitation registration |
+| `Active` (existing) | confirmed and usable | yes | confirmation; reactivation, which restores the pre-disable state rather than `Active` unconditionally |
+| `SelfDeactivated` (proposed) | the person parked their own account | no | `Active`, by the person |
+| `AdministrativelySuspended` (proposed **rename** of the existing `Suspended`) | a Platform operator stopped the account, under closed-set `IdentitySuspensionReason` `PolicyViolation`, `SecurityIncident`, `BillingHold`, `OperatorRequest`, recorded only in audit | no | `PendingConfirmation`, `Active` or `SelfDeactivated`, by a Platform operator |
+| `Closed` (proposed) | erasure executed; terminal tombstone | never | `SelfDeactivated`, `AdministrativelySuspended` |
+| `LegalHoldAt` (proposed marker, not a state) | blocks every purge and every reactivation while set | — | **Gap:** C6 proposes no actor, permission or endpoint that sets or clears it — that belongs to C7 — so every branch reading it is unreachable |
+
+| Method and route | Access | Primary result |
+|---|---|---|
+| `POST /api/identity/account/deactivate` | Authenticated + `identity.account.manage`, `RequiresTenant=false` + antiforgery + recent C4 primary proof; `DeactivateAccountRequest { proofToken }` | bodyless `204`, revoking every persisted session, consuming C4 proofs, incrementing the security version, clearing `LastVerifiedAt`/`LastVerifiedSessionId` and terminalizing token-bearing intents over this identity's own credentials, while memberships and invitations addressed to its email stay untouched; `409` `identity_concurrency_conflict`; `409` `platform_last_owner`; `409` `last_administrator_required` (defined by C5) |
+| `POST /api/identity/account/reactivation-requests`; `POST /api/identity/account/reactivate` | both `IPublicRequest` + antiforgery + rate limit; `RequestAccountReactivationRequest { email }`; `ReactivateAccountRequest { reactivationToken, password?, providerProofToken? }`, exactly one of the last two, the token single-use, hash-compared, 30 minutes **(product default)**, superseded on reissue | neutral bodyless `202` for every valid state, only a `SelfDeactivated` identity enqueuing anything; then bodyless `204` with no session and no cookie; `400` `invalid_reactivation` for a bad, spent, expired or terminal-state token and for a failed proof, worded identically; `400` `antiforgery_validation_failed`; `429` `rate_limit_exceeded` + `Retry-After` |
+| `POST /api/tenants/{tenantId}/members/{membershipId}/suspend`, `/reactivate` | `members.manage` (`Organization` only) + antiforgery + recent C4 proof; `SuspendMembershipRequest`/`ReactivateMembershipRequest { expectedStatus }` | bodyless `204`; `409` `membership_concurrency_conflict`; `409` `last_administrator_required` (defined by C5) |
+| `POST /api/platform/identities/{identityId}/suspend`, `/reactivate`; `POST /api/platform/mfa/recover` | the first pair needs `platform.identities.manage` + active Platform tenant + recent MFA step-up + antiforgery, with `SuspendIdentityRequest { reason, expectedStatus }` and `ReactivateIdentityRequest { expectedStatus, acknowledgeSelfDeactivation }`; recovery needs an authenticated confirmed identity + `platform.mfa.enroll` + antiforgery + fresh C4 proof + one unused `PlatformRecoveryCode` (`RecoverPlatformMfaRequest { recoveryCode, proofToken }`) and no active Platform tenant | bodyless `204`; `409` `identity_concurrency_conflict`; `403` `identity_reactivation_unavailable` for `Closed` or legal hold; `404` for an unknown identity id; `401` `recent_mfa_required`. Recovery answers `200` with the enrollment DTO shown once, the factor replaced in place on the single enrollment row by a proposed `Recover(...)` transition gated on `Status == Active` and a spent code, with no `Retired` status and no index change; `409` `platform_mfa_concurrency_conflict`; `429` `rate_limit_exceeded` + `Retry-After` on the same per-identity budget as `/verify` |
+
+| Contended write | Winner | Loser's answer |
+|---|---|---|
+| Identity status change, and the same change vs. the last-administrator check | the first conditional update on `(identityId, status = expectedStatus)` guarded by the row's existing `ConcurrencyStamp`; the check and the write are one statement in one transaction, so a second transaction fails its own precondition | `409` `identity_concurrency_conflict`; `409` `platform_last_owner` or `409` `last_administrator_required` |
+| A reactivation token, or a Platform recovery code with its in-place factor replacement | the first single-use consumption; the first conditional update on the single enrollment row, the code staying spent exactly once | `400` `invalid_reactivation`, indistinguishable from a forged token; `409` `platform_mfa_concurrency_conflict` |
+| Membership suspend, reactivate or revoke | the first conditional update on `(membershipId, status = expectedStatus)`; the `AuthorizationVersion` increment is a consequence of the winning write, not its precondition | `409` `membership_concurrency_conflict` |
+| Maintenance batch row | the first CAS on row status, under `LifecycleMaintenanceService`'s per-category advisory lock | the row is skipped, never deleted twice. `LifecycleMaintenanceService` is internal with no public route: every 15 minutes, 500 rows per category per pass, at most 10 passes per run, a 60-second budget, single-flight per category, and 90-day retention for revoked or expired `UserSession` rows — all **product defaults** — never deleting `AuditEvent`, delivery evidence, memberships, tenants or roles, and doing nothing when retention policy is absent. |
+| Restore epoch advance at release | the first conditional update on `(deployment, storedEpoch = observedEpoch)`; exactly one release commits | the second read re-evaluates and settles at the more closed state. Admission is `Closed` (the default whenever evidence is insufficient: no public ingress — `503` Problem Details `recovery_admission_closed` + `Retry-After` — no session issued or accepted, no one-time token, no delivery, only dataless liveness and readiness probes), `Quarantined` (authentication and revalidation only; sessions created before the epoch stamp count as revoked and `OutboxSecret` rows predating it are refused and terminalized) or `Open` (requiring the record's `release` claim and completed reconciliation). The record carries `deployment`, `recoveryEpoch`, `backupId`, `issuedAt`, `expiresAt`, `release`, `signature`. |
+
+- **Permissions.** `identity.account.manage` (PROPOSED, application-scoped self-service, in both code sets) and
+  `platform.identities.manage` (PROPOSED, tenant-scoped `Platform`, distinct from `platform.identities.read` and
+  `platform.tenants.manage`); `platform.mfa.enroll` (EXISTS, granting nothing, so the gate is the unused recovery
+  code), `members.manage` (EXISTS, tenant-scoped `Organization` only, which stops generic membership reactivation
+  reaching Platform) and `platform.admins.manage` (EXISTS, `Platform`) unchanged; the public reactivation half carries
+  none.
+- **Audit and outbox (proposed).** Audit `identity.lifecycle.changed` (`self_deactivated`,
+  `administratively_suspended`, `reactivated`, `reactivated_over_self_deactivation`, `closed`),
+  `identity.reactivation.requested` (`accepted`, `ignored`, only when the address matched an identity),
+  `identity.reactivation.completed`/`.denied` (`token_invalid`, `proof_invalid`, `terminal`), `membership.changed`
+  (new `suspended`, `reactivated`, `revoked`), `platform.mfa.recovered` (`factor_replaced`, `code_reused`,
+  `proof_stale`), `retention.executed` (`purged`, `skipped_no_policy`, `skipped_legal_hold`, never for an idle pass)
+  and `recovery.admission.evaluated` (`closed`, `quarantined`, `open`, `evidence_missing`, `evidence_stale`,
+  `evidence_invalid`), identity-scoped ones needing a null-tenant factory. Outbox `identity.reactivation.requested`
+  (token-bearing, sealed), `identity.lifecycle.notice.requested`, `platform.mfa.recovered.notice.requested`.
+- **Amends.** IA-REQ-054 makes IA-REQ-020's "active identity" precise against a finite set whose added states are all
+  non-`Active`, renames `IdentityAccountStatus.Suspended` (safe only while that enum has no persisted column and no
+  reader), extends IA-REQ-042's last-owner rule to self-deactivation and administrative suspension under a new
+  `platform_last_owner` code, and proposes that revocation write `MembershipStatus.Revoked` instead of `Suspend`,
+  existing rows reclassified only by an operator decision.
+- **Note — fragments disagree.** Case (a)'s provider alternative needs a third, non-session-bound OIDC purpose that
+  C4 as drafted does not contain; without it a provider-only identity has no self-service way back.
+- **Consumed by** Tasks 26 and 27, and the production gate in Task 28.
+
+### 14.7 C7 — Personal-data mode, retention and erasure evidence, and shared abuse-control state
+
+> **Amendments A4 and A5 required before this entry is put forward again.** Retaining data and blocking access are
+> separate; and an unavailable abuse-control store answers `503` `service_unavailable` with `Retry-After`, keeping
+> the refusal but not calling an outage "too many attempts".
+
+- **IA-REQ-056 (proposed; numbered 048 in the C7 fragment):** the deployment holds exactly one personal-data mode, and
+  the mode — never a caller, never a request field — determines what the system may do with the personal data it
+  stores. `IdentityAccess:PersonalData:Mode` is `Synthetic` or `Real`; absent, blank or unparseable is `Synthetic`, so
+  real handling is never reached by omission or by a typo. Every `PersonProfile` and document row is stamped at
+  creation with the mode as a persisted server-derived `DataClassification`, a column on no request DTO and never on
+  `ApplicationUser`. A retention policy is configuration, never code, and contains no period, threshold or
+  jurisdictional number; with none configured the system performs no destructive action in either mode. A purge erases
+  ciphertext and keyed fingerprint, writes a durable non-audit erasure record and leaves a non-identifying tombstone,
+  so a purged number is reclaimable.
+- **IA-REQ-057 (proposed; numbered 049 in the C7 fragment):** every attempt budget that bounds guessing — login by
+  client address, login by normalized account, Platform second-factor verification and step-up, and Platform bootstrap
+  recovery — is held in shared PostgreSQL state, one budget across instances and restarts. The port is
+  `ISharedAttemptBudget`, the only adapter `PostgreSqlAttemptBudget` over the existing database; no new infrastructure
+  product is introduced. An unavailable store fails every budget closed, budget writes commit outside any business
+  transaction, and numerical budgets are product defaults recorded per environment.
+
+| Caller state | `GET .../retention/policy` | `POST .../retention/holds` | `DELETE .../retention/holds/{holdId}` |
+|---|---|---|---|
+| Anonymous | `401` | `401` | `401` |
+| Authenticated, no active Platform tenant; or lacking the permission | `403` | `403` | `403` |
+| Has permission, the session having never proved the second factor, or proved it but not recently | `401` `recent_mfa_required` until the factor has been proved once, then `200` | `401` `recent_mfa_required` | `401` `recent_mfa_required` |
+| Has permission and recent step-up, with a missing or invalid antiforgery pair, then with a valid one | `200` (safe method) | `400` `antiforgery_validation_failed`, then `201` / `409` `retention_hold_conflict` | `400` `antiforgery_validation_failed`, then `204` |
+
+| Method and route | Access | Primary result |
+|---|---|---|
+| `GET /api/platform/retention/policy` | active Platform tenant + `platform.retention.read` + this session has proved the second factor | `200` `PlatformRetentionPolicyResponse { policyId, version, approvedOn, source, personalDataMode, activeHoldCount, categories[] { category, retentionPeriod, trigger, action, evidenceRequired } }`; `401` Problem Details `recent_mfa_required` when the session never proved a factor. The configured policy carries `PolicyId`, `Version`, `Owner`, `ApprovedOn`, `Source`, a `Category` from the closed set `PersonalProfileNames`, `PersonalIdentityDocument`, `SessionRecords`, `AuditEvents`, `OutboxMessages`, `OutboxSecrets`, `DeliveryEvidence`, `PlatformMfaMaterial`, a `RetentionPeriod` ISO-8601 duration with **no default and none proposed**, a `Trigger` of `RecordCreation`/`LastActivity`/`AccountClosure`, an `Action` of `Retain`/`Anonymise`/`Erase`, `EvidenceRequired`, `LegalHolds[]` of `{ HoldId, SubjectIdentityId, ReasonCode, Reference, PlacedAt, PlacedByMembershipId, ReleasedAt }` and declarative `BackupTreatment`; each purge writes an append-only `PersonalDataErasureRecord { RecordId, SubjectIdentityId, Category, PolicyId, PolicyVersion, ExecutedAt, AffectedRowCount }` with a `Restrict` FK in the destructive write's transaction, nulls ciphertext and fingerprint, stamps `PurgedAt`/`PurgePolicyId`/`PurgePolicyVersion` and terminalizes the subject's envelopes and unleased undelivered messages, a leased one still being deliverable. `PersonalDataReadiness : IHostedService` refuses to start on `Real` without `RetentionPolicy:PolicyId`/`Version`/`Owner`/`ApprovedOn`, on `Synthetic` holding a `Real`-classified row, and on `Synthetic` with `IdentityAccess:Deployment:ServesRealUsers=true`; a `Real` deployment with leftover `Synthetic` rows starts, those rows staying ineligible. `GET /api/identity/context` gains `personalData: { "mode": "Synthetic" }`. |
+| `POST /api/platform/retention/holds`; `DELETE /api/platform/retention/holds/{holdId}` | active Platform tenant + `platform.retention.manage` + recent MFA step-up + antiforgery; `PlatformRetentionHoldRequest { subjectIdentityId, reasonCode, reference }`, `reference` constrained to `^[A-Za-z0-9._:-]{1,64}$` **(product default on the 64)** | `201` `PlatformRetentionHoldResponse { holdId, subjectIdentityId, reasonCode, reference, placedAt, placedByMembershipId, releasedAt, version }` + `Location`; `409` `retention_hold_conflict` when an active hold with that subject and reason exists; `409` `retention_hold_subject_purged` when a purge committed first; `404` when the subject identity does not exist. Release is a bodyless `204`, idempotent for an already-released or unknown `holdId`, with no conflict status |
+
+| Contended write | Winner | Loser's answer |
+|---|---|---|
+| Two maintenance instances claim the same subject | the instance whose conditional claim affects one row; the claim is a lease (`PurgeLeaseOwner`, `PurgeLeaseExpiresAt`) taken like `OutboxDispatcher`'s five-minute lease, so a crashed instance's claim expires | the subject is skipped and stays reclaimable |
+| Hold placement racing a purge | whichever takes `SELECT … FOR UPDATE` on the subject's retention-eligible rows first | a winning hold makes the purge affect zero rows and the cycle records `reason=legal_hold`; a winning purge makes the hold answer `409` `retention_hold_subject_purged`. A hold cannot be made retroactive |
+| Two concurrent holds with the same subject and reason, and two concurrent releases of one hold | the partial unique index on `(SubjectIdentityId, ReasonCode) WHERE "ReleasedAt" IS NULL`; release is the conditional `UPDATE … SET "ReleasedAt" = @now WHERE "HoldId" = @id AND "ReleasedAt" IS NULL` | `409` `retention_hold_conflict` for the second hold; both releases receive `204`, the second affecting zero rows |
+| Parallel attempts at a budget threshold | the single `INSERT … ON CONFLICT ("Scope","KeyHash","WindowStart") DO UPDATE SET "Count" = "Count" + 1 WHERE "Count" < @budget RETURNING "Count"`, decided by PostgreSQL row locking | exactly the budget is admitted; every further caller receives `429` `rate_limit_exceeded` with `Retry-After` derived from the same row. `IdentityAttemptBudgets` holds `Scope`, `KeyHash`, `WindowStart`, `Count`, `ExpiresAt` under PK `(Scope, KeyHash, WindowStart)`; **product defaults** recorded per environment are client 20 per 5 minutes, account 10 per 15 minutes, MFA 5 per 15 minutes and bootstrap recovery 5 per 15 minutes, with a fixed `Retry-After: 30` when the store is unavailable, fixed windows keeping the inherited `2 × budget` boundary, and bootstrap recovery's key moving to the trusted forwarded-headers address. |
+
+- **Permissions.** `platform.retention.read`, `platform.retention.manage` (PROPOSED, tenant-scoped `Platform`, in
+  `Permissions.Catalog` and in neither application-scoped set; manage does not imply read); `platform.identities.read`
+  and `platform.audit.read` (EXIST, tenant-scoped `Platform`) unchanged, the first operationally required alongside
+  manage. Purge, erasure-record writing and budget cleanup have no endpoint and no permission.
+- **Audit and outbox (proposed).** Audit `personal.data.purged`, `personal.data.anonymised`,
+  `personal.data.retention.skipped` (once per cycle; `reason` `policy_absent`, `legal_hold` or
+  `synthetic_classification`), `personal.data.hold.placed`, `personal.data.hold.released` and
+  `identity.attempt.budget.unavailable` (best-effort, at most once per scope per window, only once the database is
+  reachable — the metric, not the audit table, is the operator's signal), all with the Platform tenant id and, for
+  worker events, a reserved non-impersonating system actor; individual denials are not audited. **Outbox: none.**
+- **Amends.** Extends IA-REQ-044's allowlist with the retention event types and the two hold DTOs while adding no
+  metadata key, `AuditEvent` still admitting only `reason`, `code` and `outcome`, which is why erasure evidence is a
+  separate record; and amends IA-REQ-026, which requires an audit record for every sensitive denial.
+- **Consumed by** Task 26's retention work, Task 27's budgets and Task 28's G1 local closure; G2 (real personal data)
+  and G3 (production) stay blocked behind their own owners.
+
+## 15. Reference adoption map (proposed — Task 17 Step 2)
+
+**Pinned source:** repository `RepositorioBaseNet`, revision `052a39873ed74a3c66c502c521a2469dfbeb523d`,
+`docs/standards/identity-access/02-business-rules.md` and `05-authentication.md`. That is a source identifier,
+not a dependency on one machine's filesystem path, and not an authorization to install anything the reference
+happens to run on.
+
+Three columns of this table say different things and are never interchangeable. **Adopted semantics** are rules
+this product takes on as its own. **Proposed portable implementation** is how this repository would satisfy them
+with what it already has. **Unadopted external stack** is machinery the reference uses that this repository does
+not take on — naming it as unadopted is not the same as waiving the guarantee it implements, and no row below is
+closed by deciding not to install a product.
+
+| Source rule / section | Adopted semantics | Proposed portable implementation | Task | Planned evidence |
+|---|---|---|---|---|
+| BR-REG-001..005, `05` §Registro de persona B2C / §Registro de empresa B2B | Signup is one logical operation; a partial failure never leaves a tenant without its owner; duplicates are refused without disclosing more than necessary; a documentary collision answers neutrally and never links another account | IA-REQ-048's two-phase intent/proof registration, inside the existing `IApplicationTransaction` and `RegistrationSubmission` idempotency record | 18, 19 | Paired-sequence privacy tests, real-PostgreSQL concurrent confirmation, rollback-after-effect tests |
+| BR-ID-003/006/007, `05` §Registro de persona B2C | Personal belongs to no organization; AR requires `AR`+`DNI`; the normalized documentary identity is globally unique; the number is stored protected with a keyed fingerprint for uniqueness | IA-REQ-050's `PersonProfile`/`IdentityDocument` reusing the established encrypted-value + versioned-keyed-fingerprint shape and a PostgreSQL partial unique index over unpurged rows | 19, 20 | Mapping and constraint tests on real PostgreSQL; concurrent claim of one document leaves one valid graph |
+| BR-ID-005, `05` §Inicio de sesión con Google steps 6–9 | Provider identity is located by provider+subject, never by display name or by matching email; an existing email match neither signs in nor links; linking is initiated from an existing session with an explicit `Link` purpose, recent reauthentication, consent, and a verified provider email | IA-REQ-052 over ASP.NET Core OpenID Connect middleware and the existing `AspNetUserLogins` provider-key uniqueness | 23 | Callback validation tests, no-auto-link tests, purpose-crossing refusal |
+| BR-SEC-001/002/003, `05` §Cierre y revocación de sesiones, §Contraseña | The web cookie is not the source of truth; authenticating or elevating regenerates the session identifier; closing a session invalidates its cookie and persisted state; a sensitive change revokes sessions according to policy | IA-REQ-049's session list, revoke-one, revoke-others and eviction cap over the existing `UserSession` and `SessionCookieEvents` | 21, 22 | Real-HTTP cookie tests, concurrency tests on the cap, revocation audit |
+| `05` §Contraseña §Recuperación steps 1–6 | Neutral answer always; a one-time token issued through the outbox; the token expires and is never persisted in plain text; setting a new password raises the security version and revokes sessions; a security event is recorded | IA-REQ-051's reset token in the existing `OutboxSecret` envelope with fragment delivery | 22 | Delivered-link acceptance journey, neutrality tests, session-revocation tests |
+| `05` §Contraseña §Cambio autenticado | Requires the current password or an equivalent reauthentication; a Google-only account defines a password through a verified flow, never a fictitious value | IA-REQ-051's single-use recent proof bound to identity, session, action and security version | 21, 22, 23 | Proof consumption/expiry tests, Google-only path test |
+| BR-AUT-001..008, `06-authorization.md` | The catalogue belongs to deployed code; administrators create custom roles only from permissions they hold; effective permissions are the union of active assigned roles; deny by default; a role change raises the authorization version; protected system roles cannot be removed or stripped; at least one membership able to administer the tenant must remain; `platform.*` only in the Platform tenant | IA-REQ-053 extending the existing `Role`/`RolePermission`/`MembershipRole` model, the permission evaluator, and `TenantAuthorizationAuditInterceptor` | 24, 25 | Delegation-ceiling tests, last-effective-administrator refusals, evaluator and version tests |
+| BR-INV-001..005, BR-TEN-004/006 | An invitation belongs to one tenant, email and role set; the token is hashed, expiring and single-use; acceptance binds the authenticated matching identity; reissuing creates no duplicate membership or unlimited live tokens; invitation and outbox message are one transaction; deactivating a membership does not delete the identity or its other memberships | Already implemented as IA-REQ-014..018/047; IA-REQ-053 adds the widening-cancels-offers rule, and IA-REQ-054 adds the membership lifecycle | 25, 26 | Offer-cancellation atomicity, membership lifecycle transitions |
+| `05` §Autenticación multifactor | TOTP with one-time recovery codes; reauthentication to enable, disable or regenerate; mandatory for platform accounts; secrets encrypted at rest with an isolated purpose; audited without revealing the secret | Already implemented for Platform (IA-REQ-041); IA-REQ-054 adds factor recovery requiring fresh primary proof **and** an unused recovery code | 26 | Recovery-code consumption tests, refusal without fresh proof |
+| BR-SEC-004/005, `05` §Observabilidad requerida | Failed authentication, recovery, 2FA, membership changes and sensitive denials are audited; secrets, tokens, personal documents and their normalized form never reach logs, URLs, history or analytics | Already implemented as IA-REQ-026/029; IA-REQ-050 extends it to the document and IA-REQ-052 to provider codes and tokens | 19–27 | Negative leak scans over responses, logs, audit and outbox payloads |
+| `05` §Bootstrap inicial de Platform (lines 240–251) | An external lifecycle ledger appends `PlatformBootstrapPrepared` **before** privileges are created; a Prepared bound to another target, or any Completed, fails closed; Production/PII and the public edge stay closed until a restore point at or after `MinimumRecoverableRestorePointUtc` is verified with generation, source binding and evidence | **Guarantee adopted, implementation not.** IA-REQ-055 requires an operator-controlled admission record held outside the restored database and a named verification authority. This repository proposes no ledger product; until the record and its authority are accepted and proved, live restore release stays blocked | 26, 27, gate in 28 | Fail-closed admission tests with synthetic evidence; the live gate is explicitly **not** closed by them |
+| `05` §Restore de seguridad (lines 259–317, 428) | A restore ceremony uses an audited `RecoveryEpoch`; sessions, invitations and outbox rows carry `IssuedRecoveryEpoch` and a new epoch invalidates the previous ones; infrastructure credentials are revalidated against their own source, not against the restored database; proofing binds a challenge to epoch, opaque target, purpose/policy/provider and nonce; an RPO failure fails closed; two approvers, separate permanent roles, dual control and explicit monitoring | **Guarantees adopted, stack unadopted.** IA-REQ-055 carries the epoch, the revalidation rule, the fail-closed default and the quarantine-after-restart rule. The reference's Azure/Entra recovery application, WORM ledger, P2S administrative network, federated identity credentials and `ISecurityRecoveryProofProvider` implementation are **not adopted** — that is a scope decision, not a statement that the guarantees are optional | 26, 27, gate in 28 | Synthetic-evidence guard tests only; full-reference compliance remains blocked and is not claimed |
+
+### Named differences from the reference
+
+These are deliberate local deviations. Each is a proposal in its own right and is listed here so no reader mistakes
+this product for a compliant implementation of the source.
+
+1. **Registration timing.** The reference creates the Personal aggregate — profile, document, tenant, owner
+   membership — in the same transaction as signup, before the address is confirmed (`05` §Registro de persona B2C,
+   steps 5–10). IA-REQ-048 defers every exclusive durable reservation until after confirmation, because the
+   reference's timing is exactly what makes an unconfirmed anonymous request leave a state difference an attacker
+   can read. The atomicity guarantee itself is kept: the aggregate is still created in one transaction, just a
+   later one.
+2. **Endpoint combination.** The reference describes journeys, not routes. This product's HTTP surface stays as
+   SPEC §6 declares it — one endpoint per business transition, semantic statuses, RFC 9457 for every failure —
+   rather than a combined account controller.
+3. **Recovery architecture.** Described above: guarantees adopted, Azure/Entra/WORM stack unadopted.
+4. **Session revocation policy.** The reference says sessions are revoked "según política" and fixes no number.
+   The five-session cap in IA-REQ-049 is this product's proposed default, not a reference requirement.

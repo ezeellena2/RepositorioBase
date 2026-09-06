@@ -8,13 +8,22 @@ using CleanArchitecture.Application.IdentityAccess.Invitations.RegisterInvitedUs
 using CleanArchitecture.Application.IdentityAccess.Organizations.RegisterOrganization;
 using CleanArchitecture.Domain.IdentityAccess.Auditing;
 using CleanArchitecture.Domain.IdentityAccess.Memberships;
+using CleanArchitecture.Domain.IdentityAccess.Organizations;
 using CleanArchitecture.Domain.IdentityAccess.Outbox;
 using CleanArchitecture.Domain.IdentityAccess.Tenants;
 using Microsoft.EntityFrameworkCore;
 
 namespace CleanArchitecture.Application.IdentityAccess.Organizations.ConfirmEmail;
 
-public sealed class ConfirmEmailCommandHandler(IApplicationTransaction transaction, IApplicationDbContext context, IConfirmationSecretStore secrets, ITokenHasher tokenHasher, IIdentityAccountService identities, TimeProvider timeProvider) : IRequestHandler<ConfirmEmailCommand, Result>
+public sealed class ConfirmEmailCommandHandler(
+    IApplicationTransaction transaction,
+    IApplicationDbContext context,
+    IConfirmationSecretStore secrets,
+    ITokenHasher tokenHasher,
+    IIdentityAccountService identities,
+    IRegistrationIdempotencyStore idempotencyStore,
+    IRegistrationInitialRoleProvisioner initialRoles,
+    TimeProvider timeProvider) : IRequestHandler<ConfirmEmailCommand, Result>
 {
     private const string ConfirmationMessageType = "identity.confirmation.requested";
 
@@ -27,11 +36,27 @@ public sealed class ConfirmEmailCommandHandler(IApplicationTransaction transacti
             var hash = tokenHasher.Hash(request.Token);
             var secret = await secrets.GetByVersionedHashForUpdateAsync(hash, ct);
             if (secret is null || !tokenHasher.Verify(request.Token, secret.VersionedHash)) return Result.Failure(IdentityAccessErrors.InvalidConfirmation());
-            if (secret.Status == OutboxSecretStatus.Consumed) return Result.Success();
+            // A spent envelope means the token did its work; what that work decided is recorded on the intent, not
+            // on the envelope. Both terminal outcomes consume it, so answering success here would tell a person
+            // whose organization was lost to a competing claim that it had been created — every time they clicked.
+            if (secret.Status == OutboxSecretStatus.Consumed)
+            {
+                return await SettledIntentAsync(secret.OutboxMessageId, ct) is { } recorded
+                    ? ResultFor(recorded)
+                    : Result.Success();
+            }
             if (secret.Status is not (OutboxSecretStatus.Pending or OutboxSecretStatus.Delivered)) return Result.Failure(IdentityAccessErrors.RegistrationConflict());
             if (secret.ExpiresAt <= now)
             {
                 secret.Terminate(OutboxSecretStatus.Expired, "confirmation_expired", now);
+
+                // A registration intent settles with its envelope. Leaving it open would let the same dead link
+                // keep asking, and would leave a row whose meaning depends on a clock rather than on a decision.
+                if (await FindOpenIntentAsync(secret.OutboxMessageId, ct) is { } expiring)
+                {
+                    expiring.Complete(PendingRegistrationIntentOutcome.Expired, now);
+                }
+
                 await context.SaveChangesAsync(ct);
                 return Result.Failure(IdentityAccessErrors.RegistrationConflict());
             }
@@ -54,6 +79,14 @@ public sealed class ConfirmEmailCommandHandler(IApplicationTransaction transacti
                 return Result.Success();
             }
 
+            // The registration a person started anonymously. Spending this token is the proof that lets the
+            // organization exist at all, so this is where every exclusive claim is made — and the first place any
+            // of them could fail (IA-REQ-048).
+            if (string.Equals(message.Type, RegisterOrganizationCommandHandler.IntentConfirmationMessageType, StringComparison.Ordinal))
+            {
+                return await FinalizeRegistrationAsync(message.Payload, secret, now, ct);
+            }
+
             if (!string.Equals(message.Type, ConfirmationMessageType, StringComparison.Ordinal)) return Result.Failure(IdentityAccessErrors.InvalidConfirmation());
 
             if (!TryReadEnvelope(message.Payload, out var envelope)) return Result.Failure(IdentityAccessErrors.InvalidConfirmation());
@@ -72,6 +105,136 @@ public sealed class ConfirmEmailCommandHandler(IApplicationTransaction transacti
             await context.SaveChangesAsync(ct);
             return Result.Success();
         }, cancellationToken);
+    }
+
+    /// <summary>
+    /// Turns a proved intent into the organization it asked for, or records honestly why it cannot.
+    /// <para>
+    /// The order matters and is the whole contract. The business lock is taken first, so two intents naming one
+    /// CUIT are serialized rather than racing the unique index. The identity is created before the CUIT is
+    /// checked, because someone who proved control of an address has earned their account even when the
+    /// organization is lost — they can sign in and register another one. The address is re-checked under the lock,
+    /// because an unrelated registration may have created it while this token sat in a mailbox, and in that case
+    /// nothing is created and the submitted password is never applied to an account this caller may not own.
+    /// </para>
+    /// </summary>
+    private async Task<Result> FinalizeRegistrationAsync(string payload, OutboxSecret secret, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        if (!TryReadIntentEnvelope(payload, out var envelope)) return Result.Failure(IdentityAccessErrors.InvalidConfirmation());
+
+        var intent = await context.PendingRegistrationIntents.SingleOrDefaultAsync(item => item.Id == envelope.IntentId, cancellationToken);
+        if (intent is null) return Result.Failure(IdentityAccessErrors.InvalidConfirmation());
+
+        // A settled intent answers what it settled as. The envelope's own single-use lock already makes the first
+        // spend the winner; this is what that winner recorded.
+        if (intent.Outcome is { } settled) return ResultFor(settled);
+
+        await idempotencyStore.CoordinateBusinessIntentAsync(intent.NormalizedEmail, intent.Cuit.Value, cancellationToken);
+
+        var correlation = $"registration-intent-{intent.Id:N}";
+        if (await identities.FindByEmailAsync(intent.NormalizedEmail, cancellationToken) is not null)
+        {
+            return await SettleConflictAsync(intent, secret, correlation, "identity_exists", null, now, cancellationToken);
+        }
+
+        var creation = await identities.CreatePendingFromHashAsync(intent.NormalizedEmail, intent.PasswordHash, cancellationToken);
+        if (creation.IsValidationFailure || creation.Account is null)
+        {
+            return await SettleConflictAsync(intent, secret, correlation, "identity_exists", null, now, cancellationToken);
+        }
+
+        var identityId = creation.Account.Id;
+        await identities.ActivateAsync(identityId, cancellationToken);
+
+        if (await context.OrganizationProfiles.AnyAsync(profile => profile.Cuit == intent.Cuit, cancellationToken))
+        {
+            // The account stands; only the organization is lost. This is the honest post-proof conflict: the
+            // person owns a usable, confirmed account and can register a different organization.
+            return await SettleConflictAsync(intent, secret, correlation, "cuit_taken", identityId, now, cancellationToken);
+        }
+
+        var tenant = Tenant.CreateOrganization(TenantSlug.From($"org-{intent.Cuit.Value}"));
+        var membership = TenantMembership.CreateResponsible(tenant, identityId);
+        initialRoles.AssignResponsibleOwner(tenant, membership);
+        tenant.Activate();
+        membership.Activate(tenant);
+
+        context.Tenants.Add(tenant);
+        context.OrganizationProfiles.Add(OrganizationProfile.Create(tenant, intent.LegalName, intent.Cuit));
+        context.TenantMemberships.Add(membership);
+        intent.Complete(PendingRegistrationIntentOutcome.Created, now);
+        secret.Consume("confirmation_consumed", now);
+        context.AuditEvents.Add(AuditEvent.Create(tenant.Id, identityId, "organization.registration.requested", correlation, new Dictionary<string, string>
+        {
+            ["code"] = "organization.registration.requested",
+            ["outcome"] = "registered"
+        }));
+        context.AuditEvents.Add(AuditEvent.CreateIdentityConfirmed(identityId, tenant.Id, correlation, now));
+        await context.SaveChangesAsync(cancellationToken);
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Settles an intent that cannot become an organization. The token is spent either way, because a conflict is
+    /// a real outcome and not an invitation to retry the same link until the state changes.
+    /// </summary>
+    private async Task<Result> SettleConflictAsync(
+        PendingRegistrationIntent intent,
+        OutboxSecret secret,
+        string correlation,
+        string outcome,
+        Guid? actorId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        intent.Complete(PendingRegistrationIntentOutcome.Conflicted, now);
+        secret.Consume("confirmation_consumed", now);
+        context.AuditEvents.Add(AuditEvent.CreateRegistrationConflicted(correlation, outcome, actorId, now));
+        if (actorId is { } identityId) context.AuditEvents.Add(AuditEvent.CreateIdentityConfirmed(identityId, null, correlation, now));
+        await context.SaveChangesAsync(cancellationToken);
+        return Result.Failure(IdentityAccessErrors.RegistrationConflict());
+    }
+
+    private static Result ResultFor(PendingRegistrationIntentOutcome outcome) => outcome switch
+    {
+        PendingRegistrationIntentOutcome.Created => Result.Success(),
+        _ => Result.Failure(IdentityAccessErrors.RegistrationConflict())
+    };
+
+    /// <summary>The unsettled intent an expiring envelope belongs to, if that envelope carried one at all.</summary>
+    private async Task<PendingRegistrationIntent?> FindOpenIntentAsync(Guid outboxMessageId, CancellationToken cancellationToken)
+    {
+        var intent = await FindIntentAsync(outboxMessageId, cancellationToken);
+        return intent?.Outcome is null ? intent : null;
+    }
+
+    /// <summary>The outcome a spent envelope's intent recorded, or null when the envelope carried no intent.</summary>
+    private async Task<PendingRegistrationIntentOutcome?> SettledIntentAsync(Guid outboxMessageId, CancellationToken cancellationToken) =>
+        (await FindIntentAsync(outboxMessageId, cancellationToken))?.Outcome;
+
+    private async Task<PendingRegistrationIntent?> FindIntentAsync(Guid outboxMessageId, CancellationToken cancellationToken)
+    {
+        var message = await context.OutboxMessages.AsNoTracking().SingleOrDefaultAsync(item => item.Id == outboxMessageId, cancellationToken);
+        if (message is null || !string.Equals(message.Type, RegisterOrganizationCommandHandler.IntentConfirmationMessageType, StringComparison.Ordinal))
+            return null;
+        if (!TryReadIntentEnvelope(message.Payload, out var envelope)) return null;
+        return await context.PendingRegistrationIntents.SingleOrDefaultAsync(item => item.Id == envelope.IntentId, cancellationToken);
+    }
+
+    private static bool TryReadIntentEnvelope(string payload, out RegisterOrganizationCommandHandler.IntentEnvelope envelope)
+    {
+        envelope = default!;
+        try
+        {
+            var value = JsonSerializer.Deserialize<RegisterOrganizationCommandHandler.IntentEnvelope>(payload);
+            if (value is null || value.IntentId == Guid.Empty) return false;
+            envelope = value;
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
     }
 
     private static bool TryReadEnvelope(string payload, out ConfirmationEnvelope envelope)

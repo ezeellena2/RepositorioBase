@@ -11,7 +11,102 @@ coverage gaps and one named residual, and the task states below are unchanged by
 The broader baseline is not complete: IA-010 (Personal/B2C tenants and AR/DNI), IA-011 (recovery/change and session
 management), IA-013 (Google OIDC/linking) and IA-015 (operations hardening) remain `Proposed` and unimplemented.
 
-## Review Workload Forecast
+The [existing plan now continues with Tasks 17–28](../../superpowers/plans/2026-08-31-identity-access-foundation.md#continuation-to-local-b2bb2c-functional-completion).
+This is planned work, not new implementation, coverage, approval, or a change to historical `Review` states.
+Task 17 produces and obtains approval of a finite contract delta; its decision register is still proposed.
+Only then do the dependent synthetic implementation tasks become `Ready`. Real-PII and production/reference
+compliance have separate gates, so local functional completion cannot silently authorize deployment.
+
+## Continuation roadmap mapping — all unchecked
+
+| Plan task | Work | Tracking | Dependency/approval boundary |
+|---|---|---|---|
+| 17 | Local contracts, reference revision and explicit adoption/deviation mapping | IA-001; IA-010/011/013/015 | Human acceptance of proposed C1–C7; documentation only |
+| 18 | Registration state-level privacy and CUIT reservation | IA-006; IA-009 evidence | **Done 2026-09-06.** C1 accepted; IA-REQ-003/004/005 amended and IA-REQ-048 added in SPEC §4 |
+| 19 | Personal ownership and protected AR/DNI persistence | IA-010; IA-004 persistence | 18; 17 C1/C3/C7; synthetic only until PII gate |
+| 20 | Personal signup, own profile and context React journey | IA-010; IA-009 evidence | 19 |
+| 21 | Own sessions and recent reauthentication seam | IA-011; IA-007 sessions | 17 C2/C4; password proof now, Google proof in 23 |
+| 22 | Password recovery and change end to end | IA-011; IA-009 evidence | 21; 17 C4 |
+| 23 | Google login, explicit linking and last authenticator | IA-013; IA-009 evidence | 20–22; 17 C4; live provider activation separate |
+| 24 | Custom Organization role administration | IA-005 continuation; IA-009 evidence | 17 C5 |
+| 25 | Membership administration, ownership transfer and invitation lifecycle | IA-005/008 continuation; IA-009 evidence | 21/24; 17 C5 |
+| 26 | Lifecycle, MFA recovery, retention executor and restore admission guard | IA-011/012/015; existing event owners | 19/21–25; 17 C6/C7 |
+| 27 | Shared limits, keys, deployment guards and operations evidence | IA-015; IA-007/012/014 control owners | 26; 17 C6/C7 |
+| 28 | Fixed full-journey acceptance and scoped closure | IA-009 evidence only; all continuation owners | 18–27 local evidence; separate PII/production/reference gates |
+
+The roadmap requirement owners remain in SPEC; this mapping does not invent approved IA-REQ identifiers.
+Custom roles and full membership administration are explicit continuation work even though their initial
+model/pipeline owners IA-005 and IA-008 are already recorded as `Review`. Historical verification is retained;
+future tests named by the continuation remain planned until run against implemented behavior.
+
+## Task 17 — state of the contract package
+
+Task 17 has three steps. Two are drafted; the third is the human decision and has not been taken.
+
+| Step | State | Where it lives |
+|---|---|---|
+| 1 — draft the exact contract delta for C1–C7 | Drafted; C1 accepted, C2–C7 awaiting decision | [SPEC §14](SPEC.md#14-task-17-decision-package-proposed-not-approved), [ADR-004 decisions 18–24](../../decisions/ADR-004-Adopt-Multitenant-Identity-Access.md#proposed-continuation-decisions-task-17--not-accepted) |
+| 2 — map reference adoption at the pinned revision | Drafted, awaiting decision | [SPEC §15](SPEC.md#15-reference-adoption-map-proposed--task-17-step-2) |
+| 3 — structural review, then one human decision | **Partly taken (2026-09-06): C1 accepted, C2–C7 not.** Five amendments are required before C3, C4, C6 and C7 are put forward again | [ADR-004 decision record](../../decisions/ADR-004-Adopt-Multitenant-Identity-Access.md#decision-record--2026-09-06) |
+
+**Task 17 is not complete.** One entry of seven is accepted. `Drafted` means the text exists and is internally
+consistent; it is not approval and it is not evidence. For C2–C7 no behaviour is implemented and no test named in
+§14 has been written. Amendments A1–A5 in the decision record are changes to the proposals, not open questions:
+each of those blocks must return with its contract already reconciled, because a contradiction left as a note for
+the implementer is not a delivered contract.
+
+## Task 18 — done 2026-09-06
+
+**Visible outcome met:** a caller can no longer infer whether someone else's address exists by submitting it
+anonymously and then claiming the same fresh CUIT with their own identity. The anonymous phase reserves nothing.
+
+| Step | What happened |
+|---|---|
+| RED | `RegistrationPrivacySequenceTests` — 4 of 4 failing. The headline: `known.ClaimErrorCode` should be `registration_conflict` but was `null`, i.e. the attacker's claim succeeded when the probed address existed and conflicted when it did not |
+| GREEN | `PendingRegistrationIntent` and its additive `DeferredRegistrationReservation` migration; the anonymous branch of `RegisterOrganizationCommandHandler` writes one intent, one outbox message and one tenantless audit event and takes no business lock; `ConfirmEmailCommandHandler` finalizes the graph in one `IApplicationTransaction`; two delivery handlers carry the confirmation link and the tokenless sign-in notice |
+| REFACTOR | The replay-after-conflict defect found during the rewrite was fixed (a spent envelope now answers the intent's recorded outcome, not the envelope's success) and the exception path the change orphaned was removed |
+
+**Commands run, both from the plan.**
+
+```powershell
+dotnet test tests/Application.FunctionalTests/Application.FunctionalTests.csproj --filter "RegistrationPrivacySequenceTests|RegistrationTests|ConfirmEmailTests"
+dotnet test tests/Infrastructure.IntegrationTests/Infrastructure.IntegrationTests.csproj --filter MigrationUpgradeTests
+```
+
+37/37 and 11/11. Whole solution afterwards: Domain 162, Application.Unit 192, Infrastructure.Integration 236,
+Application.Functional 401, browser acceptance 21; client 106 with lint clean; Debug and Release builds 0 errors.
+
+**Effects proved on real PostgreSQL:** two concurrent same-CUIT finalizations leave one organization with the loser
+settled `Conflicted`; two concurrent same-address finalizations leave one identity; an equivalent replay of the
+initiation produces one intent and one message; a replay of a finalized token returns its recorded outcome,
+conflict included; an expired envelope settles its intent `Expired`; and an injected failure after a real insert
+leaves no orphan tenant, profile, membership, role, audit or claim.
+
+**Limitation, named rather than claimed:** an anonymous initiation still sends one message per distinct submission
+to any address that can be typed, and no per-address or per-CUIT budget bounds that. It is the same exposure as
+before this task and is scoped to C6/C7 and Task 27, not closed here.
+
+### Proposed requirements and the tasks they unblock
+
+Each entry proposes its own requirement numbers. IA-REQ-047 remains the highest approved number; 048–057 are
+allocated only inside the proposal and become real if and when the decision accepts them.
+
+| Entry | Proposed requirements | Amends | Unblocks on acceptance | Still blocked afterwards |
+|---|---|---|---|---|
+| C1 **(accepted 2026-09-06; implemented)** | IA-REQ-048, now normative in [SPEC §4](SPEC.md#4-normative-requirements) | IA-REQ-003, IA-REQ-004, IA-REQ-005 | 18, **done 2026-09-06**; the registration seam 19/20/23 build on | nothing from this entry: the IA-REQ-003 residual is closed on Task 18's paired-sequence evidence |
+| C2 | IA-REQ-049 | IA-REQ-021, IA-REQ-023 | the session half of 21, 22, 23 | the proof half of 21/22, which is C4 |
+| C3 **(amend A1)** | IA-REQ-050 | none; extends IA-REQ-002/044 | 19, 20; the data contracts in 26/27 | real DNI capture, which is C7's gate |
+| C4 **(amend A2/A3)** | IA-REQ-051, IA-REQ-052 | IA-REQ-022 and §8, for one named callback route | 21, 22, 23; the recovery part of 26 | live provider registration, which is per-environment |
+| C5 | IA-REQ-053 | IA-REQ-047, closing its deferred note | 24, 25 | C4, without which ownership transfer has no proof |
+| C6 **(amend A3/A4)** | IA-REQ-054, IA-REQ-055 | makes IA-REQ-020 precise; extends IA-REQ-042 | 26, 27 against synthetic fixtures | live restore release, which needs the external authority |
+| C7 **(amend A4/A5)** | IA-REQ-056, IA-REQ-057 | strengthens IA-REQ-019 to shared, fail-closed state | the synthetic design in 19, 26, 27 | real personal data, and production — separate gates in 28 |
+
+A declined or amended entry blocks only its own consumers. Tasks 1–16 and their recorded `Review` states are
+untouched by this package.
+
+## First-increment Review Workload Forecast (historical)
+
+This forecast describes Tasks 1–16, not approval of the continuation's pending contracts or deployment.
 
 Decision needed before apply: No
 Chained PRs recommended: Yes

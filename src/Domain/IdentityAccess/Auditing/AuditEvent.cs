@@ -119,6 +119,55 @@ public sealed class AuditEvent : BaseEntity<Guid>
         };
     }
 
+    /// <summary>
+    /// An anonymous registration was recorded, and that is all it says. There is no tenant yet, no identity yet,
+    /// and deliberately no address or CUIT: the whole point of the initiation phase is that it discloses nothing,
+    /// and an audit row naming what was probed would disclose it to anyone who can read the audit
+    /// (IA-REQ-029/048). The correlation id joins it to the finalization that may follow.
+    /// </summary>
+    public static AuditEvent CreateRegistrationIntentRecorded(string correlationId, DateTimeOffset occurredAt)
+    {
+        if (string.IsNullOrWhiteSpace(correlationId)) throw new ArgumentException("Registration intent audit evidence is invalid.");
+        return new AuditEvent
+        {
+            Id = Guid.NewGuid(),
+            ActorId = null,
+            TenantId = null,
+            OccurredAt = occurredAt,
+            EventType = "organization.registration.intent.created",
+            CorrelationId = correlationId,
+            Metadata = new ReadOnlyDictionary<string, string>(new Dictionary<string, string>
+            {
+                ["code"] = "organization.registration.intent.created",
+                ["outcome"] = "pending_proof"
+            })
+        };
+    }
+
+    /// <summary>
+    /// A proved registration could not be completed. The outcome distinguishes the two reasons for an operator;
+    /// the caller is told only that it conflicted, and neither value names the address or the CUIT.
+    /// </summary>
+    public static AuditEvent CreateRegistrationConflicted(string correlationId, string outcome, Guid? actorId, DateTimeOffset occurredAt)
+    {
+        if (string.IsNullOrWhiteSpace(correlationId) || string.IsNullOrWhiteSpace(outcome))
+            throw new ArgumentException("Registration conflict audit evidence is invalid.");
+        return new AuditEvent
+        {
+            Id = Guid.NewGuid(),
+            ActorId = actorId,
+            TenantId = null,
+            OccurredAt = occurredAt,
+            EventType = "organization.registration.conflicted",
+            CorrelationId = correlationId,
+            Metadata = new ReadOnlyDictionary<string, string>(new Dictionary<string, string>
+            {
+                ["code"] = "organization.registration.conflicted",
+                ["outcome"] = outcome.Trim()
+            })
+        };
+    }
+
     public static AuditEvent CreateMembershipChanged(TenantId tenantId, Guid? actorId, string correlationId, string outcome = "changed") =>
         Create(tenantId, actorId, "membership.changed", correlationId, new Dictionary<string, string>(StringComparer.Ordinal)
         {

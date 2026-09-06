@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Deliver a multitenant SaaS identity slice with safe PostgreSQL upgrades, Organization registration and confirmation, revocable sessions, active-tenant permissions, invitation onboarding, reliable email delivery, a one-time MFA-bound Platform owner bootstrap, and a reachable same-origin React client.
+**First-increment goal (Tasks 1–16):** Deliver a multitenant SaaS identity slice with safe PostgreSQL upgrades, Organization registration and confirmation, revocable sessions, active-tenant permissions, invitation onboarding, reliable email delivery, a one-time MFA-bound Platform owner bootstrap, and a reachable same-origin React client.
 
 **Architecture:** ASP.NET Core Identity is a credential adapter. Domain/Application own lifecycle, tenants, memberships, roles, permissions, sessions, invitations, MFA, audit, and outbox rules. Platform uses the same active-tenant membership and permission evaluator, never a global bypass. PostgreSQL enforces UUID and tenant-local invariants; the BFF cookie references a revocable server session; React keeps antiforgery state only in memory.
 
@@ -10,9 +10,9 @@
 
 ---
 
-**Status:** In progress. Tasks 1, 2, and 3 are complete: the template targets PostgreSQL only, the real PostgreSQL harness is active, `BaselinePostgreSql` is applied at startup with `MigrateAsync`, destructive initialization/default identity seeding are removed, and the core identity-access domain is modeled. Task 4 is next; IA-004 remains incomplete until persistence is delivered.
+**Status:** Tasks 1–16 record the implemented Organization/Platform foundation and its historical checks. Their `Review` states and recorded limitations remain unchanged; implementation is not human acceptance or complete B2B/B2C coverage. Task 17 is partly taken: C1 was accepted on 2026-09-06, and [Task 18](#task-18-remove-the-registration-state-oracle-not-only-its-status-difference) is implemented and verified against real PostgreSQL on that approval alone. C2–C7 remain proposals — five of them carry required amendments (A1–A5, recorded in ADR-004) — so [Tasks 19–28](#continuation-to-local-b2bb2c-functional-completion) are still blocked on that decision. This continuation was planned against `d6d1b0ab5cf2b66ccff2828b471d7977f540a958`; no verification run is claimed for any task after 18.
 
-## Review Workload Forecast
+## First-increment Review Workload Forecast (historical)
 
 - Decision needed before apply: No
 - Chained PRs recommended: Yes
@@ -29,7 +29,9 @@ Suggested review units:
 
 The maintainer accepted `size:exception`; proceed in the defined work units with commit, verification, and rollback boundaries.
 
-## Preconditions and Execution Rules
+## First-increment Preconditions and Execution Rules (Tasks 1–16)
+
+These exclusions, sequencing constraints, and delivery decisions describe the first increment only. They do not exclude the required continuation below or authorize its unapproved policy changes. The compile-safe protocol and architectural boundaries remain reusable; Task 17 must explicitly approve any changed contract before dependent implementation.
 
 - [ ] Obtain human approval of [SPEC.md](../../features/identity-access/SPEC.md) and [ADR-004](../../decisions/ADR-004-Adopt-Multitenant-Identity-Access.md) before Task 3; IA-002 and IA-003 are already `Complete`.
 - [ ] Continue in this dependency order: IA-004 domain -> IA-004 persistence -> IA-005 roles -> IA-005 authorization -> IA-006 registration -> IA-007 sessions -> IA-008 invitations/outbox -> IA-012 Platform invitation persistence then MFA -> IA-014 bootstrap/operations -> IA-009 final React/E2E acceptance.
@@ -1192,7 +1194,9 @@ git add src/Web/ClientApp tests docs/features/identity-access
 git commit -m "test: verify platform operations"
 ```
 
-## Exit Criteria
+## First-increment Exit Criteria (Tasks 1–16)
+
+These are the historical first-increment criteria, not a claim that all are closed or the exit gate for Tasks 17–28. The continuation's distinct closure criteria are in Task 28.
 
 - `BaselinePostgreSql`, `IdentityAccess`, and incremental migrations pass empty-to-latest and baseline-to-latest tests with sentinel preservation and no pending migration.
 - No default administrator, startup deletion, stale string Identity key/audit actor, global bypass, Platform impersonation/delete capability, or pre-IA-007 `UserSession`/pre-IA-008 Invitation behavior remains.
@@ -1207,3 +1211,399 @@ git commit -m "test: verify platform operations"
 - Root React composition makes every journey reachable, uses the same-origin proxy and MSW tests, and retains no reusable/raw token.
 - Platform is a singleton active-tenant membership with encrypted TOTP, hashed recovery codes, recent step-up, last-owner protection, conditional Organization lifecycle, allowlisted projections, and append-only audit evidence.
 - Deferred roadmap items remain IA-010, IA-011, IA-013, and IA-015 and are not presented as implemented.
+
+## Continuation to local B2B/B2C functional completion
+
+**Outcome:** finish a finite, usable local product: one identity can create its Personal context, create or join Organizations, manage its credentials and sessions, and administer permitted roles/members through React. Lifecycle and operating controls must have real implementation and synthetic evidence. Real PII, public deployment, and complete external-standard compliance have separate gates; a local demonstration cannot satisfy them.
+
+**Authority:** [SPEC §2.3](../../features/identity-access/SPEC.md#23-required-roadmap-outside-the-first-increment) already includes Personal/DNI, recovery/change, Google, custom roles/full membership administration, lifecycle, retention, and operations. It does not settle every continuation contract. [ADR-004](../../decisions/ADR-004-Adopt-Multitenant-Identity-Access.md) and SPEC still have proposed approval status. Authorization to write this plan is not acceptance of the proposals below. Task 17 is a bounded documentation/approval deliverable; dependent tasks become `Ready` only after their listed contracts are accepted. There is no automatic SDD/review lifecycle or new worktree implied by this plan.
+
+**Reference pin:** repository `RepositorioBaseNet`, revision `052a39873ed74a3c66c502c521a2469dfbeb523d`, `docs/standards/identity-access/02-business-rules.md` and `05-authentication.md`. The reference files were clean at that revision. This is a source identifier, not a dependency on one developer's absolute filesystem path. Its mandatory recovery guarantees must be mapped explicitly; the local adoption of business semantics does not silently adopt its Azure/Entra/WORM implementation or waive those guarantees.
+
+### Continuation map
+
+| Task | Visible result | Tracking | Prerequisites |
+|---|---|---|---|
+| 17 | Approved local contracts and explicit reference-adoption boundary | IA-001, IA-010/011/013/015; existing normative owners retained | This plan and current SPEC/ADR |
+| 18 | Registration cannot disclose an address through durable CUIT side effects | IA-006; IA-009 evidence | 17: C1 |
+| 19 | Atomic Personal ownership and protected, unique AR/DNI persistence | IA-010; IA-004 persistence | 17: C1/C3/C7; 18 registration seam |
+| 20 | Personal signup, own profile, and mixed Personal/Organization context journey | IA-010; IA-009 evidence | 19 |
+| 21 | Own-device session list/revocation and reusable recent reauthentication | IA-011; IA-007 sessions | 17: C2/C4 |
+| 22 | Delivered password recovery and authenticated password change | IA-011; IA-009 evidence | 21; 17: C4 |
+| 23 | Google login, explicit linking, and safe last-authenticator handling | IA-013; IA-009 evidence | 20–22; 17: C4 |
+| 24 | Custom Organization roles through the existing permission evaluator | IA-005 continuation; IA-009 evidence | 17: C5 |
+| 25 | Full Organization membership/ownership/invitation administration | IA-005/008 continuation; IA-009 evidence | 21, 24; 17: C5 |
+| 26 | Bounded lifecycle, MFA recovery, retention execution, and restore admission guard | IA-011/012/015; existing event owners | 19, 21–25; 17: C6/C7 |
+| 27 | Shared abuse controls, deployment safeguards, and operational evidence | IA-015; IA-007/012/014 control owners | 26; 17: C6/C7 |
+| 28 | Fixed full-journey acceptance scope and an honest closure record | IA-009 evidence; all continuation owners | 18–27 for local closure; separate real-PII/deployment gates |
+
+IA-010, IA-011, IA-013, and IA-015 remain `Proposed` and unimplemented. Expanding IA-005/008 does not rewrite the historical `Review` status of their first-increment work. A dependency below is an implementation dependency, not an assertion that a fresh approval or test exists.
+
+### Shared execution contract for Tasks 18–28
+
+- Work in the existing Clean Architecture boundaries: Domain invariants, Application use cases/ports, Infrastructure Identity/EF/cryptography adapters, Web HTTP/protocol adaptation, and React presentation. Reuse the existing transaction, permission evaluator, audit, outbox, and single frontend transport. Do not create a second B2C identity store or authorize from a role name.
+- Preserve the existing role-access architecture guard: do not add bulk `TenantRoles`, `RolePermissions`, or `MembershipRoles` query/mutation surfaces to `IApplicationDbContext`. Extend narrow Application ports analogous to `IOfferableRoleReader`/`IInvitationRoleAssigner`; their Infrastructure adapters own EF access and participate in the existing transaction.
+- `Modify` paths below exist at the stated source revision. `Create` paths are proposed files, not existing implementation or coverage. Before implementation, reconcile paths with the then-current tree. Every named new suite must actually discover tests; a zero-test exit is not GREEN.
+- Apply the inherited compile-safe protocol only to missing types/modules: a concrete, non-vacuous file/type/route assertion must fail at runtime, minimal shells make it compile/import, and behavioral RED must then demonstrate the absent behavior. Existing seams need behavioral RED directly. Missing imports, global test counts, empty-write rollback, and reflection that asserts nothing cannot prove a requirement.
+- Each task runs the commands it names once before behavior and again after implementation/refactoring. Record the failing assertion and passing result, real database effects, migration name when applicable, and remaining limitations. Do not widen testing or reopen review repeatedly once the scoped criteria pass; investigate an actual failure before a bounded retry.
+- For every new Application request, update `tests/Application.UnitTests/Architecture/RequestAuthorizationMetadataTests.cs` and `ApplicationRequestInventory.cs` as applicable. Run `dotnet test tests/Application.UnitTests/Application.UnitTests.csproj --filter "RequestAuthorizationMetadataTests|IdentityAccessArchitectureTests"`; expected: every request has exactly one classification and inward dependencies remain intact.
+- For each new HTTP contract, modify `tests/Application.FunctionalTests/IdentityAccess/Api/OpenApiContractTests.cs` and `ProblemDetailsContractTests.cs`; run their combined filter on `Application.FunctionalTests`. Require endpoint DTO/status/header agreement, safe RFC 9457 errors, and no serialized internal Result. Mutation tests include exact origin/antiforgery; the explicitly approved OIDC callback is handled separately in Task 23.
+- Protected tenant mutations use only the validated session's active tenant; route IDs must match it and queries filter tenant plus resource. Identity self-service uses the authenticated identity/session and `RequiresTenant=false`, never a caller-supplied owner. Include anonymous, missing permission, another identity/tenant, suspended/revoked state, stale version, and concurrent/replayed requests as applicable.
+- Changes to persistence use additive migrations plus their generated designer and `src/Infrastructure/Data/Migrations/ApplicationDbContextModelSnapshot.cs`; never rewrite `BaselinePostgreSql` or previous migrations. `tests/Infrastructure.IntegrationTests/IdentityAccess/MigrationUpgradeTests.cs` covers empty-to-latest and upgrade from the previous deployed schema with meaningful preexisting rows, explicit FKs/deletes, and rollback behavior. Generated timestamps are chosen at execution, not fabricated as existing paths here.
+- Reuse `tests/Application.FunctionalTests/Infrastructure/IdentityHttpHarness.cs`, the session/concurrency fixtures, `src/Web/ClientApp/src/test/identityServer.js`, `tests/Web.AcceptanceTests/AspireSetup.cs`, and delivered-mail helpers including `PlatformFixtures.DeliveredAsync`. Real PostgreSQL and actual HTTP/BFF cookies provide security evidence; MSW provides UI behavior, not database/protocol proof.
+- Execution prerequisites: .NET 10, the Node version required by the current package lock (Node 20+ baseline), Docker for PostgreSQL/Aspire, trusted local HTTPS, and an isolated test mail sink. Google uses a controlled OIDC provider in CI. No real email, real DNI, or external-account setup is implicit. Build may regenerate the ignored API client; inspect any resulting changes before delivery.
+- Record scoped results in TRACEABILITY and TASKS only after execution. `git diff --check` is the structural check for this planning change; no application tests were run to author this continuation. Commits/push/deployment require their own existing user authority and are not checklist shortcuts.
+
+## Task 17: Approve the continuation contracts and reference scope
+
+**State (2026-09-06): partly taken, not complete.** The package was written into SPEC §14 and ADR-004. C1 was accepted and has left the proposal set; C2–C7 were not accepted, and C3/C4/C6/C7 carry required amendments A1–A5. This task closes only when those entries are re-presented amended and answered.
+
+**Visible outcome:** one reviewable contract package makes the following implementation steps executable without repeated product-discovery rounds. This task is documentation and human approval, with no production code.
+
+**Tracking/source:** IA-001 and roadmap IA-010/011/013/015; SPEC §§2.1–2.3, 4, 11–13; ADR-004; the pinned reference rules below. Existing IA-REQ ownership remains unchanged; new normative IDs, if needed, are assigned only in the approved SPEC change.
+
+**Files:** Modify `docs/features/identity-access/SPEC.md`, `docs/decisions/ADR-004-Adopt-Multitenant-Identity-Access.md`, `docs/features/identity-access/TRACEABILITY.md`, `docs/features/identity-access/TASKS.md`, and this plan. Those edits belong to Task 17 execution, not this plan-authoring change.
+
+**Inherited rules, not new questions:** one global email identity; no DNI on `ApplicationUser`; AR/DNI required when creating Personal only; a protected global documentary identity is unique among unpurged rows; at most one Personal per identity, one owner, no Personal invitations; no automatic document/email merge; Organization administration retains an effective administrator; Google never auto-links by matching email. Sources: BR-ID-001..007, BR-REG-001..005, BR-TEN-001..007, BR-AUT-001..008, BR-INV-003; local IA-REQ-001/002/006..017/047. Confirm these in the local contract rather than asking whether to remove them.
+
+### Proposed decision register — no entry is accepted by this document
+
+| ID | Recommendation to approve or amend | Exact dependent work |
+|---|---|---|
+| C1 — registration reservation | Require confirmed identity before any **exclusive durable CUIT or documentary reservation**. Anonymous initiation can retain a bounded, expiring protected registration intent and send a neutral confirmation, but reserves no exclusive CUIT/profile/document/tenant/membership/role. After proof, atomically create the tenant/profile/document when applicable, responsible membership, roles, audit, and outbox effects. Preserve idempotent replay and honest post-proof conflict handling. This changes IA-REQ-003/004 and the reference's pre-confirmation aggregate timing; record the explicit adoption deviation and upgrade behavior for existing pending registrations. | 18; registration portions of 19/20/23 |
+| C2 — coexistence and revocation | Replace today's revoke-all-on-login behavior with at most **five active sessions per identity**, serialized at that identity; on a sixth sign-in revoke the oldest by creation time then ID. Keep 30-minute idle/12-hour absolute defaults and no remember-me. Reset revokes every persisted session. Authenticated password change revokes other sessions and rotates the current session; it never preserves its old identifier/proofs. These numbers are proposed product defaults, not a legal or external-standard claim. | 21/22/23 and their concurrency tests |
+| C3 — own profile/document editing | Initial self-service fields: full name and display name; country/type remain AR/DNI for this slice. Store the recoverable number encrypted and compare keyed/versioned fingerprints. Ordinary profile edit may change names, never email, ownership, country/type, or document. Document correction requires a separately authorized verified process; until that process exists it is unavailable, with clear UI guidance. Expose only masked document status to its owner; Organization/Platform operators cannot edit or read the personal document. | 19/20; data contracts in 26/27 |
+| C4 — credential and provider proof | Use a single-use proof bound to current identity, session, action, and security version, with a proposed five-minute lifetime; password or a fresh linked OIDC challenge supplies primary proof, never a session cookie alone. Proposed password-reset token lifetime: 30 minutes, superseded on reissue. Link requires explicit consent plus recent primary proof and verified provider email; Login and Link purposes cannot cross. Unlink requires recent proof and leaves at least one usable authenticator; adding a password to Google-only identity uses verified recovery, never a fictitious current password. StartLogin/StartLink are same-origin antiforgery mutations; the narrowly scoped server callback instead requires framework-validated state, nonce, correlation, PKCE, issuer/audience/signature/expiry. Approve its callback-only exception to the initial exact-origin/token-URL rule, with code/token log redaction and a clean final redirect. | 21/22/23; recovery portions of 26 |
+| C5 — delegated administration | Deliver custom roles and full membership administration for **Organization** in this continuation. Personal's owner/system role stays protected; Platform still uses its existing invitation/MFA authority. An actor may delegate only permissions they currently hold and that the tenant type allows. Retiring a role withdraws its effective grants and refuses any change that would remove the last effective administrator. Ownership transfer requires a confirmed active same-tenant recipient, the current owner, and recent proof; it is atomic. Widening a role atomically cancels every pending offer referencing it and terminalizes its token envelope; an authorized inviter must explicitly review/reissue an offer, never automatically grant wider authority. Record the resulting change to IA-REQ-047's deferred-control note. | 24/25 and affected invitation acceptance |
+| C6 — finite lifecycle/restore/operations scope | Adopt identity disable/reactivation, membership lifecycle, Platform factor recovery with fresh primary proof plus an unused recovery code, bounded expired-secret/session cleanup, and a fail-closed restore guard. Restore runs privately with public ingress and delivery stopped; restored sessions/one-use tokens cannot authorize or send, restored authenticators/grants require revalidation, and erased PII cannot silently return. Default when evidence is insufficient: quarantine and keep admission closed, including after restart. Pin an operator-controlled recovery admission record outside the restored database and its verification authority before code; a self-declared row inside the backup is insufficient. Map the reference's external RecoveryEpoch/ledger, immutable recovery evidence, and proofing guarantees explicitly; its specific Azure/Entra/WORM stack is **unadopted**, not waived or optional compliance. Live restore release/full-reference compliance remain blocked until that mapping and required external authority are accepted and proved. | 26/27; production/full-reference gate in 28 |
+| C7 — PII and retention | Enable Personal only with synthetic fixtures until the responsible human/legal owner approves actual PII purpose, field scope, access, retention periods, legal holds, deletion evidence, backup/restore treatment, and documentary-uniqueness behavior after purge. Do not invent a jurisdictional period. Implement/test a configurable retention contract with synthetic time and an approved default of **no destructive real-data action when policy is missing**. Select the existing PostgreSQL stack for shared limit state as the proposed portable default; deployment storage, key/certificate ownership, numerical abuse budgets, and external recovery authority must be recorded per environment. Redis/Azure are not implied dependencies. | Synthetic design approval: 19/26/27; actual PII and deployment: separate gate in 28 |
+
+- [ ] **Step 1 — draft the exact contract delta.** For C1–C7, add caller/state tables, allowed DTOs, endpoint methods/routes/statuses/codes, permission/public markers, invariants, transitions, concurrency winners, audit/outbox effects, and failure examples to SPEC/ADR. Reuse existing permission constants where accurate; explicitly propose new self-profile/credential/ownership/lifecycle codes and their scope. Record accepted numerical settings and environment prerequisites, not unspecified configurable behavior.
+  C6 must explicitly name the reactivation actor, fresh proof available before ordinary session issuance, and the distinction between self-deactivation and an administrative suspension. Requiring an ordinary authenticated session from an identity whose password, Google and cookies are all denied is not an executable reactivation path; Task 26 remains conditional until that authority path is accepted.
+- [ ] **Step 2 — map reference adoption.** Pin the revision above and a table of source rule/section → local adopted contract → task → planned evidence. Name current endpoint-combination/registration-timing and recovery-architecture differences explicitly. Separate inherited semantic guarantees, proposed portable implementations, and unapproved external dependencies; do not relabel a mandatory source guarantee as optional.
+- [ ] **Step 3 — structural review, then one human decision.** Run `git diff --check` and read the contract/state tables against Tasks 18–28. Expected: all seven entries have a concrete recommendation and exact consumers; no proposed rule masquerades as coverage. Present the complete package for human approval or amendment. Record the decision, date, accepted fields and remaining external gates; do not mark SPEC/ADR accepted automatically.
+- [ ] **Done:** approved local contracts make their dependent synthetic implementation tasks `Ready`; real-PII/production prerequisites remain explicit blockers where unresolved. A declined or materially changed entry blocks only its consumers. No recurring approval per unchanged task, new discovery phase, application test, or production mutation is required by this documentation task.
+
+## Task 18: Remove the registration state oracle, not only its status difference
+
+**Done 2026-09-06** on the accepted C1 (IA-REQ-048) alone. Evidence, exact commands and counts are in [TASKS.md](../../features/identity-access/TASKS.md#task-18--done-2026-09-06); the named limitation it does not close is recorded there and scoped to C6/C7 and Task 27.
+
+**Visible outcome:** a caller cannot infer whether someone else's address exists by anonymously submitting it and then claiming the same fresh CUIT with their own authenticated identity.
+
+**Tracking/source:** IA-006 and IA-009 evidence; approved C1; revised IA-REQ-003/004 plus 005/026..029/033/035/038. Dependency: Task 17 C1 accepted. Current known-email requests create no Organization; unknown-email requests durably reserve CUIT. Hiding the second request's `409` alone still leaks through the attacker's resulting context, owned Organization, mail, or durable claim.
+
+**Files:**
+
+- Modify: `src/Application/IdentityAccess/Organizations/RegisterOrganization/RegisterOrganizationHandler.cs`, `src/Application/IdentityAccess/Organizations/RegisterOrganization/IRegistrationSecurity.cs`, `src/Application/IdentityAccess/Organizations/ConfirmEmail/ConfirmEmailHandler.cs`.
+- Modify: `src/Domain/IdentityAccess/Organizations/RegistrationSubmission.cs`, `src/Domain/IdentityAccess/Organizations/RegistrationSubmissionOutcome.cs`, `src/Infrastructure/IdentityAccess/RegistrationIdempotencyStore.cs`, `src/Infrastructure/IdentityAccess/RegistrationInitialRoleProvisioner.cs`.
+- Modify: `src/Web/Endpoints/Identity.cs`, `tests/Application.FunctionalTests/IdentityAccess/Organizations/RegistrationTests.cs`, `tests/Application.FunctionalTests/IdentityAccess/Organizations/ConfirmEmailTests.cs`.
+- Create: `src/Domain/IdentityAccess/Organizations/PendingRegistrationIntent.cs`, `src/Infrastructure/Data/Configurations/IdentityAccess/PendingRegistrationIntentConfiguration.cs`, `tests/Application.FunctionalTests/IdentityAccess/Organizations/RegistrationPrivacySequenceTests.cs`; an additive `DeferredRegistrationReservation` migration and the shared model/context updates.
+
+**Request/tenant boundary:** anonymous initiation and token confirmation remain explicitly public and origin/antiforgery protected; a supplied invalid session still fails closed. Confirmed creation proves its identity server-side; any client email must match it. CUIT is Organization-owned, never an identity/profile selector. No public result exposes whether another identity exists.
+
+- [x] **RED:** add paired known/unknown-address sequences with the same otherwise fresh CUIT. After each anonymous probe, sign in as an independently controlled identity and submit that CUIT; compare HTTP, the attacker's context/Organization visibility and delivered mail, and exclusive durable claims. Inspect target delivery with an isolated sink as supporting state evidence, not attacker access. Add normalized replay, simultaneous claims, proof expiry, and old-pending-registration upgrade cases. Require a runtime difference on current behavior. *Done:* `RegistrationPrivacySequenceTests` runs the paired probe-then-claim sequence and compares the claim's status, the attacker's ownership and the durable CUIT claim; on the previous code the attacker's claim succeeded for a known address and returned `registration_conflict` for an unknown one. Replay, both concurrency directions and proof expiry were added to `RegistrationTests`/`ConfirmEmailTests`. No old pending-registration rows existed to upgrade, so that case was dropped rather than faked.
+- [x] **GREEN:** implement the approved intent/proof/reservation transitions, durable idempotency, protected expiring intent and additive upgrade. At finalization, create the aggregate graph and audit/outbox in one `IApplicationTransaction`; inject failure after a real insert and prove no orphan/profile/role/audit/claim remains. A second confirmed competing claim has one winner with the approved safe conflict; anonymous probes themselves never win ownership. *Done:* `PendingRegistrationIntent` plus the `DeferredRegistrationReservation` migration carry the unproved phase; finalization writes the whole graph and its audit/outbox inside the existing `IApplicationTransaction`. Two confirmed competing claims leave one winner and settle the loser `Conflicted` on real PostgreSQL; an anonymous probe never wins ownership.
+- [x] **REFACTOR/verify:** generalize only the reusable confirmation/registration seam needed by Task 19; preserve existing-account non-takeover and existing delivered links. Run both commands below before/after; expect the paired-sequence/state assertion RED, then equivalent observable behavior and atomic/replayed effects GREEN. *Done:* the confirmation seam now dispatches on message type, so Task 19 reuses it without a second endpoint; existing delivered links and existing-account non-takeover still hold. Both commands ran green after the change (37/37 and 11/11).
+
+```powershell
+dotnet test tests/Application.FunctionalTests/Application.FunctionalTests.csproj --filter "RegistrationPrivacySequenceTests|RegistrationTests|ConfirmEmailTests"
+dotnet test tests/Infrastructure.IntegrationTests/Infrastructure.IntegrationTests.csproj --filter MigrationUpgradeTests
+```
+
+- [x] **Done:** both sequence directions and their concurrent/replayed variants pass against real PostgreSQL; TRACEABILITY closes the residual only on this state-level evidence and approved SPEC change, not neutral status alone. *Done:* Domain 162, Application.Unit 192, Infrastructure.Integration 236, Application.Functional 401, browser acceptance 21, client 106; Debug and Release builds clean. TRACEABILITY closes the IA-REQ-003 residual on that state-level evidence and the accepted SPEC change.
+
+## Task 19: Persist Personal ownership and protected AR/DNI atomically
+
+**Visible outcome:** one global identity can own exactly one Personal tenant with its own protected profile/document, without creating another account or making its document visible to an Organization.
+
+**Tracking/source:** IA-010; IA-004 persistence; SPEC §2.3, IA-REQ-001/002/006..013/026..029/033..038; BR-ID-003/006/007, BR-REG-001/002, BR-TEN-003/004, BR-INV-003. Dependencies: Task 18 and accepted C1/C3/C7 synthetic contracts; actual PII remains disabled.
+
+**Files:**
+
+- Modify: `src/Domain/IdentityAccess/Tenants/Tenant.cs`, `src/Domain/IdentityAccess/Memberships/TenantMembership.cs`, `src/Application/Common/Interfaces/IApplicationDbContext.cs`, `src/Infrastructure/Data/ApplicationDbContext.cs`, `src/Infrastructure/DependencyInjection.cs`.
+- Create: `src/Domain/IdentityAccess/People/PersonProfile.cs`, `src/Domain/IdentityAccess/People/IdentityDocument.cs`, `src/Domain/IdentityAccess/People/PersonalTenantOwnership.cs`.
+- Create: `src/Application/IdentityAccess/People/IIdentityDocumentProtector.cs`, `src/Application/IdentityAccess/People/IIdentityDocumentFingerprint.cs`, `src/Infrastructure/IdentityAccess/People/IdentityDocumentProtector.cs`, `src/Infrastructure/IdentityAccess/People/IdentityDocumentFingerprint.cs`.
+- Create: `src/Infrastructure/Data/Configurations/IdentityAccess/PersonProfileConfiguration.cs`, `src/Infrastructure/Data/Configurations/IdentityAccess/IdentityDocumentConfiguration.cs`, `src/Infrastructure/Data/Configurations/IdentityAccess/PersonalTenantOwnershipConfiguration.cs`; additive `PersonalIdentity` migration.
+- Create: `tests/Domain.UnitTests/IdentityAccess/PersonalIdentityTests.cs`, `tests/Infrastructure.IntegrationTests/IdentityAccess/PersonalIdentityMappingTests.cs`, `tests/Infrastructure.IntegrationTests/IdentityAccess/PersonalDocumentProtectionTests.cs`.
+
+**Boundary:** this task adds internal domain/persistence adapters, no public endpoint. Ownership derives from authenticated/proved identity, never client ownership fields. Personal has one owner membership and no invitations; document uniqueness applies globally across unpurged rows without making global document lookup a public capability.
+
+- [ ] **RED shape/shells:** assert the exact new model and its ownership/document relationships by metadata; reuse `Tenant.CreatePersonal`. After shells, test AR/DNI normalization, sole owner, Personal-only profile, no document on Organization registration/invitation/login, and no automatic merge on duplicate document.
+- [ ] **Behavioral RED:** real PostgreSQL races for two Personal creations by one identity and two identities claiming one normalized document must leave one valid graph. Prove soft deletion does not free the document and cross-tenant ownership/FK violations fail. After Task 18's separate identity-confirmation stage, inject failure after a real Personal-profile insert: roll back the new Personal/profile/document/owner/role/audit/outbox graph while preserving the already-confirmed identity and every preexisting Organization membership. Reject raw/default/unversioned protection material.
+- [ ] **GREEN:** store authenticated versioned ciphertext with purpose separation and keyed/versioned fingerprint lookup; enforce uniqueness across all retained key versions during rotation. Persist the explicit ownership key and constraints for one Personal per identity/one owner; an Application precheck alone is insufficient. Use additive migration and explicit delete behavior; never copy DNI/CUIT into Identity or audit/outbox payloads.
+- [ ] **REFACTOR/verify:** test decrypt round-trip under the intended protector, wrong purpose/key rejection, simultaneous old/new fingerprint lookup, crash-safe rotation without duplicate admission, and safe redaction. Both migration paths preserve synthetic retained and purged-policy sentinels. Expected: runtime invariant/protection/constraint RED, then all focused behavior GREEN.
+
+```powershell
+dotnet test tests/Domain.UnitTests/Domain.UnitTests.csproj --filter PersonalIdentityTests
+dotnet test tests/Infrastructure.IntegrationTests/Infrastructure.IntegrationTests.csproj --filter "PersonalIdentityMappingTests|PersonalDocumentProtectionTests|MigrationUpgradeTests"
+```
+
+- [ ] **Done:** no race can create a second Personal or reuse an unpurged documentary identity; encrypted/lookup values are absent from exposed contracts/logs. Missing real-PII policy keeps real collection disabled; synthetic implementation evidence is named as such.
+
+## Task 20: Deliver Personal signup, own profile, and context switching
+
+**Visible outcome:** React asks explicitly Personal or Organization; a new person completes delivered confirmation, and an existing B2B identity adds Personal without re-registering credentials. Both can inspect/edit permitted own-profile fields and switch contexts without mixed permissions.
+
+**Tracking/source:** IA-010 and IA-009 evidence; Task 19, accepted C1/C3, SPEC §§2.1/2.3/7, IA-REQ-005..013/025..030/038, BR-REG-001/002, BR-ID-003/006, BR-TEN-003/004. No new approved IA-REQ number is assumed.
+
+**Files:**
+
+- Modify: `src/Application/IdentityAccess/Authorization/Permissions.cs`, `src/Application/IdentityAccess/Context/GetIdentityContext/GetIdentityContextHandler.cs`, `src/Web/Endpoints/Identity/Contracts/IdentityContextResponse.cs`, `src/Web/Endpoints/Identity.cs`.
+- Modify: `src/Web/ClientApp/src/features/identity/api/identityClient.js`, `src/Web/ClientApp/src/features/identity/context/IdentityContextPage.jsx`, `src/Web/ClientApp/src/features/identity/tenants/TenantSelector.jsx`, `src/Web/ClientApp/src/AppRoutes.jsx`, `src/Web/ClientApp/src/components/NavMenu.jsx`.
+- Create: `src/Application/IdentityAccess/People/RegisterPersonal/RegisterPersonal.cs`, `src/Application/IdentityAccess/People/RegisterPersonal/RegisterPersonalHandler.cs`, `src/Application/IdentityAccess/People/CreatePersonalContext/CreatePersonalContext.cs`, `src/Application/IdentityAccess/People/CreatePersonalContext/CreatePersonalContextHandler.cs`, `src/Application/IdentityAccess/People/Profile/PersonalProfileRequests.cs`, `src/Application/IdentityAccess/People/Profile/PersonalProfileHandlers.cs`, `src/Web/Endpoints/Identity/PersonalEndpoints.cs`.
+- Create: `src/Web/ClientApp/src/features/identity/register/ChooseContextPage.jsx`, `src/Web/ClientApp/src/features/identity/people/PersonalPages.jsx`, `src/Web/ClientApp/src/features/identity/people/PersonalPages.test.jsx`, `tests/Application.FunctionalTests/IdentityAccess/People/PersonalJourneyTests.cs`.
+
+**Request/tenant boundary:** proposed anonymous `RegisterPersonal` is `IPublicRequest` and uses the approved staged proof flow; authenticated `CreatePersonalContext` and own-profile queries/edits use explicit new self-service codes in `Permissions.SelfServiceCodes`, `RequiresTenant=false`, and identity ownership. The approved request inventory must name each code/route. Context selection retains its existing permission and validated membership; no endpoint lets Organization administrators select a profile owner.
+
+- [ ] **RED:** first use non-importing file/route assertions for absent modules, then behavioral MSW/HTTP cases: explicit context choice; Personal-only AR/DNI; existing identity reused; confirmed new graph; repeated submit; required field errors; collision-safe response; disabled real-PII configuration; masked profile read and only permitted edits. Test Organization, Platform and another identity cannot read/edit the document.
+- [ ] **GREEN:** orchestrate Task 19 entities through Task 18's proof/transaction seam, add typed DTOs and routes, and expose visible navigation to proposed `/register`, `/personal/register`, and `/identity/profile`. Reuse `IdentityProvider`, `useSubmit`, `ProblemMessage`, `useFragmentToken` and the sole API transport; keep document/token input only in memory and clear it on completion/navigation.
+- [ ] **REFACTOR/verify:** switch Personal → Organization → Personal, invalidate cached UI state by context, and reject in-flight/stale mutations that would silently continue under another tenant. Prove real-write finalization rollback leaves no new Personal/profile/document/owner/audit/outbox partial graph, preserves the identity established by the proof stage and its prior memberships, and replay has one effect set. Expected: missing behavior/state RED, then the same global identity and isolated usable contexts GREEN.
+
+```powershell
+dotnet test tests/Application.FunctionalTests/Application.FunctionalTests.csproj --filter "PersonalJourneyTests|IdentityContextPermissionTests"
+npm test --prefix src/Web/ClientApp -- PersonalPages.test.jsx AppRoutes.test.jsx IdentityProvider.test.jsx
+```
+
+- [ ] **Done:** both newcomer and already-authenticated journeys are reachable from the real root UI, use delivered confirmation and no SQL activation, and no Organization invitation creates Personal automatically. Browser-level combined proof is recorded in Task 28.
+
+## Task 21: Add own-session management and recent reauthentication
+
+**Visible outcome:** the identity sees its active devices/sessions, revokes one or all others, and proves itself again before a sensitive change without borrowing authority from a tenant or Platform MFA proof.
+
+**Tracking/source:** IA-011 and IA-007; Task 17 C2/C4; IA-REQ-019..026/029/035/038; reference `05-authentication.md` session/revocation/password sections and BR-SEC-001..004. Current `CreateSessionHandler` revokes every live prior session, so multi-device UI requires the accepted coexistence change.
+
+**Files:**
+
+- Modify: `src/Application/IdentityAccess/Sessions/CreateSession/CreateSessionHandler.cs`, `src/Domain/IdentityAccess/Sessions/UserSession.cs`, `src/Infrastructure/Identity/SessionCookieEvents.cs`, `src/Infrastructure/Data/Configurations/IdentityAccess/UserSessionConfiguration.cs`, `src/Web/Endpoints/Identity/SessionEndpoints.cs`, `src/Application/IdentityAccess/Authorization/Permissions.cs`.
+- Create: `src/Application/IdentityAccess/Sessions/SessionIssuer.cs`, `src/Application/IdentityAccess/Sessions/ManageSessions/SessionManagementRequests.cs`, `src/Application/IdentityAccess/Sessions/ManageSessions/SessionManagementHandlers.cs`, `src/Application/IdentityAccess/Credentials/IRecentIdentityProof.cs`, `src/Application/IdentityAccess/Credentials/Reauthenticate/Reauthenticate.cs`, `src/Application/IdentityAccess/Credentials/Reauthenticate/ReauthenticateHandler.cs`, `src/Infrastructure/IdentityAccess/RecentIdentityProofStore.cs`.
+- Modify: `src/Web/ClientApp/src/features/identity/api/identityClient.js`, `src/Web/ClientApp/src/AppRoutes.jsx`, `src/Web/ClientApp/src/components/NavMenu.jsx`, `tests/Application.FunctionalTests/IdentityAccess/Sessions/SessionConcurrencyTests.cs`.
+- Create: `src/Web/ClientApp/src/features/identity/sessions/SessionsPage.jsx`, `src/Web/ClientApp/src/features/identity/sessions/SessionsPage.test.jsx`, `tests/Application.FunctionalTests/IdentityAccess/Sessions/SessionManagementTests.cs`, `tests/Application.FunctionalTests/IdentityAccess/Sessions/ReauthenticationTests.cs`; additive `IdentityReauthentication` migration for durable proof/binding state.
+
+**Request/tenant boundary:** list/revoke/revoke-others use existing `Permissions.IdentitySessionManage`, `[Authorize]`, `RequiresTenant=false`. Reauthentication has its explicit approved self-service code. Every lookup filters `IdentityId`; a UI-safe opaque revocation handle is never the BFF ticket/cookie session identifier. Show only current-device flag, bounded timestamps and a safe label; no raw tickets, provider tokens, detailed IP history, or cross-identity list.
+
+- [ ] **RED:** create two live sessions through HTTP, list only the current identity's sessions, revoke chosen/others and verify rejected cookies immediately. Test expiry, already-revoked replay, forged other-identity handle, concurrent sign-in/revoke/select, deterministic cap eviction and one audit per actual transition. Current revoke-all behavior must fail coexistence assertions.
+- [ ] **GREEN:** extract a shared `SessionIssuer` reusable by password/Google, serialize issuance against the identity for the accepted cap, and reuse `IApplicationTransaction`, `ICurrentSession`, and `SessionWriteRetry`. Persist single-use identity/session/action/security-version proofs with accepted expiry and atomic consumption. Implement password reauthentication now and the provider-neutral proof port; Task 23 supplies linked-Google reauthentication. A new session, logout, credential change or compromise invalidates old proofs; Platform second-factor proof stays separately session-bound.
+- [ ] **REFACTOR/verify:** current-session revoke clears cookie and frontend context; revoke-others keeps only the current accepted session. Replay cannot extend proof lifetime or duplicate revocation audit; rollback after an actual session mutation restores the full state. The current UI asks for password proof without storing it; linked-provider UI/proof behavior is explicitly deferred to Task 23, so this task has no dependency cycle.
+
+```powershell
+dotnet test tests/Application.FunctionalTests/Application.FunctionalTests.csproj --filter "SessionManagementTests|ReauthenticationTests|SessionConcurrencyTests|SessionTests"
+npm test --prefix src/Web/ClientApp -- SessionsPage.test.jsx IdentityProvider.test.jsx
+```
+
+- [ ] **Done:** session list/revoke controls operate on persisted sessions through the BFF; proof theft, replay, stale session and simultaneous-cap races fail safely. Expected RED/GREEN must prove those behaviors, not merely that session rows exist.
+
+## Task 22: Complete password recovery and authenticated change
+
+**Visible outcome:** a person follows the actual delivered reset link to set a new password, or changes it from settings after fresh proof; old credentials/sessions stop working according to C2.
+
+**Tracking/source:** IA-011 and IA-009 evidence; Tasks 17 C4 and 21; SPEC §2.3, IA-REQ-019..029/035/038; reference `05-authentication.md` recovery/change. Existing `IIdentityAccountService` supports lookup/create/confirm, not reset/change; Identity token providers are already registered. `SessionCookieEvents` does not validate Identity's SecurityStamp, so a stamp-only reset does not revoke this BFF.
+
+**Files:**
+
+- Create: `src/Application/IdentityAccess/Credentials/IIdentityCredentialService.cs`, `src/Infrastructure/IdentityAccess/IdentityCredentialService.cs`, `src/Application/IdentityAccess/Credentials/PasswordRecovery/PasswordRecoveryRequests.cs`, `src/Application/IdentityAccess/Credentials/PasswordRecovery/PasswordRecoveryHandlers.cs`, `src/Application/IdentityAccess/Credentials/ChangePassword/ChangePassword.cs`, `src/Application/IdentityAccess/Credentials/ChangePassword/ChangePasswordHandler.cs`.
+- Create: `src/Web/Endpoints/Identity/PasswordEndpoints.cs`, `src/Infrastructure/Outbox/PasswordRecoveryDeliveryHandler.cs`, `src/Web/ClientApp/src/features/identity/credentials/PasswordPages.jsx`, `src/Web/ClientApp/src/features/identity/credentials/PasswordPages.test.jsx`, `tests/Application.FunctionalTests/IdentityAccess/Credentials/PasswordLifecycleTests.cs`.
+- Modify: `src/Infrastructure/DependencyInjection.cs`, `src/Infrastructure/Outbox/WorkerRegistration.cs`, `src/Application/IdentityAccess/Authorization/Permissions.cs`, `src/Web/Endpoints/Identity.cs`, `src/Web/ClientApp/src/features/identity/api/identityClient.js`, `src/Web/ClientApp/src/features/identity/login/LoginPage.jsx`, `src/Web/ClientApp/src/AppRoutes.jsx`.
+- Modify: `tests/Infrastructure.IntegrationTests/IdentityAccess/OutboxDeliveryTests.cs`; extend the durable credential-operation mapping additively if the accepted token-consumption design needs new state.
+
+**Request/tenant boundary:** `RequestPasswordRecovery` and `ResetPassword` are explicit `IPublicRequest` requests protected by same-origin antiforgery and recovery-specific limits; only a valid purpose-bound proof can reset. `ChangePassword` is authorized self-service with `RequiresTenant=false`, current identity/session and recent action-bound proof. No tenant/operator reset for another identity is added.
+
+- [ ] **RED:** neutral known/unknown/disabled-account request behavior, actual reset-mail dispatch/link, invalid/expired/used/superseded/wrong-purpose token, new password-policy failures and simultaneous resets. Prove failed credential writes leave no consumed token, changed stamp, revoked sessions, audit or notification; inject the fault after real persistence. Google-only accounts cannot supply a made-up current password.
+- [ ] **GREEN:** adapt ASP.NET Identity credential APIs behind the new port. Reuse secure token generation, versioned hashing, `OutboxSecret` and its writer with a distinct recovery purpose; never repurpose confirmation tokens. Atomically mutate credential/security version, consume token/proof, revoke the accepted persisted-session set and write audit/outbox. Reset revokes all; change replaces the current session and revokes others. Use deterministic Identity-level serialization for concurrent reset/change/sign-in so stale credentials cannot issue a surviving session.
+- [ ] **REFACTOR/verify:** add login “Forgot password” and settings routes; reset pages read/erase the fragment and use the existing parser. Test delivered-before-reset and replay-after-success, wrong recipient, secret-free errors/logs/audits, unavailable delivery with bounded retries, and cookie rejection on the next request. Expected RED exposes absent recovery or still-live sessions; GREEN proves both password and persisted-session behavior.
+
+```powershell
+dotnet test tests/Application.FunctionalTests/Application.FunctionalTests.csproj --filter "PasswordLifecycleTests|SessionConcurrencyTests"
+dotnet test tests/Infrastructure.IntegrationTests/Infrastructure.IntegrationTests.csproj --filter OutboxDeliveryTests
+npm test --prefix src/Web/ClientApp -- PasswordPages.test.jsx
+```
+
+- [ ] **Done:** actual delivered links and current-password/equivalent-proof change work end to end; resetting twice/racing cannot regain access or create duplicate security effects. Nothing relies solely on SecurityStamp invalidation or mocked email generation.
+
+## Task 23: Add Google login and explicit secure linking
+
+**Visible outcome:** a person signs in with Google or explicitly links/unlinks it from their account settings; a matching email cannot take over an existing account, and no action removes the last usable authenticator.
+
+**Tracking/source:** IA-013 and IA-009 evidence; Tasks 20–22 and accepted C4; SPEC §2.3, IA-REQ-001/002/019..029/038, BR-ID-005/006, reference `05-authentication.md` Google section. `AspNetUserLogins` already has unique provider-key storage in `BaselinePostgreSql`; use that credential adapter instead of inventing another account registry.
+
+**Files:**
+
+- Modify: `Directory.Packages.props`, `src/Web/Web.csproj`, `src/Web/DependencyInjection.cs`, `src/Web/Program.cs`, `src/Infrastructure/DependencyInjection.cs`.
+- Continue the planned `src/Application/IdentityAccess/Sessions/SessionIssuer.cs` and `src/Application/IdentityAccess/Credentials/IRecentIdentityProof.cs` created in Task 21; supply linked-Google proof here, not in the earlier task.
+- Create: `src/Application/IdentityAccess/ExternalLogins/IExternalIdentityService.cs`, `src/Application/IdentityAccess/ExternalLogins/ExternalLoginRequests.cs`, `src/Application/IdentityAccess/ExternalLogins/ExternalLoginHandlers.cs`, `src/Infrastructure/IdentityAccess/ExternalIdentityService.cs`, `src/Web/Infrastructure/Identity/GoogleOidcConfiguration.cs`, `src/Web/Endpoints/Identity/ExternalLoginEndpoints.cs`.
+- Modify: `src/Web/ClientApp/src/features/identity/api/identityClient.js`, `src/Web/ClientApp/src/features/identity/login/LoginPage.jsx`, `src/Web/ClientApp/src/AppRoutes.jsx`.
+- Create: `src/Web/ClientApp/src/features/identity/credentials/ExternalAccountsPage.jsx`, `src/Web/ClientApp/src/features/identity/credentials/ExternalAccountsPage.test.jsx`, `tests/Application.FunctionalTests/Infrastructure/ControlledOidcProvider.cs`, `tests/Application.FunctionalTests/IdentityAccess/ExternalLogins/GoogleOidcTests.cs`.
+
+**Request/tenant boundary:** StartLogin is explicitly public; StartLink and unlink require authorized identity self-service, `RequiresTenant=false`, current session, recent proof and consent. Both starts use same-origin antiforgery. The server middleware callback cannot carry the SPA's antiforgery header or exact first-party Origin: its narrow approved protocol contract uses one-use state/nonce/correlation/PKCE, validated signature/issuer/audience/expiry and bound Login/Link purpose. No blanket CSRF disable or public business handler is introduced. Neither provider claims nor callback parameters grant tenant membership.
+
+- [ ] **RED:** use a controlled protocol provider through the real framework challenge/callback, not a mocked final identity. Reject wrong state/nonce/verifier/issuer/audience/signature, expired or replayed code, missing/unverified email, email-match takeover, mixed Login/Link purpose, linking a subject owned elsewhere, stale proof/session and concurrent link/unlink attempts. Include login to already-linked subject and explicit new-identity onboarding with no implicit tenant.
+- [ ] **GREEN:** configure mature ASP.NET Core OpenID Connect middleware and server-side code exchange/validation; do not implement bespoke OAuth/crypto. Keep provider tokens/correlation secrets out of React and revoke any unnecessary persisted provider tokens. Reuse Identity's provider-key uniqueness, Task 21 `SessionIssuer`, and Task 20 explicit Personal/Organization onboarding. New verified subject may establish identity only through the accepted no-conflict path; a matching local email redirects neutrally to login/recovery, never auto-links.
+- [ ] **REFACTOR/verify:** prove the unique link, recent action proof, security version and audit/outbox changes are atomic; rollback/replay cannot produce a second identity or detach the last authenticator. The authorization code necessarily reaches the server callback; redact its URL/query/body and provider errors, then redirect to a clean allowlisted local URL. Linking preserves Personal/Organization ownership and does not satisfy Platform's separate MFA gate.
+
+```powershell
+dotnet test tests/Application.FunctionalTests/Application.FunctionalTests.csproj --filter "GoogleOidcTests|ReauthenticationTests|SessionManagementTests"
+npm test --prefix src/Web/ClientApp -- ExternalAccountsPage.test.jsx AppRoutes.test.jsx
+```
+
+- [ ] **Done:** real protocol negatives and explicit link/unlink semantics pass with the controlled provider. An operator-owned live Google smoke separately requires a consent project, OAuth client secret and exact redirect registration; no API key substitutes for authentication, and CI success does not claim live-provider activation.
+
+## Task 24: Expose custom Organization roles through existing authorization
+
+**Visible outcome:** an authorized Organization administrator creates, renames, edits and retires custom roles, sees their permissions, and observes authorization changes immediately without role-name checks.
+
+**Tracking/source:** IA-005 continuation and IA-009 evidence; Task 17 C5; SPEC §2.3, IA-REQ-005..013/026/029/033..038/047; BR-AUT-001..008. `Role.Create/Rename/Retire`, `RolePermission`, `MembershipRole`, the evaluator and version/audit interceptor already exist; extend them instead of replacing the model.
+
+**Files:**
+
+- Modify: `src/Domain/IdentityAccess/Authorization/Role.cs`, `src/Domain/IdentityAccess/Authorization/RolePermission.cs`, `src/Domain/IdentityAccess/Authorization/Permission.cs`, `src/Application/IdentityAccess/Authorization/Permissions.cs`, `src/Infrastructure/Identity/EffectivePermissionReader.cs`, `src/Infrastructure/Data/Configurations/IdentityAccess/RoleConfiguration.cs`, `src/Infrastructure/Data/Configurations/IdentityAccess/PermissionConfiguration.cs`.
+- Create: `src/Application/IdentityAccess/Roles/RoleRequests.cs`, `src/Application/IdentityAccess/Roles/RoleHandlers.cs`, `src/Web/Endpoints/Identity/RoleEndpoints.cs`, `src/Web/ClientApp/src/features/identity/roles/RolesPage.jsx`, `src/Web/ClientApp/src/features/identity/roles/RolesPage.test.jsx`, `tests/Application.FunctionalTests/IdentityAccess/Roles/RoleAdministrationTests.cs`; additive `AssignableRoleCatalog` migration for accepted catalog metadata.
+- Create: `src/Application/IdentityAccess/Roles/IRoleAdministrationStore.cs`, `src/Infrastructure/IdentityAccess/RoleAdministrationStore.cs`; expose bounded role/catalog operations through this port, not raw role-association DbSets.
+- Modify: `src/Web/ClientApp/src/features/identity/api/identityClient.js`, `src/Web/ClientApp/src/AppRoutes.jsx`, `src/Web/ClientApp/src/components/NavMenu.jsx`, `tests/Domain.UnitTests/IdentityAccess/RolePermissionTests.cs`, `tests/Infrastructure.IntegrationTests/IdentityAccess/RolePermissionMappingTests.cs`, `tests/Application.FunctionalTests/IdentityAccess/Auditing/RoleMembershipAuditTests.cs`.
+
+**Request/tenant boundary:** list uses `roles.read`; create/rename/change permissions/retire use `roles.manage`, all `[Authorize]` with active Organization required and actor authority checked for every proposed grant. `platform.*`, application-scoped self-service codes, another tenant's roles and protected system-role changes are refused. Role names remain labels. C5's Organization scope is explicit; this task does not silently add Platform role editing.
+
+- [ ] **RED:** custom role permits a real operation; a lookalike display name grants nothing. Test allowed catalog metadata, normalized-name uniqueness, protected system role, cross-tenant references, retired role denial, permission removal visible in the next request, stale updates and simultaneous last-admin-affecting edits. Assert exact allowlisted audit fields and one authorization-version increment for the actual committed change.
+- [ ] **GREEN:** add assignable/system catalog distinctions deliberately, preserve existing rows via migration, expose request handlers and typed DTOs, and re-use the evaluator and `TenantAuthorizationAuditInterceptor`. Enforce C5's delegation ceiling and last-effective-administrator rule across permission edit/retirement, not only membership deletion. Widening a role atomically cancels affected pending offers and terminalizes their envelopes; only a later authorized, explicit reissue can offer the wider role.
+- [ ] **REFACTOR/verify:** separate catalog queries from mutation orchestration, preserve the system owner role, and show a clear stale-update/last-admin refusal in React. Test a rollback after persisted role/permission changes also restores version/audit/offer effects; repeat an already-applied retirement according to the approved response contract. Expected runtime authorization/audit RED, then observable permission-change GREEN.
+
+```powershell
+dotnet test tests/Domain.UnitTests/Domain.UnitTests.csproj --filter RolePermissionTests
+dotnet test tests/Infrastructure.IntegrationTests/Infrastructure.IntegrationTests.csproj --filter "RolePermissionMappingTests|MigrationUpgradeTests"
+dotnet test tests/Application.FunctionalTests/Application.FunctionalTests.csproj --filter "RoleAdministrationTests|RoleMembershipAuditTests"
+npm test --prefix src/Web/ClientApp -- RolesPage.test.jsx
+```
+
+- [ ] **Done:** custom Organization roles work through the existing permission pipeline and UI; races cannot remove the last effective administrator or cross tenant boundaries. Persistence tests prove the richer catalog upgrade without rewriting historical migrations.
+
+## Task 25: Complete member administration, ownership transfer and invitation lifecycle
+
+**Visible outcome:** the Organization administrator lists members and invitations, changes allowed roles/status, transfers ownership deliberately, and can resend/replace/cancel an invitation from the real interface.
+
+**Tracking/source:** IA-005/008 continuation and IA-009 evidence; Tasks 21/24 and accepted C5; SPEC §2.3, IA-REQ-005..018/026..030/033..038/047; BR-TEN-004/006, BR-AUT-007, BR-INV-001..005.
+
+**Files:**
+
+- Modify: `src/Domain/IdentityAccess/Memberships/TenantMembership.cs`, `src/Domain/IdentityAccess/Authorization/MembershipRole.cs`, `src/Domain/IdentityAccess/Invitations/Invitation.cs`, `src/Application/IdentityAccess/Invitations/AcceptInvitation/AcceptInvitationHandler.cs`, `src/Application/IdentityAccess/Invitations/ResendInvitation/ResendInvitationHandler.cs`, `src/Application/IdentityAccess/Invitations/CancelInvitation/CancelInvitationHandler.cs`, `src/Web/Endpoints/Identity/InvitationEndpoints.cs`, `src/Web/Endpoints/TenantInvitations.cs`.
+- Create: `src/Application/IdentityAccess/Members/MembershipRequests.cs`, `src/Application/IdentityAccess/Members/MembershipHandlers.cs`, `src/Application/IdentityAccess/Members/TransferOwnership/TransferOwnership.cs`, `src/Application/IdentityAccess/Members/TransferOwnership/TransferOwnershipHandler.cs`, `src/Web/Endpoints/Identity/MembershipEndpoints.cs`, `tests/Application.FunctionalTests/IdentityAccess/Members/MembershipAdministrationTests.cs`, `tests/Application.FunctionalTests/IdentityAccess/Members/OwnershipTransferTests.cs`.
+- Create: `src/Application/IdentityAccess/Members/IMembershipAdministrationStore.cs`, `src/Infrastructure/IdentityAccess/MembershipAdministrationStore.cs`; keep assignment/transfer persistence behind the narrow port and the shared transaction.
+- Modify: `src/Web/ClientApp/src/features/identity/api/identityClient.js`, `src/Web/ClientApp/src/features/identity/invitations/InviteMemberPage.jsx`, `src/Web/ClientApp/src/AppRoutes.jsx`, `src/Web/ClientApp/src/components/NavMenu.jsx`, `tests/Application.FunctionalTests/IdentityAccess/Invitations/ResendAndCancelInvitationTests.cs`, `tests/Domain.UnitTests/IdentityAccess/InvitationTests.cs`.
+- Create: `src/Web/ClientApp/src/features/identity/members/MembersPage.jsx`, `src/Web/ClientApp/src/features/identity/members/MembersPage.test.jsx`; add a migration only if approved transfer/offer-version state needs persistence.
+
+**Request/tenant boundary:** `members.read` lists; `members.manage` changes memberships/withdraws offers; `members.invite` issues/reissues within delegated authority. Transfer uses the approved explicit ownership capability plus current-owner and fresh-proof checks. All administration is active-Organization scoped; route IDs never switch context. Public invite registration and authenticated identity-scoped acceptance preserve existing gates. Personal cannot invite and Organization administrators cannot change another identity's credentials/global state.
+
+- [ ] **RED:** list/edit only same-tenant members; revoke/suspend permissions on the next request without deleting the identity's other memberships. Exercise two concurrent last-admin removals, role edit racing owner transfer, transfer to inactive/foreign member, replayed transfer and self-removal. Assert at least one effective administrator in the committed state, not merely one row named “admin.”
+- [ ] **GREEN:** serialize administrative invariant checks with the mutation; transfer old/new owner state, role assignments, authorization version and audit atomically. Reuse existing invite/reissue/cancel handlers and token-envelope invalidation. Present explicit confirmation for ownership transfer and withdrawal; stale state produces the approved conflict and a refresh path.
+- [ ] **REFACTOR/verify:** add direct `Invitation.Issue` and `Reissue` tests with default `VersionedTokenHash` to close the existing narrow gap. Race accept/cancel/reissue and role widening; exactly one approved outcome survives and superseded mail tokens cannot be delivered or accepted. Inject rollback after real assignment mutation; deny-audit still persists through its independent writer with an exact allowlist. Expected runtime state/audit RED, then atomic administration GREEN.
+
+```powershell
+dotnet test tests/Domain.UnitTests/Domain.UnitTests.csproj --filter "InvitationTests|RolePermissionTests"
+dotnet test tests/Application.FunctionalTests/Application.FunctionalTests.csproj --filter "MembershipAdministrationTests|OwnershipTransferTests|ResendAndCancelInvitationTests|RoleMembershipAuditTests"
+npm test --prefix src/Web/ClientApp -- MembersPage.test.jsx
+```
+
+- [ ] **Done:** every named member/invitation action is reachable and tested, last-owner/admin and delegation invariants survive races, and no operation deletes global identity or modifies another tenant's membership.
+
+## Task 26: Implement bounded lifecycle, MFA recovery, retention and restore guards
+
+**Visible outcome:** compromised/disabled identities lose access, a legitimate Platform administrator can recover a factor under the accepted proof contract, and maintenance/restore cannot silently reactivate old authority or deleted PII.
+
+**Tracking/source:** IA-011/012/015; Tasks 19/21–25 and accepted C6/C7; SPEC §2.3/§11, IA-REQ-008/013/024/026..029/035..037/041/046; BR-SEC-003..005 and the pinned reference's MFA/restore sections. Mandatory source restore guarantees remain tracked even where its implementation architecture is unadopted.
+
+**Files:**
+
+- Modify: `src/Domain/IdentityAccess/Identities/IdentityAccountStatus.cs`, `src/Infrastructure/Identity/ApplicationUser.cs`, `src/Infrastructure/Identity/SessionCookieEvents.cs`, `src/Domain/IdentityAccess/Platform/PlatformMfaEnrollment.cs`, `src/Domain/IdentityAccess/Platform/PlatformRecoveryCode.cs`, `src/Application/IdentityAccess/Platform/Mfa/PlatformMfaHandlers.cs`, `src/Infrastructure/Outbox/OutboxDispatcher.cs`, `src/OutboxWorker/Program.cs`, `src/Web/Program.cs`.
+- Create: `src/Application/IdentityAccess/Lifecycle/IdentityLifecycleRequests.cs`, `src/Application/IdentityAccess/Lifecycle/IdentityLifecycleHandlers.cs`, `src/Application/IdentityAccess/Lifecycle/IRetentionPolicy.cs`, `src/Application/IdentityAccess/Lifecycle/IRecoveryAdmission.cs`, `src/Infrastructure/IdentityAccess/Lifecycle/LifecycleMaintenanceService.cs`, `src/Infrastructure/IdentityAccess/Lifecycle/RecoveryAdmission.cs`, `src/Web/Infrastructure/Identity/RecoveryAdmissionMiddleware.cs`.
+- Create: `src/Application/IdentityAccess/Platform/Mfa/RecoverPlatformMfa.cs`, `src/Application/IdentityAccess/Platform/Mfa/RecoverPlatformMfaHandler.cs`, `src/Web/ClientApp/src/features/platform/invitations/MfaRecoveryPage.jsx`, `src/Web/ClientApp/src/features/platform/invitations/MfaRecoveryPage.test.jsx`.
+- Create: `tests/Application.FunctionalTests/IdentityAccess/Lifecycle/IdentityLifecycleTests.cs`, `tests/Infrastructure.IntegrationTests/IdentityAccess/RetentionLifecycleTests.cs`, `tests/Infrastructure.IntegrationTests/IdentityAccess/RestoreAdmissionTests.cs`, `tests/Application.FunctionalTests/IdentityAccess/Platform/PlatformMfaRecoveryTests.cs`, `docs/features/identity-access/RECOVERY-AND-RETENTION.md`; additive `IdentityLifecycleMaintenance` migration.
+- Modify: `src/Web/Endpoints/Platform/PlatformMfaEndpoints.cs`, `src/Web/ClientApp/src/AppRoutes.jsx`; use the existing Platform client/identity transport for the recovery UI.
+
+**Request/tenant boundary:** self-service lifecycle requests require the accepted identity code and recent primary proof, `RequiresTenant=false`; no arbitrary-user disable/recovery endpoint is inferred. Existing Organization/Platform administration retains its tenant permissions and last-owner controls. Platform recovery requires the current authenticated identity, fresh primary proof and unused recovery material; mailbox/DNI/cookie alone cannot replace MFA. Maintenance is an internal worker, not a public purge/restore API; background authority is narrow and auditable.
+
+- [ ] **RED:** disable then exercise password/Google/cookie/tenant operations; none can bypass disabled state. Recover MFA with wrong/reused code, stale or other-session proof, and concurrent consumption; only one replacement factor becomes usable after acknowledgement. Revocation, security version, factor/token state, audits and applicable notifications roll back together on injected real-write failure.
+- [ ] **GREEN lifecycle:** implement accepted disable/reactivation and factor-replacement transitions; rotate/retire old factor material and revoke the required sessions/proofs. Preserve at least one viable Platform owner/recovery path without introducing a default credential or automatic elevation. Expose only the approved recovery UI; recovery material is shown once and never logged/stored by React.
+- [ ] **RED/GREEN retention:** with synthetic data and `TimeProvider`, test bounded batches, stable cursor/CAS, expired vs live records, legal hold, unknown policy, replay, cancellation and crash/resume. Terminalize secrets safely; preserve required audit/delivery evidence. Purge only approved data categories after policy eligibility, retaining documented uniqueness or erasure evidence as required. Missing policy means no destructive action. Real-data purge is outside local tests.
+- [ ] **RED/GREEN restore:** use an isolated synthetic backup that predates session revocation, password/link/factor replacement, grant removal and documentary purge. Start with ingress/delivery closed. The admission adapter checks the accepted operator-controlled authority outside that restored database; missing/stale/invalid evidence fails closed on every restart. Quarantine restored credentials/grants, refuse old cookies/tokens and tokenized messages, and require approved reproof/reconciliation before explicit release. Insufficient external deletion evidence keeps Personal data quarantined. A flag restored from the same backup or stamp rotation alone cannot pass the test.
+- [ ] **REFACTOR/verify:** separate eligibility policy, bounded executor and admission adapter; run the commands below. Expected runtime unsafe-resurrection/replay/retention RED, then safe transitions and persistent closed admission GREEN. Record required external authority and remaining deviations in the runbook; synthetic adapter proof is not live restore certification.
+
+```powershell
+dotnet test tests/Application.FunctionalTests/Application.FunctionalTests.csproj --filter "IdentityLifecycleTests|PlatformMfaRecoveryTests"
+dotnet test tests/Infrastructure.IntegrationTests/Infrastructure.IntegrationTests.csproj --filter "RetentionLifecycleTests|RestoreAdmissionTests|MigrationUpgradeTests"
+npm test --prefix src/Web/ClientApp -- MfaRecoveryPage.test.jsx
+```
+
+- [ ] **Done:** the accepted local lifecycle and recovery contract is implemented and tested; maintenance cannot outrun policy and restore remains closed until valid evidence. Real-PII purge, external recovery-authority provisioning and live restore release are recorded as separate blocked operations until approved/proved, not declared optional or completed by these tests.
+
+## Task 27: Prove shared abuse controls, deployment safeguards and operations
+
+**Visible outcome:** a staged operator can verify bounds across instances/restarts, key compatibility between Web/worker, and safe failures before exposing the service or real PII.
+
+**Tracking/source:** IA-015 with IA-007/012/014 control owners; Task 26 and accepted C6/C7; SPEC §§2.3/8/11, IA-REQ-019/022/026..029/031/032/040/041, pinned reference session/secret/restore guarantees. Current login, MFA attempts and bootstrap recovery controls are process-local; their existing tests do not prove distributed limits.
+
+**Files:**
+
+- Modify: `src/Web/Infrastructure/Identity/LoginRateLimiting.cs`, `src/Web/Infrastructure/Identity/TimeProviderFixedWindowRateLimiter.cs`, `src/Infrastructure/Platform/PlatformMfaAttemptLimiter.cs`, `src/Infrastructure/Platform/ConfiguredPlatformBootstrapper.cs`, `src/Infrastructure/IdentityAccess/IdentityDataProtectionConfiguration.cs`, `src/Infrastructure/DependencyInjection.cs`, `src/Web/DependencyInjection.cs`, `src/Web/Program.cs`, `src/OutboxWorker/Program.cs`.
+- Create: `src/Application/IdentityAccess/Security/ISharedAttemptBudget.cs`, `src/Infrastructure/IdentityAccess/Security/PostgreSqlAttemptBudget.cs`, `src/Web/Infrastructure/Identity/IdentitySecurityHeaders.cs`, `tests/Infrastructure.IntegrationTests/IdentityAccess/SharedAttemptBudgetTests.cs`, `tests/Infrastructure.IntegrationTests/IdentityAccess/WebWorkerKeyCompatibilityTests.cs`, `tests/Application.FunctionalTests/IdentityAccess/Api/IdentityDeploymentGuardTests.cs`, `docs/features/identity-access/OPERATIONS.md`; additive `SharedIdentityAttemptBudgets` migration.
+- Modify: `tests/Application.FunctionalTests/IdentityAccess/Api/ForwardedHeadersSecurityTests.cs`, `tests/Infrastructure.IntegrationTests/IdentityAccess/EmailConfigurationTests.cs`, `tests/Infrastructure.IntegrationTests/IdentityAccess/OutboxDeliveryTests.cs`, `docs/features/identity-access/EMAIL-SETUP.md`.
+
+**Request/tenant boundary:** public registration/recovery and login limits use opaque bounded keys without disclosing accounts; MFA/recovery limits derive authenticated identity or server-bound invitation as appropriate. The chosen client address follows only trusted proxy configuration. Deployment checks grant no application/Platform bypass. Web/worker startup fail closed for missing required keys, recovery admission or delivery configuration.
+
+- [ ] **RED shared limits:** exhaust each applicable budget across two independently constructed service instances using one PostgreSQL store; restart one instance and show the budget remains spent. Include parallel requests at threshold, account spelling variants, independent IP/account limits, MFA new-session evasion, bootstrap/recovery replay, expiry and `Retry-After`. Set accepted numeric budgets explicitly; do not count per-instance memory as distributed proof.
+- [ ] **GREEN:** introduce the approved shared budget adapter and bounded expiry cleanup; retain deterministic time tests and separate credential lockout from transport limits. Use existing PostgreSQL as the proposed deployment default after C7 approval; add neither Redis nor a cloud provider merely for this task. Include storage-unavailable and high-cardinality-abuse behavior with a documented fail-closed policy and safe telemetry.
+- [ ] **RED/GREEN keys and transport:** construct independent Web/worker Data Protection providers over a temporary shared repository and wrapping certificate, encrypt in one/decrypt in the other, rotate/restart and repeat. Reject wrong discriminator/certificate/purpose and an unreadable envelope. Preserve existing Resend and explicit local-folder modes. Test exact-origin enforcement behind trusted/untrusted forwarding, CSP/security headers and absence of callback codes, session handles, documents, addresses and secrets in diagnostics.
+- [ ] **REFACTOR/verify operations:** record bounded metrics/alerts for login/recovery denials, unreadable/expired envelopes, backlog age, delivery failures and maintenance/restore admission. Exercise loss of key/transport/state using isolated sinks; backlog recovery must respect original token expiry/idempotency, not resend a superseded credential. The operations guide separates synthetic smoke, operator configuration, external-account activation, and release evidence.
+
+```powershell
+dotnet test tests/Infrastructure.IntegrationTests/Infrastructure.IntegrationTests.csproj --filter "SharedAttemptBudgetTests|WebWorkerKeyCompatibilityTests|EmailConfigurationTests|OutboxDeliveryTests|MigrationUpgradeTests"
+dotnet test tests/Application.FunctionalTests/Application.FunctionalTests.csproj --filter "IdentityDeploymentGuardTests|ForwardedHeadersSecurityTests|PlatformMfaAttemptLimitTests|PlatformBootstrapRecoveryTests"
+```
+
+- [ ] **Done:** runtime tests prove cross-instance/restart budgets and actual cross-process-key compatibility; configuration validation alone is insufficient. Deployment evidence names key/PII/recovery owners and the still-blocked external prerequisites. No production, complete-standard or legal-compliance claim follows automatically.
+
+## Task 28: Prove the complete local journeys and close only the achieved scope
+
+**Visible outcome:** a fresh local checkout can run the documented B2B/B2C journeys with synthetic identities, delivered mail and controlled OIDC; the final record names exactly what works and what still prevents real-PII or public use.
+
+**Tracking/source:** IA-009 evidence only; Tasks 18–27 and their approved requirements; SPEC §2.3/§9/§13, historical first-increment requirements and the approved Task 17 delta. This task adds evidence and corrections for the fixed matrix below, not new normative ownership or a new feature wishlist.
+
+**Files:**
+
+- Modify: `tests/Web.AcceptanceTests/Features/IdentityAccess.feature`, `tests/Web.AcceptanceTests/Features/PlatformOperations.feature`, `tests/Web.AcceptanceTests/Pages/IdentityAccessPages.cs`, `tests/Web.AcceptanceTests/Pages/PlatformOperationsPage.cs`, `tests/Web.AcceptanceTests/StepDefinitions/IdentityAccessStepDefinitions.cs`, `tests/Web.AcceptanceTests/StepDefinitions/PlatformOperationsStepDefinitions.cs`, `tests/Web.AcceptanceTests/IdentityAccessFixtures.cs`, `tests/Web.AcceptanceTests/PlatformFixtures.cs`, `tests/Web.AcceptanceTests/AspireSetup.cs`.
+- Create: `tests/Web.AcceptanceTests/Features/IdentityContinuation.feature`, `tests/Web.AcceptanceTests/Pages/IdentityContinuationPages.cs`, `tests/Web.AcceptanceTests/StepDefinitions/IdentityContinuationStepDefinitions.cs`.
+- Modify: `tests/Application.FunctionalTests/IdentityAccess/Authorization/PermissionMatrixTests.cs`, `tests/Domain.UnitTests/IdentityAccess/InvitationTests.cs`, `docs/features/identity-access/TRACEABILITY.md`, `docs/features/identity-access/TASKS.md`, `docs/features/identity-access/RUNNING-LOCALLY.md`, and this plan. These future guide changes are not part of current plan authoring.
+
+**Fixed acceptance matrix:**
+
+| Journey | Required observation |
+|---|---|
+| Personal newcomer → delivered confirmation → sign-in → own profile | One identity/Personal/owner; masked document; no raw token/document leaks |
+| Existing B2B identity adds Personal → creates/joins Organization → switches | Same global identity; no automatic Personal from invitation; no permission/data union |
+| Known/unknown email privacy sequence and confirmed CUIT competition | No anonymous durable-reservation oracle; one confirmed winner; safe replay |
+| Device list → selected revoke → revoke others → reauthentication | Correct own sessions only; revoked cookies/proofs cannot return |
+| Delivered reset → sign-in → password change | Real link and policy; old password/tokens/sessions rejected; correct current-session rotation |
+| Google login → new explicit onboarding; existing-account link/unlink | Controlled real OIDC callback; no email auto-link; no last-authenticator lockout |
+| Custom role → member assignment → permission removal → ownership transfer | Immediate scoped authority; stale/parallel last-admin changes refused |
+| Invite → replace/resend/cancel → register/reuse → accept | Actual delivered links; one usable offer; correct roles; no duplicate membership |
+| Later Platform admin and existing identity → invite/confirm/sign-in/MFA/activate | Both missing browser branches run through delivered mail and visible MFA controls, not SQL confirmation or constructed MFA URLs |
+| Disable/recovery/retention/restore and deployment probes | Synthetic functional/integration evidence from 26/27; fail-closed admission and shared limits, without destructive real-data tests |
+
+**Request/tenant boundary:** drive the same public/authorized routes users have, with real antiforgery/cookies. Fixture setup can provision isolated infrastructure and unrelated prerequisites, but cannot set the confirmation/MFA/membership transition being proved. Backend negative tests assert exact denial-audit field allowlists, cross-identity/tenant refusal, concurrent winner/replay behavior and direct `Invitation.Issue/Reissue(default)` rejection; client visibility alone is insufficient.
+
+- [ ] **RED:** add only missing scenarios from the matrix, including later Platform administrator and existing-identity browser onboarding. Each fails on the missing user-observable step or unproved security state. Read actual delivered mail with the shared sink and `PlatformFixtures.DeliveredAsync`; use a controlled OIDC provider, never a forged final login. Close the exact denial-audit/default-hash test gaps without relying on global counts or vacuous shape assertions.
+- [ ] **GREEN:** wire any missing accepted journey and narrowly fix demonstrated defects within this scope; preserve Tasks 1–16 historical records. Record application/protocol/database coverage separately from browser coverage. Replay/concurrency belongs in the real database/HTTP harness where a browser cannot prove it.
+- [ ] **REFACTOR and final verification:** run the fixed commands below from the repository root after the scoped changes converge. Record exit codes, discovered/executed/passed/failed/skipped counts, warning classifications and unavailable prerequisites; never copy today's historical green counts. A build with unresolved applicable warnings or a required unavailable suite is a disclosed blocker, not a clean result.
+
+```powershell
+dotnet build CleanArchitecture.slnx -v minimal
+dotnet build CleanArchitecture.slnx -c Release -v minimal
+dotnet test CleanArchitecture.slnx --no-build
+npm test --prefix src/Web/ClientApp
+npm run lint --prefix src/Web/ClientApp
+npm run build --prefix src/Web/ClientApp
+git diff --check
+```
+
+For a focused failure use its actual project and test name; the five independently runnable projects are `tests/Domain.UnitTests/Domain.UnitTests.csproj`, `tests/Application.UnitTests/Application.UnitTests.csproj`, `tests/Infrastructure.IntegrationTests/Infrastructure.IntegrationTests.csproj`, `tests/Application.FunctionalTests/Application.FunctionalTests.csproj`, and `tests/Web.AcceptanceTests/Web.AcceptanceTests.csproj`. Expected: an observed initial behavioral RED where coverage was missing, then every applicable required command/suite passes with nonzero intended discovery. Do not equate `--no-build` with a fresh build unless the preceding build succeeded for the same candidate/configuration.
+
+- [ ] **Local functional closure:** every row of the fixed matrix and the approved local controls in 18–27 has reproducible evidence; a fresh setup guide matches actual routes/configuration; no open scoped functional/security defect remains. Mark only evidenced tasks complete under the repository's actual approval policy. “Local B2B/B2C functional completion with synthetic data” is the permitted claim; planned tasks and unavailable evidence stay distinguishable.
+- [ ] **Real-PII gate, separate:** the responsible owner has approved C7 purpose/access/retention/legal-hold/purge/restore contracts, key ownership is verified, and actual collection remains disabled until those gates are satisfied. Local synthetic success is sufficient to close its own scope while this gate remains explicitly blocked.
+- [ ] **Production/reference gate, separate:** require accepted reference-adoption/deviation mapping, shared deployment controls, real key/mail/OIDC configuration, operator recovery authority, demonstrated restore admission/revalidation and no PII resurrection. Any unadopted mandatory external-standard control prevents a full-reference-compliance claim; any unresolved applicable deployment prerequisite prevents release. No unapproved Azure/Entra/WORM stack is installed to erase that distinction.
+- [ ] **Stop:** once the fixed local acceptance scope passes and the separate blocked/approved gates are honestly recorded, hand off the result. Cosmetic preferences and unrelated improvements do not restart this plan; a new material requirement gets its own explicit scope decision, not another automatic verification/review loop.

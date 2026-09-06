@@ -1,4 +1,4 @@
-﻿using CleanArchitecture.Domain.Entities;
+using CleanArchitecture.Domain.Entities;
 
 using CleanArchitecture.Domain.IdentityAccess.Auditing;
 using CleanArchitecture.Domain.IdentityAccess.Invitations;
@@ -26,6 +26,8 @@ public interface IApplicationDbContext
     DbSet<AuditEvent> AuditEvents { get; }
 
     DbSet<RegistrationSubmission> RegistrationSubmissions { get; }
+
+    DbSet<PendingRegistrationIntent> PendingRegistrationIntents { get; }
 
     DbSet<OutboxMessage> OutboxMessages { get; }
 
