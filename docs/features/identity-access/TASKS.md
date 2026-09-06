@@ -221,6 +221,57 @@ log.
 restriction that exists today. Administrative suspension is C6's contract and Task 26's work, so the stronger form
 of that assertion is not claimed here.
 
+## Task 23 — done 2026-09-06
+
+**Visible outcome met:** a person signs in with Google from the sign-in screen, or links and unlinks a Google
+account from `/identity/external`. A matching email address takes over nothing, and no action removes the last
+way into an account.
+
+| Step | What happened |
+|---|---|
+| RED | `GoogleOidcTests` against `ControlledOidcProvider` — a provider that really publishes discovery and JWKS, mints codes bound to the nonce and PKCE challenge, and refuses a bad exchange |
+| GREEN | `ExternalAuthorizationRequest` with the additive `ExternalProviderLogins` migration; `GoogleOidcConfiguration` over the framework's OpenID Connect handler; `ExternalIdentityService` over `AspNetUserLogins`; `ExternalCallbackRecorder`; `ExternalLoginEndpoints`; `ExternalAccountsPage` and the sign-in button |
+| REFACTOR | The routes, the single completion, the list shape and the callback path were brought onto the SPEC §14.4 contract after the behaviour was green, and the three places the written contract could not be built as written are corrected in that section rather than left to drift |
+
+**Commands run, both from the plan.**
+
+```powershell
+dotnet test tests/Application.FunctionalTests/Application.FunctionalTests.csproj --filter "GoogleOidcTests|ReauthenticationTests|SessionManagementTests"
+npm test --prefix src/Web/ClientApp -- ExternalAccountsPage.test.jsx AppRoutes.test.jsx
+```
+
+41/41 and 25/25. Whole solution afterwards: Domain 173, Application.Unit 192, Infrastructure.Integration 259,
+Application.Functional 463, browser acceptance 21; client 134 with lint clean; Debug and Release builds 0 errors.
+
+**Contracts proved:** a verified provider account nobody has claimed becomes an identity with a session, no
+password, no tenant and no membership; the same account coming back is recognized rather than duplicated; a
+verified address that already belongs to a local account answers `409 external_login_conflict` and links nothing;
+an unverified address signs nobody in; a tampered state spends no code and validates no handoff; an impostor
+issuer, a wrong audience, a signature from a key the JWKS does not carry, an expired token and a replayed nonce
+each settle the handoff as failed and reach no application decision; a replayed callback produces no second
+session; linking needs consent, a live proof and a confirmed identity, and refuses a subject somebody else owns, an
+address belonging to another local identity, and a second link for a provider already linked; unlinking spends its
+own proof and leaves the password working; the last authenticator cannot be removed, proved on an identity whose
+only proof comes from the provider itself; two identities racing for one provider account leave exactly one link;
+and neither the authorization code nor the client secret reaches a log at Information or above, a response body or
+the address bar.
+
+**Named limitations.**
+
+- **Verified against the protocol is not verified against Google.** Every case runs against a controlled provider.
+  No request has ever been made to `accounts.google.com`. Activating the real provider needs an OAuth client, its
+  secret and the exact redirect URI registered in the operator's own Google account — steps only the account owner
+  can take, written out in [RUNNING-LOCALLY.md](RUNNING-LOCALLY.md#signing-in-with-google). Until then the button
+  and the account screen exist and answer `invalid_external_login`, because the middleware is not registered at
+  all when no client is configured.
+- **The `Recovery` purpose is not built.** It is C6's contract and Task 26's work; approving C4 did not authorize
+  it. `ExternalAuthorizationPurpose` carries no `Recovery` member, so it cannot be reached by accident.
+- **`GET /api/identity/credentials` does not exist.** The `{ hasPassword, passwordUpdatedAt }` row of SPEC 14.4 was
+  implemented by neither Task 22 nor Task 23; `passwordUpdatedAt` needs a column that does not exist. It is Task
+  22's row to finish.
+- **The acceptance suite still needs a reset database**, unchanged from Task 21 and Task 22 and recorded there as
+  Task 28's.
+
 ### Proposed requirements and the tasks they unblock
 
 Each entry proposes its own requirement numbers. IA-REQ-048 was accepted on 2026-09-06 and is normative in

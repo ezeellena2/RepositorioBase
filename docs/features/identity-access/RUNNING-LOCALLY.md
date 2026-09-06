@@ -121,6 +121,59 @@ so the newer file in the drop folder is the one that opens anything.
 This whole journey is also what `PlatformOperations.feature` walks in the browser, from the same bootstrap
 invitation and without confirming anything in the database.
 
+## Signing in with Google
+
+The button is on the sign-in screen and the account screen is at `/identity/external`, but **both are inert until
+a deployment is given an OAuth client**. Nothing is stubbed and nothing is simulated: with no client configured,
+the middleware is not registered at all, `POST /api/identity/external/Google/login/start` answers
+`400 invalid_external_login`, and the screens say so rather than pretending.
+
+Turning it on is one action only you can take, in your own Google account. Nobody else can do it for you, and
+none of it belongs in this repository.
+
+1. Open the [Google Cloud console](https://console.cloud.google.com/), create (or pick) a project, and configure
+   its **OAuth consent screen**. External user type, in Testing mode, with your own address added as a test user
+   is enough for a local run; the only scopes needed are `openid` and `email`.
+2. Under **APIs & Services → Credentials**, create an **OAuth client ID** of type **Web application**.
+3. Give it the **authorized redirect URI** — exactly this, with your own frontend port from the Aspire dashboard:
+
+   ```text
+   https://localhost:<port>/api/identity/external/google/callback
+   ```
+
+   It has to match character for character, including the scheme and the trailing path. There is no wildcard, and
+   a different port is a different URI, so add one line per port you actually use. The authorized JavaScript
+   origins list can stay empty: the browser never talks to Google from a script here.
+4. Google shows you a **client ID** and a **client secret**. Put them in this project's user secrets, which live
+   outside the repository — run these two commands in a terminal and paste each value at its prompt rather than
+   into a chat window or a file:
+
+   ```bash
+   dotnet user-secrets --project src/AppHost set "IdentityAccess:ExternalLogins:Google:ClientId"
+   ```
+
+   ```bash
+   dotnet user-secrets --project src/AppHost set "IdentityAccess:ExternalLogins:Google:ClientSecret"
+   ```
+
+5. Restart `dotnet run --project src/AppHost`.
+
+Two settings and nothing else. `IdentityAccess:ExternalLogins:Google:Authority` exists so the automated tests can
+stand a controlled provider up in place of Google; leave it unset and the real `https://accounts.google.com` is
+used. The client secret is never written to `appsettings*.json`, never logged, and never reaches the browser: the
+authorization code is exchanged for the identity token by the server, on its own connection.
+
+What works once it is on: signing in with a Google account creates or finds the identity that account is linked
+to, and linking from `/identity/external` attaches a Google account to the one you are already signed in as. A
+matching email address never links anything on its own — that is the point of the rule — so an address that
+already has a local account answers "sign in and link it from your account" instead.
+
+**Verified against the protocol is not the same as verified against Google.** The automated suite drives the real
+ASP.NET Core OpenID Connect handler against a controlled provider that signs its own tokens, so state, nonce,
+PKCE, issuer, audience, signature and expiry are all genuinely exercised. Whether *Google's* consent screen,
+redirect registration and token endpoint behave as expected for your project is a separate thing, and it can only
+be established by doing the five steps above and signing in once.
+
 ## Email: simulated versus real
 
 **This is the part to be careful about.**

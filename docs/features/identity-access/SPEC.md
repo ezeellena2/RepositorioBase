@@ -225,6 +225,10 @@ Routes are contractual drafts; generated OpenAPI becomes the implementation sour
 | `POST /api/identity/sessions` | Public + antiforgery | bodyless `204` + cookie or Problem Details |
 | `DELETE /api/identity/sessions/current` | Authenticated + antiforgery | bodyless `204`; a session already revoked by a parallel request is `401` `invalid_session` and still deletes the cookie; a lost update that never settles is `409` `session_concurrency_conflict` |
 | `GET /api/identity/context` | Authenticated | `200` identity-context DTO |
+| `POST /api/identity/external/{provider}/login/start` | Public + antiforgery, rate-limited | `200` `{ authorizationRequestUri }` + `Cache-Control: no-store` and a sealed handoff cookie; `400` `invalid_external_login` for a provider this deployment does not offer |
+| `POST /api/identity/external/{provider}/link/start`, `/proof/start` | Authenticated + antiforgery + recent proof (link) + `identity.external.manage` / `identity.credentials.manage`, `RequiresTenant=false` | `200` `{ authorizationRequestUri }`; `401` `recent_proof_required`; `409` `provider_already_linked`; `404` `not_found` when a proof is asked for a provider this identity has not linked |
+| `POST /api/identity/external/complete` | Same-origin + antiforgery + the sealed handoff cookie, which is also what selects the request; no body | per the purpose table in [14.4](#144-c4--recent-identity-proof-password-recovery-and-provider-linking-with-a-two-part-callback-carve-out) |
+| `GET /api/identity/external`; `DELETE /api/identity/external/{provider}` | Authenticated + `identity.external.manage`, `RequiresTenant=false`; the delete additionally needs antiforgery and a recent proof | `200` `{ items: [{ handle, provider, providerEmail, linkedAt }] }`; bodyless `204`, `409` `last_authenticator_required`, `401` `recent_proof_required`, `404` `not_found` |
 | `PUT /api/identity/context/tenant` | Authenticated + antiforgery | `200` updated identity-context DTO; a lost update that never settles is `409` `session_concurrency_conflict` |
 | `POST /api/tenants/{tenantId}/invitations` | `members.invite` + antiforgery | `201` invitation DTO + `Location` |
 | `POST /api/invitations/register` | Public + invitation token + antiforgery | neutral bodyless `202`; registration/confirmation only |
@@ -740,9 +744,34 @@ This protocol is independent from the reference repository's workflow and preser
 | `POST /api/identity/credentials/password/recovery`; `POST /api/identity/credentials/password/reset` | both public + antiforgery, `IPublicRequest`; recovery rate-limited with `RequestPasswordRecoveryCommand { email }`, reset carrying the fragment token with `ResetPasswordCommand { token, newPassword }`, `ISensitiveRequest` | recovery: neutral bodyless `202` for every valid request and every account state, `400` `antiforgery_validation_failed`, `429` `rate_limit_exceeded` + `Retry-After` on the caller budget only and never on the per-address budget, and `503` `service_unavailable` + `Retry-After` when the shared budget store is unreachable (IA-REQ-057). What is enqueued behind that one answer is fixed by account state and is stated once, here and in 14.6: `PendingConfirmation`, `Active`, `SelfDeactivated` and `AdministrativelySuspended` each enqueue a reset token; `Closed` enqueues nothing. Reset: bodyless `204`, `400` `invalid_credential_token` for unknown, expired, consumed, superseded or wrong-purpose, `400` `validation_failed` with field-indexed errors for `PasswordOptions`. A completed reset changes the password, increments the security version, revokes every session and issues none — and it changes no lifecycle state, so a suspended account is still suspended and a self-deactivated one is still deactivated; it never sets `LastVerifiedAt`, never marks a session as having proved a second factor and never removes a `PlatformMfaEnrollment`, so the next sign-in meets exactly the gates it met before |
 | `POST /api/identity/external/{provider}/recovery/start` | Public + antiforgery, `IPublicRequest`, rate-limited; `StartExternalRecoveryCommand { ticket }`, the ticket being the fragment-delivered 14.6 reactivation token, hash-compared and never echoed | `200` `{ authorizationRequestUri }`, `Cache-Control: no-store`, for a live ticket whose identity holds a link for that provider; `400` `invalid_credential_token` for every other case, worded identically so the route reveals nothing about the ticket, the identity or its links; `429` `rate_limit_exceeded` + `Retry-After`; `503` `service_unavailable` + `Retry-After` when the shared budget store is unreachable |
 | `POST /api/identity/external/{provider}/login/start`, `/link/start`, `/proof/start` | login public + antiforgery (`IPublicRequest`); link authenticated + antiforgery + proof + `StartExternalLinkCommand { consent: true }` + `identity.external.manage`; proof authenticated + antiforgery + `StartExternalProofCommand { action }` + `identity.credentials.manage`; all `RequiresTenant=false` | `200` `{ authorizationRequestUri }`, `Cache-Control: no-store`; `401` `recent_proof_required` on link; `404` `not_found` on proof when this identity has no link for that provider |
-| `/api/identity/external/{provider}/callback` | The carve-out: no `Origin`, no antiforgery, no Application request sent | `302` to an allowlisted local path carrying at most one closed-set outcome slug (`linked`, `signed_in`, `proved`, `recovered`, `onboarding_required`, `link_required`, `refused`), plus the framework external-scheme handoff cookie (2 minutes, **product default**) |
+| `/api/identity/external/google/callback` — one literal path per provider, because a scheme has exactly one and it is the URI a deployment registers | The carve-out: no `Origin`, no antiforgery, no Application request sent | `302` to `/external/return` carrying one closed-set outcome slug, plus the sealed handoff cookie (10 minutes, **product default**, matching the handoff record's own lifetime) |
 | `POST /api/identity/external/complete` | Same-origin + antiforgery + handoff cookie; no body fields; four requests selected by the record's purpose — `CompleteExternalLoginCommand` and `CompleteExternalRecoveryCommand` (both `IPublicRequest`), `CompleteExternalLinkCommand` and `CompleteExternalProofCommand` (both `[Authorize(..., requiresTenant: false)]`) | per the caller/state table above |
 | `DELETE /api/identity/external/{provider}` | Authenticated + antiforgery + proof, `RequiresTenant=false`, `identity.external.manage` | bodyless `204`; `409` `last_authenticator_required`; `401` `recent_proof_required`; `404` `not_found` |
+
+**Built 2026-09-06, and where it differs from the paragraphs above.** Three corrections, each because the written
+form could not be built as written:
+
+- *The handoff cookie is this application's own, not the framework's external-scheme one.* No external sign-in
+  cookie is written at all: the callback is handled inside `OnTicketReceived`, so nothing is ever signed into the
+  external scheme and there is no framework handoff to carry. What carries the round trip instead is
+  `__Host-ia-external`, a Data Protection **time-limited** payload holding the handoff identifier and the purpose
+  the callback settled, `Secure`, `HttpOnly`, `SameSite=None` (the return leg is a cross-site form post, and
+  anything stricter drops the cookie on the one request it exists for), sealed at the start and re-sealed by the
+  callback, and deleted by the completion. The purpose living in that cookie is what makes the single `/complete`
+  route safe: the caller names no effect, so a `Login` cannot be completed as a `Link`.
+- *The outcome slug set is `signed_in`, `linked`, `proved` and `refused`.* `recovered` belongs to C6 and Task 26.
+  `onboarding_required` and `link_required` are not produced by the redirect because the states they described
+  are answered by `/complete` itself — `409` `external_login_conflict` — where a client is already listening.
+  Every protocol failure and a person who declines arrive as the same `refused`.
+- *Two concurrent unlinks are serialized by the per-identity advisory lock, not by taking the
+  `IdentitySecurityState` row.* An identity at security version zero has no such row to take, so the row lock has
+  a hole exactly where a provider-only identity — the one the last-authenticator rule protects — sits. The lock
+  used is `ISessionLock`, the same two-argument advisory space every session write already takes, so an unlink is
+  serialized against session issuance as well as against another unlink.
+
+**Not built here.** `GET /api/identity/credentials` (`{ hasPassword, passwordUpdatedAt }`) has no implementation
+in Task 22 or Task 23; `passwordUpdatedAt` needs a column that does not exist. It belongs to the credentials row
+of this section and is Task 22's to finish. The `Recovery` purpose and its two routes are C6's and Task 26's.
 
 | Contended write | Winner | Loser's answer |
 |---|---|---|
@@ -751,7 +780,7 @@ This protocol is independent from the reference repository's workflow and preser
 | Reset issuance vs. reissue | the later commit, under the partial unique index `("IdentityId") WHERE "Status" = 'Pending'`, inserting only after the prior record and its `OutboxSecret` are superseded (`Terminate(Failed, "superseded", now)`) in the same transaction | one bounded retry, then the same neutral `202`; never two live tokens |
 | Reset vs. authenticated change, and reset vs. a concurrent sign-in | the first to commit; all take the `IdentitySecurityState` row for update | the loser's proof or token no longer matches `SecurityVersion` (`recent_proof_required` / `invalid_credential_token`); a sign-in that won is revoked by the change that follows |
 | Two identities linking the same subject, and two links for one identity on one provider | first commit, under the existing `AspNetUserLogins ("LoginProvider","ProviderKey")` primary key and the new additive unique index `UX_AspNetUserLogins_LoginProvider_UserId` respectively | `409` `external_login_conflict`; `409` `provider_already_linked` |
-| Two concurrent unlinks | first commit; the authenticator count is read after taking the `IdentitySecurityState` row inside the transaction | `409` `last_authenticator_required` |
+| Two concurrent unlinks | first commit; the authenticator count is read after taking the per-identity advisory lock inside the transaction (see the corrections above) | `409` `last_authenticator_required` |
 | Handoff record consumption | first commit of the conditional single-use update on the `ExternalAuthorizationRequest` record | `400` `invalid_external_login` |
 
 - **Permissions.** `identity.credentials.manage`, `identity.external.manage` (PROPOSED, application-scoped

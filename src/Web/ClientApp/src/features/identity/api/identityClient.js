@@ -55,6 +55,30 @@ export function createIdentityClient(transport = createApiTransport()) {
     resetPassword: (token, newPassword) => send('/api/identity/credentials/password/reset', { method: 'POST', body: { token, newPassword } }),
     changePassword: (newPassword) => send('/api/identity/credentials/password', { method: 'PUT', body: { newPassword } }),
 
+    // Provider accounts. Each start answers only where to send the browser next; which round trip it is stays in
+    // a cookie the server sealed, so nothing here holds an identifier a caller could swap for somebody else's.
+    startExternalLogin: (provider) => send(`/api/identity/external/${encodeURIComponent(provider)}/login/start`, {
+      method: 'POST',
+      expect: ['authorizationRequestUri'],
+    }),
+    startExternalLink: (provider) => send(`/api/identity/external/${encodeURIComponent(provider)}/link/start`, {
+      method: 'POST',
+      body: { consent: true },
+      expect: ['authorizationRequestUri'],
+    }),
+    startExternalProof: (provider, action) => send(`/api/identity/external/${encodeURIComponent(provider)}/proof/start`, {
+      method: 'POST',
+      body: { action },
+      expect: ['authorizationRequestUri'],
+    }),
+    // One completion, whatever the round trip was for. Which one it was is in a cookie the server sealed, so
+    // there is nothing here for a caller to choose.
+    completeExternalRoundTrip: () => send('/api/identity/external/complete', { method: 'POST' }),
+    listExternalLinks: () => send('/api/identity/external', {
+      expect: ['items'],
+    }),
+    unlinkExternal: (provider) => send(`/api/identity/external/${encodeURIComponent(provider)}`, { method: 'DELETE' }),
+
     registerPersonal: (request) => send('/api/identity/personal/register', { method: 'POST', body: request }),
     createPersonalContext: (request) => send('/api/identity/personal', { method: 'POST', body: request }),
     getPersonalProfile: () => send('/api/identity/profile', {

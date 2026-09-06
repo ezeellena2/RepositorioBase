@@ -54,6 +54,15 @@ public static class ApiProblemMetadata
 
     public static readonly ApiProblemContract InvalidCredentialToken = new(StatusCodes.Status400BadRequest, "invalid_credential_token");
 
+    /// <summary>Every way a provider round trip can fail, under one code (IA-REQ-052).</summary>
+    public static readonly ApiProblemContract InvalidExternalLogin = new(StatusCodes.Status400BadRequest, "invalid_external_login");
+
+    public static readonly ApiProblemContract ExternalLoginConflict = new(StatusCodes.Status409Conflict, "external_login_conflict");
+
+    public static readonly ApiProblemContract ProviderAlreadyLinked = new(StatusCodes.Status409Conflict, "provider_already_linked");
+
+    public static readonly ApiProblemContract LastAuthenticatorRequired = new(StatusCodes.Status409Conflict, "last_authenticator_required");
+
 
     public static RouteHandlerBuilder WithApiProblemDetails(this RouteHandlerBuilder builder, params ApiProblemContract[] contracts)
     {

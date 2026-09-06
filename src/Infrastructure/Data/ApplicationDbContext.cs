@@ -60,6 +60,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
 
     public DbSet<CleanArchitecture.Domain.IdentityAccess.Credentials.PasswordResetRequest> PasswordResetRequests => Set<CleanArchitecture.Domain.IdentityAccess.Credentials.PasswordResetRequest>();
 
+    public DbSet<CleanArchitecture.Domain.IdentityAccess.ExternalLogins.ExternalAuthorizationRequest> ExternalAuthorizationRequests => Set<CleanArchitecture.Domain.IdentityAccess.ExternalLogins.ExternalAuthorizationRequest>();
+
     public DbSet<IdentitySecurityState> IdentitySecurityStates => Set<IdentitySecurityState>();
 
     public DbSet<Role> TenantRoles => Set<Role>();

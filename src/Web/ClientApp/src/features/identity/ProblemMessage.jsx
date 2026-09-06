@@ -17,6 +17,12 @@ const MESSAGES = {
   platform_tenant_concurrency_conflict: 'That tenant changed while you were working. Refresh it and try again.',
   invalid_platform_operation: 'That Platform operation is not valid in its current state.',
   recent_mfa_required: 'Confirm your second factor again before making this change.',
+  recent_proof_required: 'Confirm your password again before making this change.',
+  invalid_credential_proof: 'That password was not accepted. Try again.',
+  invalid_external_login: 'That sign-in with a provider could not be completed. Try again.',
+  external_login_conflict: 'That provider account cannot be used here. Sign in and link it from your account.',
+  provider_already_linked: 'That provider is already linked to this account.',
+  last_authenticator_required: 'You cannot remove your only way to sign in. Add another one first.',
   rate_limit_exceeded: 'Too many attempts. Wait a moment and try again.',
   internal_server_error: 'Something went wrong. Try again.',
 };

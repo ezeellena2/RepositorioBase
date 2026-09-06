@@ -21,14 +21,19 @@ namespace CleanArchitecture.Application.FunctionalTests.Infrastructure;
 /// </summary>
 internal static class IdentityHttpHarness
 {
-    internal static ProductionHarness CreateProductionHarness(TimeProvider? timeProvider = null)
+    internal static ProductionHarness CreateProductionHarness(
+        TimeProvider? timeProvider = null,
+        IReadOnlyDictionary<string, string?>? settings = null,
+        Action<IServiceCollection>? configureTestServices = null)
     {
         var factory = new WebApiFactory(
             FunctionalTestSetup.ConnectionString,
             Microsoft.Extensions.Hosting.Environments.Production,
             useTestAuthentication: false,
             useTestIdentityAccessDoubles: false,
-            timeProvider: timeProvider);
+            timeProvider: timeProvider,
+            settings: settings,
+            configureTestServices: configureTestServices);
         return new ProductionHarness(factory, factory.CreateClient(new WebApplicationFactoryClientOptions { HandleCookies = true, AllowAutoRedirect = false }));
     }
 

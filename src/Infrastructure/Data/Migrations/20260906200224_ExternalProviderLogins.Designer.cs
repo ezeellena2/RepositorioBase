@@ -3,6 +3,7 @@ using System;
 using CleanArchitecture.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace CleanArchitecture.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260906200224_ExternalProviderLogins")]
+    partial class ExternalProviderLogins
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1479,18 +1482,6 @@ namespace CleanArchitecture.Infrastructure.Data.Migrations
                     b.Property<string>("ProviderKey")
                         .HasColumnType("text");
 
-                    b.Property<string>("Handle")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)")
-                        .HasDefaultValueSql("translate(rtrim(encode(uuid_send(gen_random_uuid()), 'base64'), '='), '+/', '-_')");
-
-                    b.Property<DateTimeOffset>("LinkedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasDefaultValueSql("now()");
-
                     b.Property<string>("ProviderDisplayName")
                         .HasColumnType("text");
 
@@ -1500,10 +1491,6 @@ namespace CleanArchitecture.Infrastructure.Data.Migrations
                     b.HasKey("LoginProvider", "ProviderKey");
 
                     b.HasIndex("UserId");
-
-                    b.HasIndex("LoginProvider", "UserId")
-                        .IsUnique()
-                        .HasDatabaseName("UX_AspNetUserLogins_LoginProvider_UserId");
 
                     b.ToTable("AspNetUserLogins", (string)null);
                 });

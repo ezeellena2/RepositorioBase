@@ -64,6 +64,14 @@ public static class DependencyInjection
         });
         builder.Services.AddLoginRateLimiting();
 
+        // Registered only when a client is configured, so a deployment without one simply does not offer it.
+        builder.AddGoogleExternalLogin();
+
+        // The handler's own protocol tracing formats the callback's parameters — the authorization code among
+        // them — into a Debug message. The floor is pinned here, after configuration has been bound, so turning
+        // Debug on for diagnostics cannot start writing single-use credentials into a log.
+        builder.Logging.AddFilter("Microsoft.AspNetCore.Authentication.OpenIdConnect", LogLevel.Information);
+
         // The ceremony that creates the Platform tenant runs from the host, never from a route.
         builder.Services.AddSingleton<IHostedService, CleanArchitecture.Web.HostedServices.PlatformBootstrapHostedService>();
 

@@ -26,7 +26,9 @@ public class WebApiFactory(
     bool useTestAuthentication = true,
     bool useStaleApplicationUser = false,
     bool useTestIdentityAccessDoubles = true,
-    TimeProvider? timeProvider = null) : WebApplicationFactory<Program>
+    TimeProvider? timeProvider = null,
+    IReadOnlyDictionary<string, string?>? settings = null,
+    Action<IServiceCollection>? configureTestServices = null) : WebApplicationFactory<Program>
 {
     /// <summary>A fixed 32-byte key. This suite never handles a real document, so nothing here needs protecting.</summary>
     private const string TestDocumentFingerprintKey = "dGVzdC1maW5nZXJwcmludC1rZXktMzItYnl0ZXMhISE=";
@@ -44,8 +46,17 @@ public class WebApiFactory(
             builder.UseEnvironment(environmentName);
         }
 
+        // Settings a scenario chooses, applied last so a test can supply what the host reads at build time —
+        // an external provider's client, for instance, which decides whether its middleware exists at all.
+        foreach (var (key, value) in settings ?? new Dictionary<string, string?>())
+        {
+            builder.UseSetting(key, value);
+        }
+
         builder.ConfigureTestServices(services =>
         {
+            configureTestServices?.Invoke(services);
+
             if (timeProvider is not null)
             {
                 services.RemoveAll<TimeProvider>();
@@ -154,7 +165,7 @@ public class WebApiFactory(
 
             public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
             {
-                var entry = new System.Text.StringBuilder().Append(category).Append(": ").Append(formatter(state, exception));
+                var entry = new System.Text.StringBuilder().Append('[').Append(logLevel).Append("] ").Append(category).Append(": ").Append(formatter(state, exception));
                 if (state is IReadOnlyList<KeyValuePair<string, object?>> values)
                 {
                     // Structured values are captured too, so a raw value never formatted into the message is still caught.

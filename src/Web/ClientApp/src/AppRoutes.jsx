@@ -9,6 +9,7 @@ import { ChooseContextPage } from "./features/identity/register/ChooseContextPag
 import { PersonalRegisterPage, PersonalProfilePage } from "./features/identity/people/PersonalPages";
 import { SessionsPage } from "./features/identity/sessions/SessionsPage";
 import { ChangePasswordPage, ForgotPasswordPage, ResetPasswordPage } from "./features/identity/credentials/PasswordPages";
+import { ExternalAccountsPage, ExternalReturnPage } from "./features/identity/credentials/ExternalAccountsPage";
 import { ConfirmEmailPage } from "./features/identity/register/ConfirmEmailPage";
 import { TenantSelector } from "./features/identity/tenants/TenantSelector";
 import { InviteMemberPage } from "./features/identity/invitations/InviteMemberPage";
@@ -42,6 +43,10 @@ const AppRoutes = [
   { path: '/identity/profile', element: <ProtectedRoute><PersonalProfilePage /></ProtectedRoute> },
   { path: '/identity/sessions', element: <ProtectedRoute><SessionsPage /></ProtectedRoute> },
   { path: '/identity/password', element: <ProtectedRoute><ChangePasswordPage /></ProtectedRoute> },
+  { path: '/identity/external', element: <ProtectedRoute><ExternalAccountsPage /></ProtectedRoute> },
+  // Public, because a provider sign-in returns here before there is a session to protect it with. It reads
+  // nothing from the callback beyond which round trip it was; the handoff itself is in a server-sealed cookie.
+  { path: '/external/return', element: <ExternalReturnPage /> },
   // Both are public: somebody who cannot sign in is the only person who needs them, and the reset link is opened
   // out of a mailbox by a browser holding no session.
   { path: '/credentials/forgot', element: <ForgotPasswordPage /> },

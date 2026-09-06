@@ -303,3 +303,14 @@ explicit linking and unlinking, never an automatic merge on a matching address.
 **Unchanged.** Decisions 18, 20 and 24 (C1, C3, C7) keep their acceptances. Decisions 22 and 23 (C5, C6) remain
 proposed, and C6 still carries amendments A3 and A4. **Task 17 remains partially approved and is not complete**:
 five entries of seven are decided.
+
+**Carried out, 2026-09-06.** Tasks 21, 22 and 23 are delivered under this acceptance, each verified before the next
+began; the evidence is in [TASKS.md](../features/identity-access/TASKS.md). Three places where C4's written form
+could not be built as written are corrected in
+[SPEC §14.4](../features/identity-access/SPEC.md#144-c4--recent-identity-proof-password-recovery-and-provider-linking-with-a-two-part-callback-carve-out)
+rather than left to drift: the handoff cookie is this application's own sealed one instead of the framework's
+external-scheme cookie, because no external sign-in ever happens; the callback's outcome vocabulary is the four
+slugs the built flows can produce; and two concurrent unlinks are serialized by the per-identity advisory lock
+rather than by a `IdentitySecurityState` row that a provider-only identity does not have. None of them widens what
+was accepted. The live-provider caveat above still stands in full: nothing in this repository has made a request to
+`accounts.google.com`.

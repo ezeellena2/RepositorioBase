@@ -54,6 +54,9 @@ public static class Permissions
     /// </summary>
     public const string IdentityCredentialsManage = "identity.credentials.manage";
 
+    /// <summary>Linking and unlinking a person's own provider accounts. Self-service for the same reason.</summary>
+    public const string IdentityExternalManage = "identity.external.manage";
+
     public static IReadOnlyList<PermissionDefinition> Catalog { get; } =
     [
         new(MembersInvite, [TenantType.Organization]),
@@ -87,7 +90,8 @@ public static class Permissions
         PlatformMfaEnroll,
         IdentityProfileRead,
         IdentityProfileManage,
-        IdentityCredentialsManage
+        IdentityCredentialsManage,
+        IdentityExternalManage
     };
 
     /// <summary>
@@ -107,7 +111,8 @@ public static class Permissions
         PlatformMfaEnroll,
         IdentityProfileRead,
         IdentityProfileManage,
-        IdentityCredentialsManage
+        IdentityCredentialsManage,
+        IdentityExternalManage
     };
 
 }

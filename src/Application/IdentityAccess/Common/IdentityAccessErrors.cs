@@ -138,4 +138,32 @@ public static class IdentityAccessErrors
     /// <summary>The configured password policy refused it, field-indexed and describing the rule rather than the value.</summary>
     public static ApplicationError PasswordPolicyFailed(IReadOnlyDictionary<string, string[]> errors) =>
         new("validation_failed", ApplicationErrorCategory.Validation, "The new password does not meet the policy.", errors);
+
+    /// <summary>
+    /// Everything a provider round trip can fail on collapses to one code: a missing, expired, spent or
+    /// purpose-mismatched handoff, an unverified address, a subject that matches no link. Telling them apart would
+    /// describe state the caller was never shown (IA-REQ-052).
+    /// </summary>
+    public static ApplicationError InvalidExternalLogin() =>
+        new("invalid_external_login", ApplicationErrorCategory.Validation, "The external sign-in could not be completed.");
+
+    /// <summary>
+    /// The provider account belongs to somebody else, or its verified address does. It is a conflict rather than a
+    /// refusal to say more: an automatic merge on a matching address is exactly what BR-ID-005/006 forbid.
+    /// </summary>
+    public static ApplicationError ExternalLoginConflict() =>
+        new("external_login_conflict", ApplicationErrorCategory.Conflict, "That provider account cannot be used here.");
+
+    public static ApplicationError ProviderAlreadyLinked() =>
+        new("provider_already_linked", ApplicationErrorCategory.Conflict, "This identity already has a link for that provider.");
+
+    public static ApplicationError ExternalLinkNotFound() =>
+        new("not_found", ApplicationErrorCategory.NotFound, "This identity has no link for that provider.");
+
+    /// <summary>
+    /// Removing it would leave the person with no way in at all. It is refused rather than warned about, because
+    /// the state it would produce has no route back that does not involve an operator.
+    /// </summary>
+    public static ApplicationError LastAuthenticatorRequired() =>
+        new("last_authenticator_required", ApplicationErrorCategory.Conflict, "An identity must keep at least one way to sign in.");
 }
