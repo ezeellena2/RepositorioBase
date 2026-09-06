@@ -225,6 +225,9 @@ Routes are contractual drafts; generated OpenAPI becomes the implementation sour
 | `POST /api/identity/sessions` | Public + antiforgery | bodyless `204` + cookie or Problem Details |
 | `DELETE /api/identity/sessions/current` | Authenticated + antiforgery | bodyless `204`; a session already revoked by a parallel request is `401` `invalid_session` and still deletes the cookie; a lost update that never settles is `409` `session_concurrency_conflict` |
 | `GET /api/identity/context` | Authenticated | `200` identity-context DTO |
+| `POST /api/identity/credentials/password/recovery`; `POST /api/identity/credentials/password/reset` | Public + antiforgery; recovery rate-limited | neutral bodyless `202` whatever the address and whatever the account state; bodyless `204`, `400` `invalid_credential_token` for unknown, expired, consumed, superseded or wrong-purpose, `400` `validation_failed` for a password the policy refuses |
+| `POST /api/identity/credentials/reauthenticate`; `PUT /api/identity/credentials/password` | Authenticated + antiforgery + `identity.credentials.manage`, `RequiresTenant=false`; the change additionally needs a live proof | bodyless `204`; `400` `invalid_credential_proof`; `401` `recent_proof_required`; the change answers `204` with a rotated session cookie and antiforgery pair |
+| `GET /api/identity/credentials` | Authenticated + `identity.credentials.manage`, `RequiresTenant=false`; no subject parameter | `200` `{ hasPassword, passwordUpdatedAt }` and nothing else — never a hash, an address or a provider name, and never about anybody but the caller |
 | `POST /api/identity/external/{provider}/login/start` | Public + antiforgery, rate-limited | `200` `{ authorizationRequestUri }` + `Cache-Control: no-store` and a sealed handoff cookie; `400` `invalid_external_login` for a provider this deployment does not offer |
 | `POST /api/identity/external/{provider}/link/start`, `/proof/start` | Authenticated + antiforgery + recent proof (link) + `identity.external.manage` / `identity.credentials.manage`, `RequiresTenant=false` | `200` `{ authorizationRequestUri }`; `401` `recent_proof_required`; `409` `provider_already_linked`; `404` `not_found` when a proof is asked for a provider this identity has not linked |
 | `POST /api/identity/external/complete` | Same-origin + antiforgery + the sealed handoff cookie, which is also what selects the request; no body | per the purpose table in [14.4](#144-c4--recent-identity-proof-password-recovery-and-provider-linking-with-a-two-part-callback-carve-out) |
@@ -769,9 +772,15 @@ form could not be built as written:
   used is `ISessionLock`, the same two-argument advisory space every session write already takes, so an unlink is
   serialized against session issuance as well as against another unlink.
 
-**Not built here.** `GET /api/identity/credentials` (`{ hasPassword, passwordUpdatedAt }`) has no implementation
-in Task 22 or Task 23; `passwordUpdatedAt` needs a column that does not exist. It belongs to the credentials row
-of this section and is Task 22's to finish. The `Recovery` purpose and its two routes are C6's and Task 26's.
+**`GET /api/identity/credentials` is built (2026-09-06), and it is the account screens' honesty.** `hasPassword`
+comes from ASP.NET Identity; `passwordUpdatedAt` is a nullable column on the Domain-owned `IdentitySecurityState`,
+stamped only by the reset and the authenticated change. It is deliberately not `UpdatedAt`, which every
+authenticator change advances — a page that reported linking a provider as a password change would be lying to
+the one person who would notice. An identity that has never changed its password answers `null`, because a
+creation date is not a change date. The route takes no subject parameter, so it can never be asked about somebody
+else.
+
+**Not built here.** The `Recovery` purpose and its two routes are C6's and Task 26's.
 
 | Contended write | Winner | Loser's answer |
 |---|---|---|

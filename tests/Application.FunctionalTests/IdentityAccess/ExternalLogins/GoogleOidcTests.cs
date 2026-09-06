@@ -321,6 +321,24 @@ public sealed class GoogleOidcTests : TestBase
     }
 
     [Test]
+    public async Task An_identity_that_arrived_through_the_provider_is_told_it_has_no_password()
+    {
+        using var scenario = Scenario();
+        var browser = scenario.Browser();
+        (await browser.SignInWithProviderAsync("google-subject-19", "no-password@provider.test")).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+
+        var credentials = await browser.GetAsync("/api/identity/credentials");
+
+        credentials.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var body = await credentials.Content.ReadFromJsonAsync<CredentialsRow>();
+
+        // This is what lets the account screen explain the unlink it is about to refuse, instead of offering a
+        // button whose only possible answer is `last_authenticator_required`.
+        body!.HasPassword.ShouldBeFalse();
+        body.PasswordUpdatedAt.ShouldBeNull();
+    }
+
+    [Test]
     public async Task The_last_way_into_an_account_cannot_be_removed()
     {
         using var scenario = Scenario();
@@ -428,6 +446,8 @@ public sealed class GoogleOidcTests : TestBase
     private sealed record LinkRow(string Handle, string Provider, string ProviderEmail, DateTimeOffset LinkedAt);
 
     private sealed record LinkList(LinkRow[] Items);
+
+    private sealed record CredentialsRow(bool HasPassword, DateTimeOffset? PasswordUpdatedAt);
 
     /// <summary>
     /// One host running with the controlled provider registered as Google. The client is configured from settings

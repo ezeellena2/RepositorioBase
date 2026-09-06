@@ -19,6 +19,7 @@ export function ExternalAccountsPage() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const [links, setLinks] = useState(null);
+  const [hasPassword, setHasPassword] = useState(true);
   const [problem, setProblem] = useState(null);
   const [password, setPassword] = useState('');
   const [isBusy, setIsBusy] = useState(false);
@@ -26,7 +27,14 @@ export function ExternalAccountsPage() {
 
   const load = useCallback(async () => {
     try {
-      setLinks((await identity.client.listExternalLinks()).items);
+      // Both, because what this page may offer depends on both: a link it could remove, and something else to
+      // sign in with afterwards. Only the server can count that, so only the server is asked.
+      const [listed, credentials] = await Promise.all([
+        identity.client.listExternalLinks(),
+        identity.client.getOwnCredentials(),
+      ]);
+      setLinks(listed.items);
+      setHasPassword(credentials.hasPassword);
       setProblem(null);
     } catch (error) {
       setProblem(error.problem ?? { code: 'unexpected' });
@@ -82,28 +90,40 @@ export function ExternalAccountsPage() {
         keep at least one way to sign in.
       </p>
 
-      <label htmlFor="external-password">Password</label>
-      <input
-        id="external-password"
-        type="password"
-        autoComplete="current-password"
-        value={password}
-        onChange={(event) => setPassword(event.target.value)}
-      />
+      {hasPassword && (
+        <>
+          <label htmlFor="external-password">Password</label>
+          <input
+            id="external-password"
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+          />
+        </>
+      )}
 
       {links === null ? <p role="status">Loading…</p> : (
         <ul>
           {PROVIDERS.map((provider) => {
             const row = linked(provider.id);
+
+            // The last way in is the server's rule and the server enforces it; saying so here only spares
+            // somebody a button whose one possible answer is a refusal.
+            const isOnlyWayIn = row !== undefined && !hasPassword && links.length === 1;
             return (
               <li key={provider.id}>
                 <span>{provider.label}</span>
                 {row ? (
                   <>
                     <span> — {row.providerEmail}</span>
-                    <button type="button" disabled={isBusy} onClick={() => unlink(provider.id)}>
-                      Unlink {provider.label}
-                    </button>
+                    {isOnlyWayIn ? (
+                      <span> — this is your only way to sign in. Set a password before you unlink it.</span>
+                    ) : (
+                      <button type="button" disabled={isBusy} onClick={() => unlink(provider.id)}>
+                        Unlink {provider.label}
+                      </button>
+                    )}
                   </>
                 ) : (
                   <button type="button" disabled={isBusy} onClick={() => link(provider.id)}>

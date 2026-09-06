@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useIdentity } from '../context/IdentityProvider';
 import { ProblemMessage } from '../ProblemMessage';
 
@@ -13,13 +14,22 @@ import { ProblemMessage } from '../ProblemMessage';
 export function SessionsPage() {
   const identity = useIdentity();
   const [sessions, setSessions] = useState(null);
+  const [hasPassword, setHasPassword] = useState(true);
   const [problem, setProblem] = useState(null);
   const [password, setPassword] = useState('');
   const [isBusy, setIsBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      setSessions(await identity.client.listSessions());
+      // The credential is read alongside the devices because it decides what this screen may offer at all: an
+      // account that arrived through a provider has no password to prove with, and a button it can never use is
+      // worse than no button.
+      const [listed, credentials] = await Promise.all([
+        identity.client.listSessions(),
+        identity.client.getOwnCredentials(),
+      ]);
+      setSessions(listed);
+      setHasPassword(credentials.hasPassword);
       setProblem(null);
     } catch (error) {
       setProblem(error.problem ?? { code: 'unexpected' });
@@ -55,14 +65,24 @@ export function SessionsPage() {
       <ProblemMessage problem={problem} />
       <p>Signing in somewhere else does not sign you out here. Ending a device asks for your password first.</p>
 
-      <label htmlFor="sessions-password">Password</label>
-      <input
-        id="sessions-password"
-        type="password"
-        autoComplete="current-password"
-        value={password}
-        onChange={(event) => setPassword(event.target.value)}
-      />
+      {hasPassword ? (
+        <>
+          <label htmlFor="sessions-password">Password</label>
+          <input
+            id="sessions-password"
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+          />
+        </>
+      ) : (
+        // A mailed reset is the one way in that needs no proof, which is exactly why it is the way out of here.
+        <p>
+          You signed in with a provider and have no password yet, so there is nothing to prove with.{' '}
+          <Link to="/credentials/forgot">Set a password</Link> and this page can end a device.
+        </p>
+      )}
 
       <ul>
         {(sessions ?? []).map((session) => (
@@ -70,7 +90,7 @@ export function SessionsPage() {
             <span>{session.deviceLabel}</span>
             {session.isCurrent && <span> — this device</span>}
             <span> · last seen {session.lastSeenAt}</span>
-            {!session.isCurrent && (
+            {!session.isCurrent && hasPassword && (
               <button
                 type="button"
                 disabled={isBusy || password.length === 0}
@@ -83,13 +103,15 @@ export function SessionsPage() {
         ))}
       </ul>
 
-      <button
-        type="button"
-        disabled={isBusy || password.length === 0}
-        onClick={() => run('sessions.revoke-others', () => identity.client.revokeOtherSessions())}
-      >
-        End every other device
-      </button>
+      {hasPassword && (
+        <button
+          type="button"
+          disabled={isBusy || password.length === 0}
+          onClick={() => run('sessions.revoke-others', () => identity.client.revokeOtherSessions())}
+        >
+          End every other device
+        </button>
+      )}
     </section>
   );
 }

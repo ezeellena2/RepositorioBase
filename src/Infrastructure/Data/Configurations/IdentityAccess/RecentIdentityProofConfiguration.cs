@@ -56,6 +56,7 @@ public sealed class IdentitySecurityStateConfiguration : IEntityTypeConfiguratio
         builder.Property(state => state.IdentityId).ValueGeneratedNever();
         builder.Property(state => state.SecurityVersion).IsRequired();
         builder.Property(state => state.UpdatedAt).IsRequired();
+        builder.Property(state => state.PasswordUpdatedAt);
         builder.Property(state => state.Version).IsConcurrencyToken().IsRequired();
         builder.HasOne<ApplicationUser>().WithMany().HasForeignKey(state => state.IdentityId).OnDelete(DeleteBehavior.NoAction);
     }

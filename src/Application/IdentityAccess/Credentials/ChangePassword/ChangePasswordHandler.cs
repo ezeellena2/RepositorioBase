@@ -38,7 +38,7 @@ public sealed class ChangePasswordCommandHandler(
             if (!applied.Succeeded) return Result<ReplacedSession>.Failure(IdentityAccessErrors.PasswordPolicyFailed(applied.Errors));
 
             var now = timeProvider.GetUtcNow();
-            await proofs.AdvanceVersionAsync(identityId, ct);
+            await proofs.RecordPasswordChangeAsync(identityId, ct);
             await CredentialSessionEffects.RevokeEveryLiveSessionAsync(context, identityId, actingSession, now, "password_changed", ct);
 
             // The acting session is rotated rather than kept: the new row inherits no identifier, no antiforgery

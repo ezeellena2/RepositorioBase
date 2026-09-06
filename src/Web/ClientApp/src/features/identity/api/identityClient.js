@@ -54,6 +54,11 @@ export function createIdentityClient(transport = createApiTransport()) {
     requestPasswordRecovery: (email) => send('/api/identity/credentials/password/recovery', { method: 'POST', body: { email } }),
     resetPassword: (token, newPassword) => send('/api/identity/credentials/password/reset', { method: 'POST', body: { token, newPassword } }),
     changePassword: (newPassword) => send('/api/identity/credentials/password', { method: 'PUT', body: { newPassword } }),
+    // Whether there is a password at all, and when it last changed. Two screens are dishonest without it: an
+    // account whose only way in is a provider must not be offered an unlink that can only be refused.
+    getOwnCredentials: () => send('/api/identity/credentials', {
+      expect: ['hasPassword', 'passwordUpdatedAt'],
+    }),
 
     // Provider accounts. Each start answers only where to send the browser next; which round trip it is stays in
     // a cookie the server sealed, so nothing here holds an identifier a caller could swap for somebody else's.

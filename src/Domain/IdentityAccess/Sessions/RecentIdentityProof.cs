@@ -106,6 +106,13 @@ public sealed class IdentitySecurityState
 
     public DateTimeOffset UpdatedAt { get; private set; }
 
+    /// <summary>
+    /// When the password itself last changed, or <see langword="null"/> for one that never has — including an
+    /// identity that has no password at all. It is deliberately not <see cref="UpdatedAt"/>: linking a provider
+    /// advances the security version too, and a screen that reported that as a password change would be lying.
+    /// </summary>
+    public DateTimeOffset? PasswordUpdatedAt { get; private set; }
+
     public int Version { get; private set; }
 
     public static IdentitySecurityState Start(Guid identityId, DateTimeOffset now)
@@ -119,5 +126,12 @@ public sealed class IdentitySecurityState
         SecurityVersion++;
         UpdatedAt = now;
         Version++;
+    }
+
+    /// <summary>Advances as any authenticator change does, and additionally stamps the password's own date.</summary>
+    public void AdvanceForPasswordChange(DateTimeOffset now)
+    {
+        Advance(now);
+        PasswordUpdatedAt = now;
     }
 }

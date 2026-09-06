@@ -266,11 +266,42 @@ the address bar.
   all when no client is configured.
 - **The `Recovery` purpose is not built.** It is C6's contract and Task 26's work; approving C4 did not authorize
   it. `ExternalAuthorizationPurpose` carries no `Recovery` member, so it cannot be reached by accident.
-- **`GET /api/identity/credentials` does not exist.** The `{ hasPassword, passwordUpdatedAt }` row of SPEC 14.4 was
-  implemented by neither Task 22 nor Task 23; `passwordUpdatedAt` needs a column that does not exist. It is Task
-  22's row to finish.
 - **The acceptance suite still needs a reset database**, unchanged from Task 21 and Task 22 and recorded there as
   Task 28's.
+
+## Task 23 follow-ups — done 2026-09-06
+
+Two gaps in what Task 23 shipped, both found by looking at the delivery rather than at the tests.
+
+**The screen was unreachable.** `/identity/external` was routed and named nowhere, so only somebody who already
+knew the URL could open it — for a self-service screen, the same as not shipping it. `NavMenu.test.jsx` now pins
+the whole signed-in set, so the next screen cannot ship orphaned either.
+
+**The screen could not be honest.** `GET /api/identity/credentials` — the `{ hasPassword, passwordUpdatedAt }` row
+of SPEC 14.4, unimplemented by Task 22 and recorded above as a gap — is now built, with `PasswordUpdatedAt` added
+to `IdentitySecurityState` by the additive `PasswordChangeStamp` migration and stamped only by the reset and the
+authenticated change. An identity whose only way in is a provider is now told so, and shown an explanation instead
+of an unlink button whose one possible answer is `last_authenticator_required`; it is also no longer asked for a
+password it does not have.
+
+**The devices screen was a dead end for those accounts.** `/identity/sessions` disabled both revoke buttons until
+a password was typed, so an identity created through a provider could see its other devices and end none of them.
+It now says so and points at the mailed reset — the one way to obtain a password that needs no proof, which is
+exactly why it is the way out.
+
+```powershell
+dotnet test tests/Application.FunctionalTests/Application.FunctionalTests.csproj --filter "OwnCredentialsTests|PasswordLifecycleTests|GoogleOidcTests"
+npm test --prefix src/Web/ClientApp
+```
+
+`OwnCredentialsTests` additionally proves the answer carries exactly two members, needs a session, and does not
+report a provider link as a password change. Whole solution afterwards: Domain 173, Application.Unit 192,
+Infrastructure.Integration 259, Application.Functional 467; client 140 with lint clean.
+
+**Named limitation.** A provider-only identity still cannot obtain a recent proof *through its provider* from the
+devices or accounts screens — the `Proof` purpose is built and tested end to end on the server, but no screen
+starts one, because with a single provider configured every action it would authorize is either unreachable or
+has the mailed reset as a working answer. It becomes worth wiring when a second provider exists.
 
 ### Proposed requirements and the tasks they unblock
 

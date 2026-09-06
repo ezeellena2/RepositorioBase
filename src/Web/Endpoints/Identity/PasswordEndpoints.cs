@@ -1,4 +1,5 @@
 using CleanArchitecture.Application.IdentityAccess.Credentials.ChangePassword;
+using CleanArchitecture.Application.IdentityAccess.Credentials.OwnCredentials;
 using CleanArchitecture.Application.IdentityAccess.Credentials.PasswordRecovery;
 using CleanArchitecture.Web.Endpoints;
 using CleanArchitecture.Web.Infrastructure;
@@ -29,11 +30,24 @@ internal static class PasswordEndpoints
             .WithApiProblemDetails(ApiProblemMetadata.AntiforgeryValidationFailed, ApiProblemMetadata.InvalidCredentialToken, ApiProblemMetadata.ValidationFailed, ApiProblemMetadata.InternalServerError)
             .WithBodyBindingFailureCode(ApiProblemMetadata.InvalidCredentialToken.Code);
 
+        group.MapGet("/credentials", Read)
+            .RequireAuthorization()
+            .Produces<OwnCredentialsResponse>(StatusCodes.Status200OK)
+            .WithApiProblemDetails(ApiProblemMetadata.AuthenticationRequired, ApiProblemMetadata.InvalidSession, ApiProblemMetadata.PermissionDenied, ApiProblemMetadata.InternalServerError);
+
         group.MapPut("/credentials/password", Change)
             .RequireAuthorization()
             .Produces(StatusCodes.Status204NoContent)
             .WithApiProblemDetails(ApiProblemMetadata.AntiforgeryValidationFailed, ApiProblemMetadata.AuthenticationRequired, ApiProblemMetadata.InvalidSession, ApiProblemMetadata.PermissionDenied, ApiProblemMetadata.RecentProofRequired, ApiProblemMetadata.ValidationFailed, ApiProblemMetadata.RateLimitExceeded, ApiProblemMetadata.InternalServerError)
             .WithBodyBindingFailureCode(ApiProblemMetadata.ValidationFailed.Code);
+    }
+
+    private static async Task<IResult> Read(HttpContext context, ApiProblemDetailsMapper problems, ISender sender)
+    {
+        var result = await sender.Send(new GetOwnCredentialsQuery(), context.RequestAborted);
+        return result.IsSuccess
+            ? Results.Ok(new OwnCredentialsResponse(result.Value!.HasPassword, result.Value.PasswordUpdatedAt))
+            : problems.ToHttpResult(result.Error!);
     }
 
     private static async Task<IResult> Recover(HttpContext context, IAntiforgery antiforgery, ApiProblemDetailsMapper problems, ISender sender, RequestPasswordRecoveryCommand command)
@@ -75,3 +89,6 @@ internal static class PasswordEndpoints
         return Results.NoContent();
     }
 }
+
+/// <summary>Two members and no more: a hash, an address or a provider name here would be a leak.</summary>
+public sealed record OwnCredentialsResponse(bool HasPassword, DateTimeOffset? PasswordUpdatedAt);

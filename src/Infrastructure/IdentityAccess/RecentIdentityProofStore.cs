@@ -65,22 +65,46 @@ public sealed class RecentIdentityProofStore(ApplicationDbContext context, TimeP
             .Select(state => state.SecurityVersion)
             .SingleOrDefaultAsync(cancellationToken);
 
-    public async Task AdvanceVersionAsync(Guid identityId, CancellationToken cancellationToken)
+    public Task AdvanceVersionAsync(Guid identityId, CancellationToken cancellationToken) =>
+        AdvanceAsync(identityId, stampPassword: false, cancellationToken);
+
+    public Task RecordPasswordChangeAsync(Guid identityId, CancellationToken cancellationToken) =>
+        AdvanceAsync(identityId, stampPassword: true, cancellationToken);
+
+    public async Task<DateTimeOffset?> PasswordUpdatedAtAsync(Guid identityId, CancellationToken cancellationToken) =>
+        await context.IdentitySecurityStates
+            .AsNoTracking()
+            .Where(state => state.IdentityId == identityId)
+            .Select(state => state.PasswordUpdatedAt)
+            .SingleOrDefaultAsync(cancellationToken);
+
+    private async Task AdvanceAsync(Guid identityId, bool stampPassword, CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
-        var affected = await context.IdentitySecurityStates
-            .Where(state => state.IdentityId == identityId)
-            .ExecuteUpdateAsync(setters => setters
-                .SetProperty(state => state.SecurityVersion, state => state.SecurityVersion + 1)
-                .SetProperty(state => state.UpdatedAt, now)
-                .SetProperty(state => state.Version, state => state.Version + 1), cancellationToken);
+
+        // Two statements rather than one branch inside the setter list, because `ExecuteUpdate` cannot express a
+        // conditional column and writing `PasswordUpdatedAt` unconditionally is the exact bug this avoids.
+        var affected = stampPassword
+            ? await context.IdentitySecurityStates
+                .Where(state => state.IdentityId == identityId)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(state => state.SecurityVersion, state => state.SecurityVersion + 1)
+                    .SetProperty(state => state.UpdatedAt, now)
+                    .SetProperty(state => state.PasswordUpdatedAt, now)
+                    .SetProperty(state => state.Version, state => state.Version + 1), cancellationToken)
+            : await context.IdentitySecurityStates
+                .Where(state => state.IdentityId == identityId)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(state => state.SecurityVersion, state => state.SecurityVersion + 1)
+                    .SetProperty(state => state.UpdatedAt, now)
+                    .SetProperty(state => state.Version, state => state.Version + 1), cancellationToken);
 
         // An identity with no row is at version zero, so the first advance creates it at one. Nothing is
         // backfilled: a row that never existed is indistinguishable from one that was never advanced.
         if (affected == 0)
         {
             var state = IdentitySecurityState.Start(identityId, now);
-            state.Advance(now);
+            if (stampPassword) state.AdvanceForPasswordChange(now); else state.Advance(now);
             context.IdentitySecurityStates.Add(state);
             await context.SaveChangesAsync(cancellationToken);
         }

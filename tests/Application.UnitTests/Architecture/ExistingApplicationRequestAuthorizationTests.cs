@@ -76,6 +76,7 @@ public class ExistingApplicationRequestAuthorizationTests
             typeof(CleanArchitecture.Application.IdentityAccess.Credentials.PasswordRecovery.RequestPasswordRecoveryCommand).FullName,
             typeof(CleanArchitecture.Application.IdentityAccess.Credentials.PasswordRecovery.ResetPasswordCommand).FullName,
             typeof(CleanArchitecture.Application.IdentityAccess.Credentials.ChangePassword.ChangePasswordCommand).FullName,
+            typeof(CleanArchitecture.Application.IdentityAccess.Credentials.OwnCredentials.GetOwnCredentialsQuery).FullName,
             typeof(CleanArchitecture.Application.IdentityAccess.ExternalLogins.StartExternalLoginCommand).FullName,
             typeof(CleanArchitecture.Application.IdentityAccess.ExternalLogins.StartExternalLinkCommand).FullName,
             typeof(CleanArchitecture.Application.IdentityAccess.ExternalLogins.StartExternalProofCommand).FullName,

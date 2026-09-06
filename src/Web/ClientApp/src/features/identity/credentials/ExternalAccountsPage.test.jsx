@@ -15,6 +15,9 @@ const renderAt = (page, path = '/identity/external') => render(
 
 const linksAre = (rows) => http.get('/api/identity/external', () => HttpResponse.json({ items: rows }));
 
+const credentialsAre = (hasPassword) =>
+  http.get('/api/identity/credentials', () => HttpResponse.json({ hasPassword, passwordUpdatedAt: null }));
+
 /** The browser leaving for the provider is the one thing jsdom cannot really do, so it is watched instead. */
 let left;
 
@@ -31,7 +34,7 @@ beforeEach(() => {
 describe('external accounts page', () => {
   it('shows a linked provider by the address it asserted, and never by its identifier', async () => {
     server.use(antiforgery(), contextIs(signedInContext()));
-    server.use(linksAre([{ provider: 'Google', providerEmail: 'ana@provider.test' }]));
+    server.use(credentialsAre(true), linksAre([{ provider: 'Google', providerEmail: 'ana@provider.test' }]));
 
     renderAt(<ExternalAccountsPage />);
 
@@ -44,7 +47,7 @@ describe('external accounts page', () => {
     const proofs = [];
     const starts = [];
     server.use(antiforgery(), contextIs(signedInContext()));
-    server.use(linksAre([]));
+    server.use(credentialsAre(true), linksAre([]));
     server.use(http.post('/api/identity/credentials/reauthenticate', async ({ request }) => {
       proofs.push(await request.json());
       return new HttpResponse(null, { status: 204 });
@@ -67,7 +70,7 @@ describe('external accounts page', () => {
 
   it('does not leave for the provider when the proof is refused', async () => {
     server.use(antiforgery(), contextIs(signedInContext()));
-    server.use(linksAre([]));
+    server.use(credentialsAre(true), linksAre([]));
     server.use(http.post('/api/identity/credentials/reauthenticate', () => problem(400, 'invalid_credential_proof')));
     server.use(http.post('/api/identity/external/Google/link/start', () => {
       throw new Error('the link must never be started without a proof');
@@ -83,7 +86,7 @@ describe('external accounts page', () => {
 
   it('shows the refusal when unlinking would leave no way in, and keeps the link on screen', async () => {
     server.use(antiforgery(), contextIs(signedInContext()));
-    server.use(linksAre([{ provider: 'Google', providerEmail: 'ana@provider.test' }]));
+    server.use(credentialsAre(true), linksAre([{ provider: 'Google', providerEmail: 'ana@provider.test' }]));
     server.use(http.post('/api/identity/credentials/reauthenticate', () => new HttpResponse(null, { status: 204 })));
     server.use(http.delete('/api/identity/external/Google', () => problem(409, 'last_authenticator_required')));
 
@@ -95,10 +98,34 @@ describe('external accounts page', () => {
     expect(screen.getByRole('button', { name: 'Unlink Google' })).toBeInTheDocument();
   });
 
+  /**
+   * The refusal the server would give is knowable before the click, so the page says it instead of offering a
+   * button whose only possible answer is `last_authenticator_required`.
+   */
+  it('explains rather than offers when the provider is the only way in', async () => {
+    server.use(antiforgery(), contextIs(signedInContext()));
+    server.use(credentialsAre(false), linksAre([{ provider: 'Google', providerEmail: 'ana@provider.test' }]));
+
+    renderAt(<ExternalAccountsPage />);
+
+    expect(await screen.findByText(/only way to sign in/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Unlink Google' })).not.toBeInTheDocument();
+  });
+
+  it('asks for no password from an account that has none', async () => {
+    server.use(antiforgery(), contextIs(signedInContext()));
+    server.use(credentialsAre(false), linksAre([{ provider: 'Google', providerEmail: 'ana@provider.test' }]));
+
+    renderAt(<ExternalAccountsPage />);
+
+    await screen.findByText(/only way to sign in/i);
+    expect(screen.queryByLabelText('Password')).not.toBeInTheDocument();
+  });
+
   it('unlinks with a proof and stops showing the provider', async () => {
     let remaining = [{ provider: 'Google', providerEmail: 'ana@provider.test' }];
     server.use(antiforgery(), contextIs(signedInContext()));
-    server.use(http.get('/api/identity/external', () => HttpResponse.json({ items: remaining })));
+    server.use(credentialsAre(true), http.get('/api/identity/external', () => HttpResponse.json({ items: remaining })));
     server.use(http.post('/api/identity/credentials/reauthenticate', () => new HttpResponse(null, { status: 204 })));
     server.use(http.delete('/api/identity/external/Google', () => {
       remaining = [];

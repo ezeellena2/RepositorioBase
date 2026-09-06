@@ -48,4 +48,14 @@ public interface IRecentIdentityProofStore
     /// by anything that changes a credential or an authenticator.
     /// </summary>
     Task AdvanceVersionAsync(Guid identityId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The same advance, plus the date the password itself changed. Only a password change may call it: linking a
+    /// provider advances the version too, and reporting that as a password change would be a lie told to the one
+    /// person who would notice.
+    /// </summary>
+    Task RecordPasswordChangeAsync(Guid identityId, CancellationToken cancellationToken);
+
+    /// <summary>When this identity's password last changed, or <see langword="null"/> if it never has.</summary>
+    Task<DateTimeOffset?> PasswordUpdatedAtAsync(Guid identityId, CancellationToken cancellationToken);
 }

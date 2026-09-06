@@ -118,7 +118,7 @@ public sealed class ResetPasswordCommandHandler(
             if (!applied.Succeeded) return Result.Failure(IdentityAccessErrors.PasswordPolicyFailed(applied.Errors));
 
             reset.Consume(now);
-            await proofs.AdvanceVersionAsync(reset.IdentityId, ct);
+            await proofs.RecordPasswordChangeAsync(reset.IdentityId, ct);
             await CredentialSessionEffects.RevokeEveryLiveSessionAsync(context, reset.IdentityId, null, now, "password_reset", ct);
             context.AuditEvents.Add(AuditEvent.CreateSessionEvent(reset.IdentityId, null, "identity.password.reset", AuditCorrelation.Current(), "reset"));
             await context.SaveChangesAsync(ct);

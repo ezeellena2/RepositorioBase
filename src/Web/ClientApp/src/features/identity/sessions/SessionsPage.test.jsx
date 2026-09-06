@@ -12,6 +12,9 @@ const renderPage = () => render(
   <MemoryRouter><IdentityProvider><SessionsPage /></IdentityProvider></MemoryRouter>
 );
 
+const credentialsAre = (hasPassword) =>
+  http.get('/api/identity/credentials', () => HttpResponse.json({ hasPassword, passwordUpdatedAt: null }));
+
 const sessions = () => [
   { sessionRef: 'AAAAAAAAAAAAAAAAAAAAAA', isCurrent: true, deviceLabel: 'Windows', createdAt: '2026-09-06T12:00:00+00:00', lastSeenAt: '2026-09-06T12:30:00+00:00', expiresAt: '2026-09-06T13:00:00+00:00' },
   { sessionRef: 'BBBBBBBBBBBBBBBBBBBBBB', isCurrent: false, deviceLabel: 'Android', createdAt: '2026-09-05T09:00:00+00:00', lastSeenAt: '2026-09-05T09:10:00+00:00', expiresAt: '2026-09-05T10:00:00+00:00' },
@@ -23,7 +26,7 @@ const sessions = () => [
  */
 describe('sessions page', () => {
   it('lists the devices and marks the one being used', async () => {
-    server.use(antiforgery(), contextIs(signedInContext()));
+    server.use(antiforgery(), contextIs(signedInContext()), credentialsAre(true));
     server.use(http.get('/api/identity/sessions', () => HttpResponse.json(sessions())));
 
     renderPage();
@@ -36,7 +39,7 @@ describe('sessions page', () => {
 
   it('proves the password before it ends another device, and never keeps it', async () => {
     const calls = [];
-    server.use(antiforgery(), contextIs(signedInContext()));
+    server.use(antiforgery(), contextIs(signedInContext()), credentialsAre(true));
     server.use(http.get('/api/identity/sessions', () => HttpResponse.json(sessions())));
     server.use(http.post('/api/identity/credentials/reauthenticate', async ({ request }) => {
       calls.push(['prove', await request.json()]);
@@ -61,7 +64,7 @@ describe('sessions page', () => {
 
   it('does not send a revocation when the proof is refused', async () => {
     const calls = [];
-    server.use(antiforgery(), contextIs(signedInContext()));
+    server.use(antiforgery(), contextIs(signedInContext()), credentialsAre(true));
     server.use(http.get('/api/identity/sessions', () => HttpResponse.json(sessions())));
     server.use(http.post('/api/identity/credentials/reauthenticate', () => problem(400, 'invalid_credential_proof')));
     server.use(http.delete('/api/identity/sessions/:sessionRef', () => {
@@ -77,8 +80,26 @@ describe('sessions page', () => {
     expect(calls).toHaveLength(0);
   });
 
+  /**
+   * An account created through a provider has no password to prove with, so the screen must not offer a button
+   * that can never work. It says what the way out is instead, and that way -- a mailed reset -- needs no proof,
+   * which is exactly why it is the one that works here.
+   */
+  it('tells an account with no password how to get one instead of offering a proof it cannot give', async () => {
+    server.use(antiforgery(), contextIs(signedInContext()), credentialsAre(false));
+    server.use(http.get('/api/identity/sessions', () => HttpResponse.json(sessions())));
+
+    renderPage();
+
+    expect(await screen.findByText(/Android/)).toBeInTheDocument();
+    expect(screen.queryByLabelText('Password')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'End this device' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'End every other device' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /set a password/i }).getAttribute('href')).toBe('/credentials/forgot');
+  });
+
   it('offers no way to end the device being used from this list', async () => {
-    server.use(antiforgery(), contextIs(signedInContext()));
+    server.use(antiforgery(), contextIs(signedInContext()), credentialsAre(true));
     server.use(http.get('/api/identity/sessions', () => HttpResponse.json(sessions())));
 
     renderPage();
