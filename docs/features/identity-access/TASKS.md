@@ -23,15 +23,15 @@ compliance have separate gates, so local functional completion cannot silently a
 |---|---|---|---|
 | 17 | Local contracts, reference revision and explicit adoption/deviation mapping | IA-001; IA-010/011/013/015 | Human acceptance of proposed C1–C7; documentation only |
 | 18 | Registration state-level privacy and CUIT reservation | IA-006; IA-009 evidence | **Done 2026-09-06.** C1 accepted; IA-REQ-003/004/005 amended and IA-REQ-048 added in SPEC §4 |
-| 19 | Personal ownership and protected AR/DNI persistence | IA-010; IA-004 persistence | 18; 17 C1/C3/C7; synthetic only until PII gate |
-| 20 | Personal signup, own profile and context React journey | IA-010; IA-009 evidence | 19 |
+| 19 | Personal ownership and protected AR/DNI persistence, plus the shared attempt-budget store | IA-010; IA-004 persistence | 18 (done); 17 **C3 and C7**; synthetic only until PII gate |
+| 20 | Personal signup, own profile and context React journey | IA-010; IA-009 evidence | 19, inheriting its C3/C7 approval; no further entry |
 | 21 | Own sessions and recent reauthentication seam | IA-011; IA-007 sessions | 17 C2/C4; password proof now, Google proof in 23 |
 | 22 | Password recovery and change end to end | IA-011; IA-009 evidence | 21; 17 C4 |
 | 23 | Google login, explicit linking and last authenticator | IA-013; IA-009 evidence | 20–22; 17 C4; live provider activation separate |
 | 24 | Custom Organization role administration | IA-005 continuation; IA-009 evidence | 17 C5 |
 | 25 | Membership administration, ownership transfer and invitation lifecycle | IA-005/008 continuation; IA-009 evidence | 21/24; 17 C5 |
-| 26 | Lifecycle, MFA recovery, retention executor and restore admission guard | IA-011/012/015; existing event owners | 19/21–25; 17 C6/C7 |
-| 27 | Shared limits, keys, deployment guards and operations evidence | IA-015; IA-007/012/014 control owners | 26; 17 C6/C7 |
+| 26 | Lifecycle, MFA recovery, retention executor, restore admission guard and both halves of the documentary dispute | IA-011/012/015; existing event owners | 19/21–25; 17 C6/C7 plus C3/C4, the dispute needing C4's proof |
+| 27 | Remaining budget scopes on the shared store, keys, deployment guards and operations evidence | IA-015; IA-007/012/014 control owners | 26; 17 C6/C7; port and adapter already landed in 19 |
 | 28 | Fixed full-journey acceptance and scoped closure | IA-009 evidence only; all continuation owners | 18–27 local evidence; separate PII/production/reference gates |
 
 The roadmap requirement owners remain in SPEC; this mapping does not invent approved IA-REQ identifiers.
@@ -88,18 +88,20 @@ before this task and is scoped to C6/C7 and Task 27, not closed here.
 
 ### Proposed requirements and the tasks they unblock
 
-Each entry proposes its own requirement numbers. IA-REQ-047 remains the highest approved number; 048–057 are
-allocated only inside the proposal and become real if and when the decision accepts them.
+Each entry proposes its own requirement numbers. IA-REQ-048 was accepted on 2026-09-06 and is normative in
+[SPEC §4](SPEC.md#4-normative-requirements), so it — not IA-REQ-047 — is the highest approved number. IA-REQ-049–058
+are allocated only inside the proposal and become real if and when the decision accepts them; 058 was added on
+2026-09-06 by amendment A1.
 
 | Entry | Proposed requirements | Amends | Unblocks on acceptance | Still blocked afterwards |
 |---|---|---|---|---|
 | C1 **(accepted 2026-09-06; implemented)** | IA-REQ-048, now normative in [SPEC §4](SPEC.md#4-normative-requirements) | IA-REQ-003, IA-REQ-004, IA-REQ-005 | 18, **done 2026-09-06**; the registration seam 19/20/23 build on | nothing from this entry: the IA-REQ-003 residual is closed on Task 18's paired-sequence evidence |
 | C2 | IA-REQ-049 | IA-REQ-021, IA-REQ-023 | the session half of 21, 22, 23 | the proof half of 21/22, which is C4 |
-| C3 **(A1 folded in 2026-09-06)** | IA-REQ-050, IA-REQ-058 | none; extends IA-REQ-002/044 | 19, 20; the data contracts in 26/27 | real DNI capture, which is C7's gate |
+| C3 **(A1 folded in 2026-09-06)** | IA-REQ-050, IA-REQ-058 | none; extends IA-REQ-002/044 | 19 and 20 **only together with C7**; the data contracts in 26/27 | IA-REQ-058's dispute, which needs C4 and lands in 26; and real DNI capture, which is C7's gate |
 | C4 **(A2/A3 folded in 2026-09-06)** | IA-REQ-051, IA-REQ-052 | IA-REQ-022 and §8, for one named callback route | 21, 22, 23; the recovery part of 26 | live provider registration, which is per-environment |
 | C5 | IA-REQ-053 | IA-REQ-047, closing its deferred note | 24, 25 | C4, without which ownership transfer has no proof |
 | C6 **(A3/A4 folded in 2026-09-06)** | IA-REQ-054, IA-REQ-055 | makes IA-REQ-020 precise; extends IA-REQ-042 | 26, 27 against synthetic fixtures | live restore release, which needs the external authority |
-| C7 **(A4/A5 folded in 2026-09-06)** | IA-REQ-056, IA-REQ-057 | strengthens IA-REQ-019 to shared, fail-closed state | the synthetic design in 19, 26, 27 | real personal data, and production — separate gates in 28 |
+| C7 **(A4/A5 folded in 2026-09-06)** | IA-REQ-056, IA-REQ-057 | strengthens IA-REQ-019 to shared, fail-closed state | 19's classification stamp and budget store, 20's public claim budget, then 26 and 27 | real personal data, and production — separate gates in 28 |
 
 A declined or amended entry blocks only its own consumers. Tasks 1–16 and their recorded `Review` states are
 untouched by this package.
@@ -109,6 +111,18 @@ list (C2 versus C4 on the session route, C5 versus C6 on the last-administrator 
 now states a single contract: no `Gap`, no "fragments disagree", nothing left for an implementer to decide. That
 changes what is being asked, not whether it has been answered — C2 through C7 are still proposals awaiting one
 decision each, and no task after 18 is `Ready`.
+
+**Dependencies realigned to those contracts, 2026-09-06.** Three consequences of the reconciled text were not
+reflected in the roadmap and now are. Task 19 needs C3 **and** C7, because the classification stamp on every stored
+row and the budget that bounds a document claim are both persistence and neither can be added afterwards. The shared
+attempt-budget port, adapter, table and migration move from Task 27 into Task 19, so the limit exists before Task 20
+exposes Personal registration; Task 27 keeps the remaining scopes and all the distributed evidence. And IA-REQ-058's
+dispute — both halves — moves to Task 26, because the owner's half requires a live C4 proof that does not exist
+before Task 22; Tasks 19 and 20 record a document and never offer a way to correct one. Task 19 stays domain and
+persistence with no public route, and every public flow stays in the task that owns it.
+
+**Minimum approval set to continue: C3 and C7, together.** That makes Task 19 and then Task 20 executable, and
+nothing else. C2 and C4 unblock the 21–23 line whenever they are decided; C5 and C6 depend on C4 and come after.
 
 ## First-increment Review Workload Forecast (historical)
 

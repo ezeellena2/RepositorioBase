@@ -607,7 +607,7 @@ This protocol is independent from the reference repository's workflow and preser
 | Contended write | Winner | Loser's answer |
 |---|---|---|
 | Two profile edits on one row | the first to commit, through a conditional update against the `xmin` row version echoed as the opaque `version` | `409` `personal_profile_concurrency_conflict`; no field is written — no merge, no partial write. The additive `PersonalIdentity` migration creates `PersonProfiles` (PK `IdentityId`, `FullName` varchar 200, `DisplayName` varchar 60, `CreatedAt`, `UpdatedAt`, shadow `xmin` `Version`), `IdentityDocuments` (PK `IdentityId`, `Country` `CHECK = 'AR'`, `DocumentType` `CHECK = 'DNI'`, `Ciphertext`, `RecordedAt`, `PurgedAt`, `Version`; no `DigitCount`) and `IdentityDocumentFingerprints` (PK `(IdentityId, KeyVersion)`, `Fingerprint` varchar(64) = `"k" + KeyVersion + ":v1:" + Base64(HMACSHA256(fingerprintKey[KeyVersion], canonical tuple))` under a format `CHECK`), one fingerprint row per retained key version, backfilled before that version becomes the insert version. |
-| Two identities recording the same normalized document at Personal creation | the first to commit, through `UX_IdentityDocumentFingerprints_Fingerprint` | `409` `personal_registration_conflict` — the one code every refused `Personal` claim receives, whatever refused it: this identity already owns a `Personal` tenant, the document is already recorded, or the claim exceeded its budget. No field, header or status distinguishes them, and IA-REQ-058's dispute route is offered from the profile screen unconditionally rather than from this response, so the answer never says which case occurred. Claims are bounded by C7's `ISharedAttemptBudget` under scope `personal.document.claim`, 3 per identity per 24 hours (**product default**), and every refusal is audited. **Residual, named rather than hidden:** a person spending one of those three attempts still learns that the number they typed is recorded somewhere. It is bounded, costed — each identity costs a confirmed address — and audited, but it is not closed; accepting it belongs to the G2 real-personal-data gate, not to this decision. |
+| Two identities recording the same normalized document at Personal creation | the first to commit, through `UX_IdentityDocumentFingerprints_Fingerprint` | `409` `personal_registration_conflict` — the one code shared by the two refusals that would otherwise disclose somebody else's data: this identity already owns a `Personal` tenant, or the document is already recorded. No field, header or status distinguishes those two, and IA-REQ-058's dispute route is offered from the profile screen unconditionally rather than from this response, so the answer never says which of them occurred. A refused budget is a different question and answers differently — `429` `rate_limit_exceeded`, or `503` `service_unavailable` when the store is unreachable (IA-REQ-057) — because that answer counts only the caller's own attempts and therefore says nothing about any document or any other identity. Claims are bounded by C7's `ISharedAttemptBudget` under scope `personal.document.claim`, 3 per identity per 24 hours (**product default**), and every refusal is audited. **Residual, named rather than hidden:** a person spending one of those three attempts still learns that the number they typed is recorded somewhere. It is bounded, costed — each identity costs a confirmed address — and audited, but it is not closed; accepting it belongs to the G2 real-personal-data gate, not to this decision. |
 
 - **Permissions.** `identity.profile.read`, `identity.profile.manage` (PROPOSED, application-scoped,
   `RequiresTenant=false`, in `ApplicationScopedCodes` and `SelfServiceCodes`, never in `Permissions.Catalog`);
@@ -631,13 +631,17 @@ This protocol is independent from the reference repository's workflow and preser
   where `GET /api/identity/context` now prefers `PersonProfile.DisplayName` over the email it returns today;
   it adds no exception to IA-REQ-044 and must not increment `Tenant.AuthorizationVersion`. IA-REQ-058 adds the
   stable codes `document_dispute_conflict`, `self_resolution_refused`, `document_already_recorded` and
-  `personal_registration_conflict`, the last of which is deliberately shared by every reason a `Personal` claim can
-  be refused; none of them widens IA-REQ-030's `401`/`403`/`404` meanings.
+  `personal_registration_conflict`, the last of which is deliberately shared by the two refusals that would otherwise
+  disclose another identity's data, and by those two only; none of them widens IA-REQ-030's `401`/`403`/`404`
+  meanings.
 - **Reconciled with C7.** C7's fragment put documentary uniqueness in a partial index on `IdentityDocuments` and
   called the ciphertext `ProtectedNumber`. Decided: C3's child-table `UNIQUE` and `Ciphertext` stand, because one
   partial index cannot hold two retained key versions; C7's spelling and index are withdrawn, and 14.7 says so.
-- **Consumed by** Tasks 19 and 20, and the data contracts in Tasks 26 and 27. IA-REQ-058's owner half lands with
-  Task 19's document capture; its operator half and the correction record belong to Task 26.
+- **Consumed by** Tasks 19 and 20, and the data contracts in Tasks 26 and 27. Task 19 needs C7 accepted alongside
+  this entry, because the classification stamp on every profile and document row and the budget that bounds a claim
+  are both persistence and neither can be retrofitted. IA-REQ-058 is consumed by Task 26 **as a whole** — both halves
+  — because the owner's dispute requires a live C4 recent proof, which does not exist before Task 22; Tasks 19 and 20
+  record a document and never offer a way to correct one, and `correctionAvailable` reads `false` until Task 26.
 
 ### 14.4 C4 — Recent identity proof, password recovery, and provider linking with a two-part callback carve-out
 
@@ -909,9 +913,9 @@ with no way back, which is what a tombstone means.
   `IdentityDocuments` and its `ProtectedNumber` spelling being withdrawn.
 - **IA-REQ-057 (proposed; numbered 049 in the C7 fragment):** every attempt budget that bounds guessing — login by
   client address, login by normalized account, Platform second-factor verification and step-up, and Platform bootstrap
-  recovery — is held in shared PostgreSQL state, one budget across instances and restarts. The port is
-  `PostgreSqlAttemptBudget` over the existing database; no new infrastructure
-  product is introduced. An unavailable store fails every budget closed — no attempt is admitted — and the caller is
+  recovery, plus C3's `personal.document.claim` — is held in shared PostgreSQL state, one budget across instances and
+  restarts. The port is `ISharedAttemptBudget`, its only adapter `PostgreSqlAttemptBudget` over the existing
+  database; no new infrastructure product is introduced. An unavailable store fails every budget closed — no attempt is admitted — and the caller is
   told what actually happened: `503` Problem Details `service_unavailable` with `Retry-After`, never `429`
   `rate_limit_exceeded`, which stays reserved for a budget a caller really did exhaust (amendment A5). Every route
   that names a budget carries both answers. Budget writes commit outside any business transaction, and numerical
@@ -952,8 +956,11 @@ with no way back, which is what a tombstone means.
   adds `service_unavailable` as a stable code — the first `503` any Application request produces — leaving
   `rate_limit_exceeded` to mean only an exhausted budget; and amendment A4 removes the `LegalHoldAt` marker C6
   proposed, this entry's `RetentionLegalHold` record being the only legal hold there is.
-- **Consumed by** Task 26's retention work, Task 27's budgets and Task 28's G1 local closure; G2 (real personal data)
-  and G3 (production) stay blocked behind their own owners.
+- **Consumed by** Task 19 first: the `DataClassification` stamp and the shared budget port, adapter and table are
+  persistence, and Task 20 cannot expose Personal registration without a budget already in place. Then Task 26's
+  retention work, and Task 27's remaining budget scopes, cross-instance proof and startup guards — `PersonalDataReadiness`
+  belongs there with the other fail-closed startup checks, not in Task 19, which only stamps rows. Task 28 records the
+  G1 local closure; G2 (real personal data) and G3 (production) stay blocked behind their own owners.
 
 ## 15. Reference adoption map (proposed — Task 17 Step 2)
 

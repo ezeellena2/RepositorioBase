@@ -6,7 +6,8 @@
 **Continuation decisions 18-24:** Decision 18 (C1) accepted 2026-09-06 and implemented by Task 18. Amendments A1-A5
 were folded into decisions 20, 21, 23 and 24 and their SPEC entries on 2026-09-06; folding them in changes what is
 being asked, not whether it was answered. Decisions 19-24
-(C2-C7) remain proposed, five of them with required amendments recorded in the acceptance gate below.
+(C2-C7) remain proposed, four of them - C3, C4, C6 and C7 - carrying the five required amendments recorded in the
+acceptance gate below.
 
 ## Context
 
