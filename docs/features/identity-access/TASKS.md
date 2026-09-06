@@ -23,8 +23,8 @@ compliance have separate gates, so local functional completion cannot silently a
 |---|---|---|---|
 | 17 | Local contracts, reference revision and explicit adoption/deviation mapping | IA-001; IA-010/011/013/015 | Human acceptance of proposed C1–C7; documentation only |
 | 18 | Registration state-level privacy and CUIT reservation | IA-006; IA-009 evidence | **Done 2026-09-06.** C1 accepted; IA-REQ-003/004/005 amended and IA-REQ-048 added in SPEC §4 |
-| 19 | Personal ownership and protected AR/DNI persistence, plus the shared attempt-budget store | IA-010; IA-004 persistence | 18 (done); 17 **C3 and C7**; synthetic only until PII gate |
-| 20 | Personal signup, own profile and context React journey | IA-010; IA-009 evidence | 19, inheriting its C3/C7 approval; no further entry |
+| 19 | Personal ownership and protected AR/DNI persistence, plus the shared attempt-budget store | IA-010; IA-004 persistence | **Done 2026-09-06.** 18 (done); C3 and C7 accepted for synthetic data |
+| 20 | Personal signup, own profile and context React journey | IA-010; IA-009 evidence | **Done 2026-09-06.** 19, inheriting its C3/C7 approval; no further entry |
 | 21 | Own sessions and recent reauthentication seam | IA-011; IA-007 sessions | 17 C2/C4; password proof now, Google proof in 23 |
 | 22 | Password recovery and change end to end | IA-011; IA-009 evidence | 21; 17 C4 |
 | 23 | Google login, explicit linking and last authenticator | IA-013; IA-009 evidence | 20–22; 17 C4; live provider activation separate |
@@ -120,6 +120,40 @@ evidence that a budget holds across service instances or restarts — Task 27 ow
 anticipate it. Fingerprint key material is read from configuration with no default; recording it per environment is
 also Task 27's.
 
+## Task 20 — done 2026-09-06
+
+**Visible outcome met:** a person chooses what they are registering, completes a personal signup through the
+delivered confirmation link, or adds a personal context to the account they already have; then reads their profile
+with the document masked and edits the two names it allows. Switching contexts never mixes permissions.
+
+| Step | What happened |
+|---|---|
+| RED | `PersonalJourneyTests` failed to compile against three absent namespaces, then drove the whole slice |
+| GREEN | `PendingPersonalIntent` and its additive `PersonalRegistrationIntent` migration; `RegisterPersonalCommandHandler`; a third branch in `ConfirmEmailCommandHandler`; `CreatePersonalContextCommandHandler`; the profile query and command; `PersonalEndpoints`; `ChooseContextPage`, `PersonalPages` and their routes and navigation |
+| REFACTOR | `PersonalContextFactory` is the one place the graph is built, so the mailed path and the proved path cannot drift apart. The profile page derives its form from the response rather than syncing state in an effect, which is what the lint rule was pointing at |
+
+**Commands run, both from the plan.**
+
+```powershell
+dotnet test tests/Application.FunctionalTests/Application.FunctionalTests.csproj --filter "PersonalJourneyTests|IdentityContextPermissionTests"
+npm test --prefix src/Web/ClientApp -- PersonalPages.test.jsx AppRoutes.test.jsx IdentityProvider.test.jsx
+```
+
+12/12 and the client suite. Whole solution afterwards: Domain 173, Application.Unit 192,
+Infrastructure.Integration 258, Application.Functional 413, browser acceptance 21; client 112 with lint clean;
+Debug and Release builds 0 errors.
+
+**Contracts proved, not just implemented:** an anonymous signup writes one intent and one message and no fingerprint
+for either a known or an unknown address; a delivered confirmation creates the whole graph once and a replay adds
+nothing; an already-registered identity adds Personal with the password hasher never invoked; a duplicate document
+and an identity that already owns a context receive the same `409` with the same detail; the fourth claim in a day
+is `429`; an unreachable budget store is `503` with `Retry-After: 30`; a stranger is told `personal_profile_not_found`
+rather than shown somebody else's; no document, address or password reaches an audit record, an outbox payload or a
+log; and two concurrent creations by one identity leave exactly one context.
+
+**Not built, deliberately.** `correctionAvailable` is `false` and no dispute route exists: IA-REQ-058 needs C4's
+recent proof and lands in Task 26. The screen says so rather than offering a control the product cannot serve.
+
 ### Proposed requirements and the tasks they unblock
 
 Each entry proposes its own requirement numbers. IA-REQ-048 was accepted on 2026-09-06 and is normative in
@@ -155,8 +189,8 @@ dispute — both halves — moves to Task 26, because the owner's half requires 
 before Task 22; Tasks 19 and 20 record a document and never offer a way to correct one. Task 19 stays domain and
 persistence with no public route, and every public flow stays in the task that owns it.
 
-**Taken 2026-09-06: C3 and C7 accepted together, for synthetic data only.** Task 19 is `Ready`, and Task 20 becomes
-`Ready` once Task 19 is verified. Nothing after Task 20 is authorized. C2 and C4 unblock the 21–23 line whenever they
+**Taken 2026-09-06: C3 and C7 accepted together, for synthetic data only.** Tasks 19 and 20 are both done and
+verified, which is the whole of what that acceptance authorized. Nothing after Task 20 is. C2 and C4 unblock the 21–23 line whenever they
 are decided; C5 and C6 depend on C4 and come after. Real personal data, production, and the §14.3 residual were
 withheld and are not part of this acceptance.
 

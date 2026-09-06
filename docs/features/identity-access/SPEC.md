@@ -214,6 +214,10 @@ Routes are contractual drafts; generated OpenAPI becomes the implementation sour
 |---|---|---|
 | `GET /api/identity/antiforgery` | Public bootstrap | `200` request-token DTO + antiforgery cookie |
 | `POST /api/identity/organizations/register` | Public or authenticated + antiforgery | neutral bodyless `202` for every anonymous request, whatever the address and whatever the CUIT, reserving nothing; an authenticated request for an already registered CUIT is `409` Problem Details `registration_conflict`; a submitted email that does not normalize to the session's is `400` `invalid_registration`; a session the server cannot validate is `401` `invalid_session` |
+| `POST /api/identity/personal/register` | Public + antiforgery, `IPublicRequest` | neutral bodyless `202` for every anonymous request, whatever the address, reserving no documentary identity — the sealed document is held in the intent and no fingerprint row is written until the address is proved; `400` `invalid_registration` for malformed input, for a password the policy refuses and for an authenticated caller, who has a route that needs no mailed token; `401` `invalid_session` for a session the server cannot validate |
+| `POST /api/identity/personal` | Authenticated + `identity.profile.manage` (`RequiresTenant=false`) + antiforgery | bodyless `204`; `409` `personal_registration_conflict` for every reason the context cannot be recorded, indistinguishably; `429` `rate_limit_exceeded` + `Retry-After` for an exhausted claim budget; `503` `service_unavailable` + `Retry-After` when the shared budget store is unreachable |
+| `GET /api/identity/profile` | Authenticated + `identity.profile.read` (`RequiresTenant=false`); no subject parameter | `200` `PersonalProfileResponse` carrying `fullName`, `displayName`, `email`, `personalTenantId`, `document { country, type, status, maskedNumber, correctionAvailable }` or `null`, an opaque `version` and `updatedAt`; `404` `personal_profile_not_found` |
+| `PUT /api/identity/profile` | Authenticated + `identity.profile.manage` (`RequiresTenant=false`) + antiforgery | `200` updated `PersonalProfileResponse`; `400` `profile_field_not_editable` naming the rejected member and never its value; `404` `personal_profile_not_found`; `409` `personal_profile_concurrency_conflict` |
 | `POST /api/identity/confirm-email` | Public + token + antiforgery | bodyless `204` when the registration finalizes or already did; `409` Problem Details `registration_conflict` when the CUIT was taken first, when the address gained an identity first, or when the envelope expired — including on replay; `400` `invalid_confirmation` for an unknown or malformed token |
 | `POST /api/identity/sessions` | Public + antiforgery | bodyless `204` + cookie or Problem Details |
 | `DELETE /api/identity/sessions/current` | Authenticated + antiforgery | bodyless `204`; a session already revoked by a parallel request is `401` `invalid_session` and still deletes the cookie; a lost update that never settles is `409` `session_concurrency_conflict` |
@@ -252,9 +256,17 @@ An authentication cookie whose session is rejected is deleted in the same respon
     { "id": "uuid", "type": "Organization", "name": "Acme" }
   ],
   "permissions": ["members.view", "members.invite"],
-  "session": { "expiresAt": "2026-08-31T18:00:00Z", "requiresTwoFactor": false }
+  "session": { "expiresAt": "2026-08-31T18:00:00Z", "requiresTwoFactor": false },
+  "personalData": { "mode": "Synthetic" }
 }
 ```
+
+`displayName` prefers the person's own `PersonProfile.DisplayName` and falls back to the email only for an identity
+that has not told us a name. The email stays the identifier; it is not a name, and showing it where a name belongs
+puts an address on a screen somebody else can see (IA-REQ-050).
+
+`personalData.mode` is the deployment's own, derived by the server and never a request field, so a client can say
+what the deployment is doing with personal data instead of assuming (IA-REQ-056).
 
 The client uses `permissions` only for UX. It always handles `401`, `403`, `404`, `409`, and `429` because the backend reauthorizes every operation. Active tenant state is never derived from React state or a client-supplied header.
 
