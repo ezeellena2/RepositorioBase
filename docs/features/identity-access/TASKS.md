@@ -154,6 +154,38 @@ log; and two concurrent creations by one identity leave exactly one context.
 **Not built, deliberately.** `correctionAvailable` is `false` and no dispute route exists: IA-REQ-058 needs C4's
 recent proof and lands in Task 26. The screen says so rather than offering a control the product cannot serve.
 
+## Task 21 — done 2026-09-06
+
+**Visible outcome met:** an identity sees its own devices, ends one or all the others, and proves itself again
+before doing so. Signing in on a second device no longer signs the first one out.
+
+| Step | What happened |
+|---|---|
+| RED | `SessionManagementTests` 9 of 10 failing, including the coexistence assertion against the old revoke-everything sign-in |
+| GREEN | `SessionReference` and `SessionDeviceLabel`; `RecentIdentityProof` and `IdentitySecurityState` with the additive `IdentityReauthentication` migration; `SessionIssuer` and `SessionLock`; the three session-management requests and `ReauthenticateCommand`; `SessionsPage` |
+| REFACTOR | Four existing tests asserted the behaviour C2 replaced and were rewritten to it, each naming what changed. The race barrier's stage is `Eviction` now, because the cap eviction is the write it interrupts |
+
+**Commands run, both from the plan.**
+
+```powershell
+dotnet test tests/Application.FunctionalTests/Application.FunctionalTests.csproj --filter "SessionManagementTests|ReauthenticationTests|SessionConcurrencyTests|SessionTests"
+npm test --prefix src/Web/ClientApp -- SessionsPage.test.jsx IdentityProvider.test.jsx
+```
+
+102/102 and the client suite. Whole solution afterwards: Domain 173, Application.Unit 192,
+Infrastructure.Integration 258, Application.Functional 431, browser acceptance 21; client 116 with lint clean;
+Debug and Release builds 0 errors.
+
+**Honest about the RED.** `SessionManagementTests` drove the whole slice and failed 9 of 10 first.
+`ReauthenticationTests` did not: it was written after the proof store existed and passed on its first run. It pins
+semantics that file only exercised indirectly — single use, session binding, action binding, expiry, and
+invalidation by the security version — and it is recorded here as coverage rather than as a RED that happened.
+
+**A property of the acceptance suite, not of this change.** `Web.AcceptanceTests` runs against the development
+database and resets nothing, while asserting a cold start the Platform bootstrap will never repeat. It is 21/21 on
+a fresh database and fails on a second run against the same one. That was true before this task; making the suite
+repeatable belongs to Task 28.
+
 ### Proposed requirements and the tasks they unblock
 
 Each entry proposes its own requirement numbers. IA-REQ-048 was accepted on 2026-09-06 and is normative in
