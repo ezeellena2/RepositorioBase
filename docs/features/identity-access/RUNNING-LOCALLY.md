@@ -88,6 +88,43 @@ Two things keep this local. The sender refuses to run outside a Development, Tes
 at start-up rather than at the first message. And the drop folder holds live invitation links in plain text, which
 is a mailbox with no password on it — keep it under a temporary directory and delete it when you are done.
 
+## The journeys you can walk today
+
+Every link below is reachable from the navigation once you are signed in. Each mailed step is a file in the drop
+folder, as described above.
+
+**Register as a person.** `/register` asks which of the two you are registering. `/personal/register` answers the
+same neutral `202` whatever address you type, and the confirmation lands in the drop folder as
+`/confirm-email#token=…`. After confirming, sign in at `/login`.
+
+**Register an organization.** `/organizations/register` is the other branch, with the same neutral answer and the
+same mailed confirmation. **Read the limitation below before you rely on it.**
+
+**Your profile.** `/identity/profile` shows the name, display name and address, and the masked document if one
+was recorded. Only the two names are editable; the document is not, and the correction route is not built.
+
+**Your devices.** `/identity/sessions` lists where you are signed in, marks the one you are using, and ends
+another one or all the others. Both ask for your password first, which buys a single-use server-side proof. Five
+sessions is the cap; a sixth sign-in ends the oldest.
+
+**Your password.** `/identity/password` changes it after the same proof, and signs your other devices out.
+`/credentials/forgot` is the way in when you cannot sign in at all — the reset link arrives in the drop folder as
+`/credentials/reset#token=…`, works once, and issues no session, so you sign in afterwards with what you chose.
+
+**Your sign-in providers.** `/identity/external` links and unlinks Google. It is inert until the section above is
+configured.
+
+### A limitation to know about before you try the organization journey
+
+Registering an organization makes you its `Owner`, and that role is currently created **with no permissions at
+all**. Effective permissions come only from role/permission rows, and nothing grants any to a newly created
+Owner — so a real registered owner cannot invite a member, and `/members/invite` will not appear in the
+navigation. The automated tests do not catch this because each one grants the permissions it needs directly.
+
+Deciding what an Organization owner holds is contract **C5**'s, which is not accepted, so it is not fixed here.
+Until it is, the organization side is registration and sign-in; the member and role administration screens are
+Tasks 24 and 25.
+
 ## Bootstrapping Platform
 
 Platform has no owner until a deployment names one. Nothing is created by default — no administrator, no password.
@@ -210,4 +247,10 @@ npm run build --prefix src/Web/ClientApp
 ```
 
 The acceptance suite starts the whole application, including the frontend, so it is the slowest by a wide margin
-and needs Docker running.
+and needs Docker running. **It also needs a database it has not run against before**: it asserts a cold start that
+the Platform bootstrap never repeats, so it is `21/21` on a fresh database and fails on a second run against the
+same one. Drop and recreate `CleanArchitectureDb` in the `dbserver-*` container between runs. Making the suite
+repeatable is Task 28's. **It also needs a database it has not run against before**: it asserts a cold start that
+the Platform bootstrap never repeats, so it is `21/21` on a fresh database and fails on a second run against the
+same one. Drop and recreate `CleanArchitectureDb` in the `dbserver-*` container between runs. Making the suite
+repeatable is Task 28's.
