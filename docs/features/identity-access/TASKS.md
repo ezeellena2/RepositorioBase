@@ -303,6 +303,33 @@ devices or accounts screens — the `Proof` purpose is built and tested end to e
 starts one, because with a single provider configured every action it would authorize is either unreachable or
 has the mailed reset as a working answer. It becomes worth wiring when a second provider exists.
 
+## Task 23 adversarial review — done 2026-09-06
+
+Four lenses read the shipped provider-login surface for defects a passing test would not show — protocol,
+authorization and linking, persistence and races, leakage and client — and every candidate was then given to a
+separate reader whose job was to refute it. Twelve of the sixteen candidates were refuted. **The four that
+survived were real, and each fix is pinned by a test checked against a reverted fix rather than trusted because
+it went green.**
+
+| Defect | What it cost | Fix |
+|---|---|---|
+| The lock was per identity, the invariant per provider subject | two identities racing one Google account: the loser met `500`, not `external_login_conflict`. The original race test only counted the winners, so it passed over this | `IExternalSubjectLock`, a third advisory space keyed on (provider, subject), taken after the identity lock |
+| A `Proof` round trip asked the provider for nothing | a "recent identity proof" obtained through Google proved an unlocked browser, not a present person | `prompt=login` on the `Proof` challenge, read from the purpose sealed at start |
+| A link audited its session revocations as `password_changed` | an investigation would be told a password changed when none did | the reason is `authenticator_linked` |
+| A callback failure cleared the handoff cookie unconditionally | any stranger posting to the callback path could cancel a round trip somebody else had started | cleared only when the failure names a handoff |
+
+Two more, in the client, were graded cosmetic by the verifier and fixed anyway because the reasoning holds:
+`ExternalReturnPage` chose whether to rotate the antiforgery pair from the `?outcome` query rather than doing it
+after every completion — a mismatch left the transport holding a token whose cookie the server had deleted — and
+the account page announced "your other devices have been signed out" purely because the URL said so. Both now
+report only what they saw the server do. A third, `safeReturnUrl` accepting `/\evil.test` and resolving it to
+`https://evil.test/`, was **confirmed**: the guard rejected a leading `//` but not the backslash the URL parser
+treats the same way. It now resolves the candidate and compares origins, which cannot be spelled around.
+
+The account page also no longer guesses which providers exist: `GET /api/identity/external` reports what the
+deployment configured, so a deployment without a Google client offers nothing instead of spending a password on
+a proof for a round trip that cannot start.
+
 ### Proposed requirements and the tasks they unblock
 
 Each entry proposes its own requirement numbers. IA-REQ-048 was accepted on 2026-09-06 and is normative in

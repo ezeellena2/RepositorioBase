@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using CleanArchitecture.Application.FunctionalTests.Infrastructure;
 using CleanArchitecture.Application.IdentityAccess.Credentials;
 using CleanArchitecture.Application.IdentityAccess.ExternalLogins;
+using CleanArchitecture.Domain.IdentityAccess.Auditing;
 using CleanArchitecture.Domain.IdentityAccess.ExternalLogins;
 using CleanArchitecture.Domain.IdentityAccess.Memberships;
 using CleanArchitecture.Domain.IdentityAccess.Sessions;
@@ -356,6 +357,81 @@ public sealed class GoogleOidcTests : TestBase
         (await LinksOfAsync(identityId)).Count.ShouldBe(1, "removing it would have left nobody able to sign in at all");
     }
 
+    /// <summary>
+    /// A proof obtained through the provider has to prove the person is here, not that the browser is unlocked.
+    /// Without `prompt=login` the provider answers from whatever session it already holds, and the round trip
+    /// proves possession of a device rather than presence of a person (IA-REQ-051).
+    /// </summary>
+    [Test]
+    public async Task A_proof_challenge_asks_the_provider_to_authenticate_the_person_again()
+    {
+        var email = $"prompting-{Guid.NewGuid():N}@example.test";
+        await IdentityHttpHarness.SeedConfirmedUserAsync(email, Password);
+        using var scenario = Scenario();
+        var browser = scenario.Browser();
+        await browser.SignInWithPasswordAsync(email);
+        (await browser.LinkAsync("google-subject-20", email)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        await browser.SignInWithPasswordAsync(email);
+
+        var proof = await browser.StartAsync("proof", new { action = ProofActions.ExternalUnlink });
+        var signIn = await scenario.Browser().StartAsync("login");
+
+        proof.Parameters["prompt"].ToString().ShouldBe("login");
+        signIn.Parameters.ContainsKey("prompt")
+            .ShouldBeFalse("a sign-in is where a provider session is meant to be used, so it asks for nothing extra");
+    }
+
+    [Test]
+    public async Task Linking_a_provider_is_not_audited_as_a_password_change()
+    {
+        var email = $"audited-{Guid.NewGuid():N}@example.test";
+        await IdentityHttpHarness.SeedConfirmedUserAsync(email, Password);
+        using var scenario = Scenario();
+        var elsewhere = scenario.Browser();
+        await elsewhere.SignInWithPasswordAsync(email);
+        var browser = scenario.Browser();
+        await browser.SignInWithPasswordAsync(email);
+
+        (await browser.LinkAsync("google-subject-21", email)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+
+        var revocations = (await TestApp.ListAsync<AuditEvent>())
+            .Where(entry => entry.EventType == "session.revoked")
+            .Select(entry => entry.Metadata["outcome"])
+            .ToArray();
+        revocations.ShouldNotBeEmpty("the other device was signed out, so there is a revocation to describe");
+        revocations.ShouldAllBe(outcome => outcome == "authenticator_linked",
+            "an investigation reading this must not be told a password changed when one did not");
+    }
+
+    /// <summary>
+    /// Anyone can post nonsense to the callback path. Doing so must not delete the handoff cookie a person is in
+    /// the middle of using — that would break somebody else's sign-in from across the internet.
+    /// <para>
+    /// The window that matters is between starting and reaching the provider, because that is the only stretch
+    /// where the cookie is the sole record of which round trip this browser is on. Once the person comes back,
+    /// the callback re-seals it from the protocol's own protected state, so a stray request after that point is
+    /// harmless whatever the handler does — which is why this test stops at the challenge.
+    /// </para>
+    /// </summary>
+    [Test]
+    public async Task A_stray_request_to_the_callback_cannot_cancel_a_round_trip_in_progress()
+    {
+        using var scenario = Scenario();
+        var browser = scenario.Browser();
+        var started = await browser.StartOnlyAsync("login");
+
+        var stray = await browser.StrayCallbackAsync();
+        var challenge = await browser.FollowAsync(started);
+
+        stray.Headers.Location!.ToString().ShouldBe("/external/return?outcome=refused");
+        challenge.Parameters["client_id"].ToString().ShouldBe(ControlledOidcProvider.ClientId,
+            "the person still reaches the provider, because the handoff they started is still theirs");
+
+        var callback = await browser.CallbackAsync(challenge, "google-subject-22", "undisturbed@provider.test", true);
+        callback.Headers.Location!.ToString().ShouldBe("/external/return?outcome=signed_in");
+        (await browser.CompleteAsync()).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+    }
+
     [Test]
     public async Task Two_identities_racing_for_one_provider_account_leave_exactly_one_link()
     {
@@ -377,6 +453,12 @@ public sealed class GoogleOidcTests : TestBase
         answers.Count(answer => answer.StatusCode == HttpStatusCode.NoContent)
             .ShouldBe(1, "the provider account belongs to one identity, and the store's own key is what decides which");
         ((await LinksOfAsync(firstId)).Count + (await LinksOfAsync(secondId)).Count).ShouldBe(1);
+
+        // The loser meets a state the contract names, not an unhandled failure. A 500 here would mean the
+        // uniqueness rule is enforced by the database throwing rather than by this feature answering.
+        var loser = answers.Single(answer => answer.StatusCode != HttpStatusCode.NoContent);
+        loser.StatusCode.ShouldBe(HttpStatusCode.Conflict, await loser.Content.ReadAsStringAsync());
+        (await IdentityHttpHarness.ReadProblemAsync(loser)).GetProperty("code").GetString().ShouldBe("external_login_conflict");
     }
 
     [Test]
@@ -421,6 +503,46 @@ public sealed class GoogleOidcTests : TestBase
         (await TestApp.ListAsync<ExternalAuthorizationRequest>()).Single().Status.ShouldBe(ExternalAuthorizationStatus.Consumed);
     }
 
+    [Test]
+    public async Task The_list_says_which_providers_this_deployment_actually_offers()
+    {
+        var email = $"asking-{Guid.NewGuid():N}@example.test";
+        await IdentityHttpHarness.SeedConfirmedUserAsync(email, Password);
+        using var scenario = Scenario();
+        var browser = scenario.Browser();
+        await browser.SignInWithPasswordAsync(email);
+
+        var configured = await browser.GetAsync("/api/identity/external");
+
+        configured.StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await configured.Content.ReadFromJsonAsync<LinkList>())!.Available.ShouldBe(["Google"]);
+    }
+
+    [Test]
+    public async Task A_deployment_with_no_client_offers_no_provider_rather_than_one_that_cannot_work()
+    {
+        var email = $"unconfigured-{Guid.NewGuid():N}@example.test";
+        await IdentityHttpHarness.SeedConfirmedUserAsync(email, Password);
+
+        // No client id and no secret, so the middleware was never registered. The list has to say so, or a
+        // person spends a password on a proof for a round trip that cannot start.
+        using var harness = IdentityHttpHarness.CreateProductionHarness();
+        var host = $"https://plain-{Guid.NewGuid():N}.localhost";
+        var client = harness.Factory.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions
+        {
+            HandleCookies = true,
+            AllowAutoRedirect = false,
+            BaseAddress = new Uri(host)
+        });
+        var browser = new ProviderBrowser(client, host, scenarioProvider: null);
+        await browser.SignInWithPasswordAsync(email);
+
+        var listed = await browser.GetAsync("/api/identity/external");
+
+        listed.StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await listed.Content.ReadFromJsonAsync<LinkList>())!.Available.ShouldBeEmpty();
+    }
+
     private static OidcScenario Scenario() => new();
 
     private static async Task<ExternalAuthorizationRequest> HandoffAsync() =>
@@ -445,7 +567,7 @@ public sealed class GoogleOidcTests : TestBase
 
     private sealed record LinkRow(string Handle, string Provider, string ProviderEmail, DateTimeOffset LinkedAt);
 
-    private sealed record LinkList(LinkRow[] Items);
+    private sealed record LinkList(LinkRow[] Items, string[] Available);
 
     private sealed record CredentialsRow(bool HasPassword, DateTimeOffset? PasswordUpdatedAt);
 
@@ -504,8 +626,10 @@ public sealed class GoogleOidcTests : TestBase
     }
 
     /// <summary>One browser: its own cookie jar, its own antiforgery pair, its own session.</summary>
-    private sealed class ProviderBrowser(HttpClient client, string host, ControlledOidcProvider provider)
+    private sealed class ProviderBrowser(HttpClient client, string host, ControlledOidcProvider? scenarioProvider)
     {
+        private ControlledOidcProvider provider => scenarioProvider!;
+
         internal string Host { get; } = host;
 
         internal string? LastCode { get; private set; }
@@ -547,20 +671,38 @@ public sealed class GoogleOidcTests : TestBase
             (await CompleteAsync()).StatusCode.ShouldBe(HttpStatusCode.NoContent);
         }
 
-        internal async Task<Challenge> StartAsync(string purpose)
+        /// <summary>Posts to the callback path with nothing the protocol can validate, as a stranger would.</summary>
+        internal async Task<HttpResponseMessage> StrayCallbackAsync()
         {
-            var start = await PostAsync($"/api/identity/external/Google/{purpose}/start", null);
-            start.StatusCode.ShouldBe(HttpStatusCode.OK, await start.Content.ReadAsStringAsync());
-            return await FollowAsync(start);
+            using var request = new HttpRequestMessage(HttpMethod.Post, $"{Host}/api/identity/external/google/callback")
+            {
+                Content = new FormUrlEncodedContent(new Dictionary<string, string> { ["error"] = "access_denied" })
+            };
+            return await client.SendAsync(request);
         }
 
-        private async Task<Challenge> FollowAsync(HttpResponseMessage start)
+        internal async Task<Challenge> StartAsync(string purpose, object? body = null) =>
+            await FollowAsync(await StartOnlyAsync(purpose, body));
+
+        /// <summary>The start without the challenge, for the one test that needs to act between them.</summary>
+        internal async Task<HttpResponseMessage> StartOnlyAsync(string purpose, object? body = null)
+        {
+            var start = await PostAsync($"/api/identity/external/Google/{purpose}/start", body);
+            start.StatusCode.ShouldBe(HttpStatusCode.OK, await start.Content.ReadAsStringAsync());
+            return start;
+        }
+
+        internal async Task<Challenge> FollowAsync(HttpResponseMessage start)
         {
             var uri = (await start.Content.ReadFromJsonAsync<ChallengeBody>())!.AuthorizationRequestUri;
             using var request = new HttpRequestMessage(HttpMethod.Get, $"{Host}{uri}");
             var redirect = await client.SendAsync(request);
             redirect.StatusCode.ShouldBe(HttpStatusCode.Found, "the challenge hands the browser to the provider");
             var location = redirect.Headers.Location!;
+
+            // A relative location means the challenge refused and sent the browser back to the return page. It is
+            // asserted rather than left to throw, because that refusal is a real regression somebody will cause.
+            location.IsAbsoluteUri.ShouldBeTrue($"the challenge went to {location} instead of to the provider");
             return new Challenge(QueryHelpers.ParseQuery(location.Query));
         }
 

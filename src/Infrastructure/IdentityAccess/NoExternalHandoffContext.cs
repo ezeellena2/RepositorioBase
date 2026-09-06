@@ -19,4 +19,6 @@ public sealed class NoExternalHandoffContext : IExternalHandoffContext
     public ExternalAuthorizationPurpose? CurrentPurpose => null;
 
     public bool IsConfigured(string provider) => false;
+
+    public IReadOnlyList<string> Configured => [];
 }

@@ -93,10 +93,16 @@ internal static class GoogleOidcConfiguration
     /// <summary>
     /// Starts the provider leg for the handoff the browser's own cookie names. The identifier travels onward in
     /// the handler's protected properties, so what comes back names a handoff this server chose.
+    /// <para>
+    /// A `Proof` asks the provider for `prompt=login`. Without it the provider answers from whatever session the
+    /// browser already holds there, so the round trip would prove possession of an unlocked device and nothing
+    /// about the person — and a recent identity proof that proves no presence is not a proof (IA-REQ-051).
+    /// </para>
     /// </summary>
-    internal static IResult Challenge(HttpContext context, Guid handoffId)
+    internal static IResult Challenge(HttpContext context, Guid handoffId, ExternalAuthorizationPurpose purpose)
     {
-        var properties = new AuthenticationProperties { RedirectUri = ReturnPath };
+        var properties = new OpenIdConnectChallengeProperties { RedirectUri = ReturnPath };
+        if (purpose == ExternalAuthorizationPurpose.Proof) properties.Prompt = "login";
         properties.Items[HandoffItem] = handoffId.ToString("N");
         return Results.Challenge(properties, [ExternalProviders.Google]);
     }
@@ -147,16 +153,27 @@ internal static class GoogleOidcConfiguration
     private static async Task OnRemoteFailure(RemoteFailureContext context)
     {
         context.HandleResponse();
-        if (ReadHandoff(context.Properties) is { } handoffId) await RejectAsync(context.HttpContext, handoffId);
-        ExternalHandoffCookie.Clear(context.HttpContext);
+
+        // The cookie is cleared only for a failure that names a handoff. Anyone can post nonsense to the callback
+        // path, and clearing unconditionally would let them delete the handoff a person is in the middle of.
+        if (ReadHandoff(context.Properties) is { } handoffId)
+        {
+            await RejectAsync(context.HttpContext, handoffId);
+            ExternalHandoffCookie.Clear(context.HttpContext);
+        }
+
         context.Response.Redirect($"{ReturnPath}?outcome={Refused}");
     }
 
     private static async Task OnAccessDenied(AccessDeniedContext context)
     {
         context.HandleResponse();
-        if (ReadHandoff(context.Properties) is { } handoffId) await RejectAsync(context.HttpContext, handoffId);
-        ExternalHandoffCookie.Clear(context.HttpContext);
+        if (ReadHandoff(context.Properties) is { } handoffId)
+        {
+            await RejectAsync(context.HttpContext, handoffId);
+            ExternalHandoffCookie.Clear(context.HttpContext);
+        }
+
         context.Response.Redirect($"{ReturnPath}?outcome={Refused}");
     }
 
@@ -245,4 +262,7 @@ internal sealed class ExternalHandoffContext(IHttpContextAccessor accessor, ICon
         provider == ExternalProviders.Google
         && !string.IsNullOrWhiteSpace(configuration["IdentityAccess:ExternalLogins:Google:ClientId"])
         && !string.IsNullOrWhiteSpace(configuration["IdentityAccess:ExternalLogins:Google:ClientSecret"]);
+
+    public IReadOnlyList<string> Configured =>
+        IsConfigured(ExternalProviders.Google) ? [ExternalProviders.Google] : [];
 }

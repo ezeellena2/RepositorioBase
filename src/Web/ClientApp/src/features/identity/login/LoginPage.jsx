@@ -9,10 +9,21 @@ import { externalNavigation } from '../externalNavigation';
  * Where a visitor lands after signing in is taken from the query string, so it is treated as untrusted input: a
  * value that is not a same-origin path is discarded rather than followed, which is what stops a crafted link
  * from bouncing someone off-origin the moment they hold a session.
+ *
+ * The question is asked of the URL parser rather than of the spelling, because spelling rules lose. A leading
+ * `//` is the obvious protocol-relative form, but for a special scheme the parser also treats a backslash as a
+ * separator — so `/\evil.test` reads as a path here and resolves to `https://evil.test/` there. Resolving the
+ * candidate against this origin and comparing the result is the only check that cannot be spelled around.
  */
 export function safeReturnUrl(candidate) {
-  if (typeof candidate !== 'string' || !candidate.startsWith('/') || candidate.startsWith('//')) return '/';
-  return candidate;
+  if (typeof candidate !== 'string' || !candidate.startsWith('/')) return '/';
+  try {
+    const origin = window.location.origin;
+    return new URL(candidate, origin).origin === origin ? candidate : '/';
+  } catch {
+    // An unparseable candidate is not a destination.
+    return '/';
+  }
 }
 
 export function LoginPage() {

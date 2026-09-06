@@ -11,9 +11,14 @@ namespace CleanArchitecture.Infrastructure.IdentityAccess;
 /// Provider links over ASP.NET Identity's own <c>AspNetUserLogins</c>.
 /// <para>
 /// Nothing here keeps a second registry of provider accounts. The store's primary key is already
-/// (provider, subject), so "one provider account belongs to one identity" is enforced by the database rather than
-/// by a check this code could race, and the ordinary <see cref="UserManager{T}"/> writes participate in whatever
+/// (provider, subject), so "one provider account belongs to one identity" is a database rule rather than one this
+/// code could drift from, and the ordinary <see cref="UserManager{T}"/> writes participate in whatever
 /// transaction the caller opened, because the store shares the request's <c>DbContext</c>.
+/// </para>
+/// <para>
+/// That database rule is the backstop and not the decision. PostgreSQL refuses a duplicate by raising, and the
+/// transaction is aborted from that moment — too late to record a refusal. So callers take
+/// <c>IExternalSubjectLock</c> and decide by reading, and nothing here is expected to meet the unique key.
 /// </para>
 /// <para>
 /// The display name column carries the address the provider asserted at the time of linking. It is what the
@@ -58,8 +63,10 @@ public sealed class ExternalIdentityService(UserManager<ApplicationUser> userMan
         var user = await userManager.FindByIdAsync(identityId.ToString());
         if (user is null) return false;
 
-        // A refusal here is the unique key doing its job: the subject is already somebody's. It is answered as a
-        // conflict rather than thrown, because that is a state the caller is expected to meet.
+        // This is the last line of defence, not the first. A duplicate subject is refused by the database, and
+        // the database refuses it by throwing inside a transaction it then aborts — which is why the callers
+        // take `IExternalSubjectLock` first and decide by reading. What a false here reports is a validator
+        // saying no, which is a state the caller is expected to meet.
         var added = await userManager.AddLoginAsync(user, new UserLoginInfo(provider, subject, providerEmail));
         return added.Succeeded;
     }

@@ -1,14 +1,17 @@
 using CleanArchitecture.Application.Common.Models;
 using CleanArchitecture.Application.Common.Security;
 using CleanArchitecture.Application.IdentityAccess.Authorization;
+using CleanArchitecture.Domain.IdentityAccess.ExternalLogins;
 
 namespace CleanArchitecture.Application.IdentityAccess.ExternalLogins;
 
 /// <summary>
-/// Where the browser must go next, and which handoff it is. The URI is our own origin — the middleware issues the
-/// provider challenge — and the identifier is for the endpoint to seal into a cookie, never for the response body.
+/// Where the browser must go next, which handoff it is, and what for. The URI is our own origin — the middleware
+/// issues the provider challenge — and the identifier and purpose are for the endpoint to seal into a cookie,
+/// never for the response body. The purpose is sealed from the start rather than only by the callback, because
+/// the challenge itself has to differ: a proof must ask the provider to authenticate the person again.
 /// </summary>
-public sealed record ExternalAuthorizationHandoff(Guid HandoffId, string AuthorizationRequestUri);
+public sealed record ExternalAuthorizationHandoff(Guid HandoffId, ExternalAuthorizationPurpose Purpose, string AuthorizationRequestUri);
 
 /// <summary>Public: somebody signing in with a provider has no session yet, which is the point of it.</summary>
 public sealed record StartExternalLoginCommand(string Provider) : IRequest<Result<ExternalAuthorizationHandoff>>, IPublicRequest;
@@ -35,7 +38,7 @@ public sealed record CompleteExternalLinkCommand : IRequest<Result>;
 public sealed record CompleteExternalProofCommand : IRequest<Result>;
 
 [Authorize(Permissions.IdentityExternalManage, false)]
-public sealed record ListExternalLoginsQuery : IRequest<Result<IReadOnlyList<ExternalLinkView>>>;
+public sealed record ListExternalLoginsQuery : IRequest<Result<ExternalLinkList>>;
 
 [Authorize(Permissions.IdentityExternalManage, false)]
 public sealed record UnlinkExternalLoginCommand(string Provider) : IRequest<Result>, ISensitiveRequest;

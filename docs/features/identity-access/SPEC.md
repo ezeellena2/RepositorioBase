@@ -780,6 +780,25 @@ the one person who would notice. An identity that has never changed its password
 creation date is not a change date. The route takes no subject parameter, so it can never be asked about somebody
 else.
 
+**Corrections from the adversarial review, 2026-09-06.** Four defects the tests did not catch, each now pinned by
+a test verified against a reverted fix:
+
+- *One provider account is claimed under its own lock, not under the identity's.* The identity lock serializes
+  everything one person does and cannot serialize two different identities racing for one provider account: both
+  read the subject as unowned, and the unique key then refuses the loser by raising inside a transaction it
+  aborts — too late to record the refusal, so the loser met `500` instead of `external_login_conflict`.
+  `IExternalSubjectLock` is a third advisory space keyed on (provider, subject), taken by the `Login` and `Link`
+  completions, always after the identity lock so the order is the same everywhere.
+- *A `Proof` challenge asks the provider for `prompt=login`.* Without it the provider answers from whatever
+  session the browser already holds there, so the round trip proved possession of an unlocked device rather than
+  presence of a person — which is not what IA-REQ-051 means by a recent identity proof. The purpose is sealed
+  into the handoff cookie from the start, not only by the callback, so the challenge reads it from there and
+  never from the route.
+- *Linking is audited as `authenticator_linked`.* The sessions a link revokes were being recorded with the
+  reason `password_changed`, telling an investigation that a password changed when none did.
+- *A callback failure clears the handoff cookie only when it names a handoff.* Clearing unconditionally let any
+  stranger posting to the callback path delete the cookie of a round trip somebody else had started.
+
 **Not built here.** The `Recovery` purpose and its two routes are C6's and Task 26's.
 
 | Contended write | Winner | Loser's answer |

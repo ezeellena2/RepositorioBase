@@ -79,8 +79,10 @@ export function createIdentityClient(transport = createApiTransport()) {
     // One completion, whatever the round trip was for. Which one it was is in a cookie the server sealed, so
     // there is nothing here for a caller to choose.
     completeExternalRoundTrip: () => send('/api/identity/external/complete', { method: 'POST' }),
+    // `available` is the deployment's own answer about which providers exist. Only the server knows: one with
+    // no client configured has no middleware and no route that can succeed.
     listExternalLinks: () => send('/api/identity/external', {
-      expect: ['items'],
+      expect: ['items', 'available'],
     }),
     unlinkExternal: (provider) => send(`/api/identity/external/${encodeURIComponent(provider)}`, { method: 'DELETE' }),
 

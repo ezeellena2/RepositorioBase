@@ -4,8 +4,6 @@ import { useIdentity } from '../context/IdentityProvider';
 import { ProblemMessage } from '../ProblemMessage';
 import { externalNavigation } from '../externalNavigation';
 
-/** The providers this application offers. One today; the page is written as a list because that is what it is. */
-export const PROVIDERS = [{ id: 'Google', label: 'Google' }];
 
 /**
  * A person's provider accounts (IA-REQ-052, BR-ID-005/006).
@@ -19,6 +17,7 @@ export function ExternalAccountsPage() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const [links, setLinks] = useState(null);
+  const [available, setAvailable] = useState([]);
   const [hasPassword, setHasPassword] = useState(true);
   const [problem, setProblem] = useState(null);
   const [password, setPassword] = useState('');
@@ -34,6 +33,7 @@ export function ExternalAccountsPage() {
         identity.client.getOwnCredentials(),
       ]);
       setLinks(listed.items);
+      setAvailable(listed.available);
       setHasPassword(credentials.hasPassword);
       setProblem(null);
     } catch (error) {
@@ -83,14 +83,16 @@ export function ExternalAccountsPage() {
     <section aria-labelledby="external-heading">
       <h1 id="external-heading">Sign-in providers</h1>
       <ProblemMessage problem={problem} />
-      {outcome === 'linked' && <p role="status">That account is linked. Your other devices have been signed out.</p>}
+      {/* Only the refusal is taken from the address bar, and only because it claims nothing: it says a round
+          trip did not happen. What did happen is never announced from a query parameter — the list below is
+          loaded from the server, and it is the only thing on this page that reports a link. */}
       {outcome === 'refused' && <p role="alert">That did not complete. Nothing was changed.</p>}
       <p>
         Linking is something you do from here, never something that happens because an address matched. You always
         keep at least one way to sign in.
       </p>
 
-      {hasPassword && (
+      {hasPassword && available.length > 0 && (
         <>
           <label htmlFor="external-password">Password</label>
           <input
@@ -103,31 +105,33 @@ export function ExternalAccountsPage() {
         </>
       )}
 
-      {links === null ? <p role="status">Loading…</p> : (
+      {links === null ? <p role="status">Loading…</p> : available.length === 0 ? (
+        <p>This deployment has no sign-in provider configured, so there is nothing to link here yet.</p>
+      ) : (
         <ul>
-          {PROVIDERS.map((provider) => {
-            const row = linked(provider.id);
+          {available.map((provider) => {
+            const row = linked(provider);
 
             // The last way in is the server's rule and the server enforces it; saying so here only spares
             // somebody a button whose one possible answer is a refusal.
             const isOnlyWayIn = row !== undefined && !hasPassword && links.length === 1;
             return (
-              <li key={provider.id}>
-                <span>{provider.label}</span>
+              <li key={provider}>
+                <span>{provider}</span>
                 {row ? (
                   <>
                     <span> — {row.providerEmail}</span>
                     {isOnlyWayIn ? (
                       <span> — this is your only way to sign in. Set a password before you unlink it.</span>
                     ) : (
-                      <button type="button" disabled={isBusy} onClick={() => unlink(provider.id)}>
-                        Unlink {provider.label}
+                      <button type="button" disabled={isBusy} onClick={() => unlink(provider)}>
+                        Unlink {provider}
                       </button>
                     )}
                   </>
                 ) : (
-                  <button type="button" disabled={isBusy} onClick={() => link(provider.id)}>
-                    Link {provider.label}
+                  <button type="button" disabled={isBusy} onClick={() => link(provider)}>
+                    Link {provider}
                   </button>
                 )}
               </li>
@@ -157,29 +161,34 @@ export function ExternalReturnPage() {
   // `invalid_external_login` against a round trip that already succeeded and show a failure that is not one.
   const settled = useRef(false);
 
+  // Cancellation is a ref rather than a closure variable because this effect re-runs when the identity context
+  // settles. A per-run flag would be torn down by that re-render while the completion was still in flight,
+  // leaving the person on "One moment…" forever with no way to report what happened.
+  const mounted = useRef(true);
+  useEffect(() => () => { mounted.current = false; }, []);
+
   useEffect(() => {
-    let cancelled = false;
-    if (settled.current) return undefined;
+    if (settled.current) return;
     settled.current = true;
     (async () => {
       if (outcome !== 'signed_in' && outcome !== 'linked' && outcome !== 'proved') {
-        if (!cancelled) navigate('/identity/external?outcome=refused', { replace: true });
+        if (mounted.current) navigate('/identity/external?outcome=refused', { replace: true });
         return;
       }
 
       try {
         await identity.client.completeExternalRoundTrip();
-        if (outcome === 'signed_in') {
-          // A new session means a new antiforgery pair, exactly as a password sign-in does.
-          await identity.client.bootstrapAntiforgery();
-        }
+
+        // Always, never conditioned on the slug. The server decides what the round trip did from the cookie it
+        // sealed, and a sign-in rotates the pair; deciding from the address bar would leave the transport
+        // holding a token whose cookie the server had just deleted, and refuse the very next mutation.
+        await identity.client.bootstrapAntiforgery();
         await identity.reload();
-        if (!cancelled) navigate(outcome === 'signed_in' ? '/identity' : '/identity/external?outcome=linked', { replace: true });
+        if (mounted.current) navigate(outcome === 'signed_in' ? '/identity' : '/identity/external', { replace: true });
       } catch (error) {
-        if (!cancelled) setProblem(error.problem ?? { code: 'unexpected' });
+        if (mounted.current) setProblem(error.problem ?? { code: 'unexpected' });
       }
     })();
-    return () => { cancelled = true; };
   }, [identity, navigate, outcome]);
 
   return (

@@ -13,7 +13,8 @@ const renderAt = (page, path = '/identity/external') => render(
   <MemoryRouter initialEntries={[path]}><IdentityProvider>{page}</IdentityProvider></MemoryRouter>
 );
 
-const linksAre = (rows) => http.get('/api/identity/external', () => HttpResponse.json({ items: rows }));
+const linksAre = (rows, available = ['Google']) =>
+  http.get('/api/identity/external', () => HttpResponse.json({ items: rows, available }));
 
 const credentialsAre = (hasPassword) =>
   http.get('/api/identity/credentials', () => HttpResponse.json({ hasPassword, passwordUpdatedAt: null }));
@@ -122,10 +123,29 @@ describe('external accounts page', () => {
     expect(screen.queryByLabelText('Password')).not.toBeInTheDocument();
   });
 
+  /**
+   * Whether a provider exists at all is a server fact: with no client configured its middleware is never
+   * registered and every route refuses. Offering it anyway means a person types a password, buys a real proof,
+   * and only then learns it was impossible.
+   */
+  it('offers nothing, and asks for nothing, when the deployment configured no provider', async () => {
+    server.use(antiforgery(), contextIs(signedInContext()));
+    server.use(credentialsAre(true), linksAre([], []));
+    server.use(http.post('/api/identity/credentials/reauthenticate', () => {
+      throw new Error('no password may be spent for a provider the deployment does not have');
+    }));
+
+    renderAt(<ExternalAccountsPage />);
+
+    expect(await screen.findByText(/no sign-in provider/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Link Google' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Password')).not.toBeInTheDocument();
+  });
+
   it('unlinks with a proof and stops showing the provider', async () => {
     let remaining = [{ provider: 'Google', providerEmail: 'ana@provider.test' }];
     server.use(antiforgery(), contextIs(signedInContext()));
-    server.use(credentialsAre(true), http.get('/api/identity/external', () => HttpResponse.json({ items: remaining })));
+    server.use(credentialsAre(true), http.get('/api/identity/external', () => HttpResponse.json({ items: remaining, available: ['Google'] })));
     server.use(http.post('/api/identity/credentials/reauthenticate', () => new HttpResponse(null, { status: 204 })));
     server.use(http.delete('/api/identity/external/Google', () => {
       remaining = [];
@@ -188,6 +208,40 @@ describe('external return page', () => {
     renderAt(<ExternalReturnPage />, '/external/return?outcome=signed_in');
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/could not be completed/i);
+  });
+
+  /**
+   * The slug is written by the server's own redirect, but it arrives in a URL anybody can craft, while the
+   * server decides what the completion really did from a cookie it sealed. So the page must not report a
+   * security event it did not observe, and must not skip the antiforgery rotation on the strength of a word in
+   * the address bar -- a stale pair refuses the very next mutation.
+   */
+  it('rotates the antiforgery pair after any completion, whatever the address bar says', async () => {
+    const order = [];
+    server.use(http.get('/api/identity/antiforgery', () => {
+      order.push('antiforgery');
+      return HttpResponse.json({ requestToken: `request-token-${order.length}` });
+    }));
+    server.use(contextIs(signedInContext()));
+    server.use(http.post('/api/identity/external/complete', () => {
+      order.push('complete');
+      return new HttpResponse(null, { status: 204 });
+    }));
+
+    renderAt(<ExternalReturnPage />, '/external/return?outcome=linked');
+
+    await waitFor(() => expect(order).toContain('complete'));
+    await waitFor(() => expect(order.slice(order.indexOf('complete'))).toContain('antiforgery'));
+  });
+
+  it('claims nothing about linking that it did not see the server do', async () => {
+    server.use(antiforgery(), contextIs(signedInContext()));
+    server.use(credentialsAre(true), linksAre([]));
+
+    renderAt(<ExternalAccountsPage />, '/identity/external?outcome=linked');
+
+    await screen.findByRole('button', { name: 'Link Google' });
+    expect(screen.queryByText(/other devices have been signed out/i)).not.toBeInTheDocument();
   });
 
   it('completes nothing at all when the provider leg was refused', async () => {

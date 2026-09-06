@@ -99,12 +99,15 @@ internal static class ExternalLoginEndpoints
         if (ExternalProviders.Canonical(provider) is not { } canonical
             || !handoffs.IsConfigured(canonical)
             || leg is not ("login" or "link" or "proof")
-            || handoffs.Current is not { } handoffId)
+            || handoffs.Current is not { } handoffId
+            || handoffs.CurrentPurpose is not { } purpose)
         {
             return Results.Redirect("/external/return?outcome=refused");
         }
 
-        return GoogleOidcConfiguration.Challenge(context, handoffId);
+        // The purpose comes from the sealed cookie, never from `leg`. What the challenge asks the provider for
+        // differs by purpose, so reading it from a route value would let a caller ask for the weaker one.
+        return GoogleOidcConfiguration.Challenge(context, handoffId, purpose);
     }
 
     /// <summary>
@@ -150,9 +153,9 @@ internal static class ExternalLoginEndpoints
     {
         var result = await sender.Send(new ListExternalLoginsQuery(), context.RequestAborted);
         return result.IsSuccess
-            ? Results.Ok(new ExternalLinksResponse(result.Value!
-                .Select(link => new ExternalLinkResponse(link.Handle, link.Provider, link.ProviderEmail, link.LinkedAt))
-                .ToArray()))
+            ? Results.Ok(new ExternalLinksResponse(
+                result.Value!.Items.Select(link => new ExternalLinkResponse(link.Handle, link.Provider, link.ProviderEmail, link.LinkedAt)).ToArray(),
+                result.Value.Available))
             : problems.ToHttpResult(result.Error!);
     }
 
@@ -176,7 +179,7 @@ internal static class ExternalLoginEndpoints
     private static IResult Handoff(HttpContext context, ApiProblemDetailsMapper problems, CleanArchitecture.Application.Common.Models.Result<ExternalAuthorizationHandoff> result)
     {
         if (result.IsFailure) return problems.ToHttpResult(result.Error!);
-        ExternalHandoffCookie.Seal(context, result.Value!.HandoffId);
+        ExternalHandoffCookie.Seal(context, result.Value!.HandoffId, result.Value.Purpose);
         context.Response.Headers.CacheControl = "no-store";
         return Results.Ok(new ExternalChallengeResponse(result.Value.AuthorizationRequestUri));
     }
@@ -193,4 +196,4 @@ public sealed record ExternalProofRequest(string Action);
 
 public sealed record ExternalLinkResponse(string Handle, string Provider, string ProviderEmail, DateTimeOffset LinkedAt);
 
-public sealed record ExternalLinksResponse(IReadOnlyList<ExternalLinkResponse> Items);
+public sealed record ExternalLinksResponse(IReadOnlyList<ExternalLinkResponse> Items, IReadOnlyList<string> Available);

@@ -8,6 +8,12 @@ namespace CleanArchitecture.Application.IdentityAccess.ExternalLogins;
 public sealed record ExternalLinkView(string Handle, string Provider, string ProviderEmail, DateTimeOffset LinkedAt);
 
 /// <summary>
+/// What this identity has linked, and what this deployment offers to link. The second half is here because only
+/// the server knows it: a provider with no client configured has no middleware and no route that can succeed.
+/// </summary>
+public sealed record ExternalLinkList(IReadOnlyList<ExternalLinkView> Items, IReadOnlyList<string> Available);
+
+/// <summary>
 /// The provider-link half of the identity boundary, over ASP.NET Identity's own `AspNetUserLogins` rather than a
 /// second account registry: its provider-key uniqueness is already the rule that stops one subject being owned by
 /// two identities, and duplicating it would mean two rules that can disagree.

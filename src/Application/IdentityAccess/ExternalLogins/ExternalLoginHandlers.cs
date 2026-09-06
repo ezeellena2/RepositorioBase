@@ -29,6 +29,29 @@ public interface IExternalHandoffContext
 
     /// <summary>The provider names this deployment will start a challenge for.</summary>
     bool IsConfigured(string provider);
+
+    /// <summary>
+    /// All of them, so a screen can offer what exists instead of guessing. A client that guessed would offer a
+    /// provider this deployment has no client for, and buy a password proof before finding out.
+    /// </summary>
+    IReadOnlyList<string> Configured { get; }
+}
+
+/// <summary>
+/// Serializes the round trips that claim one provider account, whoever is claiming it.
+/// <para>
+/// It is deliberately not the session lock. That one is keyed on the identity, so two different identities
+/// racing for the same provider account never meet, and the database unique key then refuses the loser by
+/// throwing, in a transaction too far gone to record the refusal.
+/// </para>
+/// </summary>
+public interface IExternalSubjectLock
+{
+    /// <summary>
+    /// Takes the lock inside the ambient transaction, or answers <see langword="false"/> when the bounded wait
+    /// elapses, which the caller answers as a retryable 429 and never as a decision about the subject.
+    /// </summary>
+    Task<bool> TryAcquireAsync(string provider, string subject, CancellationToken cancellationToken);
 }
 
 internal static class ExternalHandoff
@@ -62,7 +85,7 @@ public sealed class StartExternalLoginCommandHandler(
             context.ExternalAuthorizationRequests.Add(handoff);
             context.AuditEvents.Add(AuditEvent.CreateSessionEvent(null, null, "identity.external.login.started", AuditCorrelation.Current(), "started"));
             await context.SaveChangesAsync(ct);
-            return Result<ExternalAuthorizationHandoff>.Success(new ExternalAuthorizationHandoff(handoff.Id, ExternalHandoff.ChallengeUri(request.Provider, "login")));
+            return Result<ExternalAuthorizationHandoff>.Success(new ExternalAuthorizationHandoff(handoff.Id, ExternalAuthorizationPurpose.Login, ExternalHandoff.ChallengeUri(request.Provider, "login")));
         }, cancellationToken);
     }
 }
@@ -102,7 +125,7 @@ public sealed class StartExternalLinkCommandHandler(
                 request.Provider, ExternalAuthorizationPurpose.Link, identityId, currentSession.SessionId.Value, null, timeProvider.GetUtcNow(), ExternalHandoff.Lifetime);
             context.ExternalAuthorizationRequests.Add(handoff);
             await context.SaveChangesAsync(ct);
-            return Result<ExternalAuthorizationHandoff>.Success(new ExternalAuthorizationHandoff(handoff.Id, ExternalHandoff.ChallengeUri(request.Provider, "link")));
+            return Result<ExternalAuthorizationHandoff>.Success(new ExternalAuthorizationHandoff(handoff.Id, ExternalAuthorizationPurpose.Link, ExternalHandoff.ChallengeUri(request.Provider, "link")));
         }, cancellationToken);
     }
 }
@@ -136,7 +159,7 @@ public sealed class StartExternalProofCommandHandler(
                 request.Provider, ExternalAuthorizationPurpose.Proof, identityId, currentSession.SessionId.Value, request.Action, timeProvider.GetUtcNow(), ExternalHandoff.Lifetime);
             context.ExternalAuthorizationRequests.Add(handoff);
             await context.SaveChangesAsync(ct);
-            return Result<ExternalAuthorizationHandoff>.Success(new ExternalAuthorizationHandoff(handoff.Id, ExternalHandoff.ChallengeUri(request.Provider, "proof")));
+            return Result<ExternalAuthorizationHandoff>.Success(new ExternalAuthorizationHandoff(handoff.Id, ExternalAuthorizationPurpose.Proof, ExternalHandoff.ChallengeUri(request.Provider, "proof")));
         }, cancellationToken);
     }
 }
@@ -147,6 +170,7 @@ public sealed class CompleteExternalLoginCommandHandler(
     IExternalHandoffContext handoffs,
     IExternalIdentityService external,
     IIdentityAccountService identities,
+    IExternalSubjectLock subjectLock,
     ISessionIssuer issuer,
     TimeProvider timeProvider) : IRequestHandler<CompleteExternalLoginCommand, Result<CompletedExternalLogin>>
 {
@@ -164,6 +188,12 @@ public sealed class CompleteExternalLoginCommandHandler(
                 await context.SaveChangesAsync(ct);
                 return Result<CompletedExternalLogin>.Failure(IdentityAccessErrors.InvalidExternalLogin());
             }
+
+            // Taken before the subject is read, so what the read says is still true when the write happens. A
+            // first sign-in creates an identity for this subject, and two of them racing would otherwise both
+            // find it unowned.
+            if (!await subjectLock.TryAcquireAsync(handoff.Provider, handoff.Subject!, ct))
+                return Result<CompletedExternalLogin>.Failure(IdentityAccessErrors.SessionLockUnavailable());
 
             var linked = await external.FindIdentityBySubjectAsync(handoff.Provider, handoff.Subject!, ct);
             if (linked is null)
@@ -228,6 +258,7 @@ public sealed class CompleteExternalLinkCommandHandler(
     IIdentityAccountService identities,
     IRecentIdentityProofStore proofs,
     ISessionLock identityLock,
+    IExternalSubjectLock subjectLock,
     ICurrentSession currentSession,
     TimeProvider timeProvider) : IRequestHandler<CompleteExternalLinkCommand, Result>
 {
@@ -254,6 +285,12 @@ public sealed class CompleteExternalLinkCommandHandler(
                 await context.SaveChangesAsync(ct);
                 return Result.Failure(IdentityAccessErrors.InvalidExternalLogin());
             }
+
+            // Always after the identity lock, never before: one order everywhere is what keeps two callers from
+            // waiting on each other. Without it two identities claiming one provider account both read it as
+            // unowned, and the loser meets the database exception instead of this feature's conflict.
+            if (!await subjectLock.TryAcquireAsync(handoff.Provider, handoff.Subject!, ct))
+                return Result.Failure(IdentityAccessErrors.SessionLockUnavailable());
 
             var owner = await external.FindIdentityBySubjectAsync(handoff.Provider, handoff.Subject!, ct);
             if (owner == identityId)
@@ -292,7 +329,7 @@ public sealed class CompleteExternalLinkCommandHandler(
             // Linking is an authenticator change, so every outstanding proof dies with it and the other sessions
             // go: somebody who added a way into the account should not leave older sessions untouched.
             await proofs.AdvanceVersionAsync(identityId, ct);
-            await CredentialSessionEffects.RevokeEveryLiveSessionAsync(context, identityId, currentSession.SessionId, now, "password_changed", ct);
+            await CredentialSessionEffects.RevokeEveryLiveSessionAsync(context, identityId, currentSession.SessionId, now, "authenticator_linked", ct);
             context.AuditEvents.Add(AuditEvent.CreateSessionEvent(identityId, currentSession.SessionId?.Value, "identity.external.linked", AuditCorrelation.Current(), "linked"));
             await context.SaveChangesAsync(ct);
             return Result.Success();
@@ -353,15 +390,17 @@ public sealed class CompleteExternalProofCommandHandler(
 
 public sealed class ListExternalLoginsQueryHandler(
     IExternalIdentityService external,
-    ICurrentSession currentSession) : IRequestHandler<ListExternalLoginsQuery, Result<IReadOnlyList<ExternalLinkView>>>
+    IExternalHandoffContext handoffs,
+    ICurrentSession currentSession) : IRequestHandler<ListExternalLoginsQuery, Result<ExternalLinkList>>
 {
-    public async Task<Result<IReadOnlyList<ExternalLinkView>>> Handle(ListExternalLoginsQuery request, CancellationToken cancellationToken)
+    public async Task<Result<ExternalLinkList>> Handle(ListExternalLoginsQuery request, CancellationToken cancellationToken)
     {
         if (currentSession.IsInvalid || currentSession.IdentityId is null)
-            return Result<IReadOnlyList<ExternalLinkView>>.Failure(IdentityAccessErrors.InvalidSession());
+            return Result<ExternalLinkList>.Failure(IdentityAccessErrors.InvalidSession());
 
-        return Result<IReadOnlyList<ExternalLinkView>>.Success(
-            await external.ListAsync(currentSession.IdentityId.Value, cancellationToken));
+        return Result<ExternalLinkList>.Success(new ExternalLinkList(
+            await external.ListAsync(currentSession.IdentityId.Value, cancellationToken),
+            handoffs.Configured));
     }
 }
 
