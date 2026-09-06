@@ -396,6 +396,12 @@ AppHost omits the separate worker for that local configuration. Local folder del
 Development/Test/Testing, and functional tests that do not configure a drop do not start this poller. Delivery,
 retry and settlement rules remain in the dispatcher. Review follow-up L1 records interrupted local-file handling.
 
+**Closed 2026-09-06.** `Invitation.Issue` and `Reissue` now have direct tests for the default
+`VersionedTokenHash` — the one value the struct cannot refuse at its own factory, because nothing was called to
+make it. Both were checked by removing the aggregate's guard and watching them fail, so they are evidence rather
+than decoration. This was the plan's Task 25 REFACTOR bullet, and it needed no contract: the guard already
+existed and only its coverage was missing.
+
 Historical harness observations (not fresh verification results):
 
 - The Aspire PostgreSQL fixture has been reported to time out on a cold first run of `Web.AcceptanceTests` and to

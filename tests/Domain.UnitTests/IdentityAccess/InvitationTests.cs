@@ -323,6 +323,38 @@ public sealed class InvitationTests
     /// Reissuing to the same hash would extend the window while leaving the previous token usable, which is the
     /// opposite of what a reissue is for. A test that always supplies a fresh hash cannot see this.
     /// </summary>
+    /// <summary>
+    /// The uninitialized struct is the one value <see cref="VersionedTokenHash"/> cannot refuse at its own
+    /// factory, because nothing was called to make it. So the aggregate refuses it, and these two are the direct
+    /// evidence of that: an invitation holding it would be one whose token can never be verified and whose row
+    /// would collide with every other such row on the unique index.
+    /// </summary>
+    [Test]
+    public void Issue_refuses_the_token_hash_nobody_computed()
+    {
+        var tenant = Organization();
+        var role = Role.Create(tenant, "member");
+
+        var failure = Should.Throw<ArgumentException>(
+            () => Invitation.Issue(tenant, "ana@example.test", [role], default, Now, Now.AddDays(7)));
+
+        failure.ParamName.ShouldBe("tokenHash");
+    }
+
+    [Test]
+    public void Reissue_refuses_the_token_hash_nobody_computed_and_changes_nothing()
+    {
+        var invitation = Pending(out var tenant);
+
+        var failure = Should.Throw<ArgumentException>(
+            () => invitation.Reissue(tenant, default, Now.AddDays(1), Now.AddDays(8)));
+
+        failure.ParamName.ShouldBe("tokenHash");
+        invitation.TokenHash.ShouldBe(Hash, "the invitation keeps the token it had");
+        invitation.ExpiresAt.ShouldBe(Now.AddDays(7), "and the window it had, so a refused reissue extends nothing");
+        invitation.Status.ShouldBe(InvitationStatus.Pending);
+    }
+
     [Test]
     public void Reissue_must_actually_rotate_the_token()
     {
