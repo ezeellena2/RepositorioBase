@@ -186,6 +186,41 @@ database and resets nothing, while asserting a cold start the Platform bootstrap
 a fresh database and fails on a second run against the same one. That was true before this task; making the suite
 repeatable belongs to Task 28.
 
+## Task 22 — done 2026-09-06
+
+**Visible outcome met:** a person who cannot sign in asks for a link from the sign-in screen, follows the one that
+is actually delivered, and chooses a new password. A person who can sign in changes it from their account after
+proving it is still them.
+
+| Step | What happened |
+|---|---|
+| RED | `PasswordLifecycleTests` did not compile against the absent `Credentials` domain slice, then drove every case |
+| GREEN | `PasswordResetRequest` with the additive `PasswordRecovery` migration and its one-live-link partial index; `IdentityCredentialService` over ASP.NET Identity's hasher and validators; the recovery, reset and change handlers; `PasswordRecoveryDeliveryHandler`; `PasswordEndpoints`; the three React pages and the sign-in link |
+| REFACTOR | `CredentialSessionEffects` is the one place a credential change touches sessions, because the reset and the change differ only in which session survives |
+
+**Commands run, all three from the plan.**
+
+```powershell
+dotnet test tests/Application.FunctionalTests/Application.FunctionalTests.csproj --filter "PasswordLifecycleTests|SessionConcurrencyTests"
+dotnet test tests/Infrastructure.IntegrationTests/Infrastructure.IntegrationTests.csproj --filter OutboxDeliveryTests
+npm test --prefix src/Web/ClientApp -- PasswordPages.test.jsx
+```
+
+9/9 plus the session races, 28/28, and 5/5. Whole solution afterwards: Domain 173, Application.Unit 192,
+Infrastructure.Integration 259, Application.Functional 440, browser acceptance 21; client 121 with lint clean;
+Debug and Release builds 0 errors.
+
+**Contracts proved:** a recovery request answers the same for an address with an account and one without, and only
+the first writes anything; the delivered link sets the password, revokes every session and issues none; a spent
+link answers `invalid_credential_token`; asking again kills the older link rather than leaving two that work; a
+change spends its proof, revokes the others, rotates the acting session into a new row and signs the caller into
+it; a refused password changes nothing; and no token, address or password reaches a payload, an audit record or a
+log.
+
+**Named limitation.** The "recovering a credential lifts no restriction" case is proved against lockout, the
+restriction that exists today. Administrative suspension is C6's contract and Task 26's work, so the stronger form
+of that assertion is not claimed here.
+
 ### Proposed requirements and the tasks they unblock
 
 Each entry proposes its own requirement numbers. IA-REQ-048 was accepted on 2026-09-06 and is normative in
