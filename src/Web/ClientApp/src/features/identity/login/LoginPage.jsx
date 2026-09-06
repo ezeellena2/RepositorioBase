@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Navigate, useLocation, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useLocation, useSearchParams } from 'react-router-dom';
 import { useIdentity } from '../context/IdentityProvider';
 import { ProblemMessage } from '../ProblemMessage';
 import { useSubmit } from '../useSubmit';
@@ -38,6 +38,7 @@ export function LoginPage() {
         <input id="login-password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required />
         <button type="submit" disabled={isBusy}>Sign in</button>
       </form>
+      <p><Link to="/credentials/forgot">Forgot your password?</Link></p>
     </section>
   );
 }

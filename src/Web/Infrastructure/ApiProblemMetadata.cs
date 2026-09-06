@@ -52,6 +52,9 @@ public static class ApiProblemMetadata
 
     public static readonly ApiProblemContract EmailConfirmationRequired = new(StatusCodes.Status403Forbidden, "email_confirmation_required");
 
+    public static readonly ApiProblemContract InvalidCredentialToken = new(StatusCodes.Status400BadRequest, "invalid_credential_token");
+
+
     public static RouteHandlerBuilder WithApiProblemDetails(this RouteHandlerBuilder builder, params ApiProblemContract[] contracts)
     {
         ArgumentNullException.ThrowIfNull(contracts);

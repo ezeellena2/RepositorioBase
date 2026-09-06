@@ -58,6 +58,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
 
     public DbSet<RecentIdentityProof> RecentIdentityProofs => Set<RecentIdentityProof>();
 
+    public DbSet<CleanArchitecture.Domain.IdentityAccess.Credentials.PasswordResetRequest> PasswordResetRequests => Set<CleanArchitecture.Domain.IdentityAccess.Credentials.PasswordResetRequest>();
+
     public DbSet<IdentitySecurityState> IdentitySecurityStates => Set<IdentitySecurityState>();
 
     public DbSet<Role> TenantRoles => Set<Role>();

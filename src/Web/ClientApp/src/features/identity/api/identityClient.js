@@ -51,6 +51,9 @@ export function createIdentityClient(transport = createApiTransport()) {
       method: 'POST',
       body: { action, password },
     }),
+    requestPasswordRecovery: (email) => send('/api/identity/credentials/password/recovery', { method: 'POST', body: { email } }),
+    resetPassword: (token, newPassword) => send('/api/identity/credentials/password/reset', { method: 'POST', body: { token, newPassword } }),
+    changePassword: (newPassword) => send('/api/identity/credentials/password', { method: 'PUT', body: { newPassword } }),
 
     registerPersonal: (request) => send('/api/identity/personal/register', { method: 'POST', body: request }),
     createPersonalContext: (request) => send('/api/identity/personal', { method: 'POST', body: request }),

@@ -136,6 +136,7 @@ public static class DependencyInjection
         builder.Services.AddScoped<IOutboxDeliveryHandler, RegistrationIntentSignInNoticeDeliveryHandler>();
         builder.Services.AddScoped<IOutboxDeliveryHandler, PersonalIntentConfirmationDeliveryHandler>();
         builder.Services.AddScoped<IOutboxDeliveryHandler, PersonalIntentSignInNoticeDeliveryHandler>();
+        builder.Services.AddScoped<IOutboxDeliveryHandler, PasswordRecoveryDeliveryHandler>();
         builder.Services.AddScoped<IOutboxDeliveryHandler, PlatformInvitationDeliveryHandler>();
         builder.Services.AddScoped<IOutboxDeliveryHandler, PlatformConfirmationDeliveryHandler>();
         builder.Services.AddScoped<IOutboxDeliveryHandler, PlatformSignInNoticeDeliveryHandler>();
@@ -178,6 +179,7 @@ public static class DependencyInjection
         builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.Sessions.ISessionIssuer, CleanArchitecture.Application.IdentityAccess.Sessions.SessionIssuer>();
         builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.Sessions.IDeviceLabel, CleanArchitecture.Infrastructure.IdentityAccess.DeviceLabelResolver>();
         builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.Credentials.IRecentIdentityProofStore, CleanArchitecture.Infrastructure.IdentityAccess.RecentIdentityProofStore>();
+        builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.Credentials.IIdentityCredentialService, CleanArchitecture.Infrastructure.IdentityAccess.IdentityCredentialService>();
     }
 
     private sealed class EmailReadiness(IServiceProvider services, IHostEnvironment environment) : IHostedService

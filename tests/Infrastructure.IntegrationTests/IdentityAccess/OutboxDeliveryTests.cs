@@ -24,6 +24,8 @@ public sealed class OutboxDeliveryTests
 {
     private static readonly DateTimeOffset Origin = new(2026, 9, 4, 12, 0, 0, TimeSpan.Zero);
     private readonly List<Guid> _messageIds = [];
+    private readonly List<Guid> _identityIds = [];
+    private readonly List<Guid> _resetIds = [];
 
     [TearDown]
     public async Task Remove_only_this_tests_messages()
@@ -32,7 +34,11 @@ public sealed class OutboxDeliveryTests
         var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         await context.OutboxSecrets.Where(secret => _messageIds.Contains(secret.OutboxMessageId)).ExecuteDeleteAsync();
         await context.OutboxMessages.Where(message => _messageIds.Contains(message.Id)).ExecuteDeleteAsync();
+        await context.PasswordResetRequests.Where(request => _resetIds.Contains(request.Id)).ExecuteDeleteAsync();
+        await context.Users.Where(user => _identityIds.Contains(user.Id)).ExecuteDeleteAsync();
         _messageIds.Clear();
+        _resetIds.Clear();
+        _identityIds.Clear();
     }
 
     /// <summary>A message due later is not work yet; claiming it early would deliver a retry before its backoff.</summary>
@@ -521,6 +527,68 @@ public sealed class OutboxDeliveryTests
             new OutboxSecretReader(context, scope.ServiceProvider.GetRequiredService<Microsoft.AspNetCore.DataProtection.IDataProtectionProvider>()),
             [new InvitationEmailDeliveryHandler(context, EmailOptions), new EmailConfirmationDeliveryHandler(context, EmailOptions)],
             clock, sink);
+    }
+
+    /// <summary>
+    /// The reset link a person actually receives (IA-REQ-051). The recipient is resolved from the identity the
+    /// request belongs to, the token reaches the mail only in the fragment, and the stored payload carries neither.
+    /// </summary>
+    [Test]
+    public async Task A_password_recovery_message_carries_its_link_and_leaves_the_token_out_of_the_payload()
+    {
+        using var scope = TestServices.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var writer = scope.ServiceProvider.GetRequiredService<IOutboxSecretWriter>();
+        var clock = new ControlledTimeProvider(new DateTimeOffset(2030, 3, 1, 12, 0, 0, TimeSpan.Zero));
+        var sink = new TestEmailSink();
+
+        var identityId = Guid.NewGuid();
+        var email = $"forgetful-{Guid.NewGuid():N}@example.test";
+        context.Users.Add(new CleanArchitecture.Infrastructure.Identity.ApplicationUser
+        {
+            Id = identityId,
+            UserName = email,
+            NormalizedUserName = email.ToUpperInvariant(),
+            Email = email,
+            NormalizedEmail = email.ToUpperInvariant(),
+            EmailConfirmed = true,
+            SecurityStamp = Guid.NewGuid().ToString("N")
+        });
+        _identityIds.Add(identityId);
+
+        const string rawToken = "cGFzc3dvcmQtcmVjb3ZlcnktdG9rZW4tZm9yLW9uZS10ZXN0MQ==";
+        var reset = CleanArchitecture.Domain.IdentityAccess.Credentials.PasswordResetRequest.Issue(
+            identityId, VersionedTokenHash.Of(rawToken), clock.GetUtcNow(), TimeSpan.FromMinutes(30));
+        context.PasswordResetRequests.Add(reset);
+        _resetIds.Add(reset.Id);
+
+        var message = OutboxMessage.Create(
+            "identity.password.recovery.requested",
+            JsonSerializer.Serialize(new { RequestId = reset.Id }),
+            clock.GetUtcNow());
+        _messageIds.Add(message.Id);
+        context.OutboxMessages.Add(message);
+        context.OutboxSecrets.Add(OutboxSecret.Create(
+            message.Id,
+            VersionedTokenHash.Of($"{rawToken}|{message.Id}").Value,
+            writer.Encrypt(rawToken),
+            clock.GetUtcNow().AddMinutes(30)));
+        await context.SaveChangesAsync();
+
+        var dispatcher = new OutboxDispatcher(
+            context,
+            new OutboxSecretReader(context, scope.ServiceProvider.GetRequiredService<Microsoft.AspNetCore.DataProtection.IDataProtectionProvider>()),
+            [new PasswordRecoveryDeliveryHandler(context, EmailOptions)],
+            clock,
+            sink);
+        (await dispatcher.DispatchDueAsync(CancellationToken.None)).ShouldBe(1);
+
+        var sent = sink.Sent.Single();
+        sent.Recipient.ShouldBe(email);
+        sent.Subject.ShouldBe("Reset your password");
+        sent.Body.ShouldContain($"https://app.example.test/credentials/reset#token={Uri.EscapeDataString(rawToken)}");
+        message.Payload.ShouldNotContain(rawToken);
+        message.Payload.ShouldNotContain(email);
     }
 
     private static readonly Microsoft.Extensions.Options.IOptions<CleanArchitecture.Infrastructure.Email.IdentityEmailOptions> EmailOptions =

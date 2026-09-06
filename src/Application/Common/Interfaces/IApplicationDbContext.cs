@@ -46,6 +46,8 @@ public interface IApplicationDbContext
 
     DbSet<RecentIdentityProof> RecentIdentityProofs { get; }
 
+    DbSet<CleanArchitecture.Domain.IdentityAccess.Credentials.PasswordResetRequest> PasswordResetRequests { get; }
+
     DbSet<IdentitySecurityState> IdentitySecurityStates { get; }
 
     DbSet<Invitation> Invitations { get; }

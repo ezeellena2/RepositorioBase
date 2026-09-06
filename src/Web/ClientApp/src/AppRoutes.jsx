@@ -8,6 +8,7 @@ import { RegisterOrganizationPage } from "./features/identity/register/RegisterO
 import { ChooseContextPage } from "./features/identity/register/ChooseContextPage";
 import { PersonalRegisterPage, PersonalProfilePage } from "./features/identity/people/PersonalPages";
 import { SessionsPage } from "./features/identity/sessions/SessionsPage";
+import { ChangePasswordPage, ForgotPasswordPage, ResetPasswordPage } from "./features/identity/credentials/PasswordPages";
 import { ConfirmEmailPage } from "./features/identity/register/ConfirmEmailPage";
 import { TenantSelector } from "./features/identity/tenants/TenantSelector";
 import { InviteMemberPage } from "./features/identity/invitations/InviteMemberPage";
@@ -40,6 +41,11 @@ const AppRoutes = [
   { path: '/personal/register', element: <PersonalRegisterPage /> },
   { path: '/identity/profile', element: <ProtectedRoute><PersonalProfilePage /></ProtectedRoute> },
   { path: '/identity/sessions', element: <ProtectedRoute><SessionsPage /></ProtectedRoute> },
+  { path: '/identity/password', element: <ProtectedRoute><ChangePasswordPage /></ProtectedRoute> },
+  // Both are public: somebody who cannot sign in is the only person who needs them, and the reset link is opened
+  // out of a mailbox by a browser holding no session.
+  { path: '/credentials/forgot', element: <ForgotPasswordPage /> },
+  { path: '/credentials/reset', element: <ResetPasswordPage /> },
   // Where both confirmation emails point. It is public because confirming is what an identity does before it can
   // sign in at all, so requiring a session here would make the link impossible to answer.
   { path: '/confirm-email', element: <ConfirmEmailPage /> },

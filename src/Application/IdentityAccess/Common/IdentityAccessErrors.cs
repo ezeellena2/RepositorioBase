@@ -127,4 +127,15 @@ public static class IdentityAccessErrors
 
     public static ApplicationError EmailConfirmationRequired() =>
         new("email_confirmation_required", ApplicationErrorCategory.Authorization, "This operation requires a confirmed email address.");
+
+    /// <summary>
+    /// Unknown, spent, superseded and expired reset links all answer this. Which one it was is state the holder of
+    /// a dead link was never shown, and telling them would make the route a way to probe for live ones.
+    /// </summary>
+    public static ApplicationError InvalidCredentialToken() =>
+        new("invalid_credential_token", ApplicationErrorCategory.Validation, "The credential token is not valid.");
+
+    /// <summary>The configured password policy refused it, field-indexed and describing the rule rather than the value.</summary>
+    public static ApplicationError PasswordPolicyFailed(IReadOnlyDictionary<string, string[]> errors) =>
+        new("validation_failed", ApplicationErrorCategory.Validation, "The new password does not meet the policy.", errors);
 }
