@@ -3,6 +3,10 @@ using Microsoft.Extensions.Configuration;
 
 var builder = DistributedApplication.CreateBuilder(args);
 
+// A local run needs a key ring that persists, a folder for mail, and a fingerprint key that has no default by
+// design. They are filled in once, into user secrets outside the repository, and never overwritten.
+CleanArchitecture.AppHost.LocalDevelopmentSetup.EnsureConfigured(builder);
+
 builder.AddAzureContainerAppEnvironment("aca-env");
 
 var databaseServer = builder

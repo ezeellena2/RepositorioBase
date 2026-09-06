@@ -27,7 +27,29 @@ Everything here is local. Nothing in this file activates an email provider or se
 dotnet run --project src/AppHost
 ```
 
-The dashboard lists the API and the frontend. Open the frontend URL.
+The dashboard lists the API and the frontend. Open the frontend URL. That is the whole of it — there is no JSON to
+write first.
+
+On the first run the app host fills in the settings the application refuses to start without, and writes them to
+**this project's user secrets**, a file outside the repository:
+
+| Setting | What it is for |
+|---|---|
+| `IdentityAccess:DataProtection:ApplicationName`, `:KeyRingPath` | the key ring that seals every mailed token and every stored document. On disk, so a link written before a restart still opens afterwards |
+| `IdentityAccess:Email:Enabled`, `:FromAddress`, `:LocalDropPath` | delivery to a folder instead of a provider (see below) |
+| `IdentityAccess:People:DocumentProtection:CurrentKeyVersion`, `:FingerprintKeys:1` | the keyed fingerprint a personal DNI is looked up by. It has no default by design: a digest under a key everybody knows is not keyed |
+
+The key ring and the mail folder are created under `%LOCALAPPDATA%/identity-access-local` (or the equivalent on
+other systems). **Nothing already configured is overwritten** — not by the first run and not by any later one —
+because replacing a key ring path or a fingerprint key would silently orphan everything protected under the old
+one. To change any of them, set the value yourself and it is left alone:
+
+```bash
+dotnet user-secrets --project src/AppHost set "IdentityAccess:Email:LocalDropPath" "C:/temp/identity-mail"
+```
+
+Only an interactive `dotnet run` in Development does this. The acceptance suite passes its own settings and turns
+it off with `IdentityAccess:LocalSetup:Enabled=false`, so a test run never writes to your machine's.
 
 ## Reading the mail the application sends
 
@@ -35,15 +57,12 @@ Every onboarding link — an organization confirmation, a member invitation, the
 carried by a token that is sealed with a Data Protection key held by the application. Nothing outside that process
 can read one out of the database, so there is no useful way to fish a link out of `outbox_secrets`.
 
-Instead, point delivery at a folder. Set these five values once and every message is written there as a text file
-instead of being sent, with the link in it exactly as its recipient would receive it:
+Instead, delivery points at a folder, which the first run already configured. Every message is written there as a
+text file instead of being sent, with the link in it exactly as its recipient would receive it. Find the folder
+with:
 
 ```bash
-dotnet user-secrets --project src/AppHost set "IdentityAccess:Email:Enabled" "true"
-dotnet user-secrets --project src/AppHost set "IdentityAccess:Email:FromAddress" "platform@example.test"
-dotnet user-secrets --project src/AppHost set "IdentityAccess:Email:LocalDropPath" "C:/temp/identity-mail"
-dotnet user-secrets --project src/AppHost set "IdentityAccess:DataProtection:ApplicationName" "identity-access-local"
-dotnet user-secrets --project src/AppHost set "IdentityAccess:DataProtection:KeyRingPath" "C:/temp/identity-keys"
+dotnet user-secrets --project src/AppHost list
 ```
 
 The two `DataProtection` values are required whenever `Email:Enabled` is `true`, including here: without them the

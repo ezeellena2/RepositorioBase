@@ -1,9 +1,12 @@
-﻿<Project Sdk="Aspire.AppHost.Sdk/13.5.3">
+<Project Sdk="Aspire.AppHost.Sdk/13.5.3">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <RootNamespace>CleanArchitecture.AppHost</RootNamespace>
     <AssemblyName>CleanArchitecture.AppHost</AssemblyName>
+    <!-- The identifier is not a secret; the file it names lives outside the repository and holds the local
+         development settings this host fills in on first run. -->
+    <UserSecretsId>identity-access-apphost-local</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>

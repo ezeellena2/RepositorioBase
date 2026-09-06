@@ -51,7 +51,11 @@ public class AspireSetup
                     // ring and the same discriminator. Without it every envelope is unreadable and every message
                     // fails closed — which is the deployment prerequisite EMAIL-SETUP.md states, met locally.
                     "--IdentityAccess:DataProtection:ApplicationName=identity-access-acceptance",
-                    $"--IdentityAccess:DataProtection:KeyRingPath={KeyRingPath}"
+                    $"--IdentityAccess:DataProtection:KeyRingPath={KeyRingPath}",
+            // This suite brings its own settings and must not write to the machine's development ones.
+            "--IdentityAccess:LocalSetup:Enabled=false",
+            "--IdentityAccess:People:DocumentProtection:CurrentKeyVersion=1",
+            "--IdentityAccess:People:DocumentProtection:FingerprintKeys:1=YWNjZXB0YW5jZS1maW5nZXJwcmludC1rZXktMzIhISE="
                 ],
                 configureBuilder: (options, _) =>
                 {
