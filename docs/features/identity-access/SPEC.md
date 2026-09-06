@@ -145,6 +145,28 @@ Three outcomes are deliberately kept apart, and reaching one never authorizes th
 - **IA-REQ-049:** an identity may hold at most five live `UserSession` rows at any committed instant **(product default)**. Issuance is serialized per identity; at the cap it revokes the oldest live sessions in `(CreatedAt ascending, Id ascending)` order until four remain and commits the new session in the same consistency boundary. Authentication does not revoke the identity's other live sessions. An identity may list, revoke individually and revoke collectively its own sessions through self-service requests that resolve the owner only from the validated persisted session and address rows by an opaque reference that is never the identifier the cookie carries. A password reset revokes every persisted session and issues none; an authenticated password change revokes every other live session and rotates the acting one into a new row that inherits nothing — not its identifier, its antiforgery pair, a recent identity proof or second-factor evidence. Every transition that happened is audited once and a denied revoke once as a denial, and no such record carries an IP address, a raw `User-Agent`, a cookie, a ticket, a proof value or another identity's row. The route table, contention table and device-label rules are in [section 14.2](#142-c2--session-coexistence-deterministic-cap-eviction-and-own-session-revocation).
 - **IA-REQ-051:** a sensitive self-service change requires a recent identity proof: a single-use server-side record bound to one identity, one `UserSession`, one action and the identity's security version at issue, living five minutes **(product default)**. A valid session cookie alone is never proof. Only the identity's current password or a fresh challenge to a provider already linked to it issues one, both requiring a confirmed identity, and a proof never travels to the client: the request looks up the live unconsumed proof for `(identity, current session, action)` and consumes it with a conditional update. Every credential or authenticator change increments a Domain-owned security version that invalidates every outstanding proof. Platform step-up stays separately session-bound and neither proof satisfies the other. The proof-requiring actions and the contention rules are in [section 14.4](#144-c4--recent-identity-proof-password-recovery-and-provider-linking-with-a-two-part-callback-carve-out).
 - **IA-REQ-052:** an identity may hold at most one link per external provider, established only by explicit consent plus a recent primary proof, a confirmed identity and a provider-verified email. A provider identity is never auto-linked by a matching email address (BR-ID-005/006) — and an authenticated, confirmed identity that links its own provider account with consent and a live proof is not auto-linking, so it is never refused merely because the provider's verified address is the one it already owns. No unlink may leave an identity without a usable authenticator. `Login`, `Link`, `Proof` and `Recovery` purposes live in server-side state and never cross; `Recovery` is the one purpose bound to no session, and it exists for a person who cannot obtain one. The provider callback is the one documented exception to IA-REQ-022, to section 8 and to the rule that a usable token never travels in a URL query string: it performs no business mutation, and the validations replacing the origin check are one-use purpose-bound `state`, the framework correlation cookie, `nonce`, PKCE `S256` with a server-held verifier, and validated issuer, audience, signature and expiry.
+- **IA-REQ-053:** an `Organization` administers itself through custom roles, membership lifecycle and one explicit
+  ownership reference. A role is `Active` or `Retired`, retirement is terminal, `Role.IsSystem` is an orthogonal
+  protection flag, and role names are labels that authorize nothing. **Grant-time ceiling:** an actor may cause an
+  identity to hold only permissions the actor itself effectively holds in that tenant at commit time and that
+  `PermissionDefinition.AllowedTenantTypes` permits — evaluated on the added codes when a role's set changes, on the
+  whole set when a role is assigned or offered, never at acceptance — so a code nobody holds can never be granted.
+  The system `Owner` role is therefore provisioned with the `Organization`-allowed codes the catalogue names it for,
+  existing tenants backfilled once; a code added later reaches `Owner` only when somebody says so, and the catalogue
+  is what they say it in (D1). **Administrator floor:** no request may commit a state with zero effective
+  administrators — one distinct identity whose recomputed effective permissions contain both `roles.manage` and
+  `members.manage` — computed from the flushed post-change state inside the same transaction against the permission
+  projection, never by counting role-assignment rows (D3). **Proof:** editing a role's permissions, changing which
+  roles a member holds, and transferring ownership each require a live recent identity proof of their own
+  (IA-REQ-051, D2). **Ownership:** an `Organization` has exactly one owner held as a single tenant reference;
+  transfer requires the current owner, the ownership permission, a confirmed active same-tenant recipient and that
+  proof, in one transaction or none, and the owner's own membership can be neither suspended nor revoked.
+  **Offers:** widening or retiring a role cancels in that transaction every pending invitation offering it and
+  retires any still-undelivered `OutboxSecret`, so a widened role cannot reach acceptance. Every mutation leaves
+  `Tenant.AuthorizationVersion` strictly greater than the value it loaded. A member list may carry another member's
+  display name and normalized email (D4). Nothing here reaches `Personal` or `Platform`, and no route reads a tenant
+  from anywhere but the validated session. The route table, state table and contention rules are in
+  [section 14.5](#145-c5--delegated-organization-administration).
 
 ### Audit, outbox, and security
 
@@ -440,11 +462,13 @@ This protocol is independent from the reference repository's workflow and preser
 
 ## 14. Task 17 decision package (proposed, not approved)
 
-> **C1, C2, C3, C4 AND C7 ARE ACCEPTED (2026-09-06). C5 AND C6 ARE NOT.** Sections 14.1, 14.2, 14.3, 14.4 and 14.7
-> are accepted and their requirements now live in section 4; those subsections are kept as the record of the
+> **C1, C2, C3, C4, C5 AND C7 ARE ACCEPTED (2026-09-06). C6 IS NOT.** Sections 14.1, 14.2, 14.3, 14.4, 14.5 and
+> 14.7 are accepted and their requirements now live in section 4; those subsections are kept as the record of the
 > decisions that produced them, and section 4 governs where the wording differs. Every acceptance is **for
 > implementation and verification against synthetic data only**: real personal data and production deployment are two
-> separate gates, and neither is granted by any of them. Sections 14.5 and 14.6 are still only proposed. Amendments
+> separate gates, and neither is granted by any of them. Section 14.6 is still only proposed. **C5 was accepted with
+> four amendments, D1–D4**, recorded in [14.5](#145-c5--delegated-organization-administration) and in the ADR; where
+> C5's original wording and an amendment differ, the amendment governs. Amendments
 > A1–A5 from
 > [ADR-004's decision record](../../decisions/ADR-004-Adopt-Multitenant-Identity-Access.md#decision-record--2026-09-06)
 > were folded into 14.3, 14.4, 14.6 and 14.7 before any of them was decided; A2 and A3 are part of what C4's
@@ -837,7 +861,36 @@ a test verified against a reverted fix:
 
 ### 14.5 C5 — Delegated Organization administration
 
-- **IA-REQ-053 (proposed):** delegated administration of an `Organization` is exercised through custom roles,
+> **ACCEPTED 2026-09-06, for synthetic data only, with four amendments.** IA-REQ-053 is now normative and lives in
+> [section 4](#4-normative-requirements); this subsection is kept as the record that produced it. The acceptance
+> enables **Tasks 24 and 25** and nothing after them. It grants no real personal data, no production deployment, and
+> no part of C6 — which stays proposed, so identity lifecycle, deactivation and reactivation remain unbuilt even
+> where C5's own text names an error code on one of C6's routes.
+>
+> **D1 — the `Owner` backfill happens once; it does not become a standing rule.** Every `Organization`-allowed
+> catalogue code as of today is granted to the system `Owner` role, for existing tenants by migration and for new
+> ones at provisioning, with an audit record. What is **refused** is C5's "every future addition carrying that
+> step" read as automatic: a permission added by a later feature does **not** reach `Owner` by default. The catalogue
+> instead names, for each `Organization`-allowed code, whether `Owner` holds it, and a test fails when a code is
+> added without that answer — so widening every owner's authority is always somebody's decision, never a side
+> effect of shipping a feature.
+>
+> **D2 — changing authority needs a recent identity proof, not only transferring it.** C5 as written proof-gated
+> only ownership transfer, which would leave `roles.manage` as an unproved super-permission: its holder can package
+> everything they hold into a role and assign it to anyone, so one stolen session is full tenant compromise with an
+> audit trail naming a legitimate administrator. Editing a role's permissions and changing which roles a member
+> holds now require a live C4 proof of their own.
+>
+> **D3 — the effective-administrator floor is accepted as written.** The theoretical hazard — two people splitting
+> `roles.manage` and `members.manage` between them, so the tenant counts zero administrators — requires first having
+> stripped those codes from `Owner`, which the floor itself refuses. It is pinned by a test rather than answered
+> with an administrator-recovery route that does not exist.
+>
+> **D4 — `members.read` may return another member's `displayName` and normalized email.** It is what a member list
+> is, and this is synthetic data. Recorded because it is the first `Organization`-facing route to return another
+> person's identifying data, and it is the shape the real-personal-data gate (G2) inherits.
+
+- **IA-REQ-053 (accepted 2026-09-06 for synthetic data, as amended by D1–D4; section 4 governs):** delegated administration of an `Organization` is exercised through custom roles,
   membership lifecycle and one explicit ownership reference. A role is `Active` or `Retired`, retirement is terminal,
   `Role.IsSystem` is an orthogonal protection flag, and there is no `Draft` state. An actor may cause an identity to
   hold only permissions the actor itself effectively holds in that tenant at commit time and that

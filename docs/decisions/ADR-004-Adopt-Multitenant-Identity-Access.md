@@ -314,3 +314,54 @@ slugs the built flows can produce; and two concurrent unlinks are serialized by 
 rather than by a `IdentitySecurityState` row that a provider-only identity does not have. None of them widens what
 was accepted. The live-provider caveat above still stands in full: nothing in this repository has made a request to
 `accounts.google.com`.
+
+### Decision record — 2026-09-06 (fourth): C5, with four amendments
+
+**Accepted: decision 22 (C5), as SPEC §14.5 now states it, for implementation and verification against synthetic
+data only, subject to amendments D1–D4 below.** IA-REQ-053 becomes normative and now lives in
+[SPEC §4](../features/identity-access/SPEC.md#4-normative-requirements); §14.5 is kept as the record that produced
+it. This acceptance enables **Tasks 24 and 25**, each to be completed and verified before the next. It authorizes
+no task after 25.
+
+**What it covers:** custom roles inside an `Organization` — create, rename, replace the permission set, retire —
+with a grant-time ceiling and an effective-administrator floor; member administration, meaning role assignment and
+membership suspension, reactivation and revocation; and one explicit owner per `Organization`, transferable
+deliberately. The new permission code `tenant.ownership.transfer`, and the stable error codes
+`invalid_role_operation`, `invalid_membership_operation`, `role_concurrency_conflict`,
+`membership_concurrency_conflict`, `last_administrator_required` and `owner_required`, are approved as permanent
+public contract.
+
+**The four amendments.**
+
+- **D1 — the `Owner` backfill is a one-time event, not a standing rule.** C5's ceiling makes the acceptance
+  unsatisfiable without it: this ADR's own decision 22 admits "until which this decision is unsatisfiable, today's
+  provisioner granting that role nothing", and the code confirms it — `RegistrationInitialRoleProvisioner` creates
+  the `Owner` role with zero `RolePermission` rows, and only `ConfiguredPlatformBootstrapper` grants any, to
+  Platform. So the `Organization`-allowed codes of today are granted to `Owner`, existing tenants backfilled by
+  migration, with an audit record. **Refused** is the other half: "every future addition carrying that step" read
+  as automatic. A permission a later feature adds does not reach `Owner` by default; the catalogue records, per
+  `Organization`-allowed code, whether `Owner` holds it, and a test fails when a code is added without that answer.
+  Widening every existing owner's authority stays a decision somebody makes, never a side effect of shipping.
+- **D2 — authority changes need a recent identity proof, not only ownership transfer.** As written, `roles.manage`
+  would be an unproved super-permission — its holder can package everything they hold into a role and assign it to
+  anyone, so a single stolen session is full tenant compromise with an audit trail naming a legitimate
+  administrator. Editing a role's permissions and changing a member's roles now each require a live C4 proof.
+- **D3 — the effective-administrator floor is accepted unchanged.** The split-duty hazard (two people holding
+  `roles.manage` and `members.manage` separately, so the tenant counts zero administrators) requires first having
+  stripped both codes from `Owner`, which the floor itself refuses. Pinned by a test rather than answered with an
+  administrator-recovery route that does not exist and would be new scope.
+- **D4 — `members.read` may return another member's display name and normalized email.** It is what a member list
+  is. Recorded because it is the first `Organization`-facing route to return another person's identifying data, and
+  it is the shape the real-personal-data gate inherits.
+
+**What it does not grant.** Real personal data, which stays at G2; production deployment, which stays at G3; and
+**C6**, which remains proposed with amendments A3 and A4 still open — so identity and membership lifecycle,
+deactivation, reactivation, the restore admission guard and Platform MFA recovery all stay blocked, and Tasks 26
+and 27 with them. C5's own text places `last_administrator_required` on a C6 route that does not exist; that part
+of its contract stays unreachable until C6 is decided. Nothing here touches `Personal` or `Platform`
+administration, live provider registration, or any relaxation of deny-by-default, same-origin antiforgery, or the
+session-derived active tenant.
+
+**Unchanged.** Decisions 18, 19, 20, 21 and 24 (C1, C2, C3, C4, C7) keep their acceptances. Decision 23 (C6)
+remains proposed. **Task 17 is now complete**: six entries of seven are decided and the seventh, C6, is decided to
+remain open.
