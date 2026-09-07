@@ -51,9 +51,16 @@ public sealed class OfferableRoleReader(ApplicationDbContext context, IEffective
 /// <summary>Writes the assignments an accepted invitation grants, on the same side of the boundary as the read.</summary>
 public sealed class InvitationRoleAssigner(ApplicationDbContext context) : IInvitationRoleAssigner
 {
-    public void Assign(Tenant tenant, TenantMembership membership, IReadOnlyCollection<Role> roles)
+    public async Task AssignAsync(Tenant tenant, TenantMembership membership, IReadOnlyCollection<Role> roles, CancellationToken cancellationToken)
     {
-        foreach (var role in roles)
+        var offered = roles.Select(role => role.Id).ToHashSet();
+        var existing = await context.MembershipRoles
+            .Where(link => link.TenantId == tenant.Id && link.MembershipId == membership.Id)
+            .ToListAsync(cancellationToken);
+
+        context.MembershipRoles.RemoveRange(existing.Where(link => !offered.Contains(link.RoleId)));
+        var retained = existing.Select(link => link.RoleId).ToHashSet();
+        foreach (var role in roles.Where(role => !retained.Contains(role.Id)))
         {
             context.MembershipRoles.Add(MembershipRole.Create(tenant, membership, role));
         }

@@ -126,15 +126,14 @@ public sealed class AcceptInvitationCommandHandler(
         }
         else
         {
-            // Returning is not the undoing of the removal. The membership comes back through the offer that was
-            // made — pending first, then activated by this acceptance — and it comes back with nothing: revoking
-            // deleted every assignment it held, so what it holds now is exactly what this offer names.
+            // The same membership returns through the fresh offer. Its assignments are replaced below, including
+            // any roles an administrator assigned while it was revoked (IA-REQ-053).
             membership = existing;
             membership.Reinstate(tenant);
         }
 
         membership.Activate(tenant);
-        roleAssigner.Assign(tenant, membership, offered.Roles);
+        await roleAssigner.AssignAsync(tenant, membership, offered.Roles, cancellationToken);
 
         invitation.Accept(tenant, identityId, now);
         context.AuditEvents.Add(AuditEvent.Create(

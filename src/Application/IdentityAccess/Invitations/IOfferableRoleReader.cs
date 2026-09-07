@@ -20,13 +20,13 @@ public interface IOfferableRoleReader
 }
 
 /// <summary>
-/// Writes the role assignments an accepted invitation grants. It is the write counterpart of
+/// Replaces the membership's assignments with exactly the roles an accepted invitation grants. It is the write counterpart of
 /// <see cref="IOfferableRoleReader"/> and exists for the same reason: assignment rows never cross
 /// <c>IApplicationDbContext</c>, so no use case can grant authority through a bare DbSet.
 /// </summary>
 public interface IInvitationRoleAssigner
 {
-    void Assign(Tenant tenant, TenantMembership membership, IReadOnlyCollection<Role> roles);
+    Task AssignAsync(Tenant tenant, TenantMembership membership, IReadOnlyCollection<Role> roles, CancellationToken cancellationToken);
 }
 
 /// <summary>

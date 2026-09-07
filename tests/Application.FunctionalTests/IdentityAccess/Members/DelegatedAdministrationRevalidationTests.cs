@@ -176,6 +176,61 @@ public sealed class DelegatedAdministrationRevalidationTests : TestBase
     }
 
     private static string Invitations(OrganizationScenario organization) => $"/api/tenants/{organization.TenantId.Value}/invitations";
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Review_reinstatement_never_restores_roles_assigned_while_revoked(bool offeredRoleAlreadyAssigned)
+    {
+        using var organization = await OrganizationScenario.CreateAsync("review-r5");
+        var oldRole = await CreateRoleAsync(organization, "Former authority", Permissions.MembersManage);
+        var newRole = await CreateRoleAsync(organization, "Fresh offer", Permissions.MembersRead);
+        var email = $"review-returning-{Guid.NewGuid():N}@example.test";
+        var identityId = await IdentityHttpHarness.SeedConfirmedUserAsync(email, OrganizationScenario.Password);
+        using var harness = IdentityHttpHarness.CreateProductionHarness();
+        var recipient = await Administrator.SignInAsync(harness, $"https://review-r5-{Guid.NewGuid():N}.localhost", email, organization.TenantId);
+        using var initial = await organization.Owner.SendAsync(HttpMethod.Post, Invitations(organization), new { email, roleIds = new[] { oldRole.RoleId } });
+        initial.StatusCode.ShouldBe(HttpStatusCode.Created);
+        var initialToken = await InvitationTokenAsync(harness, (await initial.Content.ReadFromJsonAsync<IssuedRow>())!.InvitationId);
+        using var accepted = await recipient.SendAsync(HttpMethod.Post, "/api/invitations/accept", new { token = initialToken });
+        accepted.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var membershipId = (await accepted.Content.ReadFromJsonAsync<AcceptedRow>())!.MembershipId;
+        var original = await MemberAsync(organization.Owner, organization, membershipId);
+        using var revoked = await organization.Owner.SendAsync(HttpMethod.Post,
+            $"/api/tenants/{organization.TenantId.Value}/members/{membershipId}/revoke", new { version = original.Version });
+        revoked.StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        var removed = await MemberAsync(organization.Owner, organization, membershipId);
+        removed.Status.ShouldBe(nameof(MembershipStatus.Revoked));
+        removed.RoleIds.ShouldBeEmpty();
+
+        Guid[] dormantRoles = offeredRoleAlreadyAssigned ? [oldRole.RoleId, newRole.RoleId] : [oldRole.RoleId];
+        using var dormantAssignment = await AssignAsync(organization.Owner, organization, removed, dormantRoles);
+        dormantAssignment.StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await MemberAsync(organization.Owner, organization, membershipId)).RoleIds.ShouldBe(dormantRoles, ignoreOrder: true);
+        (await EffectiveCodesAsync(identityId, organization.TenantId)).ShouldBeEmpty("a revoked membership grants nothing");
+        using var fresh = await organization.Owner.SendAsync(HttpMethod.Post, Invitations(organization), new { email, roleIds = new[] { newRole.RoleId } });
+        fresh.StatusCode.ShouldBe(HttpStatusCode.Created);
+        var freshToken = await InvitationTokenAsync(harness, (await fresh.Content.ReadFromJsonAsync<IssuedRow>())!.InvitationId);
+        using var returned = await recipient.SendAsync(HttpMethod.Post, "/api/invitations/accept", new { token = freshToken });
+        returned.StatusCode.ShouldBe(HttpStatusCode.OK, await returned.Content.ReadAsStringAsync());
+        var finalCodes = await EffectiveCodesAsync(identityId, organization.TenantId);
+        var final = await MemberAsync(organization.Owner, organization, membershipId);
+        TestContext.Out.WriteLine($"Review R5 dormant assignment={(int)dormantAssignment.StatusCode}; reinvite={(int)fresh.StatusCode}; acceptance={(int)returned.StatusCode}; effective permissions={string.Join(',', finalCodes)}");
+        finalCodes.ShouldBe([Permissions.MembersRead], "reinstatement must replace all earlier assignments with exactly the fresh offer");
+        final.RoleIds.ShouldBe([newRole.RoleId]);
+
+        if (offeredRoleAlreadyAssigned)
+        {
+            using var changed = await AssignAsync(organization.Owner, organization, final, oldRole.RoleId);
+            changed.StatusCode.ShouldBe(HttpStatusCode.OK);
+            using var replayed = await recipient.SendAsync(HttpMethod.Post, "/api/invitations/accept", new { token = freshToken });
+            replayed.StatusCode.ShouldBe(HttpStatusCode.OK);
+            (await replayed.Content.ReadFromJsonAsync<AcceptedRow>())!.MembershipId.ShouldBe(membershipId);
+            (await MemberAsync(organization.Owner, organization, membershipId)).RoleIds.ShouldBe([oldRole.RoleId]);
+            (await EffectiveCodesAsync(identityId, organization.TenantId)).ShouldBe([Permissions.MembersManage],
+                "replaying an accepted invitation must not overwrite a later authorized role change");
+        }
+    }
+
     private static string RolePath(OrganizationScenario organization, Guid roleId) => $"/api/tenants/{organization.TenantId.Value}/roles/{roleId}";
 
     private static async Task<RoleRow> CreateRoleAsync(OrganizationScenario organization, string name, params string[] permissions)
@@ -192,11 +247,11 @@ public sealed class DelegatedAdministrationRevalidationTests : TestBase
         return await actor.SendAsync(HttpMethod.Put, RolePath(organization, original.RoleId), new { name = original.Name, permissions, version = original.Version });
     }
 
-    private static async Task<HttpResponseMessage> AssignAsync(Administrator actor, OrganizationScenario organization, MemberRow original, Guid roleId)
+    private static async Task<HttpResponseMessage> AssignAsync(Administrator actor, OrganizationScenario organization, MemberRow original, params Guid[] roleIds)
     {
         await actor.ProveAsync(ProofActions.MemberRoleChange);
         return await actor.SendAsync(HttpMethod.Put, $"/api/tenants/{organization.TenantId.Value}/members/{original.MembershipId}/roles",
-            new { roleIds = new[] { roleId }, version = original.Version });
+            new { roleIds, version = original.Version });
     }
 
     private static async Task<MemberRow> MemberAsync(Administrator actor, OrganizationScenario organization, Guid membershipId) =>
