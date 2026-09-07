@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useIdentity } from '../context/IdentityProvider';
 import { ProblemMessage } from '../ProblemMessage';
+import { useIdentityProof } from '../useIdentityProof';
 
 /**
  * The people in the organization the session is operating in, and what may be done to them (IA-REQ-053).
@@ -12,14 +13,20 @@ import { ProblemMessage } from '../ProblemMessage';
  * nobody who can give it away, so the way out is to transfer first.
  *
  * Changing a member's roles and transferring ownership each buy a proof (amendment D2); suspending, reactivating
- * and revoking echo the row's own version instead. The password field is cleared the moment it is used and is
- * never written anywhere (IA-REQ-025, IA-REQ-051).
+ * and revoking echo the row's own version instead. Which proof depends on what the identity has — a password
+ * cleared the moment it is used, or a round trip to the provider it signed in with (IA-REQ-025, IA-REQ-051).
+ *
+ * One read is required here and the rest are courtesies. `members.read` alone is enough to be handed the roster,
+ * so only the roster's own failure is this screen's failure; the role catalogue that turns identifiers into
+ * names is a separate permission, and a refusal of it is said where the names would have been.
  */
 export function MembersPage() {
   const identity = useIdentity();
+  const proof = useIdentityProof();
   const tenantId = identity.context?.activeTenant?.id ?? null;
   const [members, setMembers] = useState(null);
-  const [roles, setRoles] = useState([]);
+  const [nextCursor, setNextCursor] = useState(null);
+  const [roles, setRoles] = useState(null);
   const [password, setPassword] = useState('');
   const [problem, setProblem] = useState(null);
   const [isBusy, setIsBusy] = useState(false);
@@ -27,13 +34,18 @@ export function MembersPage() {
 
   const load = useCallback(async () => {
     if (tenantId === null) return;
+    // The catalogue can never reject: both of its outcomes are handled where it is started, so `Promise.all`
+    // fails only for the roster. Both requests still leave together, and both answers land in one continuation,
+    // so the roster never renders for an instant with its role names missing.
+    const catalogue = identity.client.listRoles(tenantId).then(
+      (page) => page.items.filter((role) => !role.isRetired),
+      () => null,
+    );
     try {
-      const [listed, available] = await Promise.all([
-        identity.client.listMembers(tenantId),
-        identity.client.listRoles(tenantId),
-      ]);
+      const [listed, available] = await Promise.all([identity.client.listMembers(tenantId), catalogue]);
       setMembers(listed.items);
-      setRoles(available.items.filter((role) => !role.isRetired));
+      setNextCursor(listed.nextCursor ?? null);
+      setRoles(available);
       setProblem(null);
     } catch (error) {
       setProblem(error.problem ?? { code: 'unexpected' });
@@ -48,10 +60,12 @@ export function MembersPage() {
     return () => { cancelled = true; };
   }, [load]);
 
-  const run = async (act) => {
+  const run = async (action, act) => {
     setIsBusy(true);
     setProblem(null);
     try {
+      // A provider proof leaves for the provider rather than answering, so the change waits for the round trip.
+      if (action !== null && !await proof.prove(action, password)) return;
       await act();
       setPassword('');
       setEditing(null);
@@ -63,18 +77,31 @@ export function MembersPage() {
     }
   };
 
-  const saveRoles = (member) => run(async () => {
-    await identity.client.reauthenticate('members.roles.change', password);
-    await identity.client.updateMemberRoles(tenantId, member.membershipId, editing.roleIds, member.version);
-  });
+  const saveRoles = (member) => run('members.roles.change',
+    () => identity.client.updateMemberRoles(tenantId, member.membershipId, editing.roleIds, member.version));
 
   const changeStatus = (member, change) =>
-    run(() => identity.client.changeMemberStatus(tenantId, member.membershipId, change, member.version));
+    run(null, () => identity.client.changeMemberStatus(tenantId, member.membershipId, change, member.version));
 
-  const transfer = (member) => run(async () => {
-    await identity.client.reauthenticate('tenant.ownership.transfer', password);
-    await identity.client.transferOwnership(tenantId, member.membershipId, member.version);
-  });
+  const transfer = (member) => run('tenant.ownership.transfer',
+    () => identity.client.transferOwnership(tenantId, member.membershipId, member.version));
+
+  // A continuation appends. Every page the server hands out is disjoint from the last, so what the reader has
+  // already seen stays on screen and nothing appears twice. A write reloads from the first page deliberately:
+  // once somebody's roles or status changed, positions further down the list are no longer the ones read.
+  const showMore = async () => {
+    setIsBusy(true);
+    setProblem(null);
+    try {
+      const next = await identity.client.listMembers(tenantId, nextCursor);
+      setMembers((current) => [...(current ?? []), ...next.items]);
+      setNextCursor(next.nextCursor ?? null);
+    } catch (error) {
+      setProblem(error.problem ?? { code: 'unexpected' });
+    } finally {
+      setIsBusy(false);
+    }
+  };
 
   const toggleRole = (roleId) => setEditing((current) => ({
     ...current,
@@ -92,7 +119,7 @@ export function MembersPage() {
     );
   }
 
-  const nameOf = (roleId) => roles.find((role) => role.roleId === roleId)?.name ?? roleId;
+  const nameOf = (roleId) => roles?.find((role) => role.roleId === roleId)?.name ?? roleId;
 
   return (
     <section aria-labelledby="members-heading">
@@ -103,16 +130,22 @@ export function MembersPage() {
         one administrator. The owner cannot be suspended or removed &mdash; transfer the organization first.
       </p>
 
-      <label htmlFor="members-password">Password</label>
-      <input
-        id="members-password"
-        type="password"
-        autoComplete="current-password"
-        value={password}
-        onChange={(event) => setPassword(event.target.value)}
-      />
+      {proof.hasPassword ? (
+        <>
+          <label htmlFor="members-password">Password</label>
+          <input
+            id="members-password"
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+          />
+        </>
+      ) : proof.provider !== null && (
+        <p>You have no password here. Changing roles or handing the organization over asks {proof.provider} to confirm it is you.</p>
+      )}
 
-      {members === null ? <p role="status">Loading&hellip;</p> : (
+      {members === null || !proof.isReady ? <p role="status">Loading&hellip;</p> : (
         <ul>
           {members.map((member) => (
             <li key={member.membershipId}>
@@ -148,10 +181,10 @@ export function MembersPage() {
 
               {/* Handing the organization over is the one change nobody can undo alone, so it is asked for
                   explicitly rather than offered as one more button among the rest. */}
-              {!member.isOwner && member.status === 'Active' && (
+              {!member.isOwner && member.status === 'Active' && proof.canProve && (
                 <button
                   type="button"
-                  disabled={isBusy || password.length === 0}
+                  disabled={isBusy || !proof.canBegin(password)}
                   onClick={() => {
                     if (window.confirm(`Give this organization to ${member.displayName}? You will stop being its owner.`)) transfer(member);
                   }}
@@ -164,8 +197,9 @@ export function MembersPage() {
                 <form onSubmit={(event) => { event.preventDefault(); saveRoles(member); }}>
                   <fieldset>
                     <legend>Roles for {member.displayName}</legend>
-                    {roles.length === 0 && <p>This organization has no roles to give yet.</p>}
-                    {roles.map((role) => (
+                    {roles === null && <p>You cannot see this organization&rsquo;s roles, so there are none to give here.</p>}
+                    {roles?.length === 0 && <p>This organization has no roles to give yet.</p>}
+                    {roles?.map((role) => (
                       <label key={role.roleId} htmlFor={`role-${member.membershipId}-${role.roleId}`}>
                         <input
                           id={`role-${member.membershipId}-${role.roleId}`}
@@ -177,13 +211,17 @@ export function MembersPage() {
                       </label>
                     ))}
                   </fieldset>
-                  <button type="submit" disabled={isBusy || password.length === 0}>Save roles</button>
+                  <button type="submit" disabled={isBusy || !proof.canProve || !proof.canBegin(password)}>Save roles</button>
                   <button type="button" disabled={isBusy} onClick={() => setEditing(null)}>Cancel</button>
                 </form>
               )}
             </li>
           ))}
         </ul>
+      )}
+
+      {nextCursor !== null && (
+        <button type="button" disabled={isBusy} onClick={showMore}>Show more members</button>
       )}
     </section>
   );

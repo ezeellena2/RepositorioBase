@@ -2,34 +2,29 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useIdentity } from '../context/IdentityProvider';
 import { ProblemMessage } from '../ProblemMessage';
+import { useIdentityProof } from '../useIdentityProof';
 
 /**
  * The devices an identity is signed in on, and the two ways to end one (IA-REQ-049).
  *
- * Ending somebody else's device is a sensitive change, so the page asks for the password first and spends it
- * against the reauthentication endpoint. What comes back is nothing: the proof lives on the server and this page
- * never holds it, which is why the password is typed into a field that is cleared the moment it is used and is
- * never written anywhere (IA-REQ-025, IA-REQ-051).
+ * Ending somebody else's device is a sensitive change, so the page buys a proof first. Which proof depends on
+ * what this identity has: a password is typed into a field that is cleared the moment it is used and is never
+ * written anywhere, and an identity that arrived through a provider proves the same thing by being sent back to
+ * that provider. Either way nothing comes back here — the proof lives on the server (IA-REQ-025, IA-REQ-051).
  */
 export function SessionsPage() {
   const identity = useIdentity();
+  const proof = useIdentityProof();
   const [sessions, setSessions] = useState(null);
-  const [hasPassword, setHasPassword] = useState(true);
   const [problem, setProblem] = useState(null);
   const [password, setPassword] = useState('');
   const [isBusy, setIsBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      // The credential is read alongside the devices because it decides what this screen may offer at all: an
-      // account that arrived through a provider has no password to prove with, and a button it can never use is
-      // worse than no button.
-      const [listed, credentials] = await Promise.all([
-        identity.client.listSessions(),
-        identity.client.getOwnCredentials(),
-      ]);
-      setSessions(listed);
-      setHasPassword(credentials.hasPassword);
+      // Only the devices. What this screen may offer at all is a question about the identity rather than about
+      // this list, so it is asked once, in one place, by the proof seam every sensitive screen shares.
+      setSessions(await identity.client.listSessions());
       setProblem(null);
     } catch (error) {
       setProblem(error.problem ?? { code: 'unexpected' });
@@ -48,7 +43,9 @@ export function SessionsPage() {
     setIsBusy(true);
     setProblem(null);
     try {
-      await identity.client.reauthenticate(action, password);
+      // A provider proof leaves for the provider instead of answering, so there is nothing to do here but stop:
+      // what this operation was going to write waits for the round trip to come back.
+      if (!await proof.prove(action, password)) return;
       await act();
       setPassword('');
       await load();
@@ -65,7 +62,7 @@ export function SessionsPage() {
       <ProblemMessage problem={problem} />
       <p>Signing in somewhere else does not sign you out here. Ending a device asks for your password first.</p>
 
-      {hasPassword ? (
+      {proof.hasPassword ? (
         <>
           <label htmlFor="sessions-password">Password</label>
           <input
@@ -76,6 +73,8 @@ export function SessionsPage() {
             onChange={(event) => setPassword(event.target.value)}
           />
         </>
+      ) : proof.provider !== null ? (
+        <p>You have no password here. Ending a device asks {proof.provider} to confirm it is you.</p>
       ) : (
         // A mailed reset is the one way in that needs no proof, which is exactly why it is the way out of here.
         <p>
@@ -84,16 +83,18 @@ export function SessionsPage() {
         </p>
       )}
 
+      {/* The rows wait for the proof seam as well as for the list. Showing a device before this screen knows
+          what it may offer would render the ending controls twice: once wrong, then again right. */}
       <ul>
-        {(sessions ?? []).map((session) => (
+        {(sessions === null || !proof.isReady ? [] : sessions).map((session) => (
           <li key={session.sessionRef}>
             <span>{session.deviceLabel}</span>
             {session.isCurrent && <span> — this device</span>}
             <span> · last seen {session.lastSeenAt}</span>
-            {!session.isCurrent && hasPassword && (
+            {!session.isCurrent && proof.canProve && (
               <button
                 type="button"
-                disabled={isBusy || password.length === 0}
+                disabled={isBusy || !proof.canBegin(password)}
                 onClick={() => run('sessions.revoke-one', () => identity.client.revokeSession(session.sessionRef))}
               >
                 End this device
@@ -103,10 +104,10 @@ export function SessionsPage() {
         ))}
       </ul>
 
-      {hasPassword && (
+      {proof.canProve && (
         <button
           type="button"
-          disabled={isBusy || password.length === 0}
+          disabled={isBusy || !proof.canBegin(password)}
           onClick={() => run('sessions.revoke-others', () => identity.client.revokeOtherSessions())}
         >
           End every other device

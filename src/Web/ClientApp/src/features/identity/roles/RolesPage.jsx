@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useIdentity } from '../context/IdentityProvider';
 import { ProblemMessage } from '../ProblemMessage';
+import { useIdentityProof } from '../useIdentityProof';
 
 const EMPTY_DRAFT = { roleId: null, name: '', permissions: [], version: null };
 
@@ -13,13 +14,19 @@ const EMPTY_DRAFT = { roleId: null, name: '', permissions: [], version: null };
  * an organization always keeps an administrator — is why a refusal here is shown rather than worked around: only
  * the server can count, and it counts after the change it is about to reject.
  *
- * Every write buys a proof first (amendment D2). The password is typed into a field that is cleared the moment it
- * is used and is never written anywhere (IA-REQ-025, IA-REQ-051).
+ * Every write buys a proof first (amendment D2), and which proof depends on what this identity has: a password
+ * typed into a field that is cleared the moment it is used and is never written anywhere, or a round trip to the
+ * provider it signed in with (IA-REQ-025, IA-REQ-051).
+ *
+ * The list is shown a page at a time, because an organization can hold more roles than one page carries and a
+ * screen that silently stops at a hundred is a screen that lies about what the organization has.
  */
 export function RolesPage() {
   const identity = useIdentity();
+  const proof = useIdentityProof();
   const tenantId = identity.context?.activeTenant?.id ?? null;
   const [roles, setRoles] = useState(null);
+  const [nextCursor, setNextCursor] = useState(null);
   const [catalog, setCatalog] = useState([]);
   const [draft, setDraft] = useState(EMPTY_DRAFT);
   const [password, setPassword] = useState('');
@@ -34,6 +41,7 @@ export function RolesPage() {
         identity.client.listPermissionCatalog(tenantId),
       ]);
       setRoles(listed.items);
+      setNextCursor(listed.nextCursor ?? null);
       setCatalog(entries);
       setProblem(null);
     } catch (error) {
@@ -54,8 +62,9 @@ export function RolesPage() {
     setProblem(null);
     try {
       // The proof is bought immediately before the change and spent by it. It is single-use, so each change
-      // asks again — which is what "recent" has to mean to be worth anything.
-      await identity.client.reauthenticate(action, password);
+      // asks again — which is what "recent" has to mean to be worth anything. A provider proof leaves for the
+      // provider rather than answering, so the change waits for the round trip instead of being sent now.
+      if (!await proof.prove(action, password)) return;
       await act();
       setPassword('');
       setDraft(EMPTY_DRAFT);
@@ -72,6 +81,22 @@ export function RolesPage() {
     : identity.client.updateRole(tenantId, draft.roleId, draft.name, draft.permissions, draft.version)));
 
   const retire = (role) => run('roles.change', () => identity.client.retireRole(tenantId, role.roleId, role.version));
+
+  // A continuation appends rather than replaces: what the reader has already seen stays on screen, and every
+  // page the server hands out is disjoint from the last, so nothing can appear twice.
+  const showMore = async () => {
+    setIsBusy(true);
+    setProblem(null);
+    try {
+      const next = await identity.client.listRoles(tenantId, nextCursor);
+      setRoles((current) => [...(current ?? []), ...next.items]);
+      setNextCursor(next.nextCursor ?? null);
+    } catch (error) {
+      setProblem(error.problem ?? { code: 'unexpected' });
+    } finally {
+      setIsBusy(false);
+    }
+  };
 
   const toggle = (code) => setDraft((current) => ({
     ...current,
@@ -100,16 +125,22 @@ export function RolesPage() {
         yourself, and the organization always keeps at least one administrator.
       </p>
 
-      <label htmlFor="roles-password">Password</label>
-      <input
-        id="roles-password"
-        type="password"
-        autoComplete="current-password"
-        value={password}
-        onChange={(event) => setPassword(event.target.value)}
-      />
+      {proof.hasPassword ? (
+        <>
+          <label htmlFor="roles-password">Password</label>
+          <input
+            id="roles-password"
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+          />
+        </>
+      ) : proof.provider !== null && (
+        <p>You have no password here. Every change asks {proof.provider} to confirm it is you.</p>
+      )}
 
-      {roles === null ? <p role="status">Loading…</p> : (
+      {roles === null || !proof.isReady ? <p role="status">Loading…</p> : (
         <ul>
           {roles.map((role) => (
             <li key={role.roleId}>
@@ -126,14 +157,20 @@ export function RolesPage() {
                   >
                     Edit {role.name}
                   </button>
-                  <button type="button" disabled={isBusy || password.length === 0} onClick={() => retire(role)}>
-                    Retire {role.name}
-                  </button>
+                  {proof.canProve && (
+                    <button type="button" disabled={isBusy || !proof.canBegin(password)} onClick={() => retire(role)}>
+                      Retire {role.name}
+                    </button>
+                  )}
                 </>
               )}
             </li>
           ))}
         </ul>
+      )}
+
+      {nextCursor !== null && (
+        <button type="button" disabled={isBusy} onClick={showMore}>Show more roles</button>
       )}
 
       <h2>{draft.roleId === null ? 'New role' : `Editing ${draft.name}`}</h2>
@@ -157,7 +194,7 @@ export function RolesPage() {
           ))}
         </fieldset>
 
-        <button type="submit" disabled={isBusy || password.length === 0}>
+        <button type="submit" disabled={isBusy || !proof.canProve || !proof.canBegin(password)}>
           {draft.roleId === null ? 'Create role' : 'Save role'}
         </button>
         {draft.roleId !== null && (

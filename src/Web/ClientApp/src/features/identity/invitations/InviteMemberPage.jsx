@@ -20,6 +20,7 @@ export function InviteMemberPage() {
   const tenantId = identity.context?.activeTenant?.id ?? null;
   const [roles, setRoles] = useState(null);
   const [invitations, setInvitations] = useState(null);
+  const [nextCursor, setNextCursor] = useState(null);
   const [roleIds, setRoleIds] = useState([]);
   const [email, setEmail] = useState('');
   const [problem, setProblem] = useState(null);
@@ -33,9 +34,11 @@ export function InviteMemberPage() {
     if (tenantId === null) return null;
     const [available, offered] = await Promise.all([
       identity.client.listRoles(tenantId).then((page) => page.items.filter((role) => !role.isRetired), () => null),
-      identity.client.listTenantInvitations(tenantId).then((page) => page.items, () => null),
+      identity.client.listTenantInvitations(tenantId).then((page) => page, () => null),
     ]);
-    return { roles: available, invitations: offered };
+    // `null` keeps meaning "you may not see the offers here", so only a page that really arrived carries a
+    // cursor: a refused read must not leave a continuation control pointing at nothing.
+    return { roles: available, invitations: offered?.items ?? null, cursor: offered?.nextCursor ?? null };
   }, [identity, tenantId]);
 
   const load = useCallback(async () => {
@@ -43,6 +46,7 @@ export function InviteMemberPage() {
     if (state === null) return;
     setRoles(state.roles);
     setInvitations(state.invitations);
+    setNextCursor(state.cursor);
   }, [read]);
 
   useEffect(() => {
@@ -52,6 +56,7 @@ export function InviteMemberPage() {
       if (cancelled || state === null) return;
       setRoles(state.roles);
       setInvitations(state.invitations);
+      setNextCursor(state.cursor);
     })();
     return () => { cancelled = true; };
   }, [read]);
@@ -79,6 +84,22 @@ export function InviteMemberPage() {
       setSent(issued);
       setEmail('');
       setRoleIds([]);
+    }
+  };
+
+  // A continuation appends, so every offer the reader has seen stays on screen. Each page the server hands out
+  // is disjoint from the last, so an offer cannot be listed twice.
+  const showMore = async () => {
+    setIsBusy(true);
+    setProblem(null);
+    try {
+      const next = await identity.client.listTenantInvitations(tenantId, nextCursor);
+      setInvitations((current) => [...(current ?? []), ...next.items]);
+      setNextCursor(next.nextCursor ?? null);
+    } catch (error) {
+      setProblem(error.problem ?? { code: 'unexpected' });
+    } finally {
+      setIsBusy(false);
     }
   };
 
@@ -164,6 +185,10 @@ export function InviteMemberPage() {
             </li>
           ))}
         </ul>
+      )}
+
+      {nextCursor !== null && (
+        <button type="button" disabled={isBusy} onClick={showMore}>Show more invitations</button>
       )}
     </section>
   );

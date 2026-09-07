@@ -15,6 +15,11 @@ export { ApiProblem as IdentityProblem } from './apiTransport';
 export function createIdentityClient(transport = createApiTransport()) {
   const { bootstrapAntiforgery, hasRequestToken, send } = transport;
 
+  // A directory answers one page and, when there is more, an opaque cursor for the next. The cursor is the only
+  // thing that continues a listing: `limit` is deliberately never sent, so the server's own page size stays the
+  // contract rather than something a caller can widen.
+  const continued = (path, cursor) => (cursor ? `${path}?cursor=${encodeURIComponent(cursor)}` : path);
+
   return {
     transport,
     bootstrapAntiforgery,
@@ -92,7 +97,7 @@ export function createIdentityClient(transport = createApiTransport()) {
       expectArray: true,
       expect: ['code', 'grantable'],
     }),
-    listRoles: (tenantId) => send(`/api/tenants/${encodeURIComponent(tenantId)}/roles`, {
+    listRoles: (tenantId, cursor = null) => send(continued(`/api/tenants/${encodeURIComponent(tenantId)}/roles`, cursor), {
       expect: ['items', 'nextCursor'],
     }),
     createRole: (tenantId, name, permissions) => send(`/api/tenants/${encodeURIComponent(tenantId)}/roles`, {
@@ -112,10 +117,10 @@ export function createIdentityClient(transport = createApiTransport()) {
 
     // Member administration. `version` is the row's own concurrency token, echoed back so a change made against
     // a member somebody else has since altered is refused rather than silently applied over theirs.
-    listMembers: (tenantId) => send(`/api/tenants/${encodeURIComponent(tenantId)}/members`, {
+    listMembers: (tenantId, cursor = null) => send(continued(`/api/tenants/${encodeURIComponent(tenantId)}/members`, cursor), {
       expect: ['items', 'nextCursor'],
     }),
-    listTenantInvitations: (tenantId) => send(`/api/tenants/${encodeURIComponent(tenantId)}/invitations`, {
+    listTenantInvitations: (tenantId, cursor = null) => send(continued(`/api/tenants/${encodeURIComponent(tenantId)}/invitations`, cursor), {
       expect: ['items', 'nextCursor'],
     }),
     updateMemberRoles: (tenantId, membershipId, roleIds, version) =>
