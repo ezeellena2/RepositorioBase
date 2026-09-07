@@ -24,7 +24,7 @@ public sealed class RoleAdministrationStore(ApplicationDbContext context) : IRol
 
         // Ordered by the identifier the cursor carries, so a page boundary is stable while roles are being added.
         var query = context.TenantRoles.AsNoTracking().Where(role => role.TenantId == tenantId);
-        if (after is { } roleId) query = query.Where(role => role.Id.Value > roleId);
+        if (after is { } roleId) query = query.Where(role => role.Id > RoleId.From(roleId));
 
         var page = await Project(query.OrderBy(role => role.Id)).Take(size + 1).ToListAsync(cancellationToken);
         var items = page.Take(size).ToArray();
@@ -161,6 +161,15 @@ public sealed class RoleAdministrationStore(ApplicationDbContext context) : IRol
 
         if (!await ReplaceAsync(tenant, role, edit.Codes, cancellationToken)) return new RoleWriteResult(RoleWriteStatus.Invalid, null);
 
+        // The version this contract exposes is the role row's own `xmin`, and PostgreSQL only advances it when the
+        // row itself is rewritten. An edit that changes only what the role confers writes nothing but
+        // `RolePermissions`, so without this the row keeps the very version two administrators are both editing
+        // from and the second silently overwrites the first. Rewriting the row here does two things at once: the
+        // version moves, and the token `LoadForWriteAsync` compared travels in this UPDATE's WHERE clause — so a
+        // racer that commits in between is refused by the database rather than by a comparison (IA-REQ-035).
+        // `Name` and not `IsRetired`: the audit interceptor reads a modified `IsRetired` as a retirement.
+        context.Entry(role).Property(candidate => candidate.Name).IsModified = true;
+
         await context.SaveChangesAsync(cancellationToken);
         return new RoleWriteResult(RoleWriteStatus.Applied, await FindAsync(tenantId, roleId, cancellationToken));
     }
@@ -273,7 +282,11 @@ public sealed class RoleAdministrationStore(ApplicationDbContext context) : IRol
                 var padded = cursor.Replace('-', '+').Replace('_', '/');
                 padded += new string('=', (4 - (padded.Length % 4)) % 4);
                 var bytes = Convert.FromBase64String(padded);
-                return bytes.Length == 16 ? new Guid(bytes) : null;
+                // An all-zero identifier is not a position either: the strongly-typed identifiers refuse it by
+            // throwing, and a probe with sixteen zero bytes is well-formed base64url, so decoding it as a
+            // value would turn a harmless guess into a sanitized 500.
+            var decoded = bytes.Length == 16 ? new Guid(bytes) : (Guid?)null;
+            return decoded == Guid.Empty ? null : decoded;
             }
             catch (FormatException)
             {

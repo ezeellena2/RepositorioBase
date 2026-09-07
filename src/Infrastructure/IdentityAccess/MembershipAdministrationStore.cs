@@ -23,7 +23,7 @@ public sealed class MembershipAdministrationStore(ApplicationDbContext context) 
         var owner = await OwnerAsync(tenantId, cancellationToken);
 
         var query = context.TenantMemberships.AsNoTracking().Where(membership => membership.TenantId == tenantId);
-        if (after is { } membershipId) query = query.Where(membership => membership.Id.Value > membershipId);
+        if (after is { } membershipId) query = query.Where(membership => membership.Id > MembershipId.From(membershipId));
 
         var page = await Project(query.OrderBy(membership => membership.Id), tenantId).Take(size + 1).ToListAsync(cancellationToken);
         var items = page.Take(size).ToArray();
@@ -38,7 +38,7 @@ public sealed class MembershipAdministrationStore(ApplicationDbContext context) 
         var after = OpaqueCursor.Decode(cursor);
 
         var query = context.Invitations.AsNoTracking().Where(invitation => invitation.TenantId == tenantId);
-        if (after is { } invitationId) query = query.Where(invitation => invitation.Id.Value > invitationId);
+        if (after is { } invitationId) query = query.Where(invitation => invitation.Id > InvitationId.From(invitationId));
 
         var page = await query.OrderBy(invitation => invitation.Id).Take(size + 1)
             .Select(invitation => new
@@ -125,6 +125,13 @@ public sealed class MembershipAdministrationStore(ApplicationDbContext context) 
         // Every association change has to move the tenant's version, or the evaluator would keep answering from
         // the authority the member held a moment ago.
         tenant.IncrementAuthorizationVersion();
+
+        // …and the membership's own version, which is this row's `xmin`. Changing only which roles somebody holds
+        // writes nothing but `MembershipRoles`, so without rewriting the row the version this contract hands out
+        // is still the one both administrators read. The rewrite carries that same token in its WHERE clause, so
+        // a racer that commits between the version check and here loses to the database (IA-REQ-035).
+        context.Entry(membership).Property(candidate => candidate.Status).IsModified = true;
+
         await context.SaveChangesAsync(cancellationToken);
         return new MembershipWriteResult(MembershipWriteStatus.Applied, await FindAsync(tenantId, membershipId, cancellationToken));
     }
@@ -256,7 +263,11 @@ internal static class OpaqueCursor
             var padded = cursor.Replace('-', '+').Replace('_', '/');
             padded += new string('=', (4 - (padded.Length % 4)) % 4);
             var bytes = Convert.FromBase64String(padded);
-            return bytes.Length == 16 ? new Guid(bytes) : null;
+            // An all-zero identifier is not a position either: the strongly-typed identifiers refuse it by
+            // throwing, and a probe with sixteen zero bytes is well-formed base64url, so decoding it as a
+            // value would turn a harmless guess into a sanitized 500.
+            var decoded = bytes.Length == 16 ? new Guid(bytes) : (Guid?)null;
+            return decoded == Guid.Empty ? null : decoded;
         }
         catch (FormatException)
         {
