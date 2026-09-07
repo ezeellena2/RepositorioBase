@@ -29,7 +29,10 @@ public sealed class GetPersonalProfileQueryHandler(
         if (identity is null || stamp is null) return Result<PersonalProfileResponse>.Failure(IdentityAccessErrors.InvalidSession());
 
         var document = await context.IdentityDocuments.AsNoTracking().SingleOrDefaultAsync(candidate => candidate.IdentityId == identityId, cancellationToken);
-        return Result<PersonalProfileResponse>.Success(PersonalProfileProjection.From(profile, identity.Email, document, documents, stamp.Value));
+        var disputeOpen = await context.IdentityDocumentDisputes
+            .AnyAsync(dispute => dispute.SubjectIdentityId == identityId && dispute.Status == DocumentDisputeStatus.Open, cancellationToken);
+        return Result<PersonalProfileResponse>.Success(
+            PersonalProfileProjection.From(profile, identity.Email, document, documents, stamp.Value, disputeOpen));
     }
 }
 
@@ -80,7 +83,10 @@ public sealed class UpdatePersonalProfileCommandHandler(
             var after = await stamps.ReadAsync(identityId, ct);
             if (identity is null || after is null) return Result<PersonalProfileResponse>.Failure(IdentityAccessErrors.InvalidSession());
             var document = await context.IdentityDocuments.AsNoTracking().SingleOrDefaultAsync(candidate => candidate.IdentityId == identityId, ct);
-            return Result<PersonalProfileResponse>.Success(PersonalProfileProjection.From(profile, identity.Email, document, documents, after.Value));
+            var disputeOpen = await context.IdentityDocumentDisputes
+                .AnyAsync(dispute => dispute.SubjectIdentityId == identityId && dispute.Status == DocumentDisputeStatus.Open, ct);
+            return Result<PersonalProfileResponse>.Success(
+                PersonalProfileProjection.From(profile, identity.Email, document, documents, after.Value, disputeOpen));
         }, cancellationToken);
     }
 }
@@ -93,21 +99,24 @@ internal static class PersonalProfileProjection
         string email,
         IdentityDocument? document,
         IIdentityDocumentProtector documents,
-        PersonalProfileStamp stamp) =>
+        PersonalProfileStamp stamp,
+        bool disputeOpen) =>
         new(
             profile.FullName,
             profile.DisplayName,
             email,
             profile.PersonalTenantId.Value,
-            Document(document, documents),
+            Document(document, documents, disputeOpen),
             stamp.Version,
             stamp.UpdatedAt);
 
-    private static PersonalDocumentResponse? Document(IdentityDocument? document, IIdentityDocumentProtector documents)
+    private static PersonalDocumentResponse? Document(IdentityDocument? document, IIdentityDocumentProtector documents, bool disputeOpen)
     {
         if (document is null) return null;
         if (document.PurgedAt is not null)
         {
+            // A purged document has nothing to correct. Offering a dispute over one would be offering to
+            // resurrect a row an erasure deliberately emptied.
             return new PersonalDocumentResponse(document.Country.ToString(), document.DocumentType.ToString(), "purged", string.Empty, false);
         }
 
@@ -118,13 +127,13 @@ internal static class PersonalProfileProjection
             ? new string('•', Math.Max(0, value.Number.Length - 2)) + (value.Number.Length <= 2 ? value.Number : value.Number[^2..])
             : string.Empty;
 
-        // Deliberately false in this increment: the dispute route is IA-REQ-058 and lands in Task 26, and a screen
-        // must not offer a control the product cannot serve.
+        // The owner's own data, saying nothing about anyone else: a dispute is available unless this person
+        // already has one open, because at most one is open at a time (IA-REQ-058).
         return new PersonalDocumentResponse(
             document.Country.ToString(),
             document.DocumentType.ToString(),
             revealed is null ? "unreadable" : "recorded",
             masked,
-            false);
+            !disputeOpen);
     }
 }

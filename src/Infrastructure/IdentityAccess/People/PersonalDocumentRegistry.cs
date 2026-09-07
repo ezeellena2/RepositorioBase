@@ -20,6 +20,16 @@ public sealed class PersonalDocumentRegistry(ApplicationDbContext context) : IPe
             .AnyAsync(candidate => values.Contains(candidate.Fingerprint), cancellationToken);
     }
 
+    public async Task<bool> IsRecordedByAnotherAsync(
+        Guid identityId, IReadOnlyList<DocumentFingerprintValue> fingerprints, CancellationToken cancellationToken)
+    {
+        if (fingerprints.Count == 0) return false;
+        var values = fingerprints.Select(fingerprint => fingerprint.Value).ToArray();
+        return await context.IdentityDocumentFingerprints
+            .AsNoTracking()
+            .AnyAsync(candidate => values.Contains(candidate.Fingerprint) && candidate.IdentityId != identityId, cancellationToken);
+    }
+
     public Task<bool> OwnsPersonalContextAsync(Guid identityId, CancellationToken cancellationToken) =>
         context.PersonalTenantOwnerships.AsNoTracking().AnyAsync(ownership => ownership.IdentityId == identityId, cancellationToken);
 }

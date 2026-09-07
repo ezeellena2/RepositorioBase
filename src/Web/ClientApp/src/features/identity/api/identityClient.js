@@ -151,6 +151,14 @@ export function createIdentityClient(transport = createApiTransport()) {
       expect: ['fullName', 'displayName', 'email', 'personalTenantId', 'document', 'version', 'updatedAt'],
     }),
 
+    // Saying the recorded document is wrong. The claimed number leaves the browser once, to a route that
+    // protects it on arrival, and the answer carries only an opaque identifier back (IA-REQ-058).
+    openDocumentDispute: (request) => send('/api/identity/profile/document/disputes', {
+      method: 'POST',
+      body: request,
+      expect: ['disputeId'],
+    }),
+
     inviteMember: (tenantId, email, roleIds) => send(`/api/tenants/${encodeURIComponent(tenantId)}/invitations`, {
       method: 'POST',
       body: { email, roleIds },

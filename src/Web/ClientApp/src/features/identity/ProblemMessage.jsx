@@ -35,6 +35,10 @@ const MESSAGES = {
   identity_concurrency_conflict: 'Your account changed while you were working. Refresh and try again.',
   identity_reactivation_unavailable: 'That account cannot be reactivated.',
   platform_mfa_concurrency_conflict: 'Your second factor changed while you were working. Start again.',
+  invalid_document_dispute: 'Check the document details and try again.',
+  document_dispute_conflict: 'A correction for this document is already being reviewed.',
+  self_resolution_refused: 'A correction to your own document has to be reviewed by somebody else.',
+  document_already_recorded: 'That document is already recorded against another account.',
   rate_limit_exceeded: 'Too many attempts. Wait a moment and try again.',
   internal_server_error: 'Something went wrong. Try again.',
 };

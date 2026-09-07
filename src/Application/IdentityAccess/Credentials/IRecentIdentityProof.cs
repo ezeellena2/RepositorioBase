@@ -40,6 +40,13 @@ public static class ProofActions
     /// </summary>
     public const string PlatformMfaRecover = "platform.mfa.recover";
 
+    /// <summary>
+    /// Saying the document recorded against you is wrong. Its own action because a dispute is the one thing a
+    /// person can start about their documentary identity, and a proof bought for anything else must not start it
+    /// (IA-REQ-058).
+    /// </summary>
+    public const string DocumentDispute = "identity.document.dispute";
+
     public static IReadOnlySet<string> All { get; } = new HashSet<string>(StringComparer.Ordinal)
     {
         PasswordChange,
@@ -51,7 +58,8 @@ public static class ProofActions
         MemberRoleChange,
         OwnershipTransfer,
         AccountDeactivate,
-        PlatformMfaRecover
+        PlatformMfaRecover,
+        DocumentDispute
     };
 }
 

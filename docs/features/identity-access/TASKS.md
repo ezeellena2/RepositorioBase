@@ -664,6 +664,45 @@ asks for. It records the MFA recovery route, the policy shape, the executor's bo
 closing table of what none of this closes - real personal data, production, legal certification, the `503` an
 unreachable budget store should produce, the unimplemented categories, and live restore certification.
 
+### Unit 26.5 - both halves of the documentary dispute (done 2026-09-07)
+
+**Visible outcome met:** a person whose recorded document is wrong says so from their own profile screen, and an
+operator with a case reference held outside this system either corrects it or rejects it. Neither of them can do
+it alone, and nothing about the person's access changes while the dispute is open.
+
+**The two absences are the contract, and both are proved.** The owner may open a dispute and can never write a
+document value; the operator may resolve one only against a stored dispute and never for their own identity.
+Removing the self-resolution guard fails one test; removing the uniqueness check fails another. That is what "no
+support bypass" means once it is enforced rather than asserted.
+
+**The claimed number is protected on arrival, exactly like the recorded one.** It exists in the handler for as
+long as it takes to encrypt it and reaches nothing else: not the response, not a log, not an audit record, not an
+outbox payload. `The_number_somebody_claims_reaches_no_log_no_audit_and_no_response` checks all four rather than
+trusting the code's intention.
+
+**The fingerprint table stayed unqueryable.** The correction needs "is this number recorded against somebody who
+is not the subject", and the obvious way to ask it - a `DbSet` on the application context - is exactly what the
+architecture guard forbids. It became a third narrow member on `IPersonalDocumentRegistry` instead, so there is
+still nothing anywhere that lists documents or answers whose a document is.
+
+| Step | What happened |
+|---|---|
+| RED | `DocumentDisputeTests` did not compile against the absent `People.Documents` namespace, then drove sixteen cases: opening one and access being untouched, the claimed number reaching nothing, the proof gate, an identity with no document, one dispute at a time, a correction replacing both halves, a record holding no value, a rejection changing nothing, an absent dispute, self-resolution, a number somebody else records, three malformed references, the step-up gate, and a settled dispute leaving the way open. |
+| GREEN | `IdentityDocumentDispute` and `IdentityDocumentCorrectionRecord`, `IdentityDocument.Correct`, two requests and handlers, two routes, the profile screen's dispute form, and the `DocumentDisputes` migration with its permission backfill. |
+| Not vacuous | The self-resolution guard and the uniqueness check were each removed; each failed exactly the test that names it. |
+| Verified | Functional 617/617, Application unit 199/199, Domain unit 191/191, Infrastructure integration 273/273, client 213/213. |
+
+**Two tests changed because their premise expired, and neither assertion was weakened.**
+`A_profile_reads_masked_and_offers_no_correction_in_this_increment` and its client twin both asserted that
+`correctionAvailable` was `false` *because the dispute route did not exist*. It exists now, and the field means
+something else: whether this person may open one. Both were rewritten to the new meaning and the client one gained
+a sibling that drives the form end to end.
+
+**The screen offers it unconditionally**, which SPEC asks for by name: whether a correction is possible must not
+depend on what somebody can see about anybody else, only on whether they already have one open.
+
+**Still to come in Task 26:** the fail-closed restore admission guard (26.6).
+
 ## Tasks 21–25 review remediation — done 2026-09-07
 
 A review of Tasks 21–25 produced eight directed reproductions. They are kept as they were written and were used

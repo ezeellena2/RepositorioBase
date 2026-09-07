@@ -54,6 +54,9 @@ public sealed class PlatformSystemRoleProvisioner(ApplicationDbContext context) 
         // while something is being looked into (IA-REQ-056).
         Permissions.PlatformRetentionRead,
         Permissions.PlatformRetentionManage,
+        // Resolving a documentary dispute is an operating action, and the only one that can write a document
+        // value — against a stored dispute, never for the operator's own identity (IA-REQ-058).
+        Permissions.PlatformDocumentsResolve,
         Permissions.PlatformAuditRead,
         Permissions.PlatformTenantsManage
     ];

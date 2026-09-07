@@ -99,6 +99,18 @@ internal static class PlatformEndpoints
             .WithApiProblemDetails([.. Protected, ApiProblemMetadata.NotFound, ApiProblemMetadata.IdentityReactivationUnavailable, ApiProblemMetadata.IdentityConcurrencyConflict])
             .WithBodyBindingFailureCode(ApiProblemMetadata.InvalidPlatformOperation.Code);
 
+        group.MapPost("/identities/{identityId:guid}/document-disputes/{disputeId:guid}/resolve", ResolveDocumentDispute)
+            .RequireAuthorization()
+            .Produces(StatusCodes.Status204NoContent)
+            .WithApiProblemDetails([
+                .. Protected,
+                ApiProblemMetadata.NotFound,
+                ApiProblemMetadata.InvalidDocumentDispute,
+                ApiProblemMetadata.SelfResolutionRefused,
+                ApiProblemMetadata.DocumentAlreadyRecorded,
+                ApiProblemMetadata.PersonalProfileNotFound])
+            .WithBodyBindingFailureCode(ApiProblemMetadata.InvalidDocumentDispute.Code);
+
         group.MapPost("/admins/invitations", InviteAdministrator)
             .RequireAuthorization()
             .Produces(StatusCodes.Status202Accepted)
@@ -248,6 +260,29 @@ internal static class PlatformEndpoints
 
         var result = await sender.Send(
             new ReactivateIdentityCommand(identityId, expected, request.AcknowledgeSelfDeactivation), context.RequestAborted);
+        return result.IsSuccess ? Results.NoContent() : problems.ToHttpResult(result.Error!);
+    }
+
+    /// <summary>
+    /// The operator's half of IA-REQ-058. It names a stored dispute, and there is no route in this system that
+    /// writes a document value without one.
+    /// </summary>
+    private static async Task<IResult> ResolveDocumentDispute(
+        HttpContext context,
+        IAntiforgery antiforgery,
+        ApiProblemDetailsMapper problems,
+        ISender sender,
+        Guid identityId,
+        Guid disputeId,
+        ResolveDocumentDisputeRequest request)
+    {
+        var failure = await Identity.ValidateAntiforgery(context, antiforgery, problems);
+        if (failure is not null) return failure;
+
+        var result = await sender.Send(
+            new CleanArchitecture.Application.IdentityAccess.People.Documents.ResolveDocumentDisputeCommand(
+                identityId, disputeId, request.Outcome ?? string.Empty, request.EvidenceReference ?? string.Empty),
+            context.RequestAborted);
         return result.IsSuccess ? Results.NoContent() : problems.ToHttpResult(result.Error!);
     }
 

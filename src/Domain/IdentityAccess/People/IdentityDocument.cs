@@ -105,6 +105,45 @@ public sealed partial class IdentityDocument
         }
     }
 
+    /// <summary>
+    /// Replaces the recorded value with a corrected one, both halves at once (IA-REQ-058).
+    /// <para>
+    /// It answers with the key versions the replaced fingerprints carried, because that is the one thing about
+    /// them a correction record may hold — enough to audit a later key rotation, and nothing that could be turned
+    /// back into a number.
+    /// </para>
+    /// <para>
+    /// A purged document is not corrected. There is nothing there to correct, and writing one would resurrect a
+    /// row an erasure deliberately emptied.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<int> Correct(string ciphertext, IReadOnlyList<DocumentFingerprintValue> fingerprints, DateTimeOffset now)
+    {
+        if (PurgedAt is not null) throw new InvalidOperationException("A purged document cannot be corrected.");
+        ArgumentException.ThrowIfNullOrWhiteSpace(ciphertext);
+        ArgumentNullException.ThrowIfNull(fingerprints);
+        if (fingerprints.Count == 0)
+        {
+            throw new ArgumentException("A corrected document must carry at least one fingerprint.", nameof(fingerprints));
+        }
+
+        foreach (var fingerprint in fingerprints)
+        {
+            EnsureFingerprint(fingerprint);
+        }
+
+        var previous = _fingerprints.Select(print => print.KeyVersion).ToArray();
+        Ciphertext = ciphertext;
+        _fingerprints.Clear();
+        foreach (var fingerprint in fingerprints)
+        {
+            _fingerprints.Add(IdentityDocumentFingerprint.Create(IdentityId, fingerprint.KeyVersion, fingerprint.Value));
+        }
+
+        RecordedAt = now;
+        return previous;
+    }
+
     /// <summary>Which policy authorized the purge, on the non-identifying tombstone it left behind.</summary>
     public string? PurgePolicyId { get; private set; }
 

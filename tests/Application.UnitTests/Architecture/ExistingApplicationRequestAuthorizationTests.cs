@@ -56,6 +56,9 @@ public class ExistingApplicationRequestAuthorizationTests
     // Parking your own account carries no subject: it resolves the caller's own identity, so there is no tenant
     // to scope it to and no arbitrary-identity disable route for anything to be pointed at (IA-REQ-054).
     [TestCase(typeof(CleanArchitecture.Application.IdentityAccess.Lifecycle.DeactivateAccountCommand), "identity.account.manage")]
+    // Disputing your own document carries no subject either: it resolves the caller's own document, and it can
+    // never write one (IA-REQ-058).
+    [TestCase(typeof(CleanArchitecture.Application.IdentityAccess.People.Documents.OpenDocumentDisputeCommand), "identity.document.dispute")]
     public void Session_context_requests_are_authorized_without_tenant_requirement(Type requestType, string permission)
     {
         var authorizeAttribute = requestType.GetCustomAttributes<AuthorizeAttribute>(false).ShouldHaveSingleItem();
@@ -90,6 +93,8 @@ public class ExistingApplicationRequestAuthorizationTests
             typeof(CleanArchitecture.Application.IdentityAccess.Platform.Retention.GetRetentionPolicyQuery).FullName,
             typeof(CleanArchitecture.Application.IdentityAccess.Platform.Retention.PlaceRetentionHoldCommand).FullName,
             typeof(CleanArchitecture.Application.IdentityAccess.Platform.Retention.ReleaseRetentionHoldCommand).FullName,
+            typeof(CleanArchitecture.Application.IdentityAccess.People.Documents.OpenDocumentDisputeCommand).FullName,
+            typeof(CleanArchitecture.Application.IdentityAccess.People.Documents.ResolveDocumentDisputeCommand).FullName,
             typeof(CleanArchitecture.Application.IdentityAccess.Credentials.OwnCredentials.GetOwnCredentialsQuery).FullName,
             typeof(CleanArchitecture.Application.IdentityAccess.ExternalLogins.StartExternalLoginCommand).FullName,
             typeof(CleanArchitecture.Application.IdentityAccess.ExternalLogins.StartExternalLinkCommand).FullName,

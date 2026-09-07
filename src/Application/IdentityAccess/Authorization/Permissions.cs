@@ -36,6 +36,13 @@ public static class Permissions
     /// may suspend a company is not thereby entitled to suspend a person.
     /// </summary>
     public const string PlatformIdentitiesManage = "platform.identities.manage";
+
+    /// <summary>
+    /// Resolving somebody's documentary dispute (IA-REQ-058). Distinct from every other Platform code, because
+    /// it is the only one that can cause a document value to be written at all — and it can do so only against a
+    /// stored dispute, and never for the operator's own identity.
+    /// </summary>
+    public const string PlatformDocumentsResolve = "platform.identities.documents.resolve";
     public const string PlatformAuditRead = "platform.audit.read";
 
     /// <summary>
@@ -82,6 +89,12 @@ public static class Permissions
     public const string IdentityAccountManage = "identity.account.manage";
 
     /// <summary>
+    /// Opening a dispute over your own recorded document (IA-REQ-058). Application-scoped self-service: the
+    /// request carries no subject and resolves the caller's own document. It grants no power to write one.
+    /// </summary>
+    public const string IdentityDocumentDispute = "identity.document.dispute";
+
+    /// <summary>
     /// Handing an `Organization` to somebody else. Deliberately not `tenant.manage`: managing a tenant and giving
     /// it away are different powers, and one administrator holding the first must not thereby hold the second
     /// (IA-REQ-053). Necessary but never sufficient — the actor must also be the current owner.
@@ -108,6 +121,7 @@ public static class Permissions
         new(PlatformAdminsManage, [TenantType.Platform], OrganizationOwner.NotApplicable),
         new(PlatformAdminsRead, [TenantType.Platform], OrganizationOwner.NotApplicable),
         new(PlatformAuditRead, [TenantType.Platform], OrganizationOwner.NotApplicable),
+        new(PlatformDocumentsResolve, [TenantType.Platform], OrganizationOwner.NotApplicable),
         new(PlatformIdentitiesManage, [TenantType.Platform], OrganizationOwner.NotApplicable),
         new(PlatformIdentitiesRead, [TenantType.Platform], OrganizationOwner.NotApplicable),
         new(PlatformOrganizationsRead, [TenantType.Platform], OrganizationOwner.NotApplicable),
@@ -149,7 +163,8 @@ public static class Permissions
         IdentityProfileManage,
         IdentityCredentialsManage,
         IdentityExternalManage,
-        IdentityAccountManage
+        IdentityAccountManage,
+        IdentityDocumentDispute
     };
 
     /// <summary>
@@ -171,7 +186,8 @@ public static class Permissions
         IdentityProfileManage,
         IdentityCredentialsManage,
         IdentityExternalManage,
-        IdentityAccountManage
+        IdentityAccountManage,
+        IdentityDocumentDispute
     };
 
 }

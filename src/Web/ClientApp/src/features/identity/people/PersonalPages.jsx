@@ -46,8 +46,59 @@ export function PersonalRegisterPage() {
 }
 
 /**
- * The owner's own profile. The document is shown masked and is not editable here: correcting one is a separate
- * verified process this increment does not build, and `correctionAvailable` says so rather than the screen guessing.
+ * Saying the recorded document is wrong. The screen offers this unconditionally when a document is recorded,
+ * because whether a correction is *possible* must not depend on what the person can see about anybody else —
+ * only on whether they already have a dispute open (IA-REQ-058).
+ *
+ * The claimed number is typed here and sent once. Nothing keeps it: no state survives the submit, and the answer
+ * carries only an opaque identifier back.
+ */
+function DocumentDispute({ client, available, country, type }) {
+  const [claimedNumber, setClaimedNumber] = useState('');
+  const [reasonCode, setReasonCode] = useState('TypedWrongAtSignup');
+  const { submit, problem, isBusy, result } = useSubmit((request) => client.openDocumentDispute(request));
+
+  if (!available) {
+    return <p>A correction is already being reviewed for this document.</p>;
+  }
+
+  if (result) {
+    return <p>The correction was sent for review. Nothing about your account changes while it is open.</p>;
+  }
+
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        submit({ claimedCountry: country, claimedType: type, claimedNumber, reasonCode });
+        setClaimedNumber('');
+      }}
+    >
+      <h3>Correct this document</h3>
+      <p>An operator reviews the correction. Your account keeps working while it is open.</p>
+      <ProblemMessage problem={problem} />
+      <label htmlFor="dispute-number">What the number should be</label>
+      <input
+        id="dispute-number"
+        value={claimedNumber}
+        onChange={(event) => setClaimedNumber(event.target.value)}
+        required
+      />
+      <label htmlFor="dispute-reason">Why</label>
+      <select id="dispute-reason" value={reasonCode} onChange={(event) => setReasonCode(event.target.value)}>
+        <option value="TypedWrongAtSignup">I typed it wrong when I signed up</option>
+        <option value="DocumentReissued">My document was reissued</option>
+        <option value="RecordedByMistake">It is not my document</option>
+      </select>
+      <button type="submit" disabled={isBusy}>Send for review</button>
+    </form>
+  );
+}
+
+/**
+ * The owner's own profile. The document is shown masked and is never editable here: correcting one is a separate
+ * verified process that takes two parties, and all this screen can do is start it. `correctionAvailable` is what
+ * decides whether the form is offered, because at most one dispute is open at a time (IA-REQ-058).
  */
 export function PersonalProfilePage() {
   const identity = useIdentity();
@@ -117,8 +168,13 @@ export function PersonalProfilePage() {
           </>
         )}
       </dl>
-      {profile.document && !profile.document.correctionAvailable && (
-        <p>Correcting a recorded document is not available yet.</p>
+      {profile.document && profile.document.status === 'recorded' && (
+        <DocumentDispute
+          client={identity.client}
+          available={profile.document.correctionAvailable}
+          country={profile.document.country}
+          type={profile.document.type}
+        />
       )}
       <form onSubmit={(event) => { event.preventDefault(); setEdits(null); submit({ ...form, version: profile.version }); }}>
         <label htmlFor="profile-full-name">Full name</label>

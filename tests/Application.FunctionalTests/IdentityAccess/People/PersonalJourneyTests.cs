@@ -153,7 +153,7 @@ public sealed class PersonalJourneyTests : TestBase
     }
 
     [Test]
-    public async Task A_profile_reads_masked_and_offers_no_correction_in_this_increment()
+    public async Task A_profile_reads_masked_and_offers_the_correction_this_increment_can_serve()
     {
         var identityId = await PersonalScenario.SeedConfirmedIdentityAsync("reader@example.test");
         PersonalScenario.RunAs(identityId);
@@ -168,7 +168,9 @@ public sealed class PersonalJourneyTests : TestBase
         profile.Value!.Document!.MaskedNumber.ShouldBe("••••••78");
         profile.Value!.Document!.Country.ShouldBe("AR");
         profile.Value!.Document!.Type.ShouldBe("DNI");
-        profile.Value!.Document!.CorrectionAvailable.ShouldBeFalse("the dispute route is Task 26; a screen must not offer what this increment cannot serve");
+        // Task 26 built the dispute route this test used to say did not exist. What `correctionAvailable` now
+        // reports is whether *this person* may open one, and with none open they may (IA-REQ-058).
+        profile.Value!.Document!.CorrectionAvailable.ShouldBeTrue("the dispute route exists and this person has none open");
         profile.Value!.Version.ShouldNotBeNullOrWhiteSpace();
     }
 

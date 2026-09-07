@@ -23,6 +23,7 @@ public sealed class Identity : IEndpointGroup
         global::CleanArchitecture.Web.IdentityEndpoints.PersonalEndpoints.Map(group);
         global::CleanArchitecture.Web.IdentityEndpoints.PasswordEndpoints.Map(group);
         global::CleanArchitecture.Web.IdentityEndpoints.AccountLifecycleEndpoints.Map(group);
+        global::CleanArchitecture.Web.IdentityEndpoints.DocumentDisputeEndpoints.Map(group);
         global::CleanArchitecture.Web.IdentityEndpoints.ExternalLoginEndpoints.Map(group);
         group.MapGet("/antiforgery", GetAntiforgery)
             .Produces<AntiforgeryResponse>()

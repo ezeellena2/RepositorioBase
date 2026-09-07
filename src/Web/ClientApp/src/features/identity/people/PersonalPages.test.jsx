@@ -26,7 +26,8 @@ const recordedProfile = (overrides = {}) => ({
 
 /**
  * A person's own context in the browser: the choice that precedes it, the signup that stays neutral, and the
- * profile that shows a masked document and offers no correction this increment cannot serve.
+ * profile that shows a masked document and offers the one correction route there is — a request for review by a
+ * second party, never an edit.
  */
 describe('personal pages', () => {
   it('offers both kinds of registration rather than choosing for the visitor', () => {
@@ -75,7 +76,7 @@ describe('personal pages', () => {
     expect(JSON.stringify(window.sessionStorage)).not.toContain('Testing1234!');
   });
 
-  it('shows the document masked and offers no correction', async () => {
+  it('shows the document masked and says a correction is already being reviewed', async () => {
     server.use(antiforgery(), contextIs(signedInContext()));
     server.use(http.get('/api/identity/profile', () => HttpResponse.json(recordedProfile())));
 
@@ -83,8 +84,37 @@ describe('personal pages', () => {
 
     expect(await screen.findByText('••••••78')).toBeInTheDocument();
     expect(screen.getByText('AR DNI')).toBeInTheDocument();
-    expect(screen.getByText(/correcting a recorded document is not available yet/i)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /correct/i })).not.toBeInTheDocument();
+    // The fixture reports `correctionAvailable: false`, which now means one is open rather than none is possible.
+    expect(screen.getByText(/already being reviewed/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /send for review/i })).not.toBeInTheDocument();
+  });
+
+  it('offers the correction when this person has none open, and sends the claim once', async () => {
+    const claims = [];
+    server.use(antiforgery(), contextIs(signedInContext()));
+    server.use(http.get('/api/identity/profile', () =>
+      HttpResponse.json({ ...recordedProfile(), document: { ...recordedProfile().document, correctionAvailable: true } })));
+    server.use(http.post('/api/identity/profile/document/disputes', async ({ request }) => {
+      claims.push(await request.json());
+      return HttpResponse.json({ disputeId: '11111111-1111-1111-1111-111111111111' }, { status: 201 });
+    }));
+
+    renderPage(<PersonalProfilePage />);
+
+    await userEvent.type(await screen.findByLabelText(/what the number should be/i), '30111333');
+    await userEvent.click(screen.getByRole('button', { name: /send for review/i }));
+
+    expect(await screen.findByText(/sent for review/i)).toBeInTheDocument();
+    expect(claims).toHaveLength(1);
+    expect(claims[0]).toEqual({
+      claimedCountry: 'AR',
+      claimedType: 'DNI',
+      claimedNumber: '30111333',
+      reasonCode: 'TypedWrongAtSignup',
+    });
+
+    // The number left the browser once and nothing on the screen keeps it.
+    expect(screen.queryByDisplayValue('30111333')).not.toBeInTheDocument();
   });
 
   it('edits only the two permitted names and echoes the version it read', async () => {

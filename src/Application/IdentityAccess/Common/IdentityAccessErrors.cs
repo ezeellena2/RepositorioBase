@@ -247,6 +247,31 @@ public static class IdentityAccessErrors
     public static ApplicationError RetentionHoldConflict() =>
         new("retention_hold_conflict", ApplicationErrorCategory.Conflict, "An active hold already exists for that subject and reason.");
 
+    /// <summary>
+    /// A malformed dispute: a claimed tuple this system does not accept, a reason code or evidence reference
+    /// outside the accepted shape, an outcome outside the closed set. Deliberately one answer and deliberately
+    /// without the value, because the one thing in scope when this is produced is a document number.
+    /// </summary>
+    public static ApplicationError InvalidDocumentDispute() =>
+        new("invalid_document_dispute", ApplicationErrorCategory.Validation, "The dispute request is not valid.");
+
+    public static ApplicationError DocumentDisputeConflict() =>
+        new("document_dispute_conflict", ApplicationErrorCategory.Conflict, "A dispute over this document is already open.");
+
+    public static ApplicationError DocumentDisputeNotFound() =>
+        new("not_found", ApplicationErrorCategory.NotFound, "That dispute is not available.");
+
+    /// <summary>Half of what "no support bypass" means: an operator is never both parties (IA-REQ-058).</summary>
+    public static ApplicationError SelfResolutionRefused() =>
+        new("self_resolution_refused", ApplicationErrorCategory.Authorization, "A dispute over your own document cannot be resolved by you.");
+
+    /// <summary>
+    /// The claimed documentary identity belongs to somebody else. It is a fact an audited, MFA-proved operator
+    /// may be told, and one no self-service caller ever is.
+    /// </summary>
+    public static ApplicationError DocumentAlreadyRecorded() =>
+        new("document_already_recorded", ApplicationErrorCategory.Conflict, "That documentary identity is already recorded against another identity.");
+
     public static ApplicationError IdentityNotFound() =>
         new("not_found", ApplicationErrorCategory.NotFound, "That identity is not available.");
 

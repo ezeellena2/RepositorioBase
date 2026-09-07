@@ -54,6 +54,10 @@ public interface IApplicationDbContext
 
     DbSet<CleanArchitecture.Domain.IdentityAccess.Retention.PersonalDataErasureRecord> PersonalDataErasureRecords { get; }
 
+    DbSet<IdentityDocumentDispute> IdentityDocumentDisputes { get; }
+
+    DbSet<IdentityDocumentCorrectionRecord> IdentityDocumentCorrectionRecords { get; }
+
     DbSet<CleanArchitecture.Domain.IdentityAccess.ExternalLogins.ExternalAuthorizationRequest> ExternalAuthorizationRequests { get; }
 
     DbSet<IdentitySecurityState> IdentitySecurityStates { get; }

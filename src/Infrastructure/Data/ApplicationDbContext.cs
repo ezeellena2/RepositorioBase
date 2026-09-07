@@ -66,6 +66,10 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
 
     public DbSet<CleanArchitecture.Domain.IdentityAccess.Retention.PersonalDataErasureRecord> PersonalDataErasureRecords => Set<CleanArchitecture.Domain.IdentityAccess.Retention.PersonalDataErasureRecord>();
 
+    public DbSet<IdentityDocumentDispute> IdentityDocumentDisputes => Set<IdentityDocumentDispute>();
+
+    public DbSet<IdentityDocumentCorrectionRecord> IdentityDocumentCorrectionRecords => Set<IdentityDocumentCorrectionRecord>();
+
     public DbSet<CleanArchitecture.Domain.IdentityAccess.ExternalLogins.ExternalAuthorizationRequest> ExternalAuthorizationRequests => Set<CleanArchitecture.Domain.IdentityAccess.ExternalLogins.ExternalAuthorizationRequest>();
 
     public DbSet<IdentitySecurityState> IdentitySecurityStates => Set<IdentitySecurityState>();

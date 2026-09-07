@@ -80,5 +80,11 @@ public sealed record SuspendIdentityRequest(string? Reason, string? ExpectedStat
 /// </summary>
 public sealed record ReactivateIdentityRequest(string? ExpectedStatus, bool AcknowledgeSelfDeactivation);
 
+/// <summary>
+/// Resolving one documentary dispute. `outcome` is `corrected` or `rejected`, and `evidenceReference` names a case
+/// held outside this system — carrying no free text and nothing about the person (IA-REQ-058).
+/// </summary>
+public sealed record ResolveDocumentDisputeRequest(string? Outcome, string? EvidenceReference);
+
 /// <summary>Who to invite as a Platform administrator. There is no role field: the role is the system one.</summary>
 public sealed record PlatformAdministratorInvitationRequest(string Email);

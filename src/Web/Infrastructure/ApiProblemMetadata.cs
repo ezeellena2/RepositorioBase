@@ -88,6 +88,14 @@ public static class ApiProblemMetadata
 
     public static readonly ApiProblemContract RetentionHoldConflict = new(StatusCodes.Status409Conflict, "retention_hold_conflict");
 
+    public static readonly ApiProblemContract InvalidDocumentDispute = new(StatusCodes.Status400BadRequest, "invalid_document_dispute");
+
+    public static readonly ApiProblemContract DocumentDisputeConflict = new(StatusCodes.Status409Conflict, "document_dispute_conflict");
+
+    public static readonly ApiProblemContract SelfResolutionRefused = new(StatusCodes.Status403Forbidden, "self_resolution_refused");
+
+    public static readonly ApiProblemContract DocumentAlreadyRecorded = new(StatusCodes.Status409Conflict, "document_already_recorded");
+
     /// <summary>`Closed` and nothing else: a tombstone has no way back (IA-REQ-054, amendment A4).</summary>
     public static readonly ApiProblemContract IdentityReactivationUnavailable = new(StatusCodes.Status403Forbidden, "identity_reactivation_unavailable");
 
