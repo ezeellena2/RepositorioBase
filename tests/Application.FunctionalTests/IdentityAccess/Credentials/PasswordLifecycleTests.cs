@@ -1,14 +1,17 @@
 using System.Net;
 using System.Net.Http.Json;
 using CleanArchitecture.Application.FunctionalTests.Infrastructure;
+using CleanArchitecture.Application.IdentityAccess.Organizations;
 using CleanArchitecture.Domain.IdentityAccess.Auditing;
 using CleanArchitecture.Domain.IdentityAccess.Credentials;
 using CleanArchitecture.Domain.IdentityAccess.Outbox;
 using CleanArchitecture.Domain.IdentityAccess.Sessions;
 using CleanArchitecture.Infrastructure.Data;
 using CleanArchitecture.Infrastructure.Identity;
+using CleanArchitecture.Infrastructure.IdentityAccess;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using NUnit.Framework;
 using Shouldly;
 
@@ -27,6 +30,88 @@ public sealed class PasswordLifecycleTests : TestBase
     private const string NewPassword = "Replaced5678!";
 
     private static string Host() => $"https://password-{Guid.NewGuid():N}.localhost";
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Revalidation_a_login_validated_before_a_password_change_cannot_open_a_session_after_it(bool useRecovery)
+    {
+        var email = $"credential-race-{Guid.NewGuid():N}@example.test";
+        await IdentityHttpHarness.SeedConfirmedUserAsync(email, Password);
+        var barrier = new CredentialValidationBarrier();
+        using var harness = IdentityHttpHarness.CreateProductionHarness(configureTestServices: services =>
+        {
+            services.RemoveAll<IIdentityAccountService>();
+            services.AddScoped<IIdentityAccountService>(provider => new PausedIdentityAccountService(
+                ActivatorUtilities.CreateInstance<IdentityAccountService>(provider), barrier));
+        });
+        using var client = WithoutCookieJar(harness);
+        var host = Host();
+        var current = await SignInAsync(client, host, email, Password);
+        string? resetToken = null;
+        if (useRecovery)
+        {
+            (await RecoverAsync(client, host, email)).StatusCode.ShouldBe(HttpStatusCode.Accepted);
+            resetToken = await DeliveredTokenAsync();
+        }
+        else await ProveAsync(client, host, current, "credentials.password.change");
+
+        var antiforgery = await AntiforgeryAsync(client, host, null);
+        using var request = IdentityHttpHarness.JsonRequest(HttpMethod.Post, $"{host}/api/identity/sessions", new { email, password = Password }, antiforgery.Token);
+        request.Headers.Add("Cookie", antiforgery.Cookie);
+        barrier.Arm();
+        var pendingLogin = client.SendAsync(request);
+        HttpResponseMessage changed;
+        try
+        {
+            await barrier.Validated.Task.WaitAsync(TimeSpan.FromSeconds(30));
+            changed = useRecovery
+                ? await ResetAsync(client, host, resetToken!, NewPassword)
+                : await ChangeAsync(client, host, current, NewPassword);
+        }
+        finally { barrier.Release.TrySetResult(); }
+
+        using var login = await pendingLogin.WaitAsync(TimeSpan.FromSeconds(30));
+        var lateCookie = login.Headers.TryGetValues("Set-Cookie", out var cookies)
+            ? cookies.FirstOrDefault(value => value.StartsWith("__Host-ia-auth=", StringComparison.Ordinal))?.Split(';')[0]
+            : null;
+        using var protectedResponse = await ContextAsync(client, host, lateCookie ?? string.Empty);
+        TestContext.Out.WriteLine($"recovery={useRecovery}; credential change={(int)changed.StatusCode}; late login={(int)login.StatusCode}; late cookie={lateCookie is not null}; protected GET={(int)protectedResponse.StatusCode}");
+        changed.StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        protectedResponse.StatusCode.ShouldBe(HttpStatusCode.Unauthorized,
+            "credentials invalidated before session issuance must never produce a usable authenticated session (C2/C4)");
+        login.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+        lateCookie.ShouldBeNull();
+    }
+
+    [Test]
+    public async Task Revalidation_a_recovery_link_issued_before_an_authenticated_password_change_is_invalid()
+    {
+        var email = $"old-reset-{Guid.NewGuid():N}@example.test";
+        await IdentityHttpHarness.SeedConfirmedUserAsync(email, Password);
+        using var harness = IdentityHttpHarness.CreateProductionHarness();
+        using var client = WithoutCookieJar(harness);
+        var host = Host();
+        var current = await SignInAsync(client, host, email, Password);
+        (await RecoverAsync(client, host, email)).StatusCode.ShouldBe(HttpStatusCode.Accepted);
+        var oldToken = await DeliveredTokenAsync();
+        await ProveAsync(client, host, current, "credentials.password.change");
+        using var changed = await ChangeAsync(client, host, current, NewPassword);
+        changed.StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        var replacement = changed.Headers.GetValues("Set-Cookie")
+            .Single(value => value.StartsWith("__Host-ia-auth=", StringComparison.Ordinal)).Split(';')[0];
+
+        const string RecoveredPassword = "OldLinkRejected999!";
+        using var reset = await ResetAsync(client, host, oldToken, RecoveredPassword);
+        using var protectedResponse = await ContextAsync(client, host, replacement);
+        var changedPasswordRejected = await FailedSignInAsync(client, host, email, NewPassword);
+        var resetPasswordRejected = await FailedSignInAsync(client, host, email, RecoveredPassword);
+        TestContext.Out.WriteLine($"old reset={(int)reset.StatusCode}; replacement session={(int)protectedResponse.StatusCode}; changed password rejected={changedPasswordRejected}; reset password rejected={resetPasswordRejected}");
+        reset.StatusCode.ShouldBe(HttpStatusCode.BadRequest, "an earlier reset link must no longer match the identity security version (C4)");
+        (await IdentityHttpHarness.ReadProblemAsync(reset)).GetProperty("code").GetString().ShouldBe("invalid_credential_token");
+        protectedResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
+        changedPasswordRejected.ShouldBeFalse();
+        resetPasswordRejected.ShouldBeTrue();
+    }
 
     [Test]
     public async Task A_recovery_request_answers_the_same_whether_or_not_the_address_has_an_account()
@@ -269,7 +354,9 @@ public sealed class PasswordLifecycleTests : TestBase
     private static async Task<HttpResponseMessage> ContextAsync(HttpClient client, string host, string cookie)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, $"{host}/api/identity/context");
-        request.Headers.Add("Cookie", cookie);
+        // A refused sign-in leaves no cookie, and asking what that non-cookie can reach is the point of the
+        // question. An empty header value is rejected by HttpClient, so it is simply not sent.
+        if (!string.IsNullOrEmpty(cookie)) request.Headers.Add("Cookie", cookie);
         return await client.SendAsync(request);
     }
 
@@ -337,4 +424,36 @@ public sealed class PasswordLifecycleTests : TestBase
     }
 
     private sealed record Antiforgery(string Cookie, string Token);
+
+    private sealed class CredentialValidationBarrier
+    {
+        private int _armed;
+        internal TaskCompletionSource Validated { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal void Arm() => Interlocked.Exchange(ref _armed, 1);
+        internal async Task PauseOnceAsync()
+        {
+            if (Interlocked.Exchange(ref _armed, 0) != 1) return;
+            Validated.TrySetResult();
+            await Release.Task.WaitAsync(TimeSpan.FromSeconds(30));
+        }
+    }
+
+    private sealed class PausedIdentityAccountService(IIdentityAccountService inner, CredentialValidationBarrier barrier) : IIdentityAccountService
+    {
+        public async Task<IdentityAccount?> ValidateCredentialsAsync(string email, string password, CancellationToken cancellationToken)
+        {
+            var account = await inner.ValidateCredentialsAsync(email, password, cancellationToken);
+            if (account is not null) await barrier.PauseOnceAsync();
+            return account;
+        }
+        public Task<IdentityAccount?> FindByEmailAsync(string email, CancellationToken cancellationToken) => inner.FindByEmailAsync(email, cancellationToken);
+        public Task<IdentityAccount?> FindByIdAsync(Guid id, CancellationToken cancellationToken) => inner.FindByIdAsync(id, cancellationToken);
+        public Task<IdentityAccountValidationResult> ValidatePendingRegistrationAsync(string email, string password, CancellationToken cancellationToken) => inner.ValidatePendingRegistrationAsync(email, password, cancellationToken);
+        public Task<IdentityAccountValidationResult> ValidatePasswordAsync(string password, CancellationToken cancellationToken) => inner.ValidatePasswordAsync(password, cancellationToken);
+        public Task<IdentityAccountCreationResult> CreatePendingAsync(string email, string password, CancellationToken cancellationToken) => inner.CreatePendingAsync(email, password, cancellationToken);
+        public string HashPassword(string password) => inner.HashPassword(password);
+        public Task<IdentityAccountCreationResult> CreatePendingFromHashAsync(string email, string hash, CancellationToken cancellationToken) => inner.CreatePendingFromHashAsync(email, hash, cancellationToken);
+        public Task ActivateAsync(Guid id, CancellationToken cancellationToken) => inner.ActivateAsync(id, cancellationToken);
+    }
 }

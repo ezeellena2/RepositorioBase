@@ -20,7 +20,10 @@ export default [
     plugins: { 'react-hooks': reactHooks, 'react-refresh': reactRefresh },
     rules: {
       ...reactHooks.configs.recommended.rules,
-      'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]', argsIgnorePattern: '^_' }],
+      // A component reached only from JSX looks unused to the base rule, which does not read JSX as a reference.
+      // The capitalised exception already covered imports; a table-driven test that takes the component as a
+      // parameter needs the same accommodation, so the two patterns say the same thing about the same names.
+      'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]', argsIgnorePattern: '^(_|[A-Z])' }],
     },
   },
   {

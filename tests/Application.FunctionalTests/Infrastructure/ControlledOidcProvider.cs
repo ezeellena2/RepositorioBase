@@ -44,6 +44,15 @@ internal sealed class ControlledOidcProvider : IDisposable
     /// <summary>Replaces the nonce the handler asked for, which is the replay control the protocol turns on.</summary>
     internal string? NonceOverride { get; set; }
 
+    /// <summary>
+    /// Signed authentication evidence. It defaults to "just now" because that is what a conformant provider
+    /// answers: OIDC Core 1.0 section 3.1.2.1 makes `auth_time` REQUIRED in the ID token once the request carried
+    /// `max_age`, which every proof challenge now does. Assigning `null` models a provider that answers without
+    /// it, and any other value models one that answers with something a caller must not simply believe — token
+    /// issuance itself proves no authentication time.
+    /// </summary>
+    internal object? AuthenticationTimeClaim { get; set; } = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
     internal int TokenExchanges { get; private set; }
 
     internal HttpMessageHandler CreateHandler() => new ProviderHandler(this);
@@ -129,6 +138,7 @@ internal sealed class ControlledOidcProvider : IDisposable
             ["email_verified"] = pending.EmailVerified
         };
         if (pending.Email is not null) claims["email"] = pending.Email;
+        if (AuthenticationTimeClaim is not null) claims["auth_time"] = AuthenticationTimeClaim;
 
         var key = new RsaSecurityKey(SignWithUnpublishedKey ? _unpublished : _signing) { KeyId = KeyId };
         var idToken = new JsonWebTokenHandler().CreateToken(new SecurityTokenDescriptor

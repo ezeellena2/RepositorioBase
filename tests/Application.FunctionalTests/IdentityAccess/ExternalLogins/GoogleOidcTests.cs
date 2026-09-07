@@ -31,6 +31,50 @@ public sealed class GoogleOidcTests : TestBase
 {
     private const string Password = "Testing1234!";
 
+    [TestCase("missing")]
+    [TestCase("old")]
+    [TestCase("malformed")]
+    [TestCase("future")]
+    [TestCase("altered-request")]
+    public async Task Revalidation_external_proof_requires_fresh_signed_authentication_evidence(string evidence)
+    {
+        using var scenario = Scenario();
+        var browser = scenario.Browser();
+        var subject = $"proof-evidence-{Guid.NewGuid():N}";
+        var email = $"proof-evidence-{Guid.NewGuid():N}@example.test";
+        (await browser.SignInWithProviderAsync(subject, email)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        var identityId = (await TestApp.ListAsync<CleanArchitecture.Infrastructure.Identity.ApplicationUser>()).Single().Id;
+        scenario.Provider.AuthenticationTimeClaim = evidence switch
+        {
+            "old" => DateTimeOffset.UtcNow.AddDays(-1).ToUnixTimeSeconds(),
+            "malformed" => "not-an-authentication-time",
+            "future" => DateTimeOffset.UtcNow.AddHours(1).ToUnixTimeSeconds(),
+            _ => null
+        };
+
+        var challenge = await browser.StartAsync("proof", new { action = ProofActions.PasswordChange });
+        if (evidence == "altered-request")
+        {
+            // Browser-visible request parameters can be removed without changing protected state, nonce or PKCE.
+            // This controlled provider models a valid reply without evidence, not Google's interactive behavior.
+            challenge.Parameters.Remove("prompt");
+            challenge.Parameters.Remove("claims");
+        }
+        using var callback = await browser.CallbackAsync(challenge, subject, email, true);
+        using var completion = await browser.CompleteAsync();
+        var issuedProofs = (await TestApp.ListAsync<RecentIdentityProof>())
+            .Count(proof => proof.IdentityId == identityId && proof.Action == ProofActions.PasswordChange && proof.ConsumedAt is null);
+        using var sensitive = await browser.PutAsync("/api/identity/credentials/password", new { newPassword = "EvidenceRequired5678!" });
+        using var credentials = await browser.GetAsync("/api/identity/credentials");
+        var hasPassword = (await credentials.Content.ReadFromJsonAsync<CredentialsRow>())!.HasPassword;
+        TestContext.Out.WriteLine($"evidence={evidence}; callback={callback.Headers.Location}; completion={(int)completion.StatusCode}; unspent proofs={issuedProofs}; sensitive operation={(int)sensitive.StatusCode}; password created={hasPassword}");
+
+        issuedProofs.ShouldBe(0, "a newly issued ID token is insufficient without trustworthy recent authentication evidence (IA-REQ-051)");
+        completion.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        sensitive.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+        hasPassword.ShouldBeFalse();
+    }
+
     [Test]
     public async Task A_verified_provider_account_nobody_has_claimed_becomes_an_identity_with_a_session_and_no_tenant()
     {
@@ -747,6 +791,12 @@ public sealed class GoogleOidcTests : TestBase
         internal async Task<HttpResponseMessage> PostAsync(string path, object? body)
         {
             using var request = IdentityHttpHarness.JsonRequest(HttpMethod.Post, $"{Host}{path}", body, await TokenAsync());
+            return await client.SendAsync(request);
+        }
+
+        internal async Task<HttpResponseMessage> PutAsync(string path, object? body)
+        {
+            using var request = IdentityHttpHarness.JsonRequest(HttpMethod.Put, $"{Host}{path}", body, await TokenAsync());
             return await client.SendAsync(request);
         }
 
