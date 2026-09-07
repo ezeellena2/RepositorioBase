@@ -745,12 +745,24 @@ delivery. Treating sessions created before the epoch as revoked, and terminalizi
 predate it, are reads of the restored database that belong with Task 27's other fail-closed work; `PredatesRecovery`
 is the question they will ask and it is tested here.
 
-## Task 26 - complete 2026-09-07
+## Task 26 - REOPENED 2026-09-07
 
-All six units are implemented, tested and committed: identity lifecycle, administrative suspension, MFA recovery,
-the retention policy with legal holds, the bounded executor, the documentary dispute and the restore admission
-guard. Three vacuity checks found tests that proved nothing and each is recorded in its own unit rather than
-quietly fixed.
+**It was marked complete and it was not.** Six units are implemented and committed, and four gaps against the
+contract were found immediately afterwards. Two of them are ports with no consumers, one is a race the tests never
+tried to lose, and one is evidence this file claimed and the plan ticked without the work behind it. They are
+listed here as open until each has a failing test, a fix, a vacuity check and a run.
+
+| # | Gap | Why it is a gap and not a preference |
+|---|---|---|
+| 1 | `IRecoveryAdmission.AdmitsDelivery` has no consumers | `OutboxDispatcher` and the worker still claim and send while admission is `Closed`. IA-REQ-055 says a closed deployment "dispatches no outbox delivery". The property was written and never wired. |
+| 2 | `Quarantined` admits everything, and `PredatesRecovery` has no consumers | `AdmitsPublicIngress` is true for `Quarantined`, so the middleware lets every route through. The contract allows "authentication and revalidation only", and says sessions and `OutboxSecret` rows predating the epoch are refused - the second port written and never wired. |
+| 3 | A legal hold can commit between the executor's read and its purge | `RetentionMaintenanceCycle` reads the held subjects and then purges, sharing no protection with `PlaceRetentionHoldCommandHandler`. C7 names the coordination (`SELECT ... FOR UPDATE` on the subject's eligible rows) and the loser's answer (`409 retention_hold_subject_purged`), and that error code does not exist. |
+| 4 | The restore rehearsal is over-declared | The plan's `RED/GREEN restore` box is ticked for "an isolated synthetic backup that predates session revocation, password/link/factor replacement, grant removal and documentary purge". **No backup was taken and none was restored.** The `MfaRecoveryPage` screen and test the file list requires are also absent. |
+
+**What unit 26.6's entry claimed and what was true.** It said "this is not restore certification ... no backup was
+taken, none was restored" - which was honest about the external gate but did not say that the plan's own local
+rehearsal had also not been run. Marking the task complete over that was the error, and it is corrected here
+rather than in a summary somewhere else.
 
 ## Tasks 21–25 review remediation — done 2026-09-07
 
