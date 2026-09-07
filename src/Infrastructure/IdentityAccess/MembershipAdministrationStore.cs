@@ -130,7 +130,7 @@ public sealed class MembershipAdministrationStore(ApplicationDbContext context) 
         // writes nothing but `MembershipRoles`, so without rewriting the row the version this contract hands out
         // is still the one both administrators read. The rewrite carries that same token in its WHERE clause, so
         // a racer that commits between the version check and here loses to the database (IA-REQ-035).
-        context.Entry(membership).Property(candidate => candidate.Status).IsModified = true;
+        MoveVersionOf(membership);
 
         await context.SaveChangesAsync(cancellationToken);
         return new MembershipWriteResult(MembershipWriteStatus.Applied, await FindAsync(tenantId, membershipId, cancellationToken));
@@ -177,12 +177,35 @@ public sealed class MembershipAdministrationStore(ApplicationDbContext context) 
         if (tenant is null || membership is null) return new MembershipWriteResult(status, null);
         if (tenant.OwnerMembershipId == membership.Id) return new MembershipWriteResult(MembershipWriteStatus.AlreadyInState, null);
 
+        var formerOwnerId = tenant.OwnerMembershipId;
         try { tenant.TransferOwnershipTo(membership); }
         catch (InvalidOperationException) { return new MembershipWriteResult(MembershipWriteStatus.Invalid, null); }
+
+        // `isOwner` is not a column on either membership — it is what the tenant's single reference says about
+        // them — so this write would otherwise touch neither row, and both would keep handing out a version that
+        // describes a member view which has stopped being true. Whoever received the organization and whoever
+        // gave it up are each rewritten, so each version moves with what it describes (IA-REQ-035).
+        MoveVersionOf(membership);
+        if (formerOwnerId is { } former)
+        {
+            var previous = await context.TenantMemberships
+                .SingleOrDefaultAsync(candidate => candidate.TenantId == tenantId && candidate.Id == former, cancellationToken);
+            if (previous is not null) MoveVersionOf(previous);
+        }
 
         await context.SaveChangesAsync(cancellationToken);
         return new MembershipWriteResult(MembershipWriteStatus.Applied, null);
     }
+
+    /// <summary>
+    /// Rewrites a membership row so PostgreSQL advances the `xmin` this contract hands out as its version. Some
+    /// changes to what a member view says are not changes to any column on that row — which roles they hold, and
+    /// whether they own the organization — and a version that did not move for them is a version that lies.
+    /// `Status` and not another column because the audit interceptor reads a modified `Status` as no particular
+    /// transition, while it reads a modified `IsRetired` on a role as a retirement.
+    /// </summary>
+    private void MoveVersionOf(TenantMembership membership) =>
+        context.Entry(membership).Property(candidate => candidate.Status).IsModified = true;
 
     public async Task<Guid?> OwnerAsync(TenantId tenantId, CancellationToken cancellationToken) =>
         await context.Tenants.AsNoTracking()

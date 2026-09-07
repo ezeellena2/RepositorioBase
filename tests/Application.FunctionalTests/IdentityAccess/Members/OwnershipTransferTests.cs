@@ -215,6 +215,90 @@ public sealed class OwnershipTransferTests : TestBase
         removed.StatusCode.ShouldBe(HttpStatusCode.NoContent, await removed.Content.ReadAsStringAsync());
     }
 
+    /// <summary>
+    /// Handing the organization over changes what a member row says about itself — `isOwner` flips for the one
+    /// receiving it and for the one giving it up — so the version those rows hand out has to move with it. It did
+    /// not: the transfer wrote only the tenant, and a caller holding a version read before the transfer could act
+    /// on a member view that had already stopped being true (IA-REQ-035, IA-REQ-053).
+    /// </summary>
+    [Test]
+    public async Task Handing_the_organization_over_moves_the_version_of_every_member_row_it_changes()
+    {
+        using var scenario = await OrganizationScenario.CreateAsync("ownership");
+        var recipient = await scenario.AddQuietMemberAsync("successor", Permissions.MembersRead);
+        var role = await CreateRoleAsync(scenario, "Auditor");
+        var recipientBefore = await MemberAsync(scenario, recipient);
+        var ownerBefore = await MemberAsync(scenario, scenario.OwnerMembershipId);
+
+        (await TransferAsync(scenario.Owner, scenario, recipient, recipientBefore.Version))
+            .StatusCode.ShouldBe(HttpStatusCode.NoContent);
+
+        var recipientAfter = await MemberAsync(scenario, recipient);
+        var ownerAfter = await MemberAsync(scenario, scenario.OwnerMembershipId);
+        recipientAfter.IsOwner.ShouldBeTrue();
+        ownerAfter.IsOwner.ShouldBeFalse();
+        recipientAfter.Version.ShouldNotBe(recipientBefore.Version,
+            "the row now says it owns the organization, so the version it hands out cannot be the one that said otherwise");
+        ownerAfter.Version.ShouldNotBe(ownerBefore.Version,
+            "the row that gave the organization up changed in exactly the same way");
+
+        // The version each of them handed out before is now stale, and the write path has to say so rather than
+        // apply a change decided from a view that no longer holds.
+        await scenario.Owner.ProveAsync(ProofActions.MemberRoleChange);
+        using var staleAssignment = await scenario.Owner.SendAsync(
+            HttpMethod.Put,
+            $"/api/tenants/{scenario.TenantId.Value}/members/{recipient}/roles",
+            new { roleIds = new[] { role }, version = recipientBefore.Version });
+        staleAssignment.StatusCode.ShouldBe(HttpStatusCode.Conflict, await staleAssignment.Content.ReadAsStringAsync());
+        (await IdentityHttpHarness.ReadProblemAsync(staleAssignment)).GetProperty("code").GetString()
+            .ShouldBe("membership_concurrency_conflict");
+
+        using var staleSuspend = await scenario.Owner.SendAsync(
+            HttpMethod.Post,
+            $"/api/tenants/{scenario.TenantId.Value}/members/{scenario.OwnerMembershipId}/suspend",
+            new { version = ownerBefore.Version });
+        staleSuspend.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+
+        // Nothing the stale attempts touched actually moved, and the organization still has exactly one owner.
+        (await MemberAsync(scenario, recipient)).RoleIds.ShouldBe(recipientAfter.RoleIds);
+        (await MemberAsync(scenario, scenario.OwnerMembershipId)).Status.ShouldBe(ownerAfter.Status);
+        (await MembersAsync(scenario)).Count(member => member.IsOwner).ShouldBe(1);
+    }
+
+    /// <summary>
+    /// Asking for the state that already holds still does no work, so no version may drift either. A version that
+    /// moved on a request that changed nothing would invalidate everybody else's reads for no reason.
+    /// </summary>
+    [Test]
+    public async Task A_transfer_that_changes_nothing_moves_no_version()
+    {
+        using var scenario = await OrganizationScenario.CreateAsync("ownership");
+        await scenario.AddQuietMemberAsync("successor", Permissions.MembersRead);
+        var settled = await MembersAsync(scenario);
+
+        (await TransferAsync(scenario.Owner, scenario, scenario.OwnerMembershipId, await VersionAsync(scenario, scenario.OwnerMembershipId)))
+            .StatusCode.ShouldBe(HttpStatusCode.NoContent, "asking for a state that already holds is not a conflict");
+
+        var again = await MembersAsync(scenario);
+        again.OrderBy(member => member.MembershipId).Select(member => member.Version)
+            .ShouldBe(settled.OrderBy(member => member.MembershipId).Select(member => member.Version));
+        again.Count(member => member.IsOwner).ShouldBe(1);
+    }
+
+    private static async Task<MemberRow> MemberAsync(OrganizationScenario scenario, Guid membershipId) =>
+        (await MembersAsync(scenario)).Single(member => member.MembershipId == membershipId);
+
+    private static async Task<Guid> CreateRoleAsync(OrganizationScenario scenario, string name)
+    {
+        await scenario.Owner.ProveAsync(ProofActions.RoleChange);
+        var created = await scenario.Owner.SendAsync(
+            HttpMethod.Post,
+            $"/api/tenants/{scenario.TenantId.Value}/roles",
+            new { name, permissions = new[] { Permissions.MembersRead } });
+        created.StatusCode.ShouldBe(HttpStatusCode.Created, await created.Content.ReadAsStringAsync());
+        return (await IdentityHttpHarness.ReadJsonAsync(created)).GetProperty("roleId").GetGuid();
+    }
+
     private static async Task<HttpResponseMessage> TransferAsync(Administrator actor, OrganizationScenario scenario, Guid toMembershipId, string version)
     {
         await actor.ProveAsync(ProofActions.OwnershipTransfer);
