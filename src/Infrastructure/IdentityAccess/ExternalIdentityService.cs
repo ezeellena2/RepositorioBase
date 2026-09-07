@@ -1,4 +1,5 @@
 using CleanArchitecture.Application.IdentityAccess.ExternalLogins;
+using CleanArchitecture.Domain.IdentityAccess.Identities;
 using CleanArchitecture.Infrastructure.Data;
 using CleanArchitecture.Infrastructure.Data.Configurations.IdentityAccess;
 using CleanArchitecture.Infrastructure.Identity;
@@ -94,9 +95,17 @@ public sealed class ExternalIdentityService(UserManager<ApplicationUser> userMan
     public async Task<Guid?> CreateFromProviderAsync(string normalizedEmail, CancellationToken cancellationToken)
     {
         // Confirmed on creation, and only because the provider asserted a verified address; the caller refuses
-        // the assertion otherwise. No password is set: the provider link is this identity's only authenticator
-        // until the person adds one, which is what makes the last-authenticator rule matter.
-        var user = new ApplicationUser { UserName = normalizedEmail, Email = normalizedEmail, EmailConfirmed = true };
+        // the assertion otherwise. That is the same fact the state records, so it is set here rather than left to
+        // a later confirmation that has nothing to confirm (IA-REQ-054). No password is set: the provider link is
+        // this identity's only authenticator until the person adds one, which is what makes the
+        // last-authenticator rule matter.
+        var user = new ApplicationUser
+        {
+            UserName = normalizedEmail,
+            Email = normalizedEmail,
+            EmailConfirmed = true,
+            Status = IdentityAccountStatus.Active
+        };
         var created = await userManager.CreateAsync(user);
         return created.Succeeded ? user.Id : null;
     }

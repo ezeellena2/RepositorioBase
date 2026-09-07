@@ -457,6 +457,48 @@ relaxed. The widening-versus-reissue race was left honest in the same way: the w
   assignment is a whole-set replacement over existing rows and the invitation aggregate already had every
   transition this task drives.
 
+## Task 26 — in progress
+
+C6 covers five things that share a task number and almost nothing else: identity lifecycle, Platform MFA recovery,
+retention maintenance, the documentary dispute and the restore admission guard. They land as separate units with
+separate evidence, because a change that mixes them is one nobody can review.
+
+### Unit 26.1 — identity lifecycle: parking your own account and coming back (done 2026-09-07)
+
+**Visible outcome met:** a person proves their password, parks their own account, and every door it had open shuts
+at once — the cookie that asked, the cookie on the other device, and the password itself. Later they ask for a
+link at the address they own, and come back with that link and their password.
+
+**The state is now the answer, not an assembly of flags.** "May this identity act" used to be computed at each
+call site from `EmailConfirmed` and an unexpired lockout. `IdentityAccountStatus` was an enum with no column and
+no reader. It is now a real column on `AspNetUsers` — `PendingConfirmation`, `Active`, `SelfDeactivated`,
+`AdministrativelySuspended`, `Closed`, checked by the database — and `IdentityAccount.IsActive` derives from it,
+so there is one answer and every existing reader inherits it (IA-REQ-054). The migration maps each existing row
+onto the answer it already gave, and the column's default is the least an account may do, so a row inserted by
+something that has never heard of the column is one nobody can sign into.
+
+**Withdrawal E1, in the code.** `ReactivateAccountCommand` carries a ticket and a password and nothing else.
+There is no `providerProofToken` and no `ExternalAuthorizationPurpose.Recovery`. The ticket deliberately carries
+no security version — unlike `PasswordResetRequest`, which needs one because it *replaces* a credential — since
+stamping it would refuse the person who did exactly what E1 tells a provider-only identity to do: set a password
+first, then come back.
+
+| Step | What happened |
+|---|---|
+| RED | `IdentityLifecycleTests` did not compile against the absent `ProofActions.AccountDeactivate`, then drove ten behaviours: both cookies dying, the password that stops opening anything, the way back, the ticket that is worth nothing without the password, the spent ticket that answers exactly what a forged one does, the reissue that kills its predecessor, the neutral 202 for every address, the password reset that is not a way out of being parked, and the two refusals that stop somebody stranding an organization or the Platform. |
+| GREEN | `AccountReactivationRequest`, the persisted status with its conditional `TryTransitionAsync`, `VerifyPasswordAsync`, three handlers, three routes, and the `IdentityAccountLifecycle` migration. |
+| Not vacuous | With the sign-in gate reverted to `!EmailConfirmed`, three of the ten fail — including a parked account signing straight back in. Restored, all ten pass. |
+| Verified | Functional 562/562, Application unit 197/197, Domain unit 191/191, Infrastructure integration 261/261, client 212/212. |
+
+**Two premises were corrected, no assertion was.** `SessionTests.SetAccountStateAsync` and
+`InviteMemberTests.UnconfirmAsync` unconfirmed an account by writing the flag alone. Under IA-REQ-054 that
+describes an account this system has no way to be in — unconfirmed by flag, usable by state — so both now move
+the state as well. What each test asserts is untouched.
+
+**What this unit does not do.** It does not suspend anybody: `AdministrativelySuspended` and `Closed` exist in the
+state set and the database constraint, and nothing writes them yet. That is unit 26.2, which also adds the column
+recording the state a suspension interrupted, so reactivation can restore it rather than assume `Active`.
+
 ## Tasks 21–25 review remediation — done 2026-09-07
 
 A review of Tasks 21–25 produced eight directed reproductions. They are kept as they were written and were used

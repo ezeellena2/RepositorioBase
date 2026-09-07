@@ -76,6 +76,13 @@ public interface IRoleAdministrationStore
     Task<int> CountAdministratorsAsync(TenantId tenantId, CancellationToken cancellationToken);
 
     /// <summary>
+    /// The same count, asked as "how many would be left if this identity could no longer act". Parking an account
+    /// leaves its memberships exactly where they were, so the count over the rows cannot notice — which is
+    /// precisely why the question has to be asked before the state changes rather than after it (IA-REQ-054).
+    /// </summary>
+    Task<int> CountAdministratorsExceptAsync(TenantId tenantId, Guid identityId, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Creates the role with exactly these codes and flushes. The caller has already applied the ceiling; what is
     /// refused here is a name the domain will not take and a normalized name this tenant already uses.
     /// </summary>

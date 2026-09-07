@@ -170,6 +170,20 @@ public sealed class PlatformMfaEnrollment : BaseEntity<PlatformMfaEnrollmentId>
     }
 
     /// <summary>
+    /// Forgets that any session ever proved this factor (IA-REQ-054).
+    /// <para>
+    /// Parking an account revokes its sessions, so the step-up could not be matched again anyway — but "could not
+    /// be matched" is a property of the session table, and evidence that a factor was proved should not outlive
+    /// the account it was proved for. Clearing it makes that independent of anything else.
+    /// </para>
+    /// </summary>
+    public void ForgetStepUp()
+    {
+        LastVerifiedAt = null;
+        LastVerifiedSessionId = null;
+    }
+
+    /// <summary>
     /// Whether this session has ever proved the factor. It is what reading Platform requires: a session that only
     /// presented a password has proved one thing, and the operational directories are not for it (IA-REQ-045).
     /// <para>

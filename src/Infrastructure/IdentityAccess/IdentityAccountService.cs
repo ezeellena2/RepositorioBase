@@ -1,5 +1,6 @@
 using CleanArchitecture.Application.IdentityAccess.Common;
 using CleanArchitecture.Application.IdentityAccess.Organizations;
+using CleanArchitecture.Domain.IdentityAccess.Identities;
 using CleanArchitecture.Infrastructure.Data;
 using CleanArchitecture.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
@@ -23,13 +24,13 @@ public sealed class IdentityAccountService(
     public async Task<IdentityAccount?> FindByEmailAsync(string normalizedEmail, CancellationToken cancellationToken)
     {
         var user = await userManager.FindByEmailAsync(normalizedEmail);
-        return user is null ? null : new IdentityAccount(user.Id, user.Email!, user.EmailConfirmed);
+        return user is null ? null : new IdentityAccount(user.Id, user.Email!, user.Status);
     }
 
     public async Task<IdentityAccount?> FindByIdAsync(Guid identityId, CancellationToken cancellationToken)
     {
         var user = await userManager.FindByIdAsync(identityId.ToString());
-        return user is null ? null : new IdentityAccount(user.Id, user.Email!, user.EmailConfirmed);
+        return user is null ? null : new IdentityAccount(user.Id, user.Email!, user.Status);
     }
 
     public async Task<IdentityAccount?> ValidateCredentialsAsync(string normalizedEmail, string password, CancellationToken cancellationToken)
@@ -37,7 +38,10 @@ public sealed class IdentityAccountService(
         var user = await userManager.FindByEmailAsync(normalizedEmail);
         await EnsureCurrentAsync(user, cancellationToken);
         var now = timeProvider.GetUtcNow();
-        if (user is null || !user.EmailConfirmed || IsLockedOut(user, now))
+
+        // The state is the whole condition (IA-REQ-054). A lockout is not a state — it is a temporary refusal
+        // that expires on its own — so it stays a separate check, and both refuse identically.
+        if (user is null || user.Status != IdentityAccountStatus.Active || IsLockedOut(user, now))
         {
             VerifyDecoyPassword(password);
             return null;
@@ -54,7 +58,66 @@ public sealed class IdentityAccountService(
             await userManager.ResetAccessFailedCountAsync(user);
         }
 
-        return new IdentityAccount(user.Id, user.Email!, true);
+        return new IdentityAccount(user.Id, user.Email!, user.Status);
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> VerifyPasswordAsync(Guid identityId, string password, CancellationToken cancellationToken)
+    {
+        var user = await userManager.FindByIdAsync(identityId.ToString());
+        await EnsureCurrentAsync(user, cancellationToken);
+        var now = timeProvider.GetUtcNow();
+
+        // Deliberately no state check. Which states may ask this is the caller's decision — a parked account is
+        // the only one that does — and repeating it here would answer "no" to the one caller that exists.
+        if (user is null || IsLockedOut(user, now))
+        {
+            VerifyDecoyPassword(password);
+            return false;
+        }
+
+        if (!await userManager.CheckPasswordAsync(user, password))
+        {
+            await RecordFailedAccessAsync(user, now, cancellationToken);
+            return false;
+        }
+
+        if (user.AccessFailedCount > 0)
+        {
+            await userManager.ResetAccessFailedCountAsync(user);
+        }
+
+        return true;
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> TryTransitionAsync(
+        Guid identityId,
+        IdentityAccountStatus expected,
+        IdentityAccountStatus next,
+        CancellationToken cancellationToken)
+    {
+        if (expected == next) throw new ArgumentException("A transition must change the state.", nameof(next));
+
+        var stamp = Guid.NewGuid().ToString();
+        var moved = await context.Users
+            .Where(candidate => candidate.Id == identityId && candidate.Status == expected)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(candidate => candidate.Status, next)
+                .SetProperty(candidate => candidate.ConcurrencyStamp, stamp), cancellationToken);
+
+        if (moved == 0) return false;
+
+        // The statement went round EF's change tracker, so anything already tracking this row is describing a
+        // state that no longer exists. Bring it back onto the committed row rather than letting a later flush
+        // write the old one back.
+        if (context.ChangeTracker.Entries<ApplicationUser>()
+                .FirstOrDefault(entry => entry.Entity.Id == identityId) is { } tracked)
+        {
+            await tracked.ReloadAsync(cancellationToken);
+        }
+
+        return true;
     }
 
     /// <summary>
@@ -115,7 +178,7 @@ public sealed class IdentityAccountService(
         var user = NewPendingUser(normalizedEmail);
         var result = await userManager.CreateAsync(user, password);
         return result.Succeeded
-            ? new IdentityAccountCreationResult(new IdentityAccount(user.Id, user.Email!, false), false)
+            ? new IdentityAccountCreationResult(new IdentityAccount(user.Id, user.Email!, user.Status), false)
             : new IdentityAccountCreationResult(null, true);
     }
 
@@ -131,15 +194,19 @@ public sealed class IdentityAccountService(
         // initiation fails here rather than creating a second identity for it.
         var result = await userManager.CreateAsync(user);
         return result.Succeeded
-            ? new IdentityAccountCreationResult(new IdentityAccount(user.Id, user.Email!, false), false)
+            ? new IdentityAccountCreationResult(new IdentityAccount(user.Id, user.Email!, user.Status), false)
             : new IdentityAccountCreationResult(null, true);
     }
 
     public async Task ActivateAsync(Guid identityId, CancellationToken cancellationToken)
     {
         var user = await userManager.FindByIdAsync(identityId.ToString()) ?? throw new InvalidOperationException("identity_not_found");
-        if (user.EmailConfirmed) return;
+        if (user.EmailConfirmed && user.Status != IdentityAccountStatus.PendingConfirmation) return;
         user.EmailConfirmed = true;
+
+        // Confirming an address is what moves an account out of `PendingConfirmation`, and only out of that one:
+        // an account somebody parked or an operator suspended is not brought back by confirming its address.
+        if (user.Status == IdentityAccountStatus.PendingConfirmation) user.Status = IdentityAccountStatus.Active;
         var result = await userManager.UpdateAsync(user);
         if (!result.Succeeded) throw new InvalidOperationException("identity_activation_failed");
     }
@@ -193,5 +260,5 @@ public sealed class IdentityAccountService(
         user.LockoutEnabled && user.LockoutEnd is { } lockoutEnd && lockoutEnd > now;
 
     private static ApplicationUser NewPendingUser(string normalizedEmail) =>
-        new() { UserName = normalizedEmail, Email = normalizedEmail, EmailConfirmed = false };
+        new() { UserName = normalizedEmail, Email = normalizedEmail, EmailConfirmed = false, Status = IdentityAccountStatus.PendingConfirmation };
 }

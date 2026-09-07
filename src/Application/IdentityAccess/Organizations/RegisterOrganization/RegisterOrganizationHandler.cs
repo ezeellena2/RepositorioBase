@@ -7,6 +7,7 @@ using CleanArchitecture.Application.IdentityAccess.Common;
 using CleanArchitecture.Application.IdentityAccess.Organizations;
 using CleanArchitecture.Application.IdentityAccess.Sessions;
 using CleanArchitecture.Domain.IdentityAccess.Auditing;
+using CleanArchitecture.Domain.IdentityAccess.Identities;
 using CleanArchitecture.Domain.IdentityAccess.Memberships;
 using CleanArchitecture.Domain.IdentityAccess.Organizations;
 using CleanArchitecture.Domain.IdentityAccess.Outbox;
@@ -76,7 +77,10 @@ public sealed class RegisterOrganizationCommandHandler(
                 }
 
                 await idempotencyStore.CoordinateBusinessIntentAsync(intent.Email, intent.Cuit.Value, ct);
-                var identity = new IdentityAccount(session.IdentityId.Value, intent.Email, true);
+                // A validated session belongs to an `Active` identity by construction: the cookie's own
+                // validation refuses anything else, so this is naming what the session already proved rather
+                // than deciding it here (IA-REQ-054).
+                var identity = new IdentityAccount(session.IdentityId.Value, intent.Email, IdentityAccountStatus.Active);
 
                 // A signed-in caller may only register for the address their own session proves, so nothing here
                 // can be varied to probe someone else. Telling them the CUIT is already registered is the useful

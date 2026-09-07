@@ -100,7 +100,11 @@ public sealed class RoleAdministrationStore(ApplicationDbContext context) : IRol
     /// Distinct identities holding both halves of administration. Counted over the same projection the evaluator
     /// decides with, so the floor cannot report an administrator the evaluator would refuse.
     /// </summary>
-    public async Task<int> CountAdministratorsAsync(TenantId tenantId, CancellationToken cancellationToken)
+    public Task<int> CountAdministratorsAsync(TenantId tenantId, CancellationToken cancellationToken) =>
+        CountAdministratorsExceptAsync(tenantId, Guid.Empty, cancellationToken);
+
+    /// <inheritdoc />
+    public async Task<int> CountAdministratorsExceptAsync(TenantId tenantId, Guid identityId, CancellationToken cancellationToken)
     {
         var held = await (
             from membership in context.TenantMemberships.AsNoTracking()
@@ -112,6 +116,7 @@ public sealed class RoleAdministrationStore(ApplicationDbContext context) : IRol
             join rolePermission in context.RolePermissions.AsNoTracking()
                 on new { membershipRole.TenantId, membershipRole.RoleId } equals new { rolePermission.TenantId, rolePermission.RoleId }
             where membership.TenantId == tenantId
+                && membership.IdentityId != identityId
                 && membership.Status == MembershipStatus.Active
                 && tenant.Status == TenantStatus.Active
                 && !role.IsRetired

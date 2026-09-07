@@ -58,6 +58,14 @@ public static class Permissions
     public const string IdentityExternalManage = "identity.external.manage";
 
     /// <summary>
+    /// Parking your own account (IA-REQ-054). Application-scoped self-service like the rest: the request carries
+    /// no subject and resolves the caller's own identity. Deliberately not `identity.credentials.manage` —
+    /// changing what you prove with and stopping the account you prove into are different powers, and the second
+    /// is the one that can leave an organization with nobody to run it.
+    /// </summary>
+    public const string IdentityAccountManage = "identity.account.manage";
+
+    /// <summary>
     /// Handing an `Organization` to somebody else. Deliberately not `tenant.manage`: managing a tenant and giving
     /// it away are different powers, and one administrator holding the first must not thereby hold the second
     /// (IA-REQ-053). Necessary but never sufficient — the actor must also be the current owner.
@@ -121,7 +129,8 @@ public static class Permissions
         IdentityProfileRead,
         IdentityProfileManage,
         IdentityCredentialsManage,
-        IdentityExternalManage
+        IdentityExternalManage,
+        IdentityAccountManage
     };
 
     /// <summary>
@@ -142,7 +151,8 @@ public static class Permissions
         IdentityProfileRead,
         IdentityProfileManage,
         IdentityCredentialsManage,
-        IdentityExternalManage
+        IdentityExternalManage,
+        IdentityAccountManage
     };
 
 }

@@ -50,6 +50,9 @@ public class ExistingApplicationRequestAuthorizationTests
     [TestCase(typeof(CleanArchitecture.Application.IdentityAccess.Platform.Mfa.VerifyPlatformMfaEnrollmentCommand), "platform.mfa.enroll")]
     [TestCase(typeof(CleanArchitecture.Application.IdentityAccess.Platform.Mfa.AcknowledgePlatformRecoveryCodesCommand), "platform.mfa.enroll")]
     [TestCase(typeof(CleanArchitecture.Application.IdentityAccess.Platform.Mfa.StepUpPlatformMfaCommand), "platform.mfa.enroll")]
+    // Parking your own account carries no subject: it resolves the caller's own identity, so there is no tenant
+    // to scope it to and no arbitrary-identity disable route for anything to be pointed at (IA-REQ-054).
+    [TestCase(typeof(CleanArchitecture.Application.IdentityAccess.Lifecycle.DeactivateAccountCommand), "identity.account.manage")]
     public void Session_context_requests_are_authorized_without_tenant_requirement(Type requestType, string permission)
     {
         var authorizeAttribute = requestType.GetCustomAttributes<AuthorizeAttribute>(false).ShouldHaveSingleItem();
@@ -76,6 +79,9 @@ public class ExistingApplicationRequestAuthorizationTests
             typeof(CleanArchitecture.Application.IdentityAccess.Credentials.PasswordRecovery.RequestPasswordRecoveryCommand).FullName,
             typeof(CleanArchitecture.Application.IdentityAccess.Credentials.PasswordRecovery.ResetPasswordCommand).FullName,
             typeof(CleanArchitecture.Application.IdentityAccess.Credentials.ChangePassword.ChangePasswordCommand).FullName,
+            typeof(CleanArchitecture.Application.IdentityAccess.Lifecycle.DeactivateAccountCommand).FullName,
+            typeof(CleanArchitecture.Application.IdentityAccess.Lifecycle.RequestAccountReactivationCommand).FullName,
+            typeof(CleanArchitecture.Application.IdentityAccess.Lifecycle.ReactivateAccountCommand).FullName,
             typeof(CleanArchitecture.Application.IdentityAccess.Credentials.OwnCredentials.GetOwnCredentialsQuery).FullName,
             typeof(CleanArchitecture.Application.IdentityAccess.ExternalLogins.StartExternalLoginCommand).FullName,
             typeof(CleanArchitecture.Application.IdentityAccess.ExternalLogins.StartExternalLinkCommand).FullName,

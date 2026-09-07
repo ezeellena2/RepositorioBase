@@ -90,7 +90,15 @@ internal static class IdentityHttpHarness
     {
         using var scope = FunctionalTestSetup.ScopeFactory.CreateScope();
         var users = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
-        var user = new ApplicationUser { UserName = email, Email = email, EmailConfirmed = true };
+        // "Confirmed" now means a state as well as a flag, and this helper's whole job is to be the premise
+        // "an account somebody can sign into" (IA-REQ-054).
+        var user = new ApplicationUser
+        {
+            UserName = email,
+            Email = email,
+            EmailConfirmed = true,
+            Status = CleanArchitecture.Domain.IdentityAccess.Identities.IdentityAccountStatus.Active
+        };
         (await users.CreateAsync(user, password)).Succeeded.ShouldBeTrue();
         return user.Id;
     }

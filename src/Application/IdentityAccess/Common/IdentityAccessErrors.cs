@@ -211,4 +211,25 @@ public static class IdentityAccessErrors
 
     public static ApplicationError LastAuthenticatorRequired() =>
         new("last_authenticator_required", ApplicationErrorCategory.Conflict, "An identity must keep at least one way to sign in.");
+
+    /// <summary>
+    /// The one answer the public reactivation route gives to every way of failing: a forged ticket, a spent one,
+    /// an expired one, one belonging to an account that has no self-service way back, and a wrong password. They
+    /// are worded identically because telling them apart is exactly the account-enumeration and ticket-oracle
+    /// disclosure this route exists to avoid (IA-REQ-029, IA-REQ-054).
+    /// </summary>
+    public static ApplicationError InvalidReactivation() =>
+        new("invalid_reactivation", ApplicationErrorCategory.Validation, "The reactivation request is invalid.");
+
+    /// <summary>
+    /// The change would have left the Platform with no active owner. It is its own code rather than
+    /// `last_administrator_required` because there is no higher authority to restore a Platform from, which is a
+    /// different fact about a different tenant (IA-REQ-042, extended by C6).
+    /// </summary>
+    public static ApplicationError PlatformLastOwner() =>
+        new("platform_last_owner", ApplicationErrorCategory.Conflict, "The Platform must keep at least one active owner.");
+
+    /// <summary>The identity's state moved under a request that had already read it (IA-REQ-054).</summary>
+    public static ApplicationError IdentityConcurrencyConflict() =>
+        new("identity_concurrency_conflict", ApplicationErrorCategory.Conflict, "The account was changed by another request. Refresh it and try again.");
 }

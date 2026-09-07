@@ -77,6 +77,13 @@ public static class ApiProblemMetadata
 
     public static readonly ApiProblemContract OwnerRequired = new(StatusCodes.Status403Forbidden, "owner_required");
 
+    /// <summary>Every way the public reactivation route can refuse, worded as one (IA-REQ-054).</summary>
+    public static readonly ApiProblemContract InvalidReactivation = new(StatusCodes.Status400BadRequest, "invalid_reactivation");
+
+    public static readonly ApiProblemContract PlatformLastOwner = new(StatusCodes.Status409Conflict, "platform_last_owner");
+
+    public static readonly ApiProblemContract IdentityConcurrencyConflict = new(StatusCodes.Status409Conflict, "identity_concurrency_conflict");
+
 
     public static RouteHandlerBuilder WithApiProblemDetails(this RouteHandlerBuilder builder, params ApiProblemContract[] contracts)
     {

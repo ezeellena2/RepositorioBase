@@ -71,7 +71,12 @@ public sealed class RegisterPlatformInviteeCommandHandler(
                     // definition cannot run twice for one address. A pending one is therefore sent another
                     // confirmation and nothing else — its credential is untouched, its recipient binding is the
                     // invitation's own, and no membership is created (IA-REQ-041).
-                    if (!existing.IsActive)
+                    //
+                    // The branch names the state rather than asking "not active", because C6 added states that
+                    // are also not active and mean something else entirely: an account somebody parked, or one an
+                    // operator suspended, must not be handed a fresh confirmation as though it had never
+                    // confirmed its address (IA-REQ-054).
+                    if (existing.Status == CleanArchitecture.Domain.IdentityAccess.Identities.IdentityAccountStatus.PendingConfirmation)
                     {
                         await ReissueConfirmationAsync(existing.Id, invitation.Id.Value, now, ct);
                     }

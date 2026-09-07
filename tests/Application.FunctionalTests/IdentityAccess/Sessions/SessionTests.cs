@@ -1374,6 +1374,13 @@ public sealed class SessionTests : TestBase
         using var scope = FunctionalTestSetup.ScopeFactory.CreateScope();
         var user = await scope.ServiceProvider.GetRequiredService<ApplicationDbContext>().Users.SingleAsync(candidate => candidate.Id == identityId);
         user.EmailConfirmed = emailConfirmed;
+
+        // An unconfirmed account is a state, not only a flag (IA-REQ-054). Setting the flag alone would leave an
+        // account this helper claims is unconfirmed and the system reads as usable, which is not a premise this
+        // test can be about.
+        user.Status = emailConfirmed
+            ? CleanArchitecture.Domain.IdentityAccess.Identities.IdentityAccountStatus.Active
+            : CleanArchitecture.Domain.IdentityAccess.Identities.IdentityAccountStatus.PendingConfirmation;
         user.LockoutEnabled = lockedOut;
         user.LockoutEnd = lockedOut ? DateTimeOffset.UtcNow.AddMinutes(15) : null;
         await scope.ServiceProvider.GetRequiredService<ApplicationDbContext>().SaveChangesAsync();

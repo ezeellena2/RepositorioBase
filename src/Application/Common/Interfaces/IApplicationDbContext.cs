@@ -48,6 +48,8 @@ public interface IApplicationDbContext
 
     DbSet<CleanArchitecture.Domain.IdentityAccess.Credentials.PasswordResetRequest> PasswordResetRequests { get; }
 
+    DbSet<CleanArchitecture.Domain.IdentityAccess.Identities.AccountReactivationRequest> AccountReactivationRequests { get; }
+
     DbSet<CleanArchitecture.Domain.IdentityAccess.ExternalLogins.ExternalAuthorizationRequest> ExternalAuthorizationRequests { get; }
 
     DbSet<IdentitySecurityState> IdentitySecurityStates { get; }

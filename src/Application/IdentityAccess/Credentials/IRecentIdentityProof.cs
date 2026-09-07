@@ -27,6 +27,12 @@ public static class ProofActions
     /// <summary>Giving the organization away, which is the one change nobody can undo alone.</summary>
     public const string OwnershipTransfer = "tenant.ownership.transfer";
 
+    /// <summary>
+    /// Parking your own account. Its own action rather than a reuse of the password change, because proving in
+    /// order to change a password is not permission to close every door the password opens (IA-REQ-054).
+    /// </summary>
+    public const string AccountDeactivate = "identity.account.deactivate";
+
     public static IReadOnlySet<string> All { get; } = new HashSet<string>(StringComparer.Ordinal)
     {
         PasswordChange,
@@ -36,7 +42,8 @@ public static class ProofActions
         RevokeOneSession,
         RoleChange,
         MemberRoleChange,
-        OwnershipTransfer
+        OwnershipTransfer,
+        AccountDeactivate
     };
 }
 

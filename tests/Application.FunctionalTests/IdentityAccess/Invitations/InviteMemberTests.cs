@@ -411,7 +411,11 @@ public sealed class InviteMemberTests : TestBase
     {
         using var scope = FunctionalTestSetup.ScopeFactory.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        // An unconfirmed account is a state as well as a flag (IA-REQ-054); moving one without the other would
+        // describe an account this system has no way to be in.
         await context.Users.Where(user => user.Id == identityId)
-            .ExecuteUpdateAsync(setters => setters.SetProperty(user => user.EmailConfirmed, false));
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(user => user.EmailConfirmed, false)
+                .SetProperty(user => user.Status, CleanArchitecture.Domain.IdentityAccess.Identities.IdentityAccountStatus.PendingConfirmation));
     }
 }

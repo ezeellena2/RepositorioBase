@@ -30,6 +30,9 @@ const MESSAGES = {
   membership_concurrency_conflict: 'That member changed while you were editing. Refresh and try again.',
   last_administrator_required: 'This would leave the organization with no administrator. Give somebody else those permissions first.',
   owner_required: 'Only the current owner can do that.',
+  invalid_reactivation: 'That reactivation link is not usable, or the password did not match. Ask for a new link and try again.',
+  platform_last_owner: 'This would leave the Platform with no owner. Somebody else has to hold it first.',
+  identity_concurrency_conflict: 'Your account changed while you were working. Refresh and try again.',
   rate_limit_exceeded: 'Too many attempts. Wait a moment and try again.',
   internal_server_error: 'Something went wrong. Try again.',
 };

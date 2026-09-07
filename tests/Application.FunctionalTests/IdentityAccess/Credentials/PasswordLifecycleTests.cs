@@ -551,5 +551,8 @@ public sealed class PasswordLifecycleTests : TestBase
         public string HashPassword(string password) => inner.HashPassword(password);
         public Task<IdentityAccountCreationResult> CreatePendingFromHashAsync(string email, string hash, CancellationToken cancellationToken) => inner.CreatePendingFromHashAsync(email, hash, cancellationToken);
         public Task ActivateAsync(Guid id, CancellationToken cancellationToken) => inner.ActivateAsync(id, cancellationToken);
+        public Task<bool> VerifyPasswordAsync(Guid id, string password, CancellationToken cancellationToken) => inner.VerifyPasswordAsync(id, password, cancellationToken);
+        public Task<bool> TryTransitionAsync(Guid id, CleanArchitecture.Domain.IdentityAccess.Identities.IdentityAccountStatus expected, CleanArchitecture.Domain.IdentityAccess.Identities.IdentityAccountStatus next, CancellationToken cancellationToken) =>
+            inner.TryTransitionAsync(id, expected, next, cancellationToken);
     }
 }

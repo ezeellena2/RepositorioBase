@@ -1,6 +1,16 @@
+using CleanArchitecture.Domain.IdentityAccess.Identities;
+
 namespace CleanArchitecture.Application.IdentityAccess.Organizations;
 
-public sealed record IdentityAccount(Guid Id, string Email, bool IsActive);
+/// <summary>
+/// An identity as the application layer is allowed to see it. <see cref="IsActive"/> is derived rather than
+/// stored beside the state, so there is exactly one answer to "may this account act" and it is the state
+/// (IA-REQ-054).
+/// </summary>
+public sealed record IdentityAccount(Guid Id, string Email, IdentityAccountStatus Status)
+{
+    public bool IsActive => Status == IdentityAccountStatus.Active;
+}
 public sealed record IdentityAccountValidationResult(bool IsValid);
 public sealed record IdentityAccountCreationResult(IdentityAccount? Account, bool IsValidationFailure);
 
@@ -43,4 +53,32 @@ public interface IIdentityAccountService
     Task<IdentityAccountCreationResult> CreatePendingFromHashAsync(string normalizedEmail, string passwordHash, CancellationToken cancellationToken);
 
     Task ActivateAsync(Guid identityId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Whether this password still opens this identity, asked about an identity that is not allowed to sign in.
+    /// <para>
+    /// Sign-in cannot answer this: it refuses a non-`Active` account before it looks at any password, which is
+    /// the whole point of the state. Coming back from parking still has to check a real credential, so the check
+    /// exists separately — and it is deliberately the same check, lockout window and failure counting included,
+    /// so this route is not a quieter place to guess a password than the front door is (IA-REQ-019, IA-REQ-054).
+    /// </para>
+    /// </summary>
+    Task<bool> VerifyPasswordAsync(Guid identityId, string password, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Moves this identity from one named state to another, and answers whether this call is the one that moved
+    /// it.
+    /// <para>
+    /// One conditional statement guarded on `(identityId, status = expected)`, so two requests attempting the
+    /// same transition cannot both succeed: the second finds its own precondition already gone and answers
+    /// <see langword="false"/>, which the caller turns into `identity_concurrency_conflict`. The winning write
+    /// rotates the row's `ConcurrencyStamp`, so any copy another request is still holding is stale by the time it
+    /// tries to save (IA-REQ-054).
+    /// </para>
+    /// </summary>
+    Task<bool> TryTransitionAsync(
+        Guid identityId,
+        IdentityAccountStatus expected,
+        IdentityAccountStatus next,
+        CancellationToken cancellationToken);
 }
