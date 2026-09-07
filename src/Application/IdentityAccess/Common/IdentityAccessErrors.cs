@@ -240,6 +240,13 @@ public static class IdentityAccessErrors
     public static ApplicationError PlatformMfaConcurrencyConflict() =>
         new("platform_mfa_concurrency_conflict", ApplicationErrorCategory.Conflict, "The second factor was changed by another request. Try again.");
 
+    /// <summary>
+    /// A hold with this subject and this reason is already standing. Two reasons are two decisions, so this is
+    /// about the pair rather than about the subject (IA-REQ-056).
+    /// </summary>
+    public static ApplicationError RetentionHoldConflict() =>
+        new("retention_hold_conflict", ApplicationErrorCategory.Conflict, "An active hold already exists for that subject and reason.");
+
     public static ApplicationError IdentityNotFound() =>
         new("not_found", ApplicationErrorCategory.NotFound, "That identity is not available.");
 

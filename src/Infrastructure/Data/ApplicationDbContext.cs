@@ -62,6 +62,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
 
     public DbSet<CleanArchitecture.Domain.IdentityAccess.Identities.AccountReactivationRequest> AccountReactivationRequests => Set<CleanArchitecture.Domain.IdentityAccess.Identities.AccountReactivationRequest>();
 
+    public DbSet<CleanArchitecture.Domain.IdentityAccess.Retention.RetentionLegalHold> RetentionLegalHolds => Set<CleanArchitecture.Domain.IdentityAccess.Retention.RetentionLegalHold>();
+
     public DbSet<CleanArchitecture.Domain.IdentityAccess.ExternalLogins.ExternalAuthorizationRequest> ExternalAuthorizationRequests => Set<CleanArchitecture.Domain.IdentityAccess.ExternalLogins.ExternalAuthorizationRequest>();
 
     public DbSet<IdentitySecurityState> IdentitySecurityStates => Set<IdentitySecurityState>();

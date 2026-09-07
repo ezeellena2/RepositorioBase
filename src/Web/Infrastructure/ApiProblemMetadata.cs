@@ -86,6 +86,8 @@ public static class ApiProblemMetadata
 
     public static readonly ApiProblemContract PlatformMfaConcurrencyConflict = new(StatusCodes.Status409Conflict, "platform_mfa_concurrency_conflict");
 
+    public static readonly ApiProblemContract RetentionHoldConflict = new(StatusCodes.Status409Conflict, "retention_hold_conflict");
+
     /// <summary>`Closed` and nothing else: a tombstone has no way back (IA-REQ-054, amendment A4).</summary>
     public static readonly ApiProblemContract IdentityReactivationUnavailable = new(StatusCodes.Status403Forbidden, "identity_reactivation_unavailable");
 

@@ -38,7 +38,10 @@ public sealed class IdentityAccessArchitectureTests
         "CleanArchitecture.Domain.IdentityAccess.Platform",
         "CleanArchitecture.Domain.IdentityAccess.People",
         "CleanArchitecture.Domain.IdentityAccess.Credentials",
-        "CleanArchitecture.Domain.IdentityAccess.ExternalLogins"
+        "CleanArchitecture.Domain.IdentityAccess.ExternalLogins",
+        // C7's legal hold: added after the foundation, and deliberately unknown to it. Nothing older may hold
+        // one, which is what "a hold stops an erasure and does nothing else" has to mean structurally.
+        "CleanArchitecture.Domain.IdentityAccess.Retention"
     ];
 
     [Test]

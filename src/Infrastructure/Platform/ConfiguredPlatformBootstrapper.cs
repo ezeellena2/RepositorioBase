@@ -50,6 +50,10 @@ public sealed class PlatformSystemRoleProvisioner(ApplicationDbContext context) 
         // Stopping an abusive account is operating Platform, the same way suspending an organization is. Deciding
         // who the operators are stays with the owner alone (IA-REQ-042, IA-REQ-054).
         Permissions.PlatformIdentitiesManage,
+        // Retention is an operating concern: reading what the deployment's rules are, and stopping an erasure
+        // while something is being looked into (IA-REQ-056).
+        Permissions.PlatformRetentionRead,
+        Permissions.PlatformRetentionManage,
         Permissions.PlatformAuditRead,
         Permissions.PlatformTenantsManage
     ];

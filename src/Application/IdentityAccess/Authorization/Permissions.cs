@@ -39,6 +39,15 @@ public static class Permissions
     public const string PlatformAuditRead = "platform.audit.read";
 
     /// <summary>
+    /// Reading the retention policy, and placing or releasing a legal hold (IA-REQ-056). Two codes rather than
+    /// one, and manage deliberately does not imply read: stopping an erasure and reading what the deployment's
+    /// retention rules are are different things to be trusted with.
+    /// </summary>
+    public const string PlatformRetentionRead = "platform.retention.read";
+
+    public const string PlatformRetentionManage = "platform.retention.manage";
+
+    /// <summary>
     /// Enrolling and stepping up the Platform second factor. The SPEC names no code for it, so this one is
     /// chosen to fit the existing `resource.action` catalogue. It is application-scoped for the same reason
     /// accepting an invitation is: the invitee holds no membership until the gates complete, so there is no
@@ -102,6 +111,8 @@ public static class Permissions
         new(PlatformIdentitiesManage, [TenantType.Platform], OrganizationOwner.NotApplicable),
         new(PlatformIdentitiesRead, [TenantType.Platform], OrganizationOwner.NotApplicable),
         new(PlatformOrganizationsRead, [TenantType.Platform], OrganizationOwner.NotApplicable),
+        new(PlatformRetentionManage, [TenantType.Platform], OrganizationOwner.NotApplicable),
+        new(PlatformRetentionRead, [TenantType.Platform], OrganizationOwner.NotApplicable),
         new(PlatformTenantsManage, [TenantType.Platform], OrganizationOwner.NotApplicable),
         new(RolesManage, [TenantType.Organization, TenantType.Platform], OrganizationOwner.Holds),
         new(RolesRead, [TenantType.Organization, TenantType.Platform], OrganizationOwner.Holds),

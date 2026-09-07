@@ -580,6 +580,44 @@ budget store is unreachable (IA-REQ-057). The current limiter has no way to say 
 "exhausted", and fail-closed behaviour is Task 27's subject for *every* budget rather than this one alone. It is
 listed there, not here.
 
+### Unit 26.4a - the retention policy, and legal holds (done 2026-09-07)
+
+**Visible outcome met:** an operator reads what this deployment's retention policy actually says, and places a
+hold that stops one person's data being erased - which is all a hold does. The person it names notices nothing:
+they sign in, their account state is unchanged, and no authorization decision anywhere reads the hold.
+
+**A policy is configuration, and this unit contains no number.** `ConfiguredRetentionPolicy` reads
+`IdentityAccess:RetentionPolicy` and every refusal answers the same way - no policy. A missing section, a missing
+identifier, a category outside the closed set, a period that is not an ISO-8601 duration: all of them leave the
+deployment with nothing, and a deployment with nothing performs no destructive action in either personal-data
+mode. That is the only direction this class can be wrong in, and it is the safe one. A category the parser cannot
+read is dropped rather than completed, because inventing the missing line would be this system writing policy.
+
+**Amendment A4, made structural.** `RetentionLegalHold` lives in its own domain slice, and the architecture guard
+now records it as one nothing older may depend on. That is what "a hold is not an account state" means when it is
+enforced rather than asserted: there is no path from the lifecycle to this type.
+
+| Step | What happened |
+|---|---|
+| RED | `PlatformRetentionTests` did not compile against the absent `Platform.Retention` namespace, then drove eighteen cases over the real routes: the empty policy, the configured one read back exactly, an unreadable period, an unknown category, the factor-proof gate on the read and the step-up gate on the writes, one hold per subject and reason, two reasons ending independently, idempotent release, an unknown subject, three malformed references, and the standing-hold count. |
+| GREEN | `RetentionLegalHold`, `IRetentionPolicy` with its configuration adapter, three requests and their handlers, three routes, and the `RetentionLegalHolds` migration with its permission backfill. |
+| Not vacuous | Making an unreadable period fall back to ninety days fails two of the eighteen. Removed, all eighteen pass. |
+| Caught by an existing guard | `Every_identity_domain_slice_is_either_an_earlier_one_or_a_later_one` refused the new `Retention` namespace until it was classified - which is exactly what it is for. |
+| Verified | Functional 601/601, Application unit 198/198, Domain unit 191/191, Infrastructure integration 261/261, client 212/212. |
+
+**Two new Platform permissions, and the install they would otherwise have missed.** `platform.retention.read` and
+`platform.retention.manage` are separate on purpose - manage does not imply read - and the migration backfills
+both onto every Platform system role that already holds `platform.tenants.manage`, for the same reason unit 26.2
+did: the bootstrap ceremony runs once per database.
+
+**Tests drive the real routes.** A policy is a property of a running deployment rather than of a request, so a
+test that could not vary the configuration would be testing a constant. `PlatformOperator` is the harness that
+makes that practical - one person, one cookie, no shared jar - and Task 28 will want it.
+
+**Still to come in Task 26:** the bounded maintenance executor and its erasure records (26.4b), the documentary
+dispute (26.5) and the restore admission guard (26.6). Nothing yet erases anything, so the hold this unit places
+is currently a promise the executor has still to keep.
+
 ## Tasks 21–25 review remediation — done 2026-09-07
 
 A review of Tasks 21–25 produced eight directed reproductions. They are kept as they were written and were used
