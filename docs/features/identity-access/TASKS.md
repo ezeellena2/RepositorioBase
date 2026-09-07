@@ -618,6 +618,52 @@ makes that practical - one person, one cookie, no shared jar - and Task 28 will 
 dispute (26.5) and the restore admission guard (26.6). Nothing yet erases anything, so the hold this unit places
 is currently a promise the executor has still to keep.
 
+### Unit 26.4b - the bounded retention executor (done 2026-09-07)
+
+**Visible outcome met:** settled sessions past their period go, a document past its period is erased with both
+halves and its evidence, a held subject is skipped, and none of it happens at all in a deployment that configured
+no policy.
+
+**Where the numbers live, reconciled explicitly.** C6 lists 15 minutes, 500 rows, 10 passes, a 60-second budget
+*and* "90-day retention for revoked or expired `UserSession` rows" as product defaults, while IA-REQ-056 says a
+policy "contains no period, threshold or jurisdictional number" in code. Both are honoured by drawing the line
+where it actually falls: the first four bound the **executor** and are constants in source; the ninety days is a
+retention **period** and lives only in configuration. If no policy names `SessionRecords`, no session is deleted -
+there is no fallback anywhere.
+
+**Three bounds at once, because each fails differently.** A large batch holds locks too long; an unbounded loop
+never yields; a cheap-looking pass over a big table can still outlast the interval. Whichever runs out first ends
+the run, and what was not reached is reached next time.
+
+**Two guards, both proved load-bearing.** The legal-hold skip and the per-category advisory lock were each
+removed to see what failed. The hold check failed two tests immediately. The single-flight lock failed **none** -
+because the test asked it of sessions, where deleting a row twice is harmless. Rewritten to ask it of documents,
+where a purge writes evidence and two instances would leave two records of one erasure, it fails without the lock
+and passes with it. That is the second time in Task 26 a vacuity check found a test passing for the wrong reason,
+and both are recorded rather than quietly fixed.
+
+**A deployment with no Platform tenant does nothing.** Audit records are tenant-scoped and this worker acts for
+Platform, so an un-bootstrapped deployment has nowhere to record what a purge did - and erasing without being
+able to say so is not something this does. It fails closed and says nothing, which is the safe way to be unable
+to audit.
+
+| Step | What happened |
+|---|---|
+| RED | `RetentionLifecycleTests` did not compile against the absent executor, then drove twelve cases against real PostgreSQL with an injected clock and no sleeps: the absent policy, the idle pass that writes nothing, live sessions surviving, the row bound, the pass bound, the tombstone, the evidence, a reclaimed number, a held subject, a released hold, a row classified for another deployment, and two instances at once. |
+| GREEN | `PersonalDataErasureRecord`, `RetentionMaintenanceCycle` with its bounds and advisory space `0x5E5513`, `LifecycleMaintenanceService`, the purge tombstone stamp, and the `PersonalDataErasureRecords` migration. |
+| Where it runs | The outbox worker process, not the web application - a loop registered there would start inside every functional test, and this one deletes rows. |
+| Verified | Functional 601/601, Application unit 198/198, Domain unit 191/191, Infrastructure integration 273/273, client 212/212. |
+
+**Named rather than glossed:** only `SessionRecords` and `PersonalIdentityDocument` are erased today, and only
+for the triggers named in [RECOVERY-AND-RETENTION.md](RECOVERY-AND-RETENTION.md). Every other category in the
+closed set is skipped **and recorded as skipped**, rather than silently treated as "nothing to do". `AccountClosure`
+as a trigger is among them, because C6's `Closed` state is still reached by nothing.
+
+**The runbook is [RECOVERY-AND-RETENTION.md](RECOVERY-AND-RETENTION.md)**, which the plan's Task 26 file list
+asks for. It records the MFA recovery route, the policy shape, the executor's bounds, the audit vocabulary, and a
+closing table of what none of this closes - real personal data, production, legal certification, the `503` an
+unreachable budget store should produce, the unimplemented categories, and live restore certification.
+
 ## Tasks 21–25 review remediation — done 2026-09-07
 
 A review of Tasks 21–25 produced eight directed reproductions. They are kept as they were written and were used

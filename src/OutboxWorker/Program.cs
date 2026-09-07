@@ -18,6 +18,12 @@ else
     builder.Services.AddHostedService<IdleAnnouncement>();
 }
 
+// Retention maintenance runs here rather than in the web application, for the reason the dispatcher does: a
+// background loop registered there would also start inside every functional test that boots the application, and
+// this one deletes rows. It is unconditional — retention is not switched on by the mail setting, and a
+// deployment with no policy already does nothing.
+builder.Services.AddHostedService<CleanArchitecture.Infrastructure.IdentityAccess.Lifecycle.LifecycleMaintenanceService>();
+
 builder.Build().Run();
 
 /// <summary>Says, once, that delivery is switched off — so an idle worker is never a silent one.</summary>

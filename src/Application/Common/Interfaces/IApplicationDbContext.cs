@@ -52,6 +52,8 @@ public interface IApplicationDbContext
 
     DbSet<CleanArchitecture.Domain.IdentityAccess.Retention.RetentionLegalHold> RetentionLegalHolds { get; }
 
+    DbSet<CleanArchitecture.Domain.IdentityAccess.Retention.PersonalDataErasureRecord> PersonalDataErasureRecords { get; }
+
     DbSet<CleanArchitecture.Domain.IdentityAccess.ExternalLogins.ExternalAuthorizationRequest> ExternalAuthorizationRequests { get; }
 
     DbSet<IdentitySecurityState> IdentitySecurityStates { get; }

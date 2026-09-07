@@ -85,7 +85,7 @@ public sealed partial class IdentityDocument
     /// Erases both halves at once. Leaving the fingerprints would keep the number occupying the unique index after
     /// its ciphertext is gone, which is the opposite of reclaimable (IA-REQ-056).
     /// </summary>
-    public void Purge(DateTimeOffset now)
+    public void Purge(DateTimeOffset now, string? policyId = null, string? policyVersion = null)
     {
         if (PurgedAt is not null)
         {
@@ -95,7 +95,20 @@ public sealed partial class IdentityDocument
         Ciphertext = string.Empty;
         _fingerprints.Clear();
         PurgedAt = now;
+
+        // The tombstone says which policy authorized this, so the row that is left is not merely empty but
+        // accounted for. Both halves or neither: a version without an identifier names nothing (IA-REQ-056).
+        if (!string.IsNullOrWhiteSpace(policyId) && !string.IsNullOrWhiteSpace(policyVersion))
+        {
+            PurgePolicyId = policyId;
+            PurgePolicyVersion = policyVersion;
+        }
     }
+
+    /// <summary>Which policy authorized the purge, on the non-identifying tombstone it left behind.</summary>
+    public string? PurgePolicyId { get; private set; }
+
+    public string? PurgePolicyVersion { get; private set; }
 
     /// <summary>
     /// The shape a keyed fingerprint must have to be storable: its own key version, the digest version, and a
