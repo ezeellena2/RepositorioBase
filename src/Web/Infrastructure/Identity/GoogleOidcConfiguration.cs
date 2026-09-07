@@ -99,10 +99,22 @@ internal static class GoogleOidcConfiguration
     /// about the person — and a recent identity proof that proves no presence is not a proof (IA-REQ-051).
     /// </para>
     /// </summary>
+    /// <summary>The provider's signed statement of WHEN it authenticated the person (OIDC Core 1.0 section 2).</summary>
+    private const string AuthenticationTimeClaim = "auth_time";
+
     internal static IResult Challenge(HttpContext context, Guid handoffId, ExternalAuthorizationPurpose purpose)
     {
         var properties = new OpenIdConnectChallengeProperties { RedirectUri = ReturnPath };
-        if (purpose == ExternalAuthorizationPurpose.Proof) properties.Prompt = "login";
+        if (purpose == ExternalAuthorizationPurpose.Proof)
+        {
+            properties.Prompt = "login";
+
+            // `prompt` is a request the provider may honour silently; `max_age` is the one that obliges it to say
+            // so. OIDC Core 1.0 section 3.1.2.1: when `max_age` is used, the ID token returned MUST include an
+            // `auth_time` claim — which is precisely the evidence the callback now refuses to proceed without.
+            // It is set per challenge and not scheme-wide, so an ordinary sign-in or link is unaffected.
+            properties.MaxAge = ExternalAuthenticationEvidence.Freshness;
+        }
         properties.Items[HandoffItem] = handoffId.ToString("N");
         return Results.Challenge(properties, [ExternalProviders.Google]);
     }
@@ -132,8 +144,12 @@ internal static class GoogleOidcConfiguration
         var email = principal!.FindFirst("email")?.Value;
         var emailVerified = string.Equals(principal.FindFirst("email_verified")?.Value, "true", StringComparison.OrdinalIgnoreCase);
 
+        // Carried across raw, so "the provider said nothing" and "the provider said something unreadable" are one
+        // decision made in one place. This layer reads claims and judges none of them, as it does for `sub`.
+        var authenticationTime = principal.FindFirst(AuthenticationTimeClaim)?.Value;
+
         var recorder = context.HttpContext.RequestServices.GetRequiredService<IExternalCallbackRecorder>();
-        var outcome = await recorder.RecordAsync(handoffId.Value, ExternalProviders.Google, subject, email, emailVerified, context.HttpContext.RequestAborted);
+        var outcome = await recorder.RecordAsync(handoffId.Value, ExternalProviders.Google, subject, email, emailVerified, authenticationTime, context.HttpContext.RequestAborted);
         if (outcome is null)
         {
             context.Response.Redirect($"{ReturnPath}?outcome={Refused}");
