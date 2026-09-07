@@ -745,7 +745,30 @@ delivery. Treating sessions created before the epoch as revoked, and terminalizi
 predate it, are reads of the restored database that belong with Task 27's other fail-closed work; `PredatesRecovery`
 is the question they will ask and it is tested here.
 
-## Task 26 - REOPENED 2026-09-07
+## Task 26 - closed again 2026-09-07, after being reopened
+
+All four gaps below are closed, each with a failing test first, a fix, a vacuity check and a run. What the table
+records is the state that was found; what follows it is what was done.
+
+| Gap | Closed by | Vacuity check |
+|---|---|---|
+| 1 - `AdmitsDelivery` unwired | The guard sits before the **claim**, not the send: claiming takes a lease and spends one of eight attempts, so a dispatcher that claimed and then declined would burn messages it never tried. `OutboxAdmissionTests` (8). | Neutered, 5 of 8 fail. |
+| 2 - quarantine admits everything; `PredatesRecovery` unwired | A path allowlist in the middleware — antiforgery, sessions, reauthenticate — because it runs before routing, and it runs before routing so a deployment that has not been admitted need not read the database to know what it is refusing. `PredatesRecovery` now has its two consumers: a pre-epoch session counts as revoked, and a pre-epoch envelope is refused and terminalized. | Each of the three neutered separately; each fails exactly the tests that name it. |
+| 3 - hold/purge race | The `SELECT … FOR UPDATE` C7 names, on both sides, with the executor taking it **before** it reads the holds. Plus the loser's answer it never had, `retention_hold_subject_purged`. `RetentionHoldRaceTests` (4). | Executor lock neutered: the race test fails on its own timeout. Purged check neutered: the other fails. |
+| 4 - over-declared restore evidence | A real backup: `CREATE DATABASE … TEMPLATE` is a physical copy, and the test proves the copy predates the revocation and the password replacement by reading both databases. `RestoreRehearsalTests` (3). Plus the `MfaRecoveryPage` and its four tests. | Closed-by-default neutered: 2 of 3 fail. |
+
+**Verified after all four:** functional 636/636, Application unit 199/199, Domain unit 191/191, Infrastructure
+integration 296/296, client 217/217, client lint clean.
+
+**Three things this task still does not close, named rather than absorbed.**
+
+| Open | Why it is open | Owner |
+|---|---|---|
+| Live restore certification | No external authority issued the evidence — the rehearsal signs it with a key the test made up. A physical copy proves the adapter and the pipeline; it does not prove a restore procedure. | outside this repository |
+| "Insufficient external deletion evidence keeps Personal data quarantined" | Nothing in this system models external deletion evidence. The clause is in the plan's checkbox and has no code to exercise; claiming it on today's code would be the same over-declaration one layer down. | a later task |
+| `503 service_unavailable` on an unreachable budget store | The limiter cannot distinguish unreachable from exhausted. Fail-closed behaviour belongs to **Task 27**, for every budget rather than one route. | Task 27 |
+
+### The state that was found on reopening
 
 **It was marked complete and it was not.** Six units are implemented and committed, and four gaps against the
 contract were found immediately afterwards. Two of them are ports with no consumers, one is a race the tests never
@@ -763,6 +786,16 @@ listed here as open until each has a failing test, a fix, a vacuity check and a 
 taken, none was restored" - which was honest about the external gate but did not say that the plan's own local
 rehearsal had also not been run. Marking the task complete over that was the error, and it is corrected here
 rather than in a summary somewhere else.
+
+**The pattern in gaps 1 and 2, worth naming.** Both were ports that were written, documented and registered, and
+then read by nothing. A type that describes a guarantee is not the guarantee; `AdmitsDelivery` and
+`PredatesRecovery` each looked finished from the inside of unit 26.6 and did nothing at all. Neither had a test
+that failed when it was deleted, which is the check that would have caught them.
+
+**And the pattern in gap 3.** The first race test paused the executor at `SaveChangesAsync` — after the holds had
+been read — and passed with the lock removed. The pause had to move to the lock itself before the test could tell
+the two versions apart. That is the third test in this task found to be proving nothing, and the reason every fix
+here carries a recorded vacuity check.
 
 ## Tasks 21–25 review remediation — done 2026-09-07
 

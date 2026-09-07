@@ -100,6 +100,10 @@ is not finished.
 worker acts for Platform, so an un-bootstrapped deployment has nowhere to record what a purge did — and erasing
 without being able to say so is not something this does.
 
+**And a run in a deployment that has not been admitted does nothing either.** The dispatcher refuses before it
+claims anything, so a closed or quarantined deployment sends no mail and spends none of a message's eight
+attempts — see the restore section below.
+
 ### What it currently erases
 
 | Category | Trigger | Implemented |
@@ -136,12 +140,46 @@ sign-in, blocks no reactivation, and no authorization decision reads it. Releasi
 nothing was taken — only eligibility for erasure returns. This is enforced structurally: `RetentionLegalHold`
 lives in a domain slice nothing older may depend on, and the architecture tests refuse a dependency on it.
 
+**A hold and a purge of one subject can never both take effect.** Both sides take `SELECT … FOR UPDATE` on the
+subject's document rows, and the executor takes it *before* it reads the holds — reading first and locking
+afterwards would leave exactly the window where a hold commits between the two. Whichever reaches the rows first
+wins, and the loser is told which of the two happened: a hold that lost answers `409
+retention_hold_subject_purged`, and a purge that lost affects zero rows and records `reason=legal_hold`. A hold
+cannot be made retroactive.
+
 - One standing hold per `(subject, reason)`; a second answers `409 retention_hold_conflict`.
 - A different reason is a different hold, and each ends when whoever placed it says so.
 - Release is idempotent and silent about existence: repeating a release and naming a hold that never existed
   answer alike, because "does this hold exist" is not a question that route is for.
 - `reasonCode` and `reference` are both `^[A-Za-z0-9._:-]{1,64}$`. A retention record is read by people who are
   not the subject, and it is not a place to write prose about them.
+
+## Restore admission
+
+A deployment is armed by naming `IdentityAccess:Recovery:Deployment`. From that moment nothing else in the
+configuration can talk it back down: a missing `VerificationKey` is not "unarmed", it is a deployment that cannot
+verify and therefore stays closed. A deployment that names nothing is not recovering and serves as it always did.
+
+| State | What it serves | What it delivers |
+|---|---|---|
+| `Closed` — the default whenever evidence is insufficient | Nothing but `/health` and `/alive`, which answer with a status and no body. Everything else: `503` `recovery_admission_closed` + `Retry-After`. | Nothing. The dispatcher refuses **before the claim**, so no lease is taken and no attempt is spent — a deployment that sat closed for a day opens to find its messages intact. |
+| `Quarantined` — verified evidence without the `release` claim | `/api/identity/antiforgery`, `/api/identity/sessions`, `/api/identity/credentials/reauthenticate`. Everything else answers `503`. Deliberately excluded: the context route, which reports tenants and permissions read from restored rows; password recovery, which mints a token from restored state; and the provider callback, which would turn a restored external link into a session. | Nothing. |
+| `Open` — verified evidence carrying `release` | Everything. | Everything **except** what predates the recovery epoch. |
+
+**What "predates the epoch" costs.** A session created before the epoch counts as revoked: it came out of the
+backup, and it may have been revoked in the hours the backup does not contain. A message written before the epoch
+is never sent and its envelope is terminalized: the token sealed into it comes from those same missing hours.
+
+**The evidence.** `{ deployment, recoveryEpoch, backupId, issuedAt, expiresAt, release, signature }`, HMAC-SHA256
+over a canonical form with an operator-held key from `IdentityAccess:Recovery:VerificationKey`, read from
+`:Evidence` or a file at `:EvidenceFile`. Absent, unreadable, expired, wrongly signed or wrong-deployment evidence
+keeps admission closed **on every process start**, because the decision is taken at construction and never cached
+anywhere durable — the only durable place a restored deployment has is the restored database.
+
+**What has actually been rehearsed.** `RestoreRehearsalTests` takes a real physical copy with
+`CREATE DATABASE … TEMPLATE`, makes writes against the original that the copy therefore predates, and walks all
+three states over the copy. It proves the adapter and the pipeline. It is **not** restore certification: the test
+signs the evidence with a key it made up, and no external authority issued anything.
 
 ## What is not closed by any of this
 
@@ -152,4 +190,5 @@ lives in a domain slice nothing older may depend on, and the architecture tests 
 | Legal or compliance certification of retention and erasure | legal | this file describes a mechanism, not an assessment of whether the periods somebody configures are lawful |
 | `503` on an unreachable budget store | Task 27 | the limiter cannot yet distinguish unreachable from exhausted |
 | Categories other than sessions and documents | a later task | skipped and recorded, not implemented |
-| Live restore certification | the restore authority | synthetic-evidence proof is not restore certification |
+| Live restore certification | the restore authority | a physical copy proves the adapter and the pipeline; no external authority issued the evidence |
+| "Insufficient external deletion evidence keeps Personal data quarantined" | a later task | nothing in this system models external deletion evidence, so the clause has no code to exercise |
