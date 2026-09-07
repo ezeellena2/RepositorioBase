@@ -21,6 +21,8 @@ const EMPTY_DRAFT = { roleId: null, name: '', permissions: [], version: null };
  * The list is shown a page at a time, because an organization can hold more roles than one page carries and a
  * screen that silently stops at a hundred is a screen that lies about what the organization has.
  */
+const RolesPath = '/roles';
+
 export function RolesPage() {
   const identity = useIdentity();
   const proof = useIdentityProof();
@@ -57,14 +59,14 @@ export function RolesPage() {
     return () => { cancelled = true; };
   }, [load]);
 
-  const run = async (action, act) => {
+  const run = async (action, act, intent = null) => {
     setIsBusy(true);
     setProblem(null);
     try {
       // The proof is bought immediately before the change and spent by it. It is single-use, so each change
       // asks again — which is what "recent" has to mean to be worth anything. A provider proof leaves for the
       // provider rather than answering, so the change waits for the round trip instead of being sent now.
-      if (!await proof.prove(action, password)) return;
+      if (action !== null && !await proof.prove(action, password, intent)) return;
       await act();
       setPassword('');
       setDraft(EMPTY_DRAFT);
@@ -76,11 +78,63 @@ export function RolesPage() {
     }
   };
 
-  const save = () => run('roles.change', () => (draft.roleId === null
-    ? identity.client.createRole(tenantId, draft.name, draft.permissions)
-    : identity.client.updateRole(tenantId, draft.roleId, draft.name, draft.permissions, draft.version)));
+  const save = () => run(
+    'roles.change',
+    () => (draft.roleId === null
+      ? identity.client.createRole(tenantId, draft.name, draft.permissions)
+      : identity.client.updateRole(tenantId, draft.roleId, draft.name, draft.permissions, draft.version)),
+    { returnTo: RolesPath, operation: draft.roleId === null ? 'create' : 'update', draft });
 
-  const retire = (role) => run('roles.change', () => identity.client.retireRole(tenantId, role.roleId, role.version));
+  const retire = (role) => run(
+    'roles.change',
+    () => identity.client.retireRole(tenantId, role.roleId, role.version),
+    { returnTo: RolesPath, operation: 'retire', draft: { roleId: role.roleId, version: role.version } });
+
+  // The edit this screen left behind, resumed once the server accepted the provider round trip. The draft is
+  // replayed with the version the person actually read, so a role somebody else changed in the meantime is
+  // refused by the server exactly as it would have been without the detour.
+  const waiting = proof.resumable(RolesPath);
+  useEffect(() => {
+    if (waiting === null || roles === null || !proof.isReady) return;
+    let cancelled = false;
+    void Promise.resolve().then(async () => {
+      if (cancelled) return;
+      setIsBusy(true);
+      setProblem(null);
+      try {
+        const pending = waiting.draft ?? {};
+        if (waiting.operation === 'create') {
+          proof.forget();
+          await run(null, () => identity.client.createRole(tenantId, pending.name, pending.permissions));
+          return;
+        }
+
+        // The role may have been selected on a later page before leaving for the provider.
+        let role = roles.find((candidate) => candidate.roleId === pending.roleId);
+        let cursor = nextCursor;
+        while (role === undefined && cursor !== null) {
+          const page = await identity.client.listRoles(tenantId, cursor);
+          if (cancelled) return;
+          role = page.items.find((candidate) => candidate.roleId === pending.roleId);
+          cursor = page.nextCursor ?? null;
+        }
+        if (cancelled || proof.resumable(RolesPath) !== waiting) return;
+        proof.forget();
+        if (role === undefined || role.isSystem || role.isRetired) return;
+        if (waiting.operation === 'retire') {
+          await run(null, () => identity.client.retireRole(tenantId, pending.roleId, pending.version));
+        } else if (waiting.operation === 'update') {
+          await run(null, () => identity.client.updateRole(tenantId, pending.roleId, pending.name, pending.permissions, pending.version));
+        }
+      } catch (error) {
+        if (!cancelled) setProblem(error.problem ?? { code: 'unexpected' });
+      } finally {
+        if (!cancelled) setIsBusy(false);
+      }
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [waiting, roles, nextCursor, proof.isReady, tenantId]);
 
   // A continuation appends rather than replaces: what the reader has already seen stays on screen, and every
   // page the server hands out is disjoint from the last, so nothing can appear twice.

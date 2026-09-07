@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useIdentity } from '../context/IdentityProvider';
+import { forgetPendingProof, markPendingProofProved } from '../useIdentityProof';
 import { ProblemMessage } from '../ProblemMessage';
 import { externalNavigation } from '../externalNavigation';
 
@@ -172,6 +173,9 @@ export function ExternalReturnPage() {
     settled.current = true;
     (async () => {
       if (outcome !== 'signed_in' && outcome !== 'linked' && outcome !== 'proved') {
+        // Refused, cancelled, or an address bar somebody typed. Whatever was waiting is dropped rather than left
+        // for a later return to pick up.
+        forgetPendingProof();
         if (mounted.current) navigate('/identity/external?outcome=refused', { replace: true });
         return;
       }
@@ -184,8 +188,15 @@ export function ExternalReturnPage() {
         // holding a token whose cookie the server had just deleted, and refuse the very next mutation.
         await identity.client.bootstrapAntiforgery();
         await identity.reload();
-        if (mounted.current) navigate(outcome === 'signed_in' ? '/identity' : '/identity/external', { replace: true });
+
+        // Only now, once the SERVER accepted the round trip, may what was waiting be allowed to run — and the
+        // person goes back to where they were rather than to a screen they never asked for.
+        const resumeAt = outcome === 'proved' ? markPendingProofProved() : null;
+        const destination = resumeAt ?? (outcome === 'signed_in' ? '/identity' : '/identity/external');
+        if (mounted.current) navigate(destination, { replace: true });
       } catch (error) {
+        // The completion failed, so nothing was proved and nothing may resume.
+        forgetPendingProof();
         if (mounted.current) setProblem(error.problem ?? { code: 'unexpected' });
       }
     })();

@@ -12,6 +12,8 @@ import { useIdentityProof } from '../useIdentityProof';
  * written anywhere, and an identity that arrived through a provider proves the same thing by being sent back to
  * that provider. Either way nothing comes back here — the proof lives on the server (IA-REQ-025, IA-REQ-051).
  */
+const SessionsPath = '/identity/sessions';
+
 export function SessionsPage() {
   const identity = useIdentity();
   const proof = useIdentityProof();
@@ -39,13 +41,14 @@ export function SessionsPage() {
     return () => { cancelled = true; };
   }, [load]);
 
-  const run = async (action, act) => {
+  const run = async (action, act, intent = null) => {
     setIsBusy(true);
     setProblem(null);
     try {
       // A provider proof leaves for the provider instead of answering, so there is nothing to do here but stop:
-      // what this operation was going to write waits for the round trip to come back.
-      if (!await proof.prove(action, password)) return;
+      // what this operation was going to write waits for the round trip to come back. A null action means the
+      // proof is already held — which is how a resumed operation re-enters here.
+      if (action !== null && !await proof.prove(action, password, intent)) return;
       await act();
       setPassword('');
       await load();
@@ -55,6 +58,30 @@ export function SessionsPage() {
       setIsBusy(false);
     }
   };
+
+  // What this screen left behind before leaving for the provider, once the server has accepted the return. The
+  // record is forgotten before the request goes out, so refreshing or replaying the return cannot repeat it; the
+  // proof is single-use on the server, which refuses a repeat anyway.
+  const waiting = proof.resumable(SessionsPath);
+  useEffect(() => {
+    if (waiting === null || sessions === null || !proof.isReady) return;
+    proof.forget();
+    // Started after this effect returns, not during it: the operation sets this screen's busy state as its
+    // first act, and doing that inside an effect body is what turns one render into a cascade.
+    const resume = (act) => { void Promise.resolve().then(act); };
+
+    if (waiting.operation === 'revoke-others') {
+      resume(() => run(null, () => identity.client.revokeOtherSessions()));
+      return;
+    }
+
+    // The device has to still be listed, and still be another one. Between leaving and coming back it may have
+    // expired, been ended elsewhere, or become the one being used.
+    const target = sessions.find((session) => session.sessionRef === waiting.target);
+    if (waiting.operation !== 'revoke-one' || target === undefined || target.isCurrent) return;
+    resume(() => run(null, () => identity.client.revokeSession(target.sessionRef)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [waiting, sessions, proof.isReady]);
 
   return (
     <section aria-labelledby="sessions-heading">
@@ -95,7 +122,10 @@ export function SessionsPage() {
               <button
                 type="button"
                 disabled={isBusy || !proof.canBegin(password)}
-                onClick={() => run('sessions.revoke-one', () => identity.client.revokeSession(session.sessionRef))}
+                onClick={() => run(
+                  'sessions.revoke-one',
+                  () => identity.client.revokeSession(session.sessionRef),
+                  { returnTo: SessionsPath, operation: 'revoke-one', target: session.sessionRef })}
               >
                 End this device
               </button>
@@ -108,7 +138,10 @@ export function SessionsPage() {
         <button
           type="button"
           disabled={isBusy || !proof.canBegin(password)}
-          onClick={() => run('sessions.revoke-others', () => identity.client.revokeOtherSessions())}
+          onClick={() => run(
+            'sessions.revoke-others',
+            () => identity.client.revokeOtherSessions(),
+            { returnTo: SessionsPath, operation: 'revoke-others' })}
         >
           End every other device
         </button>

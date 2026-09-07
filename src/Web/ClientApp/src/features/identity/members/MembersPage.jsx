@@ -20,6 +20,8 @@ import { useIdentityProof } from '../useIdentityProof';
  * so only the roster's own failure is this screen's failure; the role catalogue that turns identifiers into
  * names is a separate permission, and a refusal of it is said where the names would have been.
  */
+const MembersPath = '/members';
+
 export function MembersPage() {
   const identity = useIdentity();
   const proof = useIdentityProof();
@@ -60,12 +62,12 @@ export function MembersPage() {
     return () => { cancelled = true; };
   }, [load]);
 
-  const run = async (action, act) => {
+  const run = async (action, act, intent = null) => {
     setIsBusy(true);
     setProblem(null);
     try {
       // A provider proof leaves for the provider rather than answering, so the change waits for the round trip.
-      if (action !== null && !await proof.prove(action, password)) return;
+      if (action !== null && !await proof.prove(action, password, intent)) return;
       await act();
       setPassword('');
       setEditing(null);
@@ -77,14 +79,57 @@ export function MembersPage() {
     }
   };
 
-  const saveRoles = (member) => run('members.roles.change',
-    () => identity.client.updateMemberRoles(tenantId, member.membershipId, editing.roleIds, member.version));
+  const saveRoles = (member) => run(
+    'members.roles.change',
+    () => identity.client.updateMemberRoles(tenantId, member.membershipId, editing.roleIds, member.version),
+    { returnTo: MembersPath, operation: 'roles', target: member.membershipId, draft: { roleIds: editing.roleIds, version: member.version } });
 
   const changeStatus = (member, change) =>
     run(null, () => identity.client.changeMemberStatus(tenantId, member.membershipId, change, member.version));
 
-  const transfer = (member) => run('tenant.ownership.transfer',
-    () => identity.client.transferOwnership(tenantId, member.membershipId, member.version));
+  const transfer = (member) => run(
+    'tenant.ownership.transfer',
+    () => identity.client.transferOwnership(tenantId, member.membershipId, member.version),
+    { returnTo: MembersPath, operation: 'transfer', target: member.membershipId, draft: { version: member.version } });
+
+  // Resumed once the server accepted the round trip, against the roster as it stands now: the member has to
+  // still be there, and for a transfer still be somebody the organization can be handed to.
+  const waiting = proof.resumable(MembersPath);
+  useEffect(() => {
+    if (waiting === null || members === null || !proof.isReady) return;
+    let cancelled = false;
+    void Promise.resolve().then(async () => {
+      if (cancelled) return;
+      setIsBusy(true);
+      setProblem(null);
+      try {
+        // A fresh return loads only page one. Follow its current cursors before deciding the member is gone.
+        let member = members.find((candidate) => candidate.membershipId === waiting.target);
+        let cursor = nextCursor;
+        while (member === undefined && cursor !== null) {
+          const page = await identity.client.listMembers(tenantId, cursor);
+          if (cancelled) return;
+          member = page.items.find((candidate) => candidate.membershipId === waiting.target);
+          cursor = page.nextCursor ?? null;
+        }
+        if (cancelled || proof.resumable(MembersPath) !== waiting) return;
+        proof.forget();
+        if (member === undefined) return;
+        const pending = waiting.draft ?? {};
+        if (waiting.operation === 'roles') {
+          await run(null, () => identity.client.updateMemberRoles(tenantId, member.membershipId, pending.roleIds, pending.version));
+        } else if (waiting.operation === 'transfer' && !member.isOwner && member.status === 'Active') {
+          await run(null, () => identity.client.transferOwnership(tenantId, member.membershipId, pending.version));
+        }
+      } catch (error) {
+        if (!cancelled) setProblem(error.problem ?? { code: 'unexpected' });
+      } finally {
+        if (!cancelled) setIsBusy(false);
+      }
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [waiting, members, nextCursor, proof.isReady, tenantId]);
 
   // A continuation appends. Every page the server hands out is disjoint from the last, so what the reader has
   // already seen stays on screen and nothing appears twice. A write reloads from the first page deliberately:
