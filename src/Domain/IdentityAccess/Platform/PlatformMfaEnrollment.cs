@@ -207,6 +207,39 @@ public sealed class PlatformMfaEnrollment : BaseEntity<PlatformMfaEnrollmentId>
         verified <= now &&
         now - verified <= window;
 
+    /// <summary>
+    /// Replaces the factor in place, paid for by one unspent recovery code (IA-REQ-041, C6).
+    /// <para>
+    /// It is the same row, the same identity and the same status: nothing is retired and no second enrollment
+    /// appears, because a second row would be a second way in. What changes is the secret, the codes, and the
+    /// evidence that anybody had proved the old factor — which is cleared, so the replacement has to be proved
+    /// before it grants a step-up. An enrollment that never reached <see cref="PlatformMfaEnrollmentStatus.Active"/>
+    /// has no factor to replace and answers <see langword="false"/> rather than becoming one.
+    /// </para>
+    /// <para>
+    /// The spent code disappears with the set it belonged to, so "exactly once" is not enforced by its consumed
+    /// marker but by the row version this write carries: two recoveries reaching this row leave one factor, and
+    /// the second is told the row moved.
+    /// </para>
+    /// </summary>
+    public bool TryRecover(string codeHash, string encryptedSecret, IEnumerable<string> replacementCodeHashes, DateTimeOffset now)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(encryptedSecret);
+        ArgumentNullException.ThrowIfNull(replacementCodeHashes);
+        if (Status != PlatformMfaEnrollmentStatus.Active) return false;
+        if (string.IsNullOrWhiteSpace(codeHash)) return false;
+        if (now < CreatedAt) throw new ArgumentOutOfRangeException(nameof(now));
+
+        var spendable = _recoveryCodes.Find(candidate =>
+            candidate.IsAvailable && string.Equals(candidate.CodeHash, codeHash, StringComparison.Ordinal));
+        if (spendable is null) return false;
+
+        EncryptedSecret = encryptedSecret;
+        SetRecoveryCodes(replacementCodeHashes, now);
+        ForgetStepUp();
+        return true;
+    }
+
     /// <summary>Spends one recovery code, identified by the hash a caller's submitted code produced.</summary>
     public bool TryConsumeRecoveryCode(string codeHash, DateTimeOffset now)
     {

@@ -34,6 +34,7 @@ const MESSAGES = {
   platform_last_owner: 'This would leave the Platform with no owner. Somebody else has to hold it first.',
   identity_concurrency_conflict: 'Your account changed while you were working. Refresh and try again.',
   identity_reactivation_unavailable: 'That account cannot be reactivated.',
+  platform_mfa_concurrency_conflict: 'Your second factor changed while you were working. Start again.',
   rate_limit_exceeded: 'Too many attempts. Wait a moment and try again.',
   internal_server_error: 'Something went wrong. Try again.',
 };

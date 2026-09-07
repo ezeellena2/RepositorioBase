@@ -50,6 +50,9 @@ public class ExistingApplicationRequestAuthorizationTests
     [TestCase(typeof(CleanArchitecture.Application.IdentityAccess.Platform.Mfa.VerifyPlatformMfaEnrollmentCommand), "platform.mfa.enroll")]
     [TestCase(typeof(CleanArchitecture.Application.IdentityAccess.Platform.Mfa.AcknowledgePlatformRecoveryCodesCommand), "platform.mfa.enroll")]
     [TestCase(typeof(CleanArchitecture.Application.IdentityAccess.Platform.Mfa.StepUpPlatformMfaCommand), "platform.mfa.enroll")]
+    // Recovery is reachable by somebody who cannot step up and therefore cannot be acting as Platform, so it
+    // cannot be tenant-scoped either. What gates it is the unspent recovery code and the fresh password proof.
+    [TestCase(typeof(CleanArchitecture.Application.IdentityAccess.Platform.Mfa.RecoverPlatformMfaCommand), "platform.mfa.enroll")]
     // Parking your own account carries no subject: it resolves the caller's own identity, so there is no tenant
     // to scope it to and no arbitrary-identity disable route for anything to be pointed at (IA-REQ-054).
     [TestCase(typeof(CleanArchitecture.Application.IdentityAccess.Lifecycle.DeactivateAccountCommand), "identity.account.manage")]
@@ -134,6 +137,7 @@ public class ExistingApplicationRequestAuthorizationTests
             typeof(CleanArchitecture.Application.IdentityAccess.Platform.Mfa.VerifyPlatformMfaEnrollmentCommand).FullName,
             typeof(CleanArchitecture.Application.IdentityAccess.Platform.Mfa.AcknowledgePlatformRecoveryCodesCommand).FullName,
             typeof(CleanArchitecture.Application.IdentityAccess.Platform.Mfa.StepUpPlatformMfaCommand).FullName,
+            typeof(CleanArchitecture.Application.IdentityAccess.Platform.Mfa.RecoverPlatformMfaCommand).FullName,
             typeof(CleanArchitecture.Application.IdentityAccess.Platform.Bootstrap.RecoverPendingPlatformOwnerInvitationCommand).FullName,
             typeof(CleanArchitecture.Application.IdentityAccess.Platform.Administrators.InvitePlatformAdministratorCommand).FullName,
             typeof(CleanArchitecture.Application.IdentityAccess.Platform.Administrators.RevokePlatformAdministratorCommand).FullName,

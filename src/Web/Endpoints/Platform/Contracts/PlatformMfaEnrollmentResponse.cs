@@ -10,6 +10,12 @@ public sealed record PlatformMfaEnrollmentResponse(string SharedKey, string Prov
 /// <summary>The invitation token an MFA gate is being answered for.</summary>
 public sealed record PlatformMfaEnrollmentRequest(string Token);
 
+/// <summary>
+/// Spending one recovery code to replace a lost factor. It carries no token: the invitation was consumed at
+/// activation, and no `proofToken` either — the password proof is a server-side row, not something a client holds.
+/// </summary>
+public sealed record RecoverPlatformMfaRequest(string RecoveryCode);
+
 /// <summary>The invitation token plus a code from the enrolled authenticator.</summary>
 public sealed record PlatformMfaVerificationRequest(string Token, string Code);
 

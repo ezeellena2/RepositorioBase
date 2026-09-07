@@ -37,6 +37,16 @@ internal static class PlatformMfaEndpoints
             .Produces(StatusCodes.Status204NoContent)
             .WithApiProblemDetails(CodeGate)
             .WithBodyBindingFailureCode(ApiProblemMetadata.InvalidInvitation.Code);
+
+        group.MapPost("/mfa/recover", Recover)
+            .RequireAuthorization()
+            .Produces<PlatformMfaEnrollmentResponse>(StatusCodes.Status200OK)
+            .WithApiProblemDetails([
+                .. CodeGate,
+                ApiProblemMetadata.RecentProofRequired,
+                ApiProblemMetadata.InvalidCredentialProof,
+                ApiProblemMetadata.PlatformMfaConcurrencyConflict])
+            .WithBodyBindingFailureCode(ApiProblemMetadata.InvalidCredentialProof.Code);
     }
 
     /// <summary>The same set for every gate, because every gate can fail in the same ways.</summary>
@@ -99,6 +109,22 @@ internal static class PlatformMfaEndpoints
 
         var result = await sender.Send(new AcknowledgePlatformRecoveryCodesCommand(request.Token), context.RequestAborted);
         return result.IsSuccess ? Results.NoContent() : problems.ToHttpResult(result.Error!);
+    }
+
+    private static async Task<IResult> Recover(
+        HttpContext context,
+        IAntiforgery antiforgery,
+        ApiProblemDetailsMapper problems,
+        ISender sender,
+        RecoverPlatformMfaRequest request)
+    {
+        var failure = await Identity.ValidateAntiforgery(context, antiforgery, problems);
+        if (failure is not null) return failure;
+
+        // Shown exactly once, like the enrollment this replaces. There is no route that reads it back.
+        var result = await sender.Send(new RecoverPlatformMfaCommand(request.RecoveryCode), context.RequestAborted);
+        return result.ToHttpResult(context, problems, details => Results.Ok(
+            new PlatformMfaEnrollmentResponse(details.SharedKey, details.ProvisioningUri, details.RecoveryCodes)));
     }
 
     private static async Task<IResult> StepUp(

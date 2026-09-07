@@ -233,6 +233,13 @@ public static class IdentityAccessErrors
     public static ApplicationError IdentityConcurrencyConflict() =>
         new("identity_concurrency_conflict", ApplicationErrorCategory.Conflict, "The account was changed by another request. Refresh it and try again.");
 
+    /// <summary>
+    /// Two recoveries reached the one enrollment row and this one lost. It is a conflict rather than a refusal
+    /// because nothing about the caller was wrong: the row moved (IA-REQ-041).
+    /// </summary>
+    public static ApplicationError PlatformMfaConcurrencyConflict() =>
+        new("platform_mfa_concurrency_conflict", ApplicationErrorCategory.Conflict, "The second factor was changed by another request. Try again.");
+
     public static ApplicationError IdentityNotFound() =>
         new("not_found", ApplicationErrorCategory.NotFound, "That identity is not available.");
 

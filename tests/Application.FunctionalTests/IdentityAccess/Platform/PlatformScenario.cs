@@ -172,7 +172,13 @@ internal static class PlatformScenario
             $"""UPDATE outbox_messages SET "Status" = 'Abandoned', "FailureCode" = 'provider_rejected', "LeaseOwner" = NULL, "LeaseExpiresAt" = NULL WHERE "Id" = {invitation.DeliveryMessageId!.Value}""");
     }
 
-    internal sealed record ActiveOwner(Guid IdentityId, TenantId PlatformId, string Token, string SharedKey);
+    /// <summary>
+    /// The owner this ceremony produced, including the recovery codes it was handed. They are kept because the
+    /// enrollment stores only hashes: the plaintext exists exactly once, in the answer the ceremony gave, and a
+    /// test about spending one has nowhere else to get it.
+    /// </summary>
+    internal sealed record ActiveOwner(
+        Guid IdentityId, TenantId PlatformId, string Token, string SharedKey, IReadOnlyList<string> RecoveryCodes);
 
     /// <summary>
     /// The whole chain, walked as its recipient would: bootstrap, register, confirm, sign in, enrol, verify,
@@ -208,7 +214,7 @@ internal static class PlatformScenario
         // From here the caller acts as a Platform member: the tenant comes from the session, never from input.
         TestApp.SetCurrentTenant(platformId);
         TestApp.SetApplicationPermissionGranted(true);
-        return new ActiveOwner(identityId, platformId, token, enrollment.Value.SharedKey);
+        return new ActiveOwner(identityId, platformId, token, enrollment.Value.SharedKey, enrollment.Value.RecoveryCodes);
     }
 
     /// <summary>What a real authenticator would show for this key now. Computed here, not asked of the code.</summary>

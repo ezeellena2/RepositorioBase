@@ -33,6 +33,13 @@ public static class ProofActions
     /// </summary>
     public const string AccountDeactivate = "identity.account.deactivate";
 
+    /// <summary>
+    /// Replacing a Platform second factor with a recovery code. Its own action because it is the one route that
+    /// replaces a working factor without proving that factor, so a proof bought for anything else must not pay
+    /// for it (IA-REQ-041).
+    /// </summary>
+    public const string PlatformMfaRecover = "platform.mfa.recover";
+
     public static IReadOnlySet<string> All { get; } = new HashSet<string>(StringComparer.Ordinal)
     {
         PasswordChange,
@@ -43,7 +50,8 @@ public static class ProofActions
         RoleChange,
         MemberRoleChange,
         OwnershipTransfer,
-        AccountDeactivate
+        AccountDeactivate,
+        PlatformMfaRecover
     };
 }
 

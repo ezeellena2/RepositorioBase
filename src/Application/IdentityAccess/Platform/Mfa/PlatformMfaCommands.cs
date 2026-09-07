@@ -59,6 +59,38 @@ public sealed class AcknowledgePlatformRecoveryCodesCommandValidator : AbstractV
 }
 
 /// <summary>
+/// Replaces a second factor whose authenticator is gone, paid for with one unspent recovery code (IA-REQ-041, C6).
+/// <para>
+/// It is the only route that replaces a working factor without proving that factor, which is why everything else
+/// about the caller has to be true at once: a session belonging to a confirmed identity, `platform.mfa.enroll`,
+/// antiforgery, a password proved a moment ago for this action alone, and a code nobody has spent. Holding the
+/// code is not enough, and neither is holding the password.
+/// </para>
+/// <para>
+/// SPEC's route table writes the proof as a `proofToken` field. It is not one here, for the same reason no other
+/// sensitive route has one: C4's proofs are server-side rows spent by identity, session and action, and nothing
+/// the client holds names one. The gate is the same gate; only its spelling differs.
+/// </para>
+/// <para>
+/// The same table says the route needs "no active Platform tenant". That is an absence from the requirement list,
+/// not a prohibition: every other Platform change needs one and a step-up on top, and this route cannot, because
+/// the person reaching it is the one who cannot step up. Reading it as a prohibition would make the route
+/// unreachable for exactly that person — signing in selects the only tenant an operator belongs to — so the
+/// permission stays application-scoped and no tenant is checked either way. Nothing is lost by that: the bar is
+/// still an unspent recovery code and a password proved a moment ago.
+/// </para>
+/// </summary>
+[Authorize(Permissions.PlatformMfaEnroll, false)]
+public sealed record RecoverPlatformMfaCommand(string RecoveryCode)
+    : IRequest<Result<PlatformMfaEnrollmentDetails>>, ISensitiveRequest;
+
+public sealed class RecoverPlatformMfaCommandValidator : AbstractValidator<RecoverPlatformMfaCommand>
+{
+    public RecoverPlatformMfaCommandValidator() =>
+        RuleFor(command => command.RecoveryCode).NotEmpty().MaximumLength(64);
+}
+
+/// <summary>
 /// Re-proves the factor for an administrator who already holds Platform authority, which is what a Platform
 /// mutation requires to have happened recently (IA-REQ-041/043). It needs no invitation token: the invitation was
 /// consumed at activation, and the caller's authority now comes from their active Platform membership.

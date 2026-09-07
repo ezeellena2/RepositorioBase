@@ -536,6 +536,50 @@ Both statements are idempotent.
 **Still not done in Task 26:** MFA recovery, the retention executor, the documentary dispute and the restore
 admission guard. `Closed` is still written by nothing — it is reached by an executed erasure, which is unit 26.4.
 
+### Unit 26.3 - Platform MFA recovery (done 2026-09-07)
+
+**Visible outcome met:** an operator who lost the authenticator holding their second factor spends one recovery
+code, is handed a replacement secret and a fresh set of codes once, and is back to where they were - after
+proving the new factor, which nobody has yet.
+
+**Two places SPEC's route table had to be read rather than copied, both recorded here.**
+
+- *`proofToken`.* The table writes the C4 proof as a request field. It is not one, for the same reason no other
+  sensitive route has one: C4's proofs are server-side rows spent by identity, session and action, and nothing the
+  client holds names one. `ProofActions.PlatformMfaRecover` is its own action, so a proof bought to change a
+  password does not pay for replacing a second factor - which is what the closed action set is for.
+- *"no active Platform tenant".* Read as a prohibition first, and that was wrong: signing in selects the only
+  tenant an operator belongs to (`SessionIssuer` does it when there is exactly one), so refusing there would make
+  the route unreachable for precisely the person it exists for. The clause is an absence from the requirement
+  list - every other Platform change needs an active tenant *and* a step-up, and this one cannot - so the
+  permission stays application-scoped and no tenant is checked either way. **The test caught this**, which is why
+  it is recorded rather than shipped: `Being_signed_into_Platform_is_not_a_bar_because_that_is_where_the_person_already_is`
+  now pins the corrected reading.
+
+**The replacement is in place, on the one row.** `TryRecover` is gated on `Status == Active` and one unspent code;
+it swaps the secret, replaces the whole code set, and clears the step-up evidence. Status, `VerifiedAt` and
+`RecoveryAcknowledgedAt` are untouched, because recovery does not restart the enrollment gates - there is no
+`Retired` status and no second row, since a second row would be a second way in. "Spent exactly once" is enforced
+by the row's existing `xmin` token rather than by the consumed marker, because the spent code disappears with the
+set it belonged to.
+
+| Step | What happened |
+|---|---|
+| RED | `PlatformMfaRecoveryTests` did not compile against the absent `RecoverPlatformMfaCommand`, then drove ten behaviours: the replacement working and the lost authenticator not, the old step-up dying with the factor it belonged to, a spent code, a sibling code from the replaced set, a missing proof, a proof bought for another action, being signed into Platform, an enrollment nobody finished, the attempt budget, and two devices racing. |
+| GREEN | `PlatformMfaEnrollment.TryRecover`, `RecoverPlatformMfaCommand` and its handler, `POST /api/platform/mfa/recover`, and the `platform_mfa_concurrency_conflict` answer. No migration: the shape did not change. |
+| Not vacuous, on the second attempt | Removing `ForgetStepUp()` left all ten passing, because the step-up in that test lived on a different session from the one recovering - the test was passing for the wrong reason. Rewritten to step up on the very session that then recovers, and to check it could change Platform a moment earlier; removing the clearing now fails it, and restoring it passes. |
+| Verified | Functional 583/583, Application unit 198/198, Domain unit 191/191, Infrastructure integration 261/261, client 212/212. |
+
+**The race is the real one.** A proof is single-use per session, so two recoveries from one session cannot both be
+paid for - the honest shape is the same person on two devices, each signed in, each holding its own proof, each
+spending its own code. That needs two cookies, so this one test goes over HTTP. One factor exists afterwards and
+the device that lost is told the row moved.
+
+**Deferred to Task 27, not forgotten.** SPEC also gives this route `503 service_unavailable` when the shared
+budget store is unreachable (IA-REQ-057). The current limiter has no way to say "unreachable" as distinct from
+"exhausted", and fail-closed behaviour is Task 27's subject for *every* budget rather than this one alone. It is
+listed there, not here.
+
 ## Tasks 21–25 review remediation — done 2026-09-07
 
 A review of Tasks 21–25 produced eight directed reproductions. They are kept as they were written and were used
