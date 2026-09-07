@@ -20,6 +20,12 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+// Before everything that reads anything. A deployment that has not been admitted must not serve a file, read a
+// cookie, look up a session or touch the restored database at all — deciding to refuse after consulting data
+// that may itself be restored is the thing this guard exists to prevent (IA-REQ-055).
+app.UseMiddleware<CleanArchitecture.Web.Infrastructure.Identity.RecoveryAdmissionMiddleware>();
+
 app.UseFileServer();
 
 app.MapOpenApi();

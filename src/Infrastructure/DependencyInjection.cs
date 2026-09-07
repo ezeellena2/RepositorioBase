@@ -186,6 +186,11 @@ public static class DependencyInjection
         builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.Lifecycle.IIdentityLifecycleStore, CleanArchitecture.Infrastructure.IdentityAccess.IdentityLifecycleStore>();
         builder.Services.AddSingleton<CleanArchitecture.Application.IdentityAccess.Lifecycle.IRetentionPolicy, CleanArchitecture.Infrastructure.IdentityAccess.Lifecycle.ConfiguredRetentionPolicy>();
         builder.Services.AddScoped<CleanArchitecture.Infrastructure.IdentityAccess.Lifecycle.RetentionMaintenanceCycle>();
+
+        // A singleton on purpose: the decision is taken once per process, and therefore again on every start.
+        // Anything scoped would re-read it per request, which is slower and no safer; anything durable would have
+        // to live in the restored database, which is exactly what must not be able to open it (IA-REQ-055).
+        builder.Services.AddSingleton<CleanArchitecture.Application.IdentityAccess.Lifecycle.IRecoveryAdmission, CleanArchitecture.Infrastructure.IdentityAccess.Lifecycle.ConfiguredRecoveryAdmission>();
         builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.Authorization.IRoleAuthorityLock, CleanArchitecture.Infrastructure.IdentityAccess.RoleAuthorityLock>();
         builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.Members.IMembershipAdministrationStore, CleanArchitecture.Infrastructure.IdentityAccess.MembershipAdministrationStore>();
         builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.ExternalLogins.IExternalCallbackRecorder, CleanArchitecture.Application.IdentityAccess.ExternalLogins.ExternalCallbackRecorder>();

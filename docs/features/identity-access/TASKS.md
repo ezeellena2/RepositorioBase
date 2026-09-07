@@ -703,6 +703,55 @@ depend on what somebody can see about anybody else, only on whether they already
 
 **Still to come in Task 26:** the fail-closed restore admission guard (26.6).
 
+### Unit 26.6 - the fail-closed restore admission guard (done 2026-09-07)
+
+**Visible outcome met:** a deployment that may be running on restored data refuses every route with `503`
+`recovery_admission_closed` until a signed record held outside that database verifies against a key the backup
+does not contain. Only the liveness and readiness probes answer, and they say nothing about the deployment.
+
+**What arms it, decided and named rather than buried.** `IdentityAccess:Recovery:Deployment` alone. Naming a
+deployment is an operator saying "this process may be running on restored data", and from that moment nothing
+else in the configuration can talk it back down. A deployment that names nothing is not recovering and admits
+what it always did - **which is the one place this guard can be wrong in the open direction**. The alternative,
+closing every deployment by default, would make an ordinary start indistinguishable from a restore, and a guard
+nobody can start a system with is a guard somebody switches off.
+
+**A test found the hole in the first attempt at that.** Arming originally required the deployment *and* the key
+together, so an operator who deployed the evidence and forgot the key got a **fully open** deployment on restored
+data - the exact shape of mistake this exists for. `Evidence_without_the_operators_key_opens_nothing` failed,
+which is how it was found. Arming now needs only the deployment name, and a missing key is `EvidenceInvalid`
+rather than "unarmed". Task 27 turns it into a refusal to start at all.
+
+**The middleware runs before everything that reads anything** - before the file server, before authentication,
+before any route. Deciding to refuse *after* consulting data that may itself be restored would be the thing the
+guard exists to prevent, and the `503` is written directly rather than through the problem-details mapper, which
+would resolve services from the request scope.
+
+| Step | What happened |
+|---|---|
+| RED | `RestoreAdmissionTests` (15) and `RecoveryAdmissionTests` (5) did not compile against the absent adapter, then drove: an unarmed deployment, an armed one that cannot verify, absent evidence, a missing file, quarantine, release, the epoch comparison, expiry, correctly signed evidence about another deployment, a wrong key, an unsigned record, one edited after signing, one that is not a document, a second start over the same evidence, evidence read from a file, and the transport half. |
+| GREEN | `IRecoveryAdmission` with its three states, `ConfiguredRecoveryAdmission` over HMAC-SHA256, and `RecoveryAdmissionMiddleware`. No new package: what matters is that the key lives outside the restored data, not that the algorithm is exotic. |
+| Not vacuous | Neutering the middleware's check fails two of the five transport tests. Restored, all pass. |
+| Verified | Functional 622/622, Application unit 199/199, Domain unit 191/191, Infrastructure integration 288/288, client 213/213. |
+
+**Stated plainly: this is not restore certification.** No backup was taken, none was restored, and no external
+authority issued anything. What these tests prove is that the adapter refuses everything it should against
+evidence a test produced. The live gate - a real backup, a real restore, and an authority outside this repository
+issuing the record - has an owner elsewhere and is recorded as open in
+[RECOVERY-AND-RETENTION.md](RECOVERY-AND-RETENTION.md).
+
+**Deferred to Task 27, named rather than forgotten:** the quarantine state currently gates public ingress and
+delivery. Treating sessions created before the epoch as revoked, and terminalizing `OutboxSecret` rows that
+predate it, are reads of the restored database that belong with Task 27's other fail-closed work; `PredatesRecovery`
+is the question they will ask and it is tested here.
+
+## Task 26 - complete 2026-09-07
+
+All six units are implemented, tested and committed: identity lifecycle, administrative suspension, MFA recovery,
+the retention policy with legal holds, the bounded executor, the documentary dispute and the restore admission
+guard. Three vacuity checks found tests that proved nothing and each is recorded in its own unit rather than
+quietly fixed.
+
 ## Tasks 21–25 review remediation — done 2026-09-07
 
 A review of Tasks 21–25 produced eight directed reproductions. They are kept as they were written and were used
