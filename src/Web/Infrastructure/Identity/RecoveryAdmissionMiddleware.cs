@@ -23,9 +23,33 @@ public sealed class RecoveryAdmissionMiddleware(RequestDelegate next, IRecoveryA
     /// <summary>The two paths that answer while everything else does not, and they answer with nothing.</summary>
     private static readonly string[] Probes = ["/health", "/alive"];
 
+    /// <summary>
+    /// What "authentication and revalidation" means as a set of paths (IA-REQ-055).
+    /// <para>
+    /// Each of these lets somebody establish or re-establish who they are and reads nothing else. Deliberately
+    /// absent: `/api/identity/context`, which reports tenants and permissions read from restored rows; the
+    /// password recovery pair, which mints a token from restored state; and the provider callback, which would
+    /// turn a restored external link into a session. Being able to sign in is the point of quarantine; being able
+    /// to see what the backup said is not.
+    /// </para>
+    /// <para>
+    /// It is a path allowlist rather than endpoint metadata because this middleware runs before routing, and it
+    /// runs before routing because a deployment that has not been admitted must not read the database to find out
+    /// what it is refusing.
+    /// </para>
+    /// </summary>
+    private static readonly string[] Authentication =
+    [
+        "/api/identity/antiforgery",
+        "/api/identity/sessions",
+        "/api/identity/credentials/reauthenticate"
+    ];
+
     public async Task InvokeAsync(HttpContext context)
     {
-        if (admission.Current.AdmitsPublicIngress || IsProbe(context.Request.Path))
+        var current = admission.Current;
+        if (IsProbe(context.Request.Path) ||
+            (current.AdmitsPublicIngress && !(current.AdmitsOnlyAuthentication && !IsAuthentication(context.Request.Path))))
         {
             await next(context);
             return;
@@ -45,4 +69,11 @@ public sealed class RecoveryAdmissionMiddleware(RequestDelegate next, IRecoveryA
 
     private static bool IsProbe(PathString path) =>
         Probes.Any(probe => path.Equals(probe, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Prefix matching, so `/api/identity/sessions/current` travels with `/api/identity/sessions`: signing out is
+    /// as much a part of establishing who you are as signing in.
+    /// </summary>
+    private static bool IsAuthentication(PathString path) =>
+        Authentication.Any(route => path.StartsWithSegments(route, StringComparison.OrdinalIgnoreCase));
 }

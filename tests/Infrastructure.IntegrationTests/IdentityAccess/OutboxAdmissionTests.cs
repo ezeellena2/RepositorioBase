@@ -114,8 +114,60 @@ public sealed class OutboxAdmissionTests
         sink.Sent.ShouldNotBeEmpty();
     }
 
+    /// <summary>
+    /// An open deployment still refuses what predates the restore. A token minted before the backup was taken is
+    /// a token this deployment cannot vouch for — it may have been spent, superseded or revoked in the hours the
+    /// backup does not contain — so it is refused and its envelope is terminalized rather than delivered
+    /// (IA-REQ-055).
+    /// </summary>
+    [Test]
+    public async Task An_envelope_from_before_the_restore_is_refused_and_terminalized()
+    {
+        using var scope = TestServices.CreateScope();
+        var sink = new TestEmailSink();
+        var message = await SeedDueMessageAsync(scope);
+
+        // Recovery happened after this message was written, which is what makes it a message from the backup.
+        var admission = new FixedAdmission(new RecoveryAdmission(
+            RecoveryAdmissionState.Open, RecoveryAdmissionReason.Verified, Origin.AddMinutes(30)));
+
+        var delivered = await DispatcherFor(scope, sink, admission).DispatchDueAsync(CancellationToken.None);
+
+        delivered.ShouldBe(0);
+        sink.Sent.ShouldBeEmpty("a token from before the restore is not one this deployment can vouch for");
+        (await ReadAsync(message)).Status.ShouldBe(OutboxMessageStatus.Abandoned);
+        (await SecretOfAsync(message)).Status.ShouldBe(OutboxSecretStatus.Failed, "the envelope is terminalized, not left pending");
+    }
+
+    /// <summary>The same message, written after the restore, is ordinary work and is delivered.</summary>
+    [Test]
+    public async Task An_envelope_from_after_the_restore_is_delivered_as_usual()
+    {
+        using var scope = TestServices.CreateScope();
+        var sink = new TestEmailSink();
+        await SeedDueMessageAsync(scope);
+
+        var admission = new FixedAdmission(new RecoveryAdmission(
+            RecoveryAdmissionState.Open, RecoveryAdmissionReason.Verified, Origin.AddMinutes(-30)));
+
+        (await DispatcherFor(scope, sink, admission).DispatchDueAsync(CancellationToken.None)).ShouldBe(1);
+        sink.Sent.ShouldNotBeEmpty();
+    }
+
+    private static async Task<OutboxSecret> SecretOfAsync(Guid messageId)
+    {
+        using var scope = TestServices.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        return await context.OutboxSecrets.AsNoTracking().SingleAsync(secret => secret.OutboxMessageId == messageId);
+    }
+
+    /// <summary>
+    /// An admission in the given state whose recovery happened before this test's message was written, so the
+    /// only thing deciding these tests is the state. Whether a message predates the restore is a separate
+    /// question with its own two tests.
+    /// </summary>
     private static IRecoveryAdmission Admission(RecoveryAdmissionState state) => new FixedAdmission(
-        new RecoveryAdmission(state, RecoveryAdmissionReason.Verified, Origin));
+        new RecoveryAdmission(state, RecoveryAdmissionReason.Verified, Origin.AddMinutes(-30)));
 
     private static OutboxDispatcher DispatcherFor(IServiceScope scope, TestEmailSink sink, IRecoveryAdmission admission)
     {

@@ -306,7 +306,8 @@ public sealed class RegisterInvitedUserTests : TestBase
             .ShouldContain(handler => handler.MessageType == message.Type);
         var sink = new RegistrationDeliverySink();
         var dispatcher = new OutboxDispatcher(scope.ServiceProvider.GetRequiredService<ApplicationDbContext>(),
-            scope.ServiceProvider.GetRequiredService<IOutboxSecretReader>(), scope.ServiceProvider.GetServices<IOutboxDeliveryHandler>(), TimeProvider.System, sink);
+            scope.ServiceProvider.GetRequiredService<IOutboxSecretReader>(), scope.ServiceProvider.GetServices<IOutboxDeliveryHandler>(), TimeProvider.System, sink,
+            scope.ServiceProvider.GetRequiredService<CleanArchitecture.Application.IdentityAccess.Lifecycle.IRecoveryAdmission>());
         await dispatcher.DispatchDueAsync(CancellationToken.None);
         await dispatcher.DispatchDueAsync(CancellationToken.None);
         (await TestApp.ListAsync<Domain.IdentityAccess.Outbox.OutboxMessage>()).Single(item => item.Id == message.Id)

@@ -87,6 +87,13 @@ public sealed class OutboxDispatcher(
         var message = await Owned(claim).AsNoTracking().SingleOrDefaultAsync(cancellationToken);
         if (message is null) return false;
         if (claim.Exhausted) return await FailAsync(claim, message, "attempts_exhausted", true, cancellationToken);
+
+        // A message written before the recovery epoch came out of the backup, and so did the token sealed into
+        // its envelope. That token may already have been spent, superseded or revoked in the hours the backup
+        // does not contain, so it is never sent. Permanent, which is what terminalizes the envelope rather than
+        // leaving it pending for a later pass to find (IA-REQ-055).
+        if (admission.Current.PredatesRecovery(message.CreatedAt))
+            return await FailAsync(claim, message, "predates_recovery", true, cancellationToken);
         var now = timeProvider.GetUtcNow();
         if (message.FirstAttemptAt is { } firstAttempt && now >= firstAttempt.Add(ReceiptRetention))
             return await FailAsync(claim, message, "receipt_window_expired", true, cancellationToken);

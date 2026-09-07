@@ -36,6 +36,15 @@ internal sealed class PlatformOperator : IAsyncDisposable
             ?? throw new InvalidOperationException($"The sign-in this test needs as its premise was refused for {email}.");
     }
 
+    /// <summary>The cookie this operator is carrying, so a test can hand it to a different deployment.</summary>
+    internal string? SessionCookie => _session;
+
+    /// <summary>
+    /// Presents a cookie somebody else obtained. It is how a test asks what a *different* deployment makes of a
+    /// session — which is the only way to pose the question a restore poses.
+    /// </summary>
+    internal void PresentCookie(string? cookie) => _session = cookie;
+
     /// <summary>Whether this address and password still open a session, asked through the front door.</summary>
     internal async Task<bool> CanSignInAsync(string email, string password) =>
         await TrySignInAsync(email, password) is not null;

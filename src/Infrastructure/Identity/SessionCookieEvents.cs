@@ -47,6 +47,17 @@ public sealed class SessionCookieEvents(TimeProvider timeProvider) : CookieAuthe
             return;
         }
 
+        // A session created before the recovery epoch came out of the backup. This deployment cannot vouch for it
+        // — it may have been revoked in the hours the backup does not contain — so it counts as revoked, which is
+        // the same answer a revoked row already gets (IA-REQ-055).
+        var admission = context.HttpContext.RequestServices
+            .GetRequiredService<CleanArchitecture.Application.IdentityAccess.Lifecycle.IRecoveryAdmission>();
+        if (admission.Current.PredatesRecovery(session.CreatedAt))
+        {
+            await RejectAsync(context);
+            return;
+        }
+
         if (session.ActiveTenantId is { } activeTenantId)
         {
             var hasActiveMembership = await (from membership in database.TenantMemberships

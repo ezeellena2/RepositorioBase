@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using CleanArchitecture.Application.FunctionalTests.Infrastructure;
+using CleanArchitecture.Application.IdentityAccess.Credentials;
 using CleanArchitecture.Infrastructure.IdentityAccess.Lifecycle;
 using NUnit.Framework;
 using Shouldly;
@@ -91,16 +92,96 @@ public sealed class RecoveryAdmissionTests : TestBase
         response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
     }
 
-    /// <summary>Verified but unreleased: authentication and revalidation are admitted, and nothing else is opened.</summary>
+    /// <summary>
+    /// Quarantine is "authentication and revalidation only", so a person can prove who they are while somebody
+    /// reconciles the restored data — and can reach nothing that would read that data.
+    /// </summary>
     [Test]
-    public async Task A_quarantined_deployment_admits_the_authentication_routes()
+    public async Task A_quarantined_deployment_admits_signing_in_and_proving_it_is_still_you()
     {
-        using var harness = IdentityHttpHarness.CreateProductionHarness(settings: Armed(Signed(release: false)));
-        using var client = harness.Client;
+        var email = $"quarantine-{Guid.NewGuid():N}@example.test";
+        await IdentityHttpHarness.SeedConfirmedUserAsync(email, Password);
+        await using var operator_ = await QuarantinedAsync();
 
-        using var response = await client.GetAsync($"{Host()}/api/identity/antiforgery");
+        (await operator_.GetAsync("/api/identity/antiforgery")).StatusCode.ShouldBe(HttpStatusCode.OK);
+        await operator_.SignInAsync(email, Password);
 
-        response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        using var proved = await operator_.PostAsync(
+            "/api/identity/credentials/reauthenticate",
+            new { action = ProofActions.PasswordChange, password = Password });
+        proved.StatusCode.ShouldBe(HttpStatusCode.NoContent, await proved.Content.ReadAsStringAsync());
+    }
+
+    /// <summary>
+    /// And nothing else. A route that reads restored business data is exactly what quarantine exists to hold
+    /// back, so it answers the same 503 a closed deployment gives.
+    /// </summary>
+    [TestCase("/api/identity/context")]
+    [TestCase("/api/platform/identities")]
+    [TestCase("/api/identity/credentials")]
+    public async Task A_quarantined_deployment_refuses_everything_that_is_not_authentication(string route)
+    {
+        var email = $"quarantine-refused-{Guid.NewGuid():N}@example.test";
+        await IdentityHttpHarness.SeedConfirmedUserAsync(email, Password);
+        await using var operator_ = await QuarantinedAsync();
+        await operator_.SignInAsync(email, Password);
+
+        using var response = await operator_.GetAsync(route);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.ServiceUnavailable, route);
+        (await IdentityHttpHarness.ReadProblemAsync(response)).GetProperty("code").GetString()
+            .ShouldBe("recovery_admission_closed", route);
+    }
+
+    /// <summary>
+    /// A cookie from before the restore is a cookie the backup contained. The session behind it is one this
+    /// deployment cannot vouch for — it may have been revoked in the hours the backup does not hold — so it
+    /// counts as revoked (IA-REQ-055).
+    /// </summary>
+    [Test]
+    public async Task A_session_created_before_the_recovery_epoch_counts_as_revoked()
+    {
+        var email = $"pre-epoch-{Guid.NewGuid():N}@example.test";
+        await IdentityHttpHarness.SeedConfirmedUserAsync(email, Password);
+
+        // Signed in before the restore: an ordinary deployment, an ordinary session.
+        await using var before = new PlatformOperator(IdentityHttpHarness.CreateProductionHarness(), Host());
+        await before.SignInAsync(email, Password);
+        var cookie = before.SessionCookie;
+
+        // The same database, now running as a deployment whose recovery happened after that session was created.
+        await using var after = await QuarantinedAsync(epoch: DateTimeOffset.UtcNow.AddMinutes(5));
+        after.PresentCookie(cookie);
+
+        using var response = await after.PostAsync(
+            "/api/identity/credentials/reauthenticate",
+            new { action = ProofActions.PasswordChange, password = Password });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized, "a session from before the restore is not one this deployment issued");
+    }
+
+    /// <summary>A session created after the epoch is this deployment's own, and it works.</summary>
+    [Test]
+    public async Task A_session_created_after_the_recovery_epoch_is_this_deployments_own()
+    {
+        var email = $"post-epoch-{Guid.NewGuid():N}@example.test";
+        await IdentityHttpHarness.SeedConfirmedUserAsync(email, Password);
+        await using var operator_ = await QuarantinedAsync(epoch: DateTimeOffset.UtcNow.AddMinutes(-5));
+        await operator_.SignInAsync(email, Password);
+
+        using var response = await operator_.PostAsync(
+            "/api/identity/credentials/reauthenticate",
+            new { action = ProofActions.PasswordChange, password = Password });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.NoContent, await response.Content.ReadAsStringAsync());
+    }
+
+    private const string Password = "Testing1234!";
+
+    private static async Task<PlatformOperator> QuarantinedAsync(DateTimeOffset? epoch = null)
+    {
+        var harness = IdentityHttpHarness.CreateProductionHarness(settings: Armed(Signed(release: false, epoch: epoch)));
+        return await Task.FromResult(new PlatformOperator(harness, Host()));
     }
 
     private static Dictionary<string, string?> Armed(string? evidence) => new()
@@ -110,11 +191,11 @@ public sealed class RecoveryAdmissionTests : TestBase
         ["IdentityAccess:Recovery:Evidence"] = evidence
     };
 
-    private static string Signed(bool release)
+    private static string Signed(bool release, DateTimeOffset? epoch = null)
     {
         var now = DateTimeOffset.UtcNow;
         var evidence = new RecoveryEvidence(
-            Deployment, now.ToString("O"), "backup-1", now.AddMinutes(-5).ToString("O"), now.AddHours(2).ToString("O"), release, null);
+            Deployment, (epoch ?? now).ToString("O"), "backup-1", now.AddMinutes(-5).ToString("O"), now.AddHours(2).ToString("O"), release, null);
         var signature = Convert.ToBase64String(HMACSHA256.HashData(
             Convert.FromBase64String(Key), Encoding.UTF8.GetBytes(ConfiguredRecoveryAdmission.Canonical(evidence))));
         return JsonSerializer.Serialize(evidence with { Signature = signature });

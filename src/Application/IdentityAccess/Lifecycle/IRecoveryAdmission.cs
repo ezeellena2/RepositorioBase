@@ -53,7 +53,19 @@ public sealed record RecoveryAdmission(RecoveryAdmissionState State, RecoveryAdm
     /// <summary>A deployment nobody armed. It is not recovering, so it admits what it always did.</summary>
     public static RecoveryAdmission NotRecovering { get; } = new(RecoveryAdmissionState.Open, RecoveryAdmissionReason.NotRecovering, null);
 
+    /// <summary>
+    /// Whether anything at all is served. `Quarantined` answers <see langword="true"/> here and is narrowed by
+    /// <see cref="AdmitsOnlyAuthentication"/> — the two questions are separate because a closed deployment serves
+    /// nothing, while a quarantined one serves a named few.
+    /// </summary>
     public bool AdmitsPublicIngress => State != RecoveryAdmissionState.Closed;
+
+    /// <summary>
+    /// Whether the routes this deployment serves are limited to proving who somebody is. True in `Quarantined`
+    /// only: reconciliation is under way, so a person may sign in and re-prove themselves, and may reach nothing
+    /// that would read the restored data.
+    /// </summary>
+    public bool AdmitsOnlyAuthentication => State == RecoveryAdmissionState.Quarantined;
 
     public bool AdmitsDelivery => State == RecoveryAdmissionState.Open;
 
