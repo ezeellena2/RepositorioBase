@@ -33,7 +33,7 @@ public sealed class ReauthenticateCommandHandler(
 
         return await transaction.ExecuteAsync(async ct =>
         {
-            await proofs.IssueAsync(identityId, currentSession.SessionId.Value, request.Action, RecentIdentityProofMethod.Password, ct);
+            await proofs.IssueAsync(identityId, currentSession.SessionId.Value, request.Action, RecentIdentityProofMethod.Password, null, ct);
             return Result.Success();
         }, cancellationToken);
     }

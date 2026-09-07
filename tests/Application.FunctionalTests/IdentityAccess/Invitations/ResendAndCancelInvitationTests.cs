@@ -303,6 +303,7 @@ public sealed class ResendAndCancelInvitationTests : TestBase
             UserSessionId.From(TestApp.GetSessionId()!.Value),
             action,
             RecentIdentityProofMethod.Password,
+            null,
             CancellationToken.None);
     }
 

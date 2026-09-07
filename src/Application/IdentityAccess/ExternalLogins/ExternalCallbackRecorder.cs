@@ -73,8 +73,13 @@ public sealed class ExternalCallbackRecorder(
             // it is a request, and the reply that comes back never says whether it was honoured. The one fact
             // that distinguishes the two is the provider's own signed `auth_time`, so it is required — and
             // absent, unreadable, future-dated or stale are all refusals rather than a silent pass (IA-REQ-051).
-            if (handoff.Purpose == ExternalAuthorizationPurpose.Proof
-                && !ExternalAuthenticationEvidence.IsFresh(authenticationTime, now))
+            var evidenceExpiresAt = default(DateTimeOffset?);
+            if (handoff.Purpose == ExternalAuthorizationPurpose.Proof)
+            {
+                if (ExternalAuthenticationEvidence.TryAccept(authenticationTime, now, out var accepted)) evidenceExpiresAt = accepted;
+            }
+
+            if (handoff.Purpose == ExternalAuthorizationPurpose.Proof && evidenceExpiresAt is null)
             {
                 handoff.Fail(now);
                 context.AuditEvents.Add(AuditEvent.CreateSessionEvent(
@@ -87,7 +92,10 @@ public sealed class ExternalCallbackRecorder(
                 return null;
             }
 
-            handoff.Validated(subject, providerEmail, emailVerified, now);
+            // The handoff may not outlive the evidence behind it. Validating narrows its own window to whichever
+            // ends first, so time spent between the callback and the completion cannot buy back an authentication
+            // that has since gone stale (IA-REQ-051).
+            handoff.Validated(subject, providerEmail, emailVerified, now, evidenceExpiresAt);
             await context.SaveChangesAsync(ct);
             return new ExternalCallbackOutcome(handoff.Purpose);
         }, cancellationToken);
@@ -136,15 +144,24 @@ public static class ExternalAuthenticationEvidence
     /// <summary>
     /// Fails closed in every direction. Missing evidence is not fresh evidence; neither is a value this system
     /// cannot read, nor one dated after now by more than two clocks can honestly differ.
+    /// <para>
+    /// It answers with the moment the evidence stops being fresh, not merely whether it is fresh now. That
+    /// deadline belongs to the provider's authentication, not to this request, so everything downstream — how
+    /// long the handoff may be completed, and how long the proof it buys may be spent — is bounded by the same
+    /// instant. Deriving both from this one expression is what keeps them from drifting apart.
+    /// </para>
     /// </summary>
-    public static bool IsFresh(string? authenticationTime, DateTimeOffset now)
+    public static bool TryAccept(string? authenticationTime, DateTimeOffset now, out DateTimeOffset expiresAt)
     {
+        expiresAt = default;
         if (string.IsNullOrWhiteSpace(authenticationTime)) return false;
         if (!long.TryParse(authenticationTime, NumberStyles.None, CultureInfo.InvariantCulture, out var seconds)) return false;
         if (seconds > LatestRepresentable) return false;
 
         var authenticatedAt = DateTimeOffset.FromUnixTimeSeconds(seconds);
         if (authenticatedAt > now + ClockSkew) return false;
-        return now - authenticatedAt <= Freshness + ClockSkew;
+
+        expiresAt = authenticatedAt + Freshness + ClockSkew;
+        return now < expiresAt;
     }
 }

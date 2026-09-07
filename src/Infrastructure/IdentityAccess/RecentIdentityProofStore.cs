@@ -17,7 +17,13 @@ public sealed class RecentIdentityProofStore(ApplicationDbContext context, TimeP
     /// <summary>How long a proof stays spendable. A **product default**.</summary>
     private static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(5);
 
-    public async Task IssueAsync(Guid identityId, UserSessionId sessionId, string action, RecentIdentityProofMethod method, CancellationToken cancellationToken)
+    public async Task IssueAsync(
+        Guid identityId,
+        UserSessionId sessionId,
+        string action,
+        RecentIdentityProofMethod method,
+        DateTimeOffset? notAfter,
+        CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
 
@@ -30,8 +36,19 @@ public sealed class RecentIdentityProofStore(ApplicationDbContext context, TimeP
                 .SetProperty(proof => proof.ConsumedReason, "superseded")
                 .SetProperty(proof => proof.Version, proof => proof.Version + 1), cancellationToken);
 
+        // Whichever runs out first. A caller that hands over a deadline is saying this proof rests on something
+        // it does not own, and a proof that outlived what it rests on would prove nothing.
+        var lifetime = notAfter is { } deadline && deadline - now < Lifetime ? deadline - now : Lifetime;
+        if (lifetime <= TimeSpan.Zero)
+        {
+            // Nothing left to issue. The supersession above still stands, so an older proof cannot be spent in
+            // place of the one this attempt failed to earn — which is the fail-closed direction.
+            await context.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
         var version = await CurrentVersionAsync(identityId, cancellationToken);
-        context.RecentIdentityProofs.Add(RecentIdentityProof.Issue(identityId, sessionId, action, method, version, now, Lifetime));
+        context.RecentIdentityProofs.Add(RecentIdentityProof.Issue(identityId, sessionId, action, method, version, now, lifetime));
         await context.SaveChangesAsync(cancellationToken);
     }
 

@@ -31,6 +31,72 @@ public sealed class GoogleOidcTests : TestBase
 {
     private const string Password = "Testing1234!";
 
+    [Test]
+    public async Task Review_delaying_provider_completion_cannot_renew_expired_authentication_evidence()
+    {
+        var clock = new IdentityHttpHarness.ControlledTimeProvider(DateTimeOffset.UtcNow);
+        using var scenario = new OidcScenario(clock);
+        var browser = scenario.Browser();
+        var subject = $"delayed-proof-{Guid.NewGuid():N}";
+        var email = $"delayed-proof-{Guid.NewGuid():N}@example.test";
+        (await browser.SignInWithProviderAsync(subject, email)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        scenario.Provider.AuthenticationTimeClaim = clock.GetUtcNow().ToUnixTimeSeconds();
+        var challenge = await browser.StartAsync("proof", new { action = ProofActions.PasswordChange });
+        using var callback = await browser.CallbackAsync(challenge, subject, email, true);
+        callback.Headers.Location!.ToString().ShouldNotContain("refused");
+
+        // Protocol validation happened with fresh signed evidence. Completion remains within the ten-minute
+        // handoff but the provider's authentication is now older than the five-minute freshness contract.
+        clock.Advance(TimeSpan.FromMinutes(7));
+        using var completion = await browser.CompleteAsync();
+        using var sensitive = await browser.PutAsync("/api/identity/credentials/password", new { newPassword = "DelayedProofRefused5678!" });
+        using var credentials = await browser.GetAsync("/api/identity/credentials");
+        var hasPassword = (await credentials.Content.ReadFromJsonAsync<CredentialsRow>())!.HasPassword;
+        TestContext.Out.WriteLine($"Review R2 completion delay=7min; completion={(int)completion.StatusCode}; password operation={(int)sensitive.StatusCode}; password created={hasPassword}");
+        sensitive.StatusCode.ShouldBe(HttpStatusCode.Unauthorized,
+            "spending time in a validated callback handoff must not renew the provider's signed authentication age");
+        hasPassword.ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// The deadline belongs to the provider's authentication, not to the moment the round trip was completed.
+    /// Completing early must therefore not hand out a proof that outlives that authentication: the pair below
+    /// completes at the same instant and differs only in when the proof is spent, on either side of the one
+    /// deadline the signed evidence set (IA-REQ-051).
+    /// </summary>
+    [TestCase(5, HttpStatusCode.NoContent, true, TestName = "Review_a_proof_bought_with_provider_evidence_expires_with_it(spent inside the window)")]
+    [TestCase(7, HttpStatusCode.Unauthorized, false, TestName = "Review_a_proof_bought_with_provider_evidence_expires_with_it(spent past the window)")]
+    public async Task Review_a_proof_bought_with_provider_evidence_expires_with_it(
+        int spendAfterMinutes, HttpStatusCode expected, bool expectedPassword)
+    {
+        var clock = new IdentityHttpHarness.ControlledTimeProvider(DateTimeOffset.UtcNow);
+        using var scenario = new OidcScenario(clock);
+        var browser = scenario.Browser();
+        var subject = $"bounded-proof-{Guid.NewGuid():N}";
+        var email = $"bounded-proof-{Guid.NewGuid():N}@example.test";
+        (await browser.SignInWithProviderAsync(subject, email)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        scenario.Provider.AuthenticationTimeClaim = clock.GetUtcNow().ToUnixTimeSeconds();
+        var challenge = await browser.StartAsync("proof", new { action = ProofActions.PasswordChange });
+        using var callback = await browser.CallbackAsync(challenge, subject, email, true);
+        callback.Headers.Location!.ToString().ShouldNotContain("refused");
+
+        // Completed well inside the window, so the round trip itself is never in question.
+        clock.Advance(TimeSpan.FromMinutes(4));
+        using var completion = await browser.CompleteAsync();
+        completion.StatusCode.ShouldBe(HttpStatusCode.NoContent, await completion.Content.ReadAsStringAsync());
+
+        // An uncapped five-minute proof issued at minute four would still be spendable at minute nine. What
+        // decides it is the evidence: signed at minute zero, and dead six minutes later.
+        clock.Advance(TimeSpan.FromMinutes(spendAfterMinutes - 4));
+        using var sensitive = await browser.PutAsync("/api/identity/credentials/password", new { newPassword = "BoundedProof5678!" });
+        using var credentials = await browser.GetAsync("/api/identity/credentials");
+        var hasPassword = (await credentials.Content.ReadFromJsonAsync<CredentialsRow>())!.HasPassword;
+
+        TestContext.Out.WriteLine($"Review R2 boundary spend=+{spendAfterMinutes}min; password operation={(int)sensitive.StatusCode}; password created={hasPassword}");
+        sensitive.StatusCode.ShouldBe(expected);
+        hasPassword.ShouldBe(expectedPassword);
+    }
+
     [TestCase("missing")]
     [TestCase("old")]
     [TestCase("malformed")]
@@ -636,10 +702,11 @@ public sealed class GoogleOidcTests : TestBase
             return rule?.LogLevel ?? LogLevel.Trace;
         }
 
-        internal OidcScenario()
+        internal OidcScenario(TimeProvider? timeProvider = null)
         {
             var provider = Provider;
             _harness = IdentityHttpHarness.CreateProductionHarness(
+                timeProvider: timeProvider,
                 settings: new Dictionary<string, string?>
                 {
                     ["IdentityAccess:ExternalLogins:Google:ClientId"] = ControlledOidcProvider.ClientId,

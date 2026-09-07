@@ -105,14 +105,22 @@ public sealed class ExternalAuthorizationRequest : BaseEntity<Guid>
 
     public bool IsValidatedAt(DateTimeOffset now) => Status == ExternalAuthorizationStatus.Validated && now < ExpiresAt;
 
-    /// <summary>Records what the protocol proved. Only the callback calls this, and only once.</summary>
-    public void Validated(string subject, string? providerEmail, bool emailVerified, DateTimeOffset now)
+    /// <summary>
+    /// Records what the protocol proved. Only the callback calls this, and only once.
+    /// <para>
+    /// <paramref name="notAfter"/> is the moment the evidence behind this handoff stops being fresh. It can only
+    /// bring the window in, never push it out: a handoff is dead when either its own lifetime or the
+    /// authentication it rests on has run out, whichever happens first (IA-REQ-051).
+    /// </para>
+    /// </summary>
+    public void Validated(string subject, string? providerEmail, bool emailVerified, DateTimeOffset now, DateTimeOffset? notAfter = null)
     {
         if (Status != ExternalAuthorizationStatus.Started) throw new InvalidOperationException("Only a started handoff can be validated.");
         ArgumentException.ThrowIfNullOrWhiteSpace(subject);
         Subject = subject;
         ProviderEmail = providerEmail;
         EmailVerified = emailVerified;
+        if (notAfter is { } deadline && deadline < ExpiresAt) ExpiresAt = deadline;
         Status = ExternalAuthorizationStatus.Validated;
         Version++;
     }

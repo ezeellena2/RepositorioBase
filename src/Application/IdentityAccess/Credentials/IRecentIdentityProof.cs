@@ -46,8 +46,22 @@ public static class ProofActions
 /// </summary>
 public interface IRecentIdentityProofStore
 {
-    /// <summary>Records a fresh proof, replacing any live one for the same identity, session and action.</summary>
-    Task IssueAsync(Guid identityId, UserSessionId sessionId, string action, RecentIdentityProofMethod method, CancellationToken cancellationToken);
+    /// <summary>
+    /// Records a fresh proof, replacing any live one for the same identity, session and action.
+    /// <para>
+    /// <paramref name="notAfter"/> bounds it by something outside itself. A proof bought with a provider's signed
+    /// authentication may not outlive that authentication, or waiting before spending the round trip would buy
+    /// back the freshness the round trip was supposed to demonstrate. The ordinary password proof passes nothing
+    /// and keeps its own lifetime.
+    /// </para>
+    /// </summary>
+    Task IssueAsync(
+        Guid identityId,
+        UserSessionId sessionId,
+        string action,
+        RecentIdentityProofMethod method,
+        DateTimeOffset? notAfter,
+        CancellationToken cancellationToken);
 
     /// <summary>
     /// Spends the live proof for this identity, session and action, if there is one whose security version still

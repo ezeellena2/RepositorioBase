@@ -380,7 +380,10 @@ public sealed class CompleteExternalProofCommandHandler(
                 return Result.Failure(IdentityAccessErrors.InvalidExternalLogin());
             }
 
-            await proofs.IssueAsync(identityId, currentSession.SessionId.Value, handoff.Action!, RecentIdentityProofMethod.ExternalProvider, ct);
+            // Bounded by the handoff, which the callback already narrowed to the provider's own freshness window.
+            // Completing late therefore cannot renew it, and completing early cannot stretch the proof past it.
+            await proofs.IssueAsync(
+                identityId, currentSession.SessionId.Value, handoff.Action!, RecentIdentityProofMethod.ExternalProvider, handoff.ExpiresAt, ct);
             handoff.Consume(now);
             await context.SaveChangesAsync(ct);
             return Result.Success();
