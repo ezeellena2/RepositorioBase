@@ -365,3 +365,62 @@ session-derived active tenant.
 **Unchanged.** Decisions 18, 19, 20, 21 and 24 (C1, C2, C3, C4, C7) keep their acceptances. Decision 23 (C6)
 remains proposed. **Task 17 is now complete**: six entries of seven are decided and the seventh, C6, is decided to
 remain open.
+
+### Decision record — 2026-09-07: C6, with one withdrawal
+
+**Accepted: decision 23 (C6), as SPEC §14.6 states it with amendments A3 and A4 folded in, for implementation and
+verification against synthetic data only, subject to the withdrawal below.** IA-REQ-054 and IA-REQ-055 become
+normative and move to [SPEC §4](../features/identity-access/SPEC.md#4-normative-requirements); §14.6 is kept as the
+record that produced them. This acceptance enables **Tasks 26 and 27**, and the production gate in Task 28. It
+authorizes no task after 28.
+
+**What it covers.** A finite identity lifecycle — `PendingConfirmation`, `Active`, `SelfDeactivated`,
+`AdministrativelySuspended` (the rename of the unused `Suspended`), and the terminal `Closed` — where every
+transition names its actor, its proof and its endpoint, or says it has none. Self-deactivation and the public
+reactivation pair. Administrative suspension and reactivation by a Platform operator under a closed reason set.
+Platform MFA recovery against one unused recovery code. Bounded retention maintenance with no public route. And a
+restore admission guard that is closed on every process start until evidence held outside the restored database
+verifies against an operator-held key.
+
+**E1 — the provider reactivation half is withdrawn, and with it C4's `Recovery` purpose.**
+
+C6 as drafted let a provider-only identity reactivate by proving a current authenticator through a `Recovery`
+round trip that binds to a reactivation ticket rather than to a session. That cannot be built honestly against a
+real provider. Google's own documentation states it **does not support Google Account reauth requests**; `auth_time`
+is returned only when asked for through the `claims` parameter *and* enabled in the project's security-bundle
+settings; and `max_age` is not among the authorization parameters Sign in with Google documents. So a provider
+round trip can demonstrate that the browser still holds a live session at the provider — it cannot demonstrate that
+a person is present now. Accepting it as a "current authenticator" would mean either trusting a token whose issue
+time proves nothing about authentication, or relaxing the freshness rule C4 already enforces. Both are weakenings
+of an accepted contract and neither is taken.
+
+Decided instead: **a provider-only identity that has parked its own account sets a password first, then reactivates
+with it.** Both steps already exist and neither is new scope — password recovery can create a first password for an
+identity that has none, and it deliberately changes nothing about lifecycle: it lifts no suspension, reactivates
+nothing, and skips no second factor. Both steps are gated on control of the same mailbox the reactivation ticket is
+sent to, so the security bar is unchanged; what changes is that the person must hold a password to come back.
+`ExternalAuthorizationPurpose.Recovery` is therefore not implemented, and the `providerProofToken` field leaves the
+reactivation request.
+
+**The consequence this carries, stated plainly.** The same external fact bounds the provider *proof* path that C4
+and Task 23 already shipped: against real Google, a proof round trip is expected to fail closed for want of fresh
+signed `auth_time`, so a provider-only identity would be unable to buy a proof for any sensitive operation. That is
+an external gate, not a defect, and it is recorded as one. The product answer is the same as E1's: an identity that
+intends to administer anything holds a password. Locally, against the controlled provider, both paths work and are
+tested.
+
+**Product defaults accepted here.** A reactivation ticket lives 30 minutes, is single-use, hash-compared and
+superseded on reissue. Retention maintenance runs every 15 minutes, 500 rows per category per pass, at most 10
+passes, within a 60-second budget, single-flight per category, keeping revoked or expired `UserSession` rows for 90
+days, and doing nothing at all when no retention policy is configured. The identity suspension reason set is
+`PolicyViolation`, `SecurityIncident`, `BillingHold`, `OperatorRequest`, recorded in audit only.
+
+**What it does not grant.** Real personal data, which stays at G2. Production deployment, which stays at G3. Live
+Google verification, which needs credentials and an observation nobody here can make. A real external restore
+authority — the admission adapter is proved against synthetic evidence, which is not restore certification. Legal
+or compliance certification of retention and erasure. And equivalence with the pinned reference architecture, whose
+Azure/Entra recovery stack, WORM ledger and administrative network stay unadopted by the scope decision already
+recorded.
+
+**Unchanged.** Decisions 18–22 and 24 (C1–C5, C7) keep their acceptances. Task 17 is complete and every entry is
+now decided.

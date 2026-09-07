@@ -1,23 +1,23 @@
 # Identity Access — Tasks
 
-**Status:** In progress. IA-002 and IA-003 are complete. Tasks 1–16 implemented the Organization and Platform
-foundation; IA-004 through IA-008, IA-012, IA-014 and IA-009 remain recorded as `Review`, not approved or closed.
-The [2026-09-05 direct review](CODE-REVIEW-2026-09-05.md) found incomplete browser journeys and security/session
-defects at `7e9eb55`. **R1-R7 and L1 are corrected**, each with a test that fails on the code the review read;
-[TRACEABILITY.md](TRACEABILITY.md) names them row by row and records the full verification run. Correcting them
-does not by itself close a task or establish a usable end-to-end product — the remaining entries there are
-coverage gaps and one named residual, and the task states below are unchanged by this work.
+**Status (2026-09-07).** Tasks 1–25 are implemented and recorded below, each with its own dated entry and its own
+evidence. Task 17 is complete: every entry C1–C7 is decided, the last of them on 2026-09-07 (see
+[ADR-004](../../decisions/ADR-004-Adopt-Multitenant-Identity-Access.md#decision-record--2026-09-07-c6-with-one-withdrawal)).
+Tasks 26–28 are the remaining continuation work.
 
-The broader baseline is not complete: IA-010 (Personal/B2C tenants and AR/DNI), IA-011 (recovery/change and session
-management), IA-013 (Google OIDC/linking) and IA-015 (operations hardening) remain `Proposed` and unimplemented.
+**Reading order, because parts of this file are older than others.** The dated task entries and the ADR decision
+records are the authority. Several summaries written earlier in the feature's life — including the paragraphs this
+one replaces, and the roadmap table below — described a baseline that later work overtook: IA-010 (Personal/B2C and
+AR/DNI), IA-011 (recovery, change and session management) and IA-013 (Google OIDC and linking) were subsequently
+implemented by Tasks 19–23, and IA-015 is Task 27's subject. Where an undated summary and a dated record disagree,
+the dated record stands. The historical entries themselves are left as they were written; correcting a summary is
+not the same as rewriting what happened.
 
-The [existing plan now continues with Tasks 17–28](../../superpowers/plans/2026-08-31-identity-access-foundation.md#continuation-to-local-b2bb2c-functional-completion).
-This is planned work, not new implementation, coverage, approval, or a change to historical `Review` states.
-Task 17 produces and obtains approval of a finite contract delta; its decision register is still proposed.
-Only then do the dependent synthetic implementation tasks become `Ready`. Real-PII and production/reference
-compliance have separate gates, so local functional completion cannot silently authorize deployment.
+The [plan runs Tasks 17–28](../../superpowers/plans/2026-08-31-identity-access-foundation.md#continuation-to-local-b2bb2c-functional-completion).
+Real-PII and production/reference compliance remain separate gates, so local functional closure authorizes no
+deployment and certifies nothing.
 
-## Continuation roadmap mapping — all unchecked
+## Continuation roadmap mapping — 17–25 done, 26–28 remaining
 
 | Plan task | Work | Tracking | Dependency/approval boundary |
 |---|---|---|---|
@@ -30,8 +30,8 @@ compliance have separate gates, so local functional completion cannot silently a
 | 23 | Google login, explicit linking and last authenticator | IA-013; IA-009 evidence | 20–22; 17 C4; live provider activation separate |
 | 24 | Custom Organization role administration | IA-005 continuation; IA-009 evidence | 17 C5 |
 | 25 | Membership administration, ownership transfer and invitation lifecycle | IA-005/008 continuation; IA-009 evidence | 21/24; 17 C5 |
-| 26 | Lifecycle, MFA recovery, retention executor, restore admission guard and both halves of the documentary dispute | IA-011/012/015; existing event owners | 19/21–25; 17 C6/C7 plus C3/C4, the dispute needing C4's proof |
-| 27 | Remaining budget scopes on the shared store, keys, deployment guards and operations evidence | IA-015; IA-007/012/014 control owners | 26; 17 C6/C7; port and adapter already landed in 19 |
+| 26 | Lifecycle, MFA recovery, retention executor, restore admission guard and both halves of the documentary dispute | IA-011/012/015; existing event owners | **Unblocked 2026-09-07**: C6 accepted with withdrawal E1 |
+| 27 | Remaining budget scopes on the shared store, keys, deployment guards and operations evidence | IA-015; IA-007/012/014 control owners | **Unblocked 2026-09-07**: 26; port and adapter already landed in 19 |
 | 28 | Fixed full-journey acceptance and scoped closure | IA-009 evidence only; all continuation owners | 18–27 local evidence; separate PII/production/reference gates |
 
 The roadmap requirement owners remain in SPEC; this mapping does not invent approved IA-REQ identifiers.
@@ -47,13 +47,13 @@ Task 17 has three steps. Two are drafted; the third is the human decision and ha
 |---|---|---|
 | 1 — draft the exact contract delta for C1–C7 | Drafted; C1 accepted, C2–C7 awaiting decision | [SPEC §14](SPEC.md#14-task-17-decision-package-proposed-not-approved), [ADR-004 decisions 18–24](../../decisions/ADR-004-Adopt-Multitenant-Identity-Access.md#proposed-continuation-decisions-task-17--not-accepted) |
 | 2 — map reference adoption at the pinned revision | Drafted, awaiting decision | [SPEC §15](SPEC.md#15-reference-adoption-map-proposed--task-17-step-2) |
-| 3 — structural review, then one human decision | **Partly taken (2026-09-06): C1, C3 and C7 accepted — C3 and C7 for synthetic data only; C2, C4, C5 and C6 not.** C4 and C6 still carry amendments A2/A3 and A3/A4 | [ADR-004 decision records](../../decisions/ADR-004-Adopt-Multitenant-Identity-Access.md#decision-record--2026-09-06-second-c3-and-c7) |
+| 3 — structural review, then one human decision | **Complete. C1, C3, C7 accepted 2026-09-06; C2 and C4 the same day; C5 with amendments D1–D4; C6 on 2026-09-07 with withdrawal E1.** Every acceptance is for synthetic data only | [ADR-004 decision records](../../decisions/ADR-004-Adopt-Multitenant-Identity-Access.md#decision-record--2026-09-06-second-c3-and-c7) |
 
-**Task 17 is not complete.** Three entries of seven are accepted — C1, and C3/C7 for synthetic data only. `Drafted`
-means the text exists and is internally consistent; it is not approval and it is not evidence. For C2, C4, C5 and C6
-no behaviour is implemented and no test named in §14 has been written. Amendments A2/A3 and A3/A4 in the decision
-record are changes to those proposals, not open questions: each of those blocks must return with its contract
-already reconciled, because a contradiction left as a note for the implementer is not a delivered contract.
+**Task 17 is complete (2026-09-07).** All seven entries are decided and every one of them is accepted for
+synthetic data only. The amendments are part of what was accepted rather than open questions: A1–A5 on C3/C4/C6/C7,
+D1–D4 on C5, and E1 on C6, which withdraws the provider reactivation half and C4's `Recovery` purpose because a
+provider round trip cannot demonstrate that a person is present. Acceptance is a contract, not evidence: what each
+entry is worth is recorded in the task entry that implemented it.
 
 ## Task 18 — done 2026-09-06
 
@@ -505,6 +505,14 @@ npm test --prefix src/Web/ClientApp -- IdentityAccessReviewRevalidation.test.jsx
   provider proof is retired for providers that will not return `auth_time` (and a provider-only identity must set
   a password before any sensitive change), or IA-REQ-051 is amended to name a second, explicitly weaker form of
   evidence. The second is a documented weakening of C4 and has to be signed off as one.
+- ~~**`TransferOwnershipAsync` echoes the recipient membership's version but writes only the tenant row**~~ —
+  **closed 2026-09-07.** `isOwner` is not a column on a membership, so the transfer rewrote neither member row and
+  both kept handing out a version that had stopped describing them. The recipient and the member giving the
+  organization up are now both rewritten inside the transfer's own transaction, so a later write echoing either old
+  version is refused as stale, and a transfer that changes nothing still moves nothing.
+  `OwnershipTransferTests.Handing_the_organization_over_moves_the_version_of_every_member_row_it_changes` fails on
+  the previous code with the recipient's version unchanged; `A_transfer_that_changes_nothing_moves_no_version` is
+  the guard against the fix over-reaching. The original wording follows, for the record:
 - **`TransferOwnershipAsync` echoes the recipient membership's version but writes only the tenant row**, so that
   membership's exposed version does not move even though the member view's `isOwner` flips. It is the same class
   of defect as R4 and was outside the reproductions' scope; it is recorded here rather than fixed quietly.
@@ -524,7 +532,7 @@ are allocated only inside the proposal and become real if and when the decision 
 | C3 **(accepted 2026-09-06, synthetic only)** | IA-REQ-050, IA-REQ-058, now normative in [SPEC §4](SPEC.md#4-normative-requirements) | none; extends IA-REQ-002/044 | 19 and 20, together with C7 | IA-REQ-058's dispute, which needs C4 and lands in 26; real DNI capture, which is the G2 gate; and the §14.3 residual, which was not accepted |
 | C4 **(accepted 2026-09-06, synthetic only)** | IA-REQ-051, IA-REQ-052, now normative in [SPEC §4](SPEC.md#4-normative-requirements) | IA-REQ-022 and §8, for one named callback route | 21, 22, 23 | live provider registration, which is per-environment; and the reactivation half of `Recovery`, which is C6's and Task 26's |
 | C5 **(accepted 2026-09-06, synthetic only, amended D1–D4)** | IA-REQ-053, now normative in [SPEC §4](SPEC.md#4-normative-requirements) | IA-REQ-047, closing its deferred note | 24, 25 | the `Owner` backfill is one-time rather than standing (D1); `roles.manage` and member role changes gain a recent proof (D2); the split-duty lockout is pinned by a test rather than given a rescue route (D3); and `last_administrator_required` on C6's deactivate route stays unreachable until C6 |
-| C6 **(A3/A4 folded in 2026-09-06)** | IA-REQ-054, IA-REQ-055 | makes IA-REQ-020 precise; extends IA-REQ-042 | 26, 27 against synthetic fixtures | live restore release, which needs the external authority |
+| C6 **(accepted 2026-09-07, synthetic only, amended A3/A4, withdrawal E1)** | IA-REQ-054, IA-REQ-055, now normative in [SPEC §4](SPEC.md#4-normative-requirements) | makes IA-REQ-020 precise; extends IA-REQ-042 | 26, 27 against synthetic fixtures | live restore release, which needs the external authority; and provider-only self-reactivation, withdrawn by E1 because Google does not support reauth requests |
 | C7 **(accepted 2026-09-06, synthetic only)** | IA-REQ-056, IA-REQ-057, now normative in [SPEC §4](SPEC.md#4-normative-requirements) | strengthens IA-REQ-019 to shared, fail-closed state | 19's classification stamp and budget store, 20's public claim budget; 26 and 27 stay blocked on C6 | real personal data, and production — separate gates in 28 |
 
 A declined or amended entry blocks only its own consumers. Tasks 1–16 and their recorded `Review` states are
