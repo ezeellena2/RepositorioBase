@@ -108,7 +108,8 @@ public sealed class PlaceRetentionHoldCommandHandler(
     ICurrentSession session,
     IRecentMfaVerifier recentMfa,
     IIdentityAccountService identities,
-    TimeProvider timeProvider) : IRequestHandler<PlaceRetentionHoldCommand, Result<RetentionHoldView>>
+    TimeProvider timeProvider,
+    IRetentionSubjectLock subjectLock) : IRequestHandler<PlaceRetentionHoldCommand, Result<RetentionHoldView>>
 {
     public async Task<Result<RetentionHoldView>> Handle(PlaceRetentionHoldCommand request, CancellationToken cancellationToken)
     {
@@ -131,6 +132,19 @@ public sealed class PlaceRetentionHoldCommandHandler(
             var membership = await context.TenantMemberships.SingleOrDefaultAsync(
                 candidate => candidate.TenantId == platform.Id && candidate.IdentityId == actorId && candidate.Status == MembershipStatus.Active, ct);
             if (membership is null) return Result<RetentionHoldView>.Failure(IdentityAccessErrors.InvalidPlatformOperation());
+
+            // The same row lock the executor takes, and taken before anything about this subject is read. It is
+            // what decides a hold racing a purge: whichever reaches these rows first wins, and the loser is told
+            // which of the two happened (IA-REQ-056).
+            await subjectLock.LockAsync([request.SubjectIdentityId], ct);
+
+            // Asked under the lock, never before it. A purge that committed first leaves a tombstone, and a hold
+            // over a tombstone would be a hold made retroactive — which C7 says cannot happen.
+            if (await context.IdentityDocuments.AnyAsync(
+                    document => document.IdentityId == request.SubjectIdentityId && document.PurgedAt != null, ct))
+            {
+                return Result<RetentionHoldView>.Failure(IdentityAccessErrors.RetentionHoldSubjectPurged());
+            }
 
             // Read under the transaction rather than trusted from an earlier page. The partial unique index is
             // what actually decides it; this is the answer the caller can act on rather than an exception.

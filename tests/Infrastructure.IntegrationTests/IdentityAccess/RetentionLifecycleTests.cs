@@ -1,5 +1,6 @@
 using CleanArchitecture.Application.IdentityAccess.Lifecycle;
 using CleanArchitecture.Application.IdentityAccess.People;
+using CleanArchitecture.Application.IdentityAccess.Platform.Retention;
 using CleanArchitecture.Domain.IdentityAccess.Auditing;
 using CleanArchitecture.Domain.IdentityAccess.People;
 using CleanArchitecture.Domain.IdentityAccess.Retention;
@@ -266,11 +267,13 @@ public sealed class RetentionLifecycleTests
         DataClassification mode = DataClassification.Synthetic)
     {
         using var scope = TestServices.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var cycle = new RetentionMaintenanceCycle(
-            scope.ServiceProvider.GetRequiredService<ApplicationDbContext>(),
+            context,
             new FixedPolicy(policy),
             new FixedMode(mode),
-            new FixedTime(Now));
+            new FixedTime(Now),
+            new RetentionSubjectLock(context));
         return await cycle.Bounded(bounds ?? RetentionMaintenanceBounds.Default).RunOnceAsync(CancellationToken.None);
     }
 

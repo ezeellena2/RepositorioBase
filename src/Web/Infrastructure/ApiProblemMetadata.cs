@@ -88,6 +88,8 @@ public static class ApiProblemMetadata
 
     public static readonly ApiProblemContract RetentionHoldConflict = new(StatusCodes.Status409Conflict, "retention_hold_conflict");
 
+    public static readonly ApiProblemContract RetentionHoldSubjectPurged = new(StatusCodes.Status409Conflict, "retention_hold_subject_purged");
+
     public static readonly ApiProblemContract InvalidDocumentDispute = new(StatusCodes.Status400BadRequest, "invalid_document_dispute");
 
     public static readonly ApiProblemContract DocumentDisputeConflict = new(StatusCodes.Status409Conflict, "document_dispute_conflict");

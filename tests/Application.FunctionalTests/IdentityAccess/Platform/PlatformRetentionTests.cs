@@ -5,6 +5,7 @@ using CleanArchitecture.Application.FunctionalTests.Infrastructure;
 using CleanArchitecture.Application.IdentityAccess.Lifecycle;
 using CleanArchitecture.Domain.IdentityAccess.Auditing;
 using CleanArchitecture.Domain.IdentityAccess.Identities;
+using CleanArchitecture.Domain.IdentityAccess.People;
 using CleanArchitecture.Domain.IdentityAccess.Retention;
 using CleanArchitecture.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -235,6 +236,42 @@ public sealed class PlatformRetentionTests : TestBase
         (await ListAuditAsync()).ShouldContain(item => item.EventType == "personal.data.hold.released");
     }
 
+    /// <summary>
+    /// The other side of the contention row C7 names. A purge that committed first makes the hold impossible, and
+    /// the operator is told which of the two happened rather than being handed a hold over nothing — "a hold
+    /// cannot be made retroactive".
+    /// </summary>
+    [Test]
+    public async Task A_hold_over_a_subject_whose_data_is_already_purged_is_refused()
+    {
+        await using var operator_ = await OperatorAsync(ConfiguredPolicy);
+        var subject = await SubjectAsync();
+        await PurgeDocumentOfAsync(subject.IdentityId);
+
+        using var refused = await operator_.PostAsync("/api/platform/retention/holds",
+            new { subjectIdentityId = subject.IdentityId, reasonCode = "LitigationHold", reference = "case-2026-0007" });
+
+        refused.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        (await IdentityHttpHarness.ReadProblemAsync(refused)).GetProperty("code").GetString()
+            .ShouldBe("retention_hold_subject_purged");
+        (await CountHoldsAsync()).ShouldBe(0);
+    }
+
+    /// <summary>A subject whose data is still there takes a hold exactly as it always did.</summary>
+    [Test]
+    public async Task A_hold_over_a_subject_whose_data_is_still_there_is_placed()
+    {
+        await using var operator_ = await OperatorAsync(ConfiguredPolicy);
+        var subject = await SubjectAsync();
+        await GiveDocumentAsync(subject.IdentityId);
+
+        using var placed = await operator_.PostAsync("/api/platform/retention/holds",
+            new { subjectIdentityId = subject.IdentityId, reasonCode = "LitigationHold", reference = "case-2026-0007" });
+
+        placed.StatusCode.ShouldBe(HttpStatusCode.Created, await placed.Content.ReadAsStringAsync());
+        (await CountHoldsAsync()).ShouldBe(1);
+    }
+
     [Test]
     public async Task A_hold_over_somebody_who_does_not_exist_is_refused()
     {
@@ -338,6 +375,34 @@ public sealed class PlatformRetentionTests : TestBase
     /// <summary>Asked through the front door, because "can this person still sign in" is a transport fact.</summary>
     private static async Task<bool> CanSignInAsync(PlatformOperator operator_, Subject subject) =>
         await operator_.CanSignInAsync(subject.Email, PlatformScenario.ValidPassword);
+
+    /// <summary>A recorded document for a subject, seeded as the premise a hold is about.</summary>
+    private static async Task GiveDocumentAsync(Guid identityId)
+    {
+        using var scope = FunctionalTestSetup.ScopeFactory.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var protector = scope.ServiceProvider.GetRequiredService<CleanArchitecture.Application.IdentityAccess.People.IIdentityDocumentProtector>();
+        var fingerprints = scope.ServiceProvider.GetRequiredService<CleanArchitecture.Application.IdentityAccess.People.IIdentityDocumentFingerprint>();
+        var document = NormalizedDocument.From(IdentityDocumentCountry.AR, IdentityDocumentKind.DNI, $"4{Random.Shared.Next(1000000, 9999999)}");
+        context.IdentityDocuments.Add(IdentityDocument.Record(
+            identityId, IdentityDocumentCountry.AR, IdentityDocumentKind.DNI,
+            protector.Protect(document), fingerprints.ForRetainedKeys(document),
+            DataClassification.Synthetic, DateTimeOffset.UtcNow));
+        await context.SaveChangesAsync();
+    }
+
+    /// <summary>The state a purge leaves behind: a tombstone, which is what a later hold has nothing to hold.</summary>
+    private static async Task PurgeDocumentOfAsync(Guid identityId)
+    {
+        await GiveDocumentAsync(identityId);
+        using var scope = FunctionalTestSetup.ScopeFactory.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var document = await context.IdentityDocuments
+            .Include(candidate => candidate.Fingerprints)
+            .SingleAsync(candidate => candidate.IdentityId == identityId);
+        document.Purge(DateTimeOffset.UtcNow, "RET-2026-01", "3");
+        await context.SaveChangesAsync();
+    }
 
     private static async Task<IdentityAccountStatus> StatusAsync(Guid identityId)
     {

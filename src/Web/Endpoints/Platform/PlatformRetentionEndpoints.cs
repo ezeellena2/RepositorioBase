@@ -35,6 +35,7 @@ internal static class PlatformRetentionEndpoints
         ApiProblemMetadata.InvalidPlatformOperation,
         ApiProblemMetadata.NotFound,
         ApiProblemMetadata.RetentionHoldConflict,
+        ApiProblemMetadata.RetentionHoldSubjectPurged,
         ApiProblemMetadata.InternalServerError
     ];
 

@@ -1,5 +1,6 @@
 using CleanArchitecture.Application.IdentityAccess.Lifecycle;
 using CleanArchitecture.Application.IdentityAccess.People;
+using CleanArchitecture.Application.IdentityAccess.Platform.Retention;
 using CleanArchitecture.Domain.IdentityAccess.Auditing;
 using CleanArchitecture.Domain.IdentityAccess.People;
 using CleanArchitecture.Domain.IdentityAccess.Retention;
@@ -56,7 +57,8 @@ public sealed class RetentionMaintenanceCycle(
     ApplicationDbContext context,
     IRetentionPolicy policy,
     IPersonalDataMode personalDataMode,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    IRetentionSubjectLock subjectLock)
 {
     /// <summary>The fifth advisory space, after registration, sessions, external subjects and role authority.</summary>
     private const int LockSpace = 0x5E5513;
@@ -223,8 +225,16 @@ public sealed class RetentionMaintenanceCycle(
             return (0, ineligible ? RetentionSkipReason.SyntheticClassification : null);
         }
 
+        // Taken before the holds are read, and that order is the fix. At READ COMMITTED this statement blocks
+        // until any hold transaction already touching these rows commits or rolls back; the read that follows is
+        // a new statement snapshot and therefore sees the hold that just committed. Reading first and locking
+        // afterwards would leave exactly the window C7 describes — a hold confirmed between the read and the
+        // purge — and a purge that committed over a confirmed hold is the one outcome this may not produce.
+        var candidateIds = candidates.Select(document => document.IdentityId).ToArray();
+        await subjectLock.LockAsync(candidateIds, cancellationToken);
+
         var held = await context.RetentionLegalHolds
-            .Where(hold => hold.ReleasedAt == null)
+            .Where(hold => hold.ReleasedAt == null && candidateIds.Contains(hold.SubjectIdentityId))
             .Select(hold => hold.SubjectIdentityId)
             .ToListAsync(cancellationToken);
 

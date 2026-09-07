@@ -244,6 +244,14 @@ public static class IdentityAccessErrors
     /// A hold with this subject and this reason is already standing. Two reasons are two decisions, so this is
     /// about the pair rather than about the subject (IA-REQ-056).
     /// </summary>
+    /// <summary>
+    /// A purge reached this subject's rows first, so there is nothing left to hold. It is a different answer from
+    /// `retention_hold_conflict` because it is a different fact: not "somebody already holds this" but "the data
+    /// this would have held is gone", and a hold cannot be made retroactive (IA-REQ-056).
+    /// </summary>
+    public static ApplicationError RetentionHoldSubjectPurged() =>
+        new("retention_hold_subject_purged", ApplicationErrorCategory.Conflict, "That subject's data has already been erased.");
+
     public static ApplicationError RetentionHoldConflict() =>
         new("retention_hold_conflict", ApplicationErrorCategory.Conflict, "An active hold already exists for that subject and reason.");
 
