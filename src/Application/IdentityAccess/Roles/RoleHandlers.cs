@@ -113,6 +113,7 @@ public sealed class UpdateRoleCommandHandler(
     IApplicationDbContext context,
     IRoleAdministrationStore roles,
     IRecentIdentityProofStore proofs,
+    IRoleAuthorityLock authorityLock,
     ICurrentTenant currentTenant,
     ICurrentSession currentSession,
     IUser user,
@@ -130,6 +131,11 @@ public sealed class UpdateRoleCommandHandler(
         var requested = RoleAuthority.Normalize(request.PermissionCodes);
         return await RoleAuthority.RunAsync(transaction, async ct =>
         {
+            // Taken before anything is read or written, so this transaction holds nothing while it waits. An
+            // offer being established right now cannot commit past it, and one that has not started cannot begin
+            // until this commits and its rows become cancellable (IA-REQ-047).
+            await authorityLock.AcquireAsync(tenantId, ct);
+
             if (!await proofs.TryConsumeAsync(actorId, sessionId, ProofActions.RoleChange, ct))
                 return Result<RoleView>.Failure(IdentityAccessErrors.RecentProofRequired());
             if (!await RoleAuthority.IsActiveOrganizationAsync(context, tenantId, ct))
@@ -166,6 +172,7 @@ public sealed class RetireRoleCommandHandler(
     IApplicationDbContext context,
     IRoleAdministrationStore roles,
     IRecentIdentityProofStore proofs,
+    IRoleAuthorityLock authorityLock,
     ICurrentTenant currentTenant,
     ICurrentSession currentSession,
     IUser user,
@@ -182,6 +189,11 @@ public sealed class RetireRoleCommandHandler(
 
         return await RoleAuthority.RunAsync(transaction, async ct =>
         {
+            // Taken before anything is read or written, so this transaction holds nothing while it waits. An
+            // offer being established right now cannot commit past it, and one that has not started cannot begin
+            // until this commits and its rows become cancellable (IA-REQ-047).
+            await authorityLock.AcquireAsync(tenantId, ct);
+
             if (!await proofs.TryConsumeAsync(actorId, sessionId, ProofActions.RoleChange, ct))
                 return Result.Failure(IdentityAccessErrors.RecentProofRequired());
             if (!await RoleAuthority.IsActiveOrganizationAsync(context, tenantId, ct))

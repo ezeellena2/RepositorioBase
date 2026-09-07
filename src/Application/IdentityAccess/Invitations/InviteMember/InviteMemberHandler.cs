@@ -29,6 +29,7 @@ public sealed class InviteMemberCommandHandler(
     IUser user,
     IIdentityAccountService identities,
     IOfferableRoleReader offerableRoles,
+    IRoleAuthorityLock authorityLock,
     ISecureTokenGenerator tokens,
     ITokenHasher tokenHasher,
     IOutboxSecretWriter secretWriter,
@@ -74,6 +75,11 @@ public sealed class InviteMemberCommandHandler(
         try
         {
             return await transaction.ExecuteAsync(ct => IssueAsync(request, activeTenantId, inviterId, recipient, requestedRoleIds, ct), cancellationToken);
+        }
+        catch (OfferAuthorityViolation)
+        {
+            // What this offer confers changed while it was being established, so the offer never happened.
+            return Result<IssuedInvitation>.Failure(IdentityAccessErrors.InvitationConflict());
         }
         catch (DbUpdateConcurrencyException)
         {
@@ -152,8 +158,29 @@ public sealed class InviteMemberCommandHandler(
             new Dictionary<string, string> { ["code"] = "invitation.issued", ["outcome"] = standing is null ? "issued" : "superseded" }));
 
         await context.SaveChangesAsync(cancellationToken);
+
+        // The offer was authorized before this row existed, and while it did not exist no widening could see it
+        // to cancel it. So the question is asked again here, after the write and under the lock: a widening
+        // already in flight refuses this offer outright, and one that has not started cannot begin until this
+        // transaction commits and the row becomes cancellable. Together they make IA-REQ-047 true at commit time
+        // rather than only at validation time. The lock is never waited for — this transaction already holds the
+        // rows a widening may be blocked on, and waiting here would be the other half of a deadlock.
+        if (!await authorityLock.TryAcquireAsync(tenantId, cancellationToken) ||
+            !(await offerableRoles.ResolveAsync(tenantId, inviterId, requestedRoleIds, cancellationToken)).IsOfferable)
+        {
+            // Refused by throwing, for the same reason the administrator floor is: the rows are already written
+            // and this transaction commits unless something escapes it.
+            throw new OfferAuthorityViolation();
+        }
+
         return Result<IssuedInvitation>.Success(new IssuedInvitation(invitation.Id.Value, invitation.ExpiresAt));
     }
+
+    /// <summary>
+    /// The offer stopped being one the inviter could make, discovered after the write that must be undone. It
+    /// never reaches a caller as an exception: <c>Handle</c> answers the declared retryable conflict.
+    /// </summary>
+    private sealed class OfferAuthorityViolation : Exception;
 
     /// <summary>
     /// A recipient holds at most one live offer (IA-REQ-017), so a second invitation supersedes the first rather
@@ -195,11 +222,18 @@ public sealed class InviteMemberCommandHandler(
     /// An identity holds at most one membership per tenant (IA-REQ-016). Learning that at acceptance time would
     /// have spent an invitation and a delivery on an offer that could never settle.
     /// </summary>
+    /// <summary>
+    /// Whether this recipient already has a place here. A `Revoked` row is not one: it is the record that somebody
+    /// was removed, and C5 makes a fresh invitation the only way back, so letting it refuse the offer would leave
+    /// a removed member permanently unreachable (IA-REQ-053).
+    /// </summary>
     private async Task<bool> HoldsMembershipAsync(TenantId tenantId, string recipient, CancellationToken cancellationToken)
     {
         var identity = await identities.FindByEmailAsync(recipient, CancellationToken.None);
         return identity is not null &&
-            await context.TenantMemberships.AnyAsync(membership => membership.TenantId == tenantId && membership.IdentityId == identity.Id, cancellationToken);
+            await context.TenantMemberships.AnyAsync(membership => membership.TenantId == tenantId
+                && membership.IdentityId == identity.Id
+                && membership.Status != MembershipStatus.Revoked, cancellationToken);
     }
 
     /// <summary>
