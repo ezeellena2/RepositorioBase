@@ -385,7 +385,7 @@ public sealed class OutboxDeliveryTests
         await using (var failing = new ApplicationDbContext(failingOptions))
         {
             var first = new OutboxDispatcher(failing, new OutboxSecretReader(failing, protector),
-                [new InvitationEmailDeliveryHandler(failing, EmailOptions)], clock, sender);
+                [new InvitationEmailDeliveryHandler(failing, EmailOptions)], clock, sender, NotRecovering);
             await Should.ThrowAsync<InvalidOperationException>(() => first.DispatchDueAsync(CancellationToken.None));
         }
         transport.AcceptedCount.ShouldBe(1);
@@ -399,7 +399,7 @@ public sealed class OutboxDeliveryTests
         clock.Advance(TimeSpan.FromMinutes(minutes));
         if (rotateKey) emailOptions.Value.ApiKey = "rotated-isolated-test-key";
         var retry = new OutboxDispatcher(context, new OutboxSecretReader(context, protector),
-            [new InvitationEmailDeliveryHandler(context, EmailOptions)], clock, sender);
+            [new InvitationEmailDeliveryHandler(context, EmailOptions)], clock, sender, NotRecovering);
         await retry.DispatchDueAsync(CancellationToken.None);
         await retry.DispatchDueAsync(CancellationToken.None);
         transport.AcceptedCount.ShouldBe(1, "the transport accepts one logical message even after a process restart");
@@ -526,7 +526,7 @@ public sealed class OutboxDeliveryTests
             context,
             new OutboxSecretReader(context, scope.ServiceProvider.GetRequiredService<Microsoft.AspNetCore.DataProtection.IDataProtectionProvider>()),
             [new InvitationEmailDeliveryHandler(context, EmailOptions), new EmailConfirmationDeliveryHandler(context, EmailOptions)],
-            clock, sink);
+            clock, sink, NotRecovering);
     }
 
     /// <summary>
@@ -580,7 +580,8 @@ public sealed class OutboxDeliveryTests
             new OutboxSecretReader(context, scope.ServiceProvider.GetRequiredService<Microsoft.AspNetCore.DataProtection.IDataProtectionProvider>()),
             [new PasswordRecoveryDeliveryHandler(context, EmailOptions)],
             clock,
-            sink);
+            sink,
+            NotRecovering);
         (await dispatcher.DispatchDueAsync(CancellationToken.None)).ShouldBe(1);
 
         var sent = sink.Sent.Single();
@@ -589,6 +590,18 @@ public sealed class OutboxDeliveryTests
         sent.Body.ShouldContain($"https://app.example.test/credentials/reset#token={Uri.EscapeDataString(rawToken)}");
         message.Payload.ShouldNotContain(rawToken);
         message.Payload.ShouldNotContain(email);
+    }
+
+    /// <summary>
+    /// A deployment nobody armed. These tests are about what the dispatcher does with a message, not about
+    /// whether the deployment may dispatch at all — that question has its own file (IA-REQ-055).
+    /// </summary>
+    private static readonly CleanArchitecture.Application.IdentityAccess.Lifecycle.IRecoveryAdmission NotRecovering = new OpenAdmission();
+
+    private sealed class OpenAdmission : CleanArchitecture.Application.IdentityAccess.Lifecycle.IRecoveryAdmission
+    {
+        public CleanArchitecture.Application.IdentityAccess.Lifecycle.RecoveryAdmission Current { get; } =
+            CleanArchitecture.Application.IdentityAccess.Lifecycle.RecoveryAdmission.NotRecovering;
     }
 
     private static readonly Microsoft.Extensions.Options.IOptions<CleanArchitecture.Infrastructure.Email.IdentityEmailOptions> EmailOptions =

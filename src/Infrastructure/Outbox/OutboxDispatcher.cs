@@ -1,4 +1,5 @@
 using CleanArchitecture.Application.Common.Interfaces;
+using CleanArchitecture.Application.IdentityAccess.Lifecycle;
 using CleanArchitecture.Domain.IdentityAccess.Outbox;
 using CleanArchitecture.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -12,7 +13,8 @@ public sealed class OutboxDispatcher(
     IOutboxSecretReader secrets,
     IEnumerable<IOutboxDeliveryHandler> handlers,
     TimeProvider timeProvider,
-    IIdentityEmailSender sender)
+    IIdentityEmailSender sender,
+    IRecoveryAdmission admission)
 {
     private static readonly TimeSpan LeaseDuration = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan ReceiptRetention = TimeSpan.FromHours(24);
@@ -21,6 +23,15 @@ public sealed class OutboxDispatcher(
 
     public async Task<int> DispatchDueAsync(CancellationToken cancellationToken)
     {
+        // Before anything, including the configuration check: a deployment that has not been admitted dispatches
+        // no delivery at all (IA-REQ-055).
+        //
+        // The guard sits here rather than around the send, and that placement is the whole point. Claiming takes
+        // a lease and spends one of eight attempts, so a dispatcher that claimed and then declined would burn
+        // messages it never tried — a deployment sitting closed long enough would open to find them dead. A pass
+        // that is not admitted therefore reads nothing, claims nothing and leaves every attempt where it was.
+        if (!admission.Current.AdmitsDelivery) return 0;
+
         sender.ValidateConfiguration(); // A bad deployment must not claim messages or spend attempts.
         var delivered = 0;
         for (var index = 0; index < BatchSize; index++)
