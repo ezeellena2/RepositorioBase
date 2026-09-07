@@ -175,10 +175,31 @@ public sealed class AuditEvent : BaseEntity<Guid>
             ["outcome"] = outcome
         });
 
-    public static AuditEvent CreateSessionEvent(Guid? actorId, Guid? sessionId, string eventType, string correlationId, string outcome)
+    /// <summary>
+    /// The null-tenant factory: an event about an identity rather than about something inside a tenant.
+    /// <para>
+    /// <paramref name="reason"/> is the closed-set code behind a decision, when there is one — why an operator
+    /// stopped an account, say. It goes through the same allowlist as every other field, so it can carry a name
+    /// somebody chose from a set and never prose about a person (IA-REQ-054).
+    /// </para>
+    /// </summary>
+    public static AuditEvent CreateSessionEvent(Guid? actorId, Guid? sessionId, string eventType, string correlationId, string outcome, string? reason = null)
     {
         if (actorId == Guid.Empty || sessionId == Guid.Empty || string.IsNullOrWhiteSpace(eventType) || string.IsNullOrWhiteSpace(correlationId) || !IsStableMachineIdentifier(eventType) || !IsStableMachineIdentifier(outcome))
             throw new ArgumentException("Session audit evidence is invalid.");
+
+        var metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["code"] = eventType,
+            ["outcome"] = outcome
+        };
+
+        if (reason is not null)
+        {
+            if (!IsSafeMetadataValue("reason", reason) || !IsStableMachineIdentifier(reason))
+                throw new ArgumentException("Session audit evidence is invalid.", nameof(reason));
+            metadata["reason"] = reason;
+        }
 
         return new AuditEvent
         {
@@ -188,11 +209,7 @@ public sealed class AuditEvent : BaseEntity<Guid>
             OccurredAt = DateTimeOffset.UtcNow,
             EventType = eventType,
             CorrelationId = correlationId,
-            Metadata = new ReadOnlyDictionary<string, string>(new Dictionary<string, string>(StringComparer.Ordinal)
-            {
-                ["code"] = eventType,
-                ["outcome"] = outcome
-            })
+            Metadata = new ReadOnlyDictionary<string, string>(metadata)
         };
     }
 

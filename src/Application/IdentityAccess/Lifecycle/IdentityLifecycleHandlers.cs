@@ -79,10 +79,7 @@ public sealed class DeactivateAccountCommandHandler(
             if (!await identities.TryTransitionAsync(identityId, IdentityAccountStatus.Active, IdentityAccountStatus.SelfDeactivated, ct))
                 return Result.Failure(IdentityAccessErrors.IdentityConcurrencyConflict());
 
-            await proofs.AdvanceVersionAsync(identityId, ct);
-            await CredentialSessionEffects.RevokeEveryLiveSessionAsync(context, identityId, null, now, "account_deactivated", ct);
-            await TerminalizeOwnCredentialIntentsAsync(identityId, now, ct);
-            await ForgetPlatformStepUpAsync(identityId, ct);
+            await IdentityLifecycleEffects.ApplyDisableAsync(context, proofs, identityId, now, "account_deactivated", ct);
 
             context.AuditEvents.Add(AuditEvent.CreateSessionEvent(
                 identityId, actingSession.Value, "identity.lifecycle.changed", AuditCorrelation.Current(), "self_deactivated"));
@@ -124,51 +121,9 @@ public sealed class DeactivateAccountCommandHandler(
         return false;
     }
 
-    private async Task<bool> OrphansThePlatformAsync(Guid identityId, CancellationToken cancellationToken)
-    {
-        var platform = await context.Tenants.SingleOrDefaultAsync(
-            tenant => tenant.Type == TenantType.Platform && tenant.Status == TenantStatus.Active, cancellationToken);
-        if (platform is null) return false;
+    private Task<bool> OrphansThePlatformAsync(Guid identityId, CancellationToken cancellationToken) =>
+        IdentityLifecycleEffects.WouldOrphanThePlatformAsync(context, platformMemberships, identityId, cancellationToken);
 
-        var membership = await context.TenantMemberships.SingleOrDefaultAsync(
-            candidate => candidate.TenantId == platform.Id
-                && candidate.IdentityId == identityId
-                && candidate.Status == MembershipStatus.Active,
-            cancellationToken);
-
-        return membership is not null && await platformMemberships.IsLastActiveOwnerAsync(platform, membership, cancellationToken);
-    }
-
-    /// <summary>
-    /// Kills every outstanding link over this identity's own credentials, and the envelope carrying each one.
-    /// A reset link mailed a minute before parking would otherwise still open a password on an account nobody is
-    /// supposed to be able to open.
-    /// </summary>
-    private async Task TerminalizeOwnCredentialIntentsAsync(Guid identityId, DateTimeOffset now, CancellationToken cancellationToken)
-    {
-        var pending = await context.PasswordResetRequests
-            .Where(candidate => candidate.IdentityId == identityId && candidate.Status == PasswordResetStatus.Pending)
-            .ToListAsync(cancellationToken);
-
-        foreach (var reset in pending)
-        {
-            reset.Supersede(now);
-            await CredentialEnvelopes.TerminalizeAsync(
-                context,
-                RequestPasswordRecoveryCommandHandler.MessageType,
-                JsonSerializer.Serialize(new RequestPasswordRecoveryCommandHandler.Envelope(reset.Id)),
-                "account_deactivated",
-                now,
-                cancellationToken);
-        }
-    }
-
-    private async Task ForgetPlatformStepUpAsync(Guid identityId, CancellationToken cancellationToken)
-    {
-        var enrollment = await context.PlatformMfaEnrollments
-            .SingleOrDefaultAsync(candidate => candidate.IdentityId == identityId, cancellationToken);
-        enrollment?.ForgetStepUp();
-    }
 }
 
 /// <summary>
@@ -289,30 +244,5 @@ public sealed class ReactivateAccountCommandHandler(
             // signing in is a separate thing you then do, through the front door, like everybody else.
             return Result.Success();
         }, cancellationToken);
-    }
-}
-
-/// <summary>
-/// Retiring the sealed envelope behind a settled intent. It is here rather than duplicated in each handler
-/// because "the row is dead and so is the message carrying its token" is one rule, and two copies of it would be
-/// two chances to forget the second half.
-/// </summary>
-internal static class CredentialEnvelopes
-{
-    internal static async Task TerminalizeAsync(
-        IApplicationDbContext context,
-        string messageType,
-        string payload,
-        string reason,
-        DateTimeOffset now,
-        CancellationToken cancellationToken)
-    {
-        var message = await context.OutboxMessages
-            .SingleOrDefaultAsync(candidate => candidate.Type == messageType && candidate.Payload == payload, cancellationToken);
-        if (message is null) return;
-
-        var secret = await context.OutboxSecrets.SingleOrDefaultAsync(candidate => candidate.OutboxMessageId == message.Id, cancellationToken);
-        if (secret is null || secret.Status is OutboxSecretStatus.Consumed or OutboxSecretStatus.Failed or OutboxSecretStatus.Expired) return;
-        secret.Terminate(OutboxSecretStatus.Failed, reason, now);
     }
 }

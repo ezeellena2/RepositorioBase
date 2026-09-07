@@ -1,5 +1,6 @@
 using CleanArchitecture.Application.IdentityAccess.Platform.Administrators;
 using CleanArchitecture.Application.IdentityAccess.Platform.Bootstrap;
+using CleanArchitecture.Application.IdentityAccess.Platform.Identities;
 using CleanArchitecture.Application.IdentityAccess.Platform.Organizations;
 using CleanArchitecture.Application.IdentityAccess.Platform.Queries;
 using CleanArchitecture.Web.Endpoints;
@@ -85,6 +86,18 @@ internal static class PlatformEndpoints
             .RequireAuthorization()
             .Produces(StatusCodes.Status204NoContent)
             .WithApiProblemDetails(Protected);
+
+        group.MapPost("/identities/{identityId:guid}/suspend", SuspendIdentity)
+            .RequireAuthorization()
+            .Produces(StatusCodes.Status204NoContent)
+            .WithApiProblemDetails([.. Protected, ApiProblemMetadata.NotFound, ApiProblemMetadata.PlatformLastOwner, ApiProblemMetadata.IdentityConcurrencyConflict])
+            .WithBodyBindingFailureCode(ApiProblemMetadata.InvalidPlatformOperation.Code);
+
+        group.MapPost("/identities/{identityId:guid}/reactivate", ReactivateIdentity)
+            .RequireAuthorization()
+            .Produces(StatusCodes.Status204NoContent)
+            .WithApiProblemDetails([.. Protected, ApiProblemMetadata.NotFound, ApiProblemMetadata.IdentityReactivationUnavailable, ApiProblemMetadata.IdentityConcurrencyConflict])
+            .WithBodyBindingFailureCode(ApiProblemMetadata.InvalidPlatformOperation.Code);
 
         group.MapPost("/admins/invitations", InviteAdministrator)
             .RequireAuthorization()
@@ -193,6 +206,53 @@ internal static class PlatformEndpoints
         var result = await sender.Send(new ReactivateOrganizationTenantCommand(tenantId), context.RequestAborted);
         return result.IsSuccess ? Results.NoContent() : problems.ToHttpResult(result.Error!);
     }
+
+    private static async Task<IResult> SuspendIdentity(
+        HttpContext context,
+        IAntiforgery antiforgery,
+        ApiProblemDetailsMapper problems,
+        ISender sender,
+        Guid identityId,
+        SuspendIdentityRequest request)
+    {
+        var failure = await Identity.ValidateAntiforgery(context, antiforgery, problems);
+        if (failure is not null) return failure;
+
+        // Both sets are closed and published, so naming something outside either is a decidable mistake rather
+        // than a malformed body.
+        if (!Enum.TryParse<CleanArchitecture.Domain.IdentityAccess.Identities.IdentitySuspensionReason>(request.Reason, ignoreCase: false, out var reason) ||
+            !Enum.IsDefined(reason) ||
+            !TryReadStatus(request.ExpectedStatus, out var expected))
+        {
+            return problems.ToHttpResult(CleanArchitecture.Application.IdentityAccess.Common.IdentityAccessErrors.InvalidPlatformOperation());
+        }
+
+        var result = await sender.Send(new SuspendIdentityCommand(identityId, reason, expected), context.RequestAborted);
+        return result.IsSuccess ? Results.NoContent() : problems.ToHttpResult(result.Error!);
+    }
+
+    private static async Task<IResult> ReactivateIdentity(
+        HttpContext context,
+        IAntiforgery antiforgery,
+        ApiProblemDetailsMapper problems,
+        ISender sender,
+        Guid identityId,
+        ReactivateIdentityRequest request)
+    {
+        var failure = await Identity.ValidateAntiforgery(context, antiforgery, problems);
+        if (failure is not null) return failure;
+        if (!TryReadStatus(request.ExpectedStatus, out var expected))
+        {
+            return problems.ToHttpResult(CleanArchitecture.Application.IdentityAccess.Common.IdentityAccessErrors.InvalidPlatformOperation());
+        }
+
+        var result = await sender.Send(
+            new ReactivateIdentityCommand(identityId, expected, request.AcknowledgeSelfDeactivation), context.RequestAborted);
+        return result.IsSuccess ? Results.NoContent() : problems.ToHttpResult(result.Error!);
+    }
+
+    private static bool TryReadStatus(string? value, out CleanArchitecture.Domain.IdentityAccess.Identities.IdentityAccountStatus status) =>
+        Enum.TryParse(value, ignoreCase: false, out status) && Enum.IsDefined(status);
 
     /// <summary>Neutral by contract, for the same reason every other invitation is: it must not reveal the address.</summary>
     private static async Task<IResult> InviteAdministrator(

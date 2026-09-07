@@ -499,6 +499,43 @@ the state as well. What each test asserts is untouched.
 state set and the database constraint, and nothing writes them yet. That is unit 26.2, which also adds the column
 recording the state a suspension interrupted, so reactivation can restore it rather than assume `Active`.
 
+### Unit 26.2 — administrative suspension, and the state a suspension interrupted (done 2026-09-07)
+
+**Visible outcome met:** a Platform operator stops an account under a reason from a closed set, and the account
+loses its sessions and its password at once. Later they let it go, and it lands back where it was.
+
+**The decision this unit had to take, stated rather than assumed.** SPEC's route table names
+`ReactivateIdentityRequest { expectedStatus, acknowledgeSelfDeactivation }` without saying what the second field
+does. Two readings existed: the operator confirming they know the account returns to the person's own parked
+state, or the operator overriding that decision and forcing `Active`. **Taken: the first.** The route table also
+says reactivation restores "the pre-disable state rather than `Active` unconditionally", and an operator lifting
+their own suspension is not entitled to undo a choice that was never theirs. The flag exists so nobody believes
+they restored somebody's access when they did not — without it, the request is refused rather than silently
+landing somewhere the operator did not expect. The audit outcome C6 already names for this,
+`reactivated_over_self_deactivation`, is what it writes.
+
+`StatusBeforeSuspension` is the column that makes it knowable, with a database constraint tying it to the state:
+it is set exactly while the account is suspended, and only to a state a suspension could have started from.
+
+**The permission, and the install it would otherwise have missed.** `platform.identities.manage` is new and
+distinct from both `platform.identities.read` and `platform.tenants.manage` — an operator who may suspend a
+company is not thereby entitled to suspend a person. The bootstrap ceremony that grants Platform its system
+permissions runs **once per database**, so a new code reaches a fresh install and no existing one. The migration
+therefore backfills the grant onto every Platform system role that already holds `platform.tenants.manage`, and
+writes the catalogue row itself because migrations run before the startup synchronizer that normally owns it.
+Both statements are idempotent.
+
+| Step | What happened |
+|---|---|
+| RED | `PlatformIdentityLifecycleTests` did not compile against the absent `Platform.Identities` namespace, then drove eleven behaviours: the account losing every way in, the reason living in the audit and not in the directory, the restore to the person's own state, the unacknowledged lift being refused, the last Platform owner, the expected-state precondition, the `Closed` tombstone, the unknown identity, the session that never stepped up, and the two halves staying apart — a ticket minted before a suspension does not survive it, and a suspended account asking for the public way back is answered and sent nothing. |
+| GREEN | `IdentitySuspensionReason`, `StatusBeforeSuspension` with its constraint, `IIdentityLifecycleStore` and its two conditional writes, two commands, two Platform routes, and the `IdentityAdministrativeSuspension` migration with its grant backfill. |
+| REFACTOR | The disable effects — sessions, proofs, outstanding links, the Platform step-up — moved into `IdentityLifecycleEffects`, shared by parking and suspension, because two copies of that list would be two chances to forget the same entry. The Platform last-owner question moved with them. |
+| Not vacuous | With the restore forced to `Active`, two of the eleven fail. Restored, all eleven pass. |
+| Verified | Functional 573/573, Application unit 197/197, Domain unit 191/191, Infrastructure integration 261/261 (`MigrationUpgradeTests` included, which is what runs the backfill from the previous version), client 212/212. |
+
+**Still not done in Task 26:** MFA recovery, the retention executor, the documentary dispute and the restore
+admission guard. `Closed` is still written by nothing — it is reached by an executed erasure, which is unit 26.4.
+
 ## Tasks 21–25 review remediation — done 2026-09-07
 
 A review of Tasks 21–25 produced eight directed reproductions. They are kept as they were written and were used

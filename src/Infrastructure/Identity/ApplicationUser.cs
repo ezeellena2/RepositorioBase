@@ -18,4 +18,12 @@ public class ApplicationUser : IdentityUser<Guid>
     /// </para>
     /// </summary>
     public IdentityAccountStatus Status { get; set; } = IdentityAccountStatus.PendingConfirmation;
+
+    /// <summary>
+    /// Where this account was when a Platform operator stopped it, and <see langword="null"/> whenever it is not
+    /// stopped. Lifting a suspension restores this rather than assuming <see cref="IdentityAccountStatus.Active"/>:
+    /// somebody who had parked their own account before an operator suspended it goes back to their own decision,
+    /// which is not the operator's to undo (IA-REQ-054).
+    /// </summary>
+    public IdentityAccountStatus? StatusBeforeSuspension { get; set; }
 }

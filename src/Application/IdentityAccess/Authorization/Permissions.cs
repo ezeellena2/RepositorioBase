@@ -29,6 +29,13 @@ public static class Permissions
     public const string PlatformTenantsManage = "platform.tenants.manage";
     public const string PlatformOrganizationsRead = "platform.organizations.read";
     public const string PlatformIdentitiesRead = "platform.identities.read";
+
+    /// <summary>
+    /// Stopping and restarting a person's account (IA-REQ-054). Distinct from `platform.identities.read`, which
+    /// only shows the directory, and from `platform.tenants.manage`, which drives organizations: an operator who
+    /// may suspend a company is not thereby entitled to suspend a person.
+    /// </summary>
+    public const string PlatformIdentitiesManage = "platform.identities.manage";
     public const string PlatformAuditRead = "platform.audit.read";
 
     /// <summary>
@@ -92,6 +99,7 @@ public static class Permissions
         new(PlatformAdminsManage, [TenantType.Platform], OrganizationOwner.NotApplicable),
         new(PlatformAdminsRead, [TenantType.Platform], OrganizationOwner.NotApplicable),
         new(PlatformAuditRead, [TenantType.Platform], OrganizationOwner.NotApplicable),
+        new(PlatformIdentitiesManage, [TenantType.Platform], OrganizationOwner.NotApplicable),
         new(PlatformIdentitiesRead, [TenantType.Platform], OrganizationOwner.NotApplicable),
         new(PlatformOrganizationsRead, [TenantType.Platform], OrganizationOwner.NotApplicable),
         new(PlatformTenantsManage, [TenantType.Platform], OrganizationOwner.NotApplicable),

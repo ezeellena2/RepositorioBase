@@ -47,6 +47,9 @@ public sealed class PlatformSystemRoleProvisioner(ApplicationDbContext context) 
         Permissions.PlatformAdminsRead,
         Permissions.PlatformOrganizationsRead,
         Permissions.PlatformIdentitiesRead,
+        // Stopping an abusive account is operating Platform, the same way suspending an organization is. Deciding
+        // who the operators are stays with the owner alone (IA-REQ-042, IA-REQ-054).
+        Permissions.PlatformIdentitiesManage,
         Permissions.PlatformAuditRead,
         Permissions.PlatformTenantsManage
     ];

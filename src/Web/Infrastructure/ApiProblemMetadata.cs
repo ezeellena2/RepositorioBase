@@ -84,6 +84,9 @@ public static class ApiProblemMetadata
 
     public static readonly ApiProblemContract IdentityConcurrencyConflict = new(StatusCodes.Status409Conflict, "identity_concurrency_conflict");
 
+    /// <summary>`Closed` and nothing else: a tombstone has no way back (IA-REQ-054, amendment A4).</summary>
+    public static readonly ApiProblemContract IdentityReactivationUnavailable = new(StatusCodes.Status403Forbidden, "identity_reactivation_unavailable");
+
 
     public static RouteHandlerBuilder WithApiProblemDetails(this RouteHandlerBuilder builder, params ApiProblemContract[] contracts)
     {

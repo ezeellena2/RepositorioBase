@@ -183,6 +183,7 @@ public static class DependencyInjection
         builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.ExternalLogins.IExternalIdentityService, CleanArchitecture.Infrastructure.IdentityAccess.ExternalIdentityService>();
         builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.ExternalLogins.IExternalSubjectLock, CleanArchitecture.Infrastructure.IdentityAccess.ExternalSubjectLock>();
         builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.Roles.IRoleAdministrationStore, CleanArchitecture.Infrastructure.IdentityAccess.RoleAdministrationStore>();
+        builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.Lifecycle.IIdentityLifecycleStore, CleanArchitecture.Infrastructure.IdentityAccess.IdentityLifecycleStore>();
         builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.Authorization.IRoleAuthorityLock, CleanArchitecture.Infrastructure.IdentityAccess.RoleAuthorityLock>();
         builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.Members.IMembershipAdministrationStore, CleanArchitecture.Infrastructure.IdentityAccess.MembershipAdministrationStore>();
         builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.ExternalLogins.IExternalCallbackRecorder, CleanArchitecture.Application.IdentityAccess.ExternalLogins.ExternalCallbackRecorder>();

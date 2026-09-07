@@ -232,4 +232,15 @@ public static class IdentityAccessErrors
     /// <summary>The identity's state moved under a request that had already read it (IA-REQ-054).</summary>
     public static ApplicationError IdentityConcurrencyConflict() =>
         new("identity_concurrency_conflict", ApplicationErrorCategory.Conflict, "The account was changed by another request. Refresh it and try again.");
+
+    public static ApplicationError IdentityNotFound() =>
+        new("not_found", ApplicationErrorCategory.NotFound, "That identity is not available.");
+
+    /// <summary>
+    /// `Closed` and nothing else. A tombstone has no way back, which is what makes it a tombstone — and a legal
+    /// hold is deliberately not one of these cases, because a hold stops erasure and never blocks a reactivation
+    /// (amendment A4).
+    /// </summary>
+    public static ApplicationError IdentityReactivationUnavailable() =>
+        new("identity_reactivation_unavailable", ApplicationErrorCategory.Authorization, "That account cannot be reactivated.");
 }

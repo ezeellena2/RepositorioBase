@@ -20,6 +20,14 @@ public sealed class ApplicationUserConfiguration : IEntityTypeConfiguration<Appl
             table.HasCheckConstraint(
                 "CK_AspNetUsers_Status",
                 "\"Status\" IN ('PendingConfirmation', 'Active', 'SelfDeactivated', 'AdministrativelySuspended', 'Closed')");
+
+            // Remembering where an account was is meaningful only while it is stopped, and only a state it could
+            // actually have been stopped from is a state to go back to. Both halves are the database's business,
+            // because a row that outlives the code that wrote it still has to mean something.
+            table.HasCheckConstraint(
+                "CK_AspNetUsers_StatusBeforeSuspension",
+                "(\"StatusBeforeSuspension\" IS NULL) = (\"Status\" <> 'AdministrativelySuspended') AND " +
+                "(\"StatusBeforeSuspension\" IS NULL OR \"StatusBeforeSuspension\" IN ('PendingConfirmation', 'Active', 'SelfDeactivated'))");
         });
         builder.HasIndex(user => user.NormalizedEmail).IsUnique().HasDatabaseName("EmailIndex");
 
@@ -34,6 +42,8 @@ public sealed class ApplicationUserConfiguration : IEntityTypeConfiguration<Appl
             .HasMaxLength(32)
             .HasDefaultValue(IdentityAccountStatus.PendingConfirmation)
             .IsRequired();
+
+        builder.Property(user => user.StatusBeforeSuspension).HasConversion<string>().HasMaxLength(32);
     }
 }
 

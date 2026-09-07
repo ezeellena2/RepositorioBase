@@ -82,6 +82,8 @@ public class ExistingApplicationRequestAuthorizationTests
             typeof(CleanArchitecture.Application.IdentityAccess.Lifecycle.DeactivateAccountCommand).FullName,
             typeof(CleanArchitecture.Application.IdentityAccess.Lifecycle.RequestAccountReactivationCommand).FullName,
             typeof(CleanArchitecture.Application.IdentityAccess.Lifecycle.ReactivateAccountCommand).FullName,
+            typeof(CleanArchitecture.Application.IdentityAccess.Platform.Identities.SuspendIdentityCommand).FullName,
+            typeof(CleanArchitecture.Application.IdentityAccess.Platform.Identities.ReactivateIdentityCommand).FullName,
             typeof(CleanArchitecture.Application.IdentityAccess.Credentials.OwnCredentials.GetOwnCredentialsQuery).FullName,
             typeof(CleanArchitecture.Application.IdentityAccess.ExternalLogins.StartExternalLoginCommand).FullName,
             typeof(CleanArchitecture.Application.IdentityAccess.ExternalLogins.StartExternalLinkCommand).FullName,

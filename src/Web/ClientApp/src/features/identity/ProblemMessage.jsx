@@ -33,6 +33,7 @@ const MESSAGES = {
   invalid_reactivation: 'That reactivation link is not usable, or the password did not match. Ask for a new link and try again.',
   platform_last_owner: 'This would leave the Platform with no owner. Somebody else has to hold it first.',
   identity_concurrency_conflict: 'Your account changed while you were working. Refresh and try again.',
+  identity_reactivation_unavailable: 'That account cannot be reactivated.',
   rate_limit_exceeded: 'Too many attempts. Wait a moment and try again.',
   internal_server_error: 'Something went wrong. Try again.',
 };

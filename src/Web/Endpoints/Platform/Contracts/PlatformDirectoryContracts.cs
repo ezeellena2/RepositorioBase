@@ -68,5 +68,17 @@ public sealed record PlatformAuditDirectoryResponse(IReadOnlyList<PlatformAuditE
 /// </summary>
 public sealed record PlatformTenantLifecycleRequest(string? Reason);
 
+/// <summary>
+/// Stopping one account. `ExpectedStatus` is a precondition, not a hint: it is the state the operator read in the
+/// directory, and the write only lands if the account is still in it (IA-REQ-054).
+/// </summary>
+public sealed record SuspendIdentityRequest(string? Reason, string? ExpectedStatus);
+
+/// <summary>
+/// Letting one account go again. `AcknowledgeSelfDeactivation` is the operator saying they know the account will
+/// land back in the state its owner chose, rather than in `Active`.
+/// </summary>
+public sealed record ReactivateIdentityRequest(string? ExpectedStatus, bool AcknowledgeSelfDeactivation);
+
 /// <summary>Who to invite as a Platform administrator. There is no role field: the role is the system one.</summary>
 public sealed record PlatformAdministratorInvitationRequest(string Email);
