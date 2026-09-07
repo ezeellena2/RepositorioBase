@@ -27,7 +27,9 @@ internal static class PasswordEndpoints
 
         group.MapPost("/credentials/password/reset", Reset)
             .Produces(StatusCodes.Status204NoContent)
-            .WithApiProblemDetails(ApiProblemMetadata.AntiforgeryValidationFailed, ApiProblemMetadata.InvalidCredentialToken, ApiProblemMetadata.ValidationFailed, ApiProblemMetadata.InternalServerError)
+            // `429` is newly reachable here: spending a link now waits for the same per-identity lock a sign-in
+            // holds, and a wait that elapses is answered rather than forced through.
+            .WithApiProblemDetails(ApiProblemMetadata.AntiforgeryValidationFailed, ApiProblemMetadata.InvalidCredentialToken, ApiProblemMetadata.ValidationFailed, ApiProblemMetadata.RateLimitExceeded, ApiProblemMetadata.InternalServerError)
             .WithBodyBindingFailureCode(ApiProblemMetadata.InvalidCredentialToken.Code);
 
         group.MapGet("/credentials", Read)

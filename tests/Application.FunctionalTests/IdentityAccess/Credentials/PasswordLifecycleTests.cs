@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using CleanArchitecture.Application.FunctionalTests.Infrastructure;
 using CleanArchitecture.Application.IdentityAccess.Organizations;
+using CleanArchitecture.Application.IdentityAccess.Sessions;
 using CleanArchitecture.Domain.IdentityAccess.Auditing;
 using CleanArchitecture.Domain.IdentityAccess.Credentials;
 using CleanArchitecture.Domain.IdentityAccess.Outbox;
@@ -30,6 +31,76 @@ public sealed class PasswordLifecycleTests : TestBase
     private const string NewPassword = "Replaced5678!";
 
     private static string Host() => $"https://password-{Guid.NewGuid():N}.localhost";
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Review_a_credential_replacement_cannot_escape_the_version_read_order(bool resetAfterVersionCheck)
+    {
+        var email = $"review-credential-{Guid.NewGuid():N}@example.test";
+        await IdentityHttpHarness.SeedConfirmedUserAsync(email, Password);
+        var barrier = new CredentialValidationBarrier();
+        using var harness = IdentityHttpHarness.CreateProductionHarness(configureTestServices: services =>
+        {
+            if (resetAfterVersionCheck)
+            {
+                services.RemoveAll<ISessionIssuer>();
+                services.AddScoped<ISessionIssuer>(provider => new PausedSessionIssuer(
+                    ActivatorUtilities.CreateInstance<SessionIssuer>(provider), barrier));
+                services.RemoveAll<ISessionLock>();
+                services.AddScoped<ISessionLock>(provider => new ObservedSessionLock(
+                    ActivatorUtilities.CreateInstance<SessionLock>(provider), barrier));
+            }
+            else
+            {
+                services.RemoveAll<IIdentityAccountService>();
+                services.AddScoped<IIdentityAccountService>(provider => new PausedIdentityAccountService(
+                    ActivatorUtilities.CreateInstance<IdentityAccountService>(provider), barrier, pauseAfterLookup: true));
+            }
+        });
+        using var client = WithoutCookieJar(harness);
+        var host = Host();
+        var current = await SignInAsync(client, host, email, Password);
+        string? token = null;
+        if (resetAfterVersionCheck)
+        {
+            (await RecoverAsync(client, host, email)).StatusCode.ShouldBe(HttpStatusCode.Accepted);
+            token = await DeliveredTokenAsync();
+        }
+        else await ProveAsync(client, host, current, "credentials.password.change");
+
+        var antiforgery = await AntiforgeryAsync(client, host, null);
+        using var request = IdentityHttpHarness.JsonRequest(HttpMethod.Post, $"{host}/api/identity/sessions", new { email, password = Password }, antiforgery.Token);
+        request.Headers.Add("Cookie", antiforgery.Cookie);
+        barrier.Arm();
+        var pendingLogin = client.SendAsync(request);
+        Task<HttpResponseMessage>? replacement = null;
+        try
+        {
+            await barrier.Validated.Task.WaitAsync(TimeSpan.FromSeconds(30));
+            replacement = resetAfterVersionCheck
+                ? ResetAsync(client, host, token!, NewPassword)
+                : ChangeAsync(client, host, current, NewPassword);
+            if (resetAfterVersionCheck)
+            {
+                // A correct reset may wait for the login's identity lock. Release the login once reset either
+                // tries that lock or commits without it; never demand an unsafe ordering from a future fix.
+                await Task.WhenAny(replacement, barrier.CompetingLockAttempt.Task).WaitAsync(TimeSpan.FromSeconds(30));
+            }
+            else await replacement.WaitAsync(TimeSpan.FromSeconds(30));
+        }
+        finally { barrier.Release.TrySetResult(); }
+
+        using var login = await pendingLogin.WaitAsync(TimeSpan.FromSeconds(30));
+        using var changed = await replacement!.WaitAsync(TimeSpan.FromSeconds(30));
+        var lateCookie = login.Headers.TryGetValues("Set-Cookie", out var cookies)
+            ? cookies.FirstOrDefault(value => value.StartsWith("__Host-ia-auth=", StringComparison.Ordinal))?.Split(';')[0]
+            : null;
+        using var protectedResponse = await ContextAsync(client, host, lateCookie ?? string.Empty);
+        TestContext.Out.WriteLine($"Review R1A afterVersionReset={resetAfterVersionCheck}; credential change={(int)changed.StatusCode}; login={(int)login.StatusCode}; cookie={lateCookie is not null}; protected GET={(int)protectedResponse.StatusCode}; reset requested lock={barrier.CompetingLockAttempt.Task.IsCompleted}");
+        changed.StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        protectedResponse.StatusCode.ShouldBe(HttpStatusCode.Unauthorized,
+            "a password replacement must either prevent this old-password session or revoke it before the replacement commits");
+    }
 
     [TestCase(false)]
     [TestCase(true)]
@@ -430,6 +501,7 @@ public sealed class PasswordLifecycleTests : TestBase
         private int _armed;
         internal TaskCompletionSource Validated { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource CompetingLockAttempt { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal void Arm() => Interlocked.Exchange(ref _armed, 1);
         internal async Task PauseOnceAsync()
         {
@@ -439,15 +511,39 @@ public sealed class PasswordLifecycleTests : TestBase
         }
     }
 
-    private sealed class PausedIdentityAccountService(IIdentityAccountService inner, CredentialValidationBarrier barrier) : IIdentityAccountService
+    private sealed class PausedSessionIssuer(ISessionIssuer inner, CredentialValidationBarrier barrier) : ISessionIssuer
+    {
+        public async Task<UserSession?> IssueAsync(Guid identityId, string correlationId, CancellationToken cancellationToken)
+        {
+            await barrier.PauseOnceAsync();
+            return await inner.IssueAsync(identityId, correlationId, cancellationToken);
+        }
+    }
+
+    private sealed class ObservedSessionLock(ISessionLock inner, CredentialValidationBarrier barrier) : ISessionLock
+    {
+        public Task<bool> TryAcquireAsync(Guid identityId, CancellationToken cancellationToken)
+        {
+            if (barrier.Validated.Task.IsCompleted && !barrier.Release.Task.IsCompleted)
+                barrier.CompetingLockAttempt.TrySetResult();
+            return inner.TryAcquireAsync(identityId, cancellationToken);
+        }
+    }
+
+    private sealed class PausedIdentityAccountService(IIdentityAccountService inner, CredentialValidationBarrier barrier, bool pauseAfterLookup = false) : IIdentityAccountService
     {
         public async Task<IdentityAccount?> ValidateCredentialsAsync(string email, string password, CancellationToken cancellationToken)
         {
             var account = await inner.ValidateCredentialsAsync(email, password, cancellationToken);
-            if (account is not null) await barrier.PauseOnceAsync();
+            if (account is not null && !pauseAfterLookup) await barrier.PauseOnceAsync();
             return account;
         }
-        public Task<IdentityAccount?> FindByEmailAsync(string email, CancellationToken cancellationToken) => inner.FindByEmailAsync(email, cancellationToken);
+        public async Task<IdentityAccount?> FindByEmailAsync(string email, CancellationToken cancellationToken)
+        {
+            var account = await inner.FindByEmailAsync(email, cancellationToken);
+            if (account is not null && pauseAfterLookup) await barrier.PauseOnceAsync();
+            return account;
+        }
         public Task<IdentityAccount?> FindByIdAsync(Guid id, CancellationToken cancellationToken) => inner.FindByIdAsync(id, cancellationToken);
         public Task<IdentityAccountValidationResult> ValidatePendingRegistrationAsync(string email, string password, CancellationToken cancellationToken) => inner.ValidatePendingRegistrationAsync(email, password, cancellationToken);
         public Task<IdentityAccountValidationResult> ValidatePasswordAsync(string password, CancellationToken cancellationToken) => inner.ValidatePasswordAsync(password, cancellationToken);

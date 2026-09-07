@@ -35,6 +35,7 @@ public sealed class IdentityAccountService(
     public async Task<IdentityAccount?> ValidateCredentialsAsync(string normalizedEmail, string password, CancellationToken cancellationToken)
     {
         var user = await userManager.FindByEmailAsync(normalizedEmail);
+        await EnsureCurrentAsync(user, cancellationToken);
         var now = timeProvider.GetUtcNow();
         if (user is null || !user.EmailConfirmed || IsLockedOut(user, now))
         {
@@ -54,6 +55,30 @@ public sealed class IdentityAccountService(
         }
 
         return new IdentityAccount(user.Id, user.Email!, true);
+    }
+
+    /// <summary>
+    /// Re-reads the row this check is about to judge.
+    /// <para>
+    /// A query for a row EF is already tracking answers with the instance it already has, values and all. So a
+    /// lookup made earlier in the same request — the identity a sign-in reads to know whose security version to
+    /// compare, or the profile a reauthentication reads to know which address to check — leaves behind a user
+    /// whose password hash, lockout window and failure count are the ones from that earlier moment. If a password
+    /// change commits in between, this check would then accept a password that no longer opens anything, and the
+    /// version comparison that follows would compare the new version against itself and see nothing wrong.
+    /// </para>
+    /// <para>
+    /// One statement, and only where it is load-bearing: the credential is judged against the credential as it
+    /// stands. An entry carrying unsaved changes is left alone, because reloading would discard them and no
+    /// credential check runs in a scope that is mid-write on the same identity (IA-REQ-051).
+    /// </para>
+    /// </summary>
+    private async Task EnsureCurrentAsync(ApplicationUser? user, CancellationToken cancellationToken)
+    {
+        if (user is null) return;
+
+        var entry = context.Entry(user);
+        if (entry.State == EntityState.Unchanged) await entry.ReloadAsync(cancellationToken);
     }
 
     public async Task<IdentityAccountValidationResult> ValidatePendingRegistrationAsync(string normalizedEmail, string password, CancellationToken cancellationToken)

@@ -99,6 +99,7 @@ public sealed class ResetPasswordCommandHandler(
     IApplicationDbContext context,
     IIdentityCredentialService credentials,
     IRecentIdentityProofStore proofs,
+    ISessionLock sessionLock,
     ITokenHasher tokenHasher,
     TimeProvider timeProvider) : IRequestHandler<ResetPasswordCommand, Result>
 {
@@ -112,12 +113,35 @@ public sealed class ResetPasswordCommandHandler(
 
         return await transaction.ExecuteAsync(async ct =>
         {
+            // Whose link this is, without loading the row. The lock is keyed on the identity and the identity is
+            // only knowable from the token, so something has to be read first — and a projection reads it without
+            // tracking anything, which matters because the row is loaded again below and EF answers a second query
+            // for a tracked row with the instance it already has.
+            var subject = await context.PasswordResetRequests
+                .Where(candidate => candidate.TokenHash == hash)
+                .Select(candidate => (Guid?)candidate.IdentityId)
+                .SingleOrDefaultAsync(ct);
+            if (subject is null) return Result.Failure(IdentityAccessErrors.InvalidCredentialToken());
+
+            // The same lock a sign-in and an authenticated change take, and for the same reason: revoking reaches
+            // the sessions that exist when it runs, so a login that creates one afterwards escapes it entirely.
+            // Held to commit, it leaves two orderings and no third — this commits first and the login's version
+            // comparison refuses, or the login commits first and the revocation below reaches the session it just
+            // issued (IA-REQ-049, IA-REQ-051).
+            if (!await sessionLock.TryAcquireAsync(subject.Value, ct))
+                return Result.Failure(IdentityAccessErrors.SessionLockUnavailable());
+
+            // Read after the wait, not before it. The clock has to describe when this work happens: a reading
+            // taken before queueing would judge the link's expiry at the wrong moment, and would be earlier than
+            // the creation of a session a sign-in committed while this was waiting — which the aggregate refuses
+            // to revoke, because revoking something before it existed is not a thing that can have happened.
             var now = timeProvider.GetUtcNow();
             var reset = await context.PasswordResetRequests.SingleOrDefaultAsync(candidate => candidate.TokenHash == hash, ct);
 
             // Unknown, spent, superseded, expired and no-longer-about-this-credential are one answer. Which of
-            // them it was is state the holder of a dead link was never shown. The comparison happens here, before
-            // anything is written, so a link that lost its race leaves the password it would have replaced alone.
+            // them it was is state the holder of a dead link was never shown. Read and compared under the lock,
+            // so a link that lost its race is refused on the state that actually won, and before anything is
+            // written, so it leaves the password it would have replaced alone.
             if (reset is null || !reset.IsPendingAt(now, await proofs.CurrentVersionAsync(reset.IdentityId, ct)))
                 return Result.Failure(IdentityAccessErrors.InvalidCredentialToken());
 
