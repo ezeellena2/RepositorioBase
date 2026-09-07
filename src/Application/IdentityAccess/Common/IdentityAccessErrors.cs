@@ -177,6 +177,10 @@ public static class IdentityAccessErrors
     public static ApplicationError InvalidRoleOperation() =>
         new("invalid_role_operation", ApplicationErrorCategory.Validation, "That role change is not valid.");
 
+    /// <summary>A membership this tenant does not have. Another tenant's reaches a caller this way.</summary>
+    public static ApplicationError MembershipNotFound() =>
+        new("not_found", ApplicationErrorCategory.NotFound, "That member is not available.");
+
     public static ApplicationError InvalidMembershipOperation() =>
         new("invalid_membership_operation", ApplicationErrorCategory.Validation, "That membership change is not valid.");
 

@@ -9,8 +9,8 @@ using Microsoft.AspNetCore.Http;
 namespace CleanArchitecture.Application.FunctionalTests.IdentityAccess.Invitations;
 
 /// <summary>
-/// The external contract of the three invitation routes SPEC section 6 declares, at the boundary a client
-/// actually sees: a semantic status, an endpoint DTO, and — for the created invitation — a <c>Location</c>. What
+/// The external contract of the invitation routes SPEC section 6 declares, at the boundary a client actually
+/// sees: a semantic status, an endpoint DTO, and — for the created invitation — a <c>Location</c>. What
 /// this pins beyond the Application tests is that Web serializes its own DTO and never the internal Result or a
 /// <c>{ success, data, error }</c> envelope (IA-REQ-038).
 /// </summary>
@@ -176,6 +176,83 @@ public sealed class InvitationHttpContractTests : TestBase
         result.IsFailure.ShouldBeTrue();
         result.Error!.Code.ShouldBe("invitation_conflict");
         Web.Infrastructure.ApiProblemDetailsMapper.GetStatusCode(result.Error.Category).ShouldBe(StatusCodes.Status409Conflict);
+    }
+
+    /// <summary>
+    /// Reissuing is reachable over HTTP and answers nothing at all. The rotated token belongs in the recipient's
+    /// envelope; a response body here would be the one place a caller could read it (IA-REQ-015/017/018).
+    /// </summary>
+    [Test]
+    public async Task Reissuing_answers_a_bodyless_204_and_rotates_the_token_without_showing_it()
+    {
+        var organization = await IssuedInvitationAsync();
+        var before = (await InvitationScenario.SingleInvitationAsync()).TokenHash;
+        var antiforgery = await AntiforgeryAsync();
+
+        var response = await SendAsync(
+            HttpMethod.Post,
+            $"/api/tenants/{organization.TenantId.Value}/invitations/{(await InvitationScenario.SingleInvitationAsync()).Id.Value}/resend",
+            new { },
+            antiforgery);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        (await response.Content.ReadAsStringAsync()).ShouldBeEmpty("a reissue has nothing a caller may hold");
+        var after = await InvitationScenario.SingleInvitationAsync();
+        after.Status.ShouldBe(Domain.IdentityAccess.Invitations.InvitationStatus.Pending);
+        after.TokenHash.ShouldNotBe(before, "the previous token stops being usable in the same transaction");
+    }
+
+    [Test]
+    public async Task Withdrawing_answers_a_bodyless_204_and_ends_the_offer()
+    {
+        var organization = await IssuedInvitationAsync();
+        var antiforgery = await AntiforgeryAsync();
+
+        var response = await SendAsync(
+            HttpMethod.Post,
+            $"/api/tenants/{organization.TenantId.Value}/invitations/{(await InvitationScenario.SingleInvitationAsync()).Id.Value}/cancel",
+            new { },
+            antiforgery);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        (await response.Content.ReadAsStringAsync()).ShouldBeEmpty();
+        (await InvitationScenario.SingleInvitationAsync()).Status
+            .ShouldBe(Domain.IdentityAccess.Invitations.InvitationStatus.Cancelled);
+    }
+
+    /// <summary>
+    /// The same boundary rule the issuing route has. A route tenant the session is not operating in is refused
+    /// rather than honoured, so an offer cannot be reissued or withdrawn from outside its own organization.
+    /// </summary>
+    [TestCase("resend")]
+    [TestCase("cancel")]
+    public async Task Acting_on_an_offer_from_a_tenant_the_session_is_not_operating_in_is_refused(string action)
+    {
+        await IssuedInvitationAsync();
+        var invitationId = (await InvitationScenario.SingleInvitationAsync()).Id.Value;
+        var other = await InvitationScenario.SeedOrganizationAsync();
+        var antiforgery = await AntiforgeryAsync();
+
+        var response = await SendAsync(
+            HttpMethod.Post,
+            $"/api/tenants/{other.TenantId.Value}/invitations/{invitationId}/{action}",
+            new { },
+            antiforgery);
+
+        response.StatusCode.ShouldBeOneOf(HttpStatusCode.BadRequest, HttpStatusCode.Forbidden, HttpStatusCode.NotFound);
+        response.Content.Headers.ContentType!.MediaType.ShouldBe("application/problem+json");
+        (await InvitationScenario.SingleInvitationAsync()).Status
+            .ShouldBe(Domain.IdentityAccess.Invitations.InvitationStatus.Pending);
+    }
+
+    private static async Task<InvitationScenario.Organization> IssuedInvitationAsync()
+    {
+        var organization = await InvitationScenario.SeedOrganizationAsync(Permissions.MembersInvite, Permissions.MembersManage);
+        InvitationScenario.ActAs(organization);
+        (await TestApp.SendAsync(new Application.IdentityAccess.Invitations.InviteMember.InviteMemberCommand(
+            organization.TenantId, $"invitee-{Guid.NewGuid():N}@example.test", [organization.RoleId]))).IsSuccess.ShouldBeTrue();
+        await AuthenticateAsync(organization.InviterIdentityId, organization);
+        return organization;
     }
 
     private static async Task AuthenticateAsync(Guid identityId, InvitationScenario.Organization? organization)

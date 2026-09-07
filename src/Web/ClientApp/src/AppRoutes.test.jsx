@@ -33,11 +33,15 @@ describe('identity routes', () => {
     ['/organizations/select', 'Choose an organization'],
     ['/members/invite', 'Invite a member'],
     ['/identity/external', 'Sign-in providers'],
+    ['/roles', 'Roles'],
+    ['/members', 'Members'],
   ])('renders the protected route %s for a signed-in visitor', async (path, heading) => {
     server.use(antiforgery(), contextIs(signedInContext()));
     server.use(http.get('/api/identity/external', () => HttpResponse.json({ items: [], available: [] })));
     server.use(http.get('/api/tenants/tenant-1/roles', () => HttpResponse.json({ items: [], nextCursor: null })));
     server.use(http.get('/api/tenants/tenant-1/permission-catalog', () => HttpResponse.json([])));
+    server.use(http.get('/api/tenants/tenant-1/members', () => HttpResponse.json({ items: [], nextCursor: null })));
+    server.use(http.get('/api/tenants/tenant-1/invitations', () => HttpResponse.json({ items: [], nextCursor: null })));
     renderAt(path);
 
     expect(await screen.findByRole('heading', { name: heading })).toBeInTheDocument();
@@ -47,7 +51,7 @@ describe('identity routes', () => {
    * The return URL is rebuilt from where the visitor actually was. Reading it from the incoming query string
    * would let a crafted link choose where someone lands once they hold a session.
    */
-  it.each(['/identity', '/organizations/select', '/members/invite', '/identity/external'])('sends an unauthenticated visitor from %s to sign in', async (path) => {
+  it.each(['/identity', '/organizations/select', '/members/invite', '/identity/external', '/roles', '/members'])('sends an unauthenticated visitor from %s to sign in', async (path) => {
     server.use(antiforgery(), contextIs(null));
     renderAt(path);
 

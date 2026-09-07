@@ -114,16 +114,27 @@ sessions is the cap; a sixth sign-in ends the oldest.
 **Your sign-in providers.** `/identity/external` links and unlinks Google. It is inert until the section above is
 configured.
 
-### A limitation to know about before you try the organization journey
+**Your organization's roles.** `/roles` builds and edits custom roles and shows what each one confers. You may
+only put a permission into a role that you hold yourself, so the catalogue shows which codes you could actually
+grant. Editing a role asks for your password first. Retiring one is permanent, and it stops conferring anything
+on the very next request.
 
-Registering an organization makes you its `Owner`, and that role is currently created **with no permissions at
-all**. Effective permissions come only from role/permission rows, and nothing grants any to a newly created
-Owner — so a real registered owner cannot invite a member, and `/members/invite` will not appear in the
-navigation. The automated tests do not catch this because each one grants the permissions it needs directly.
+**Your organization's members.** `/members` lists everybody, what they hold, and which one owns the organization.
+You can change somebody's roles — with your password — and suspend, reactivate or remove them without one. The
+owner's own membership cannot be suspended or removed; transferring the organization first is what makes it
+possible, and the transfer asks for your password and a deliberate confirmation.
 
-Deciding what an Organization owner holds is contract **C5**'s, which is not accepted, so it is not fixed here.
-Until it is, the organization side is registration and sign-in; the member and role administration screens are
-Tasks 24 and 25.
+**Inviting somebody.** `/members/invite` offers your organization's roles by name, lists every standing offer,
+and lets you reissue or withdraw one. A reissue rotates the token and the previous one stops working, so the link
+that matters is always the newest file in the drop folder.
+
+### What a real registered owner holds
+
+Registering an organization makes you its `Owner`, and that role is provisioned with the `Organization` codes the
+C5 acceptance decided it holds (amendment D1) — role and member administration, invitations, tenant management
+and ownership transfer. Existing organizations were backfilled by the same decision. A permission added by a
+later feature does **not** join that set automatically: the catalogue records the answer per code, and a test
+fails until somebody gives it.
 
 ## Bootstrapping Platform
 

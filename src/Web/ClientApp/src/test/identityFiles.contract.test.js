@@ -22,6 +22,8 @@ describe('identity feature files', () => {
     'features/identity/tenants/TenantSelector.jsx',
     'features/identity/invitations/InvitationPages.jsx',
     'features/identity/invitations/InviteMemberPage.jsx',
+    'features/identity/roles/RolesPage.jsx',
+    'features/identity/members/MembersPage.jsx',
   ])('exposes %s', (relative) => {
     expect(has(relative), `${relative} is missing`).toBe(true);
   });
@@ -49,6 +51,8 @@ describe('identity feature files', () => {
       '/identity',
       '/organizations/select',
       '/members/invite',
+      '/members',
+      '/roles',
     ]) {
       expect(routes, `${path} is not routed`).toContain(path);
     }
@@ -68,6 +72,8 @@ describe('identity feature files', () => {
       'features/identity/tenants/TenantSelector.jsx',
       'features/identity/invitations/InvitationPages.jsx',
       'features/identity/invitations/InviteMemberPage.jsx',
+      'features/identity/roles/RolesPage.jsx',
+      'features/identity/members/MembersPage.jsx',
     ].filter((relative) => has(relative) && /\bfetch\s*\(/.test(read(relative)));
 
     expect(offenders).toEqual([]);

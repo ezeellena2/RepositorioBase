@@ -11,5 +11,6 @@ public sealed class TenantAdministration : IEndpointGroup
     {
         global::CleanArchitecture.Web.IdentityEndpoints.InvitationEndpoints.MapTenantScoped(group);
         global::CleanArchitecture.Web.IdentityEndpoints.RoleEndpoints.MapTenantScoped(group);
+        global::CleanArchitecture.Web.IdentityEndpoints.MembershipEndpoints.MapTenantScoped(group);
     }
 }

@@ -1,3 +1,5 @@
+using CleanArchitecture.Domain.IdentityAccess.Memberships;
+
 namespace CleanArchitecture.Domain.IdentityAccess.Tenants;
 
 public sealed class Tenant : BaseEntity<TenantId>
@@ -18,6 +20,16 @@ public sealed class Tenant : BaseEntity<TenantId>
     public TenantSuspensionReason? SuspensionReason { get; private set; }
 
     public DateTimeOffset? SuspendedAt { get; private set; }
+
+    /// <summary>
+    /// The one membership that owns this `Organization`, or <see langword="null"/> before one is named.
+    /// <para>
+    /// It is a single reference on the tenant rather than a flag on a membership because "exactly one owner" is a
+    /// statement about the tenant: a flag would let two rows both claim it, and nothing in the schema would
+    /// notice. Registration names the first one; after that it moves only by transfer (IA-REQ-053).
+    /// </para>
+    /// </summary>
+    public MembershipId? OwnerMembershipId { get; private set; }
 
     public static Tenant CreateOrganization(TenantSlug slug) => Create(TenantType.Organization, slug);
 
@@ -82,6 +94,32 @@ public sealed class Tenant : BaseEntity<TenantId>
     }
 
     public void IncrementAuthorizationVersion() => AuthorizationVersion++;
+
+    /// <summary>
+    /// Names the owner, or moves it. One act: the previous owner stops being one at the same instant the next one
+    /// starts, because there is only ever the one reference to hold the answer.
+    /// </summary>
+    public void TransferOwnershipTo(TenantMembership membership)
+    {
+        ArgumentNullException.ThrowIfNull(membership);
+        if (Type != TenantType.Organization)
+        {
+            throw new InvalidOperationException("Only organizations have an owner.");
+        }
+
+        if (membership.TenantId != Id)
+        {
+            throw new InvalidOperationException("An owner must be a membership of this organization.");
+        }
+
+        if (membership.Status != MembershipStatus.Active)
+        {
+            throw new InvalidOperationException("Only an active membership can own an organization.");
+        }
+
+        OwnerMembershipId = membership.Id;
+        IncrementAuthorizationVersion();
+    }
 
     private static Tenant Create(TenantType type, TenantSlug slug)
     {

@@ -38,6 +38,7 @@ function IdentityLinks() {
       <li><Link to="/identity/external">Sign-in providers</Link></li>
       <li><Link to="/organizations/select">Organizations</Link></li>
       {permissions.includes('roles.read') && <li><Link to="/roles">Roles</Link></li>}
+      {permissions.includes('members.read') && <li><Link to="/members">Members</Link></li>}
       {permissions.includes('members.invite') && <li><Link to="/members/invite">Invite a member</Link></li>}
       {/* Offered only to a session already operating as Platform. It is a convenience, not a control: the
           panel and the API both reauthorize regardless of what the navigation shows. */}

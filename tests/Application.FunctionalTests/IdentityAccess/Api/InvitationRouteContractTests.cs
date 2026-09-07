@@ -15,6 +15,8 @@ namespace CleanArchitecture.Application.FunctionalTests.IdentityAccess.Api;
 public sealed class InvitationRouteContractTests : TestBase
 {
     [TestCase("/api/tenants/{tenantId}/invitations")]
+    [TestCase("/api/tenants/{tenantId}/invitations/{invitationId}/resend")]
+    [TestCase("/api/tenants/{tenantId}/invitations/{invitationId}/cancel")]
     [TestCase("/api/invitations/register")]
     [TestCase("/api/invitations/accept")]
     [TestCase("/api/platform/invitations/register")]
@@ -53,7 +55,9 @@ public sealed class InvitationRouteContractTests : TestBase
                 "/api/platform/admins/invitations",
                 "/api/platform/invitations/confirm",
                 "/api/platform/invitations/register",
-                "/api/tenants/{tenantId}/invitations"
+                "/api/tenants/{tenantId}/invitations",
+                "/api/tenants/{tenantId}/invitations/{invitationId}/cancel",
+                "/api/tenants/{tenantId}/invitations/{invitationId}/resend"
             ]);
     }
 

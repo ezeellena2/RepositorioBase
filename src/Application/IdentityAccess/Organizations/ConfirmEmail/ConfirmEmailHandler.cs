@@ -112,6 +112,10 @@ public sealed class ConfirmEmailCommandHandler(
             await identities.ActivateAsync(envelope.IdentityId, ct);
             tenant.Activate();
             membership.Activate(tenant);
+
+            // The organization's one owner, named the instant it has an active responsible member. Owning
+            // requires an active membership, so this cannot happen any earlier than here (IA-REQ-053).
+            tenant.TransferOwnershipTo(membership);
             secret.Consume("confirmation_consumed", now);
             context.AuditEvents.Add(AuditEvent.Create(tenant.Id, envelope.IdentityId, "identity.confirmed", $"confirmation-{secret.Id:N}", new Dictionary<string, string> { ["code"] = "identity.confirmed", ["outcome"] = "activated" }));
             await context.SaveChangesAsync(ct);
@@ -174,6 +178,14 @@ public sealed class ConfirmEmailCommandHandler(
         context.Tenants.Add(tenant);
         context.OrganizationProfiles.Add(OrganizationProfile.Create(tenant, intent.LegalName, intent.Cuit));
         context.TenantMemberships.Add(membership);
+
+        // The tenant points at the membership that owns it and the membership points back at the tenant, so the
+        // two rows cannot be inserted in one statement ordering. They are written first and the owner named
+        // second, inside this same transaction — which is why the column is nullable and why "an organization
+        // always has an owner" is an application invariant rather than a CHECK (IA-REQ-053).
+        await context.SaveChangesAsync(cancellationToken);
+        tenant.TransferOwnershipTo(membership);
+
         intent.Complete(PendingRegistrationIntentOutcome.Created, now);
         secret.Consume("confirmation_consumed", now);
         context.AuditEvents.Add(AuditEvent.Create(tenant.Id, identityId, "organization.registration.requested", correlation, new Dictionary<string, string>

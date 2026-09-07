@@ -1,7 +1,10 @@
+using CleanArchitecture.Application.Common.Models;
 using CleanArchitecture.Application.IdentityAccess.Common;
 using CleanArchitecture.Application.IdentityAccess.Invitations.AcceptInvitation;
+using CleanArchitecture.Application.IdentityAccess.Invitations.CancelInvitation;
 using CleanArchitecture.Application.IdentityAccess.Invitations.InviteMember;
 using CleanArchitecture.Application.IdentityAccess.Invitations.RegisterInvitedUser;
+using CleanArchitecture.Application.IdentityAccess.Invitations.ResendInvitation;
 using CleanArchitecture.Domain.IdentityAccess.Tenants;
 using CleanArchitecture.Web.Endpoints;
 using CleanArchitecture.Web.Infrastructure;
@@ -11,8 +14,8 @@ using CleanArchitecture.Web.IdentityEndpoints.Contracts;
 namespace CleanArchitecture.Web.IdentityEndpoints;
 
 /// <summary>
-/// The three invitation routes of SPEC section 6. Issuing is addressed under its tenant; registering and
-/// accepting are not, because an invitee has no tenant context until acceptance succeeds.
+/// The invitation routes of SPEC section 6. Issuing, reissuing and withdrawing are addressed under their tenant;
+/// registering and accepting are not, because an invitee has no tenant context until acceptance succeeds.
 /// </summary>
 internal static class InvitationEndpoints
 {
@@ -31,7 +34,26 @@ internal static class InvitationEndpoints
                 ApiProblemMetadata.InvitationConflict,
                 ApiProblemMetadata.InternalServerError)
             .WithBodyBindingFailureCode(ApiProblemMetadata.InvalidInvitation.Code);
+
+        // Reissuing and withdrawing carry no body: the invitation is named by the route and everything else about
+        // the offer is already recorded. They answer 204 because there is nothing new to hand back — a reissue
+        // mints a token for the recipient's envelope, never for the caller (IA-REQ-015/017/018).
+        MapOffer(group.MapPost("/{tenantId:guid}/invitations/{invitationId:guid}/resend", Resend));
+        MapOffer(group.MapPost("/{tenantId:guid}/invitations/{invitationId:guid}/cancel", Cancel));
     }
+
+    /// <summary>Reissuing and withdrawing differ in permission and effect, never in contract.</summary>
+    private static void MapOffer(RouteHandlerBuilder route) =>
+        route.RequireAuthorization()
+            .Produces(StatusCodes.Status204NoContent)
+            .WithApiProblemDetails(
+                ApiProblemMetadata.AntiforgeryValidationFailed,
+                ApiProblemMetadata.InvalidInvitation,
+                ApiProblemMetadata.AuthenticationRequired,
+                ApiProblemMetadata.InvalidSession,
+                ApiProblemMetadata.PermissionDenied,
+                ApiProblemMetadata.InvitationConflict,
+                ApiProblemMetadata.InternalServerError);
 
     internal static void MapPublic(RouteGroupBuilder group)
     {
@@ -84,6 +106,27 @@ internal static class InvitationEndpoints
         return result.ToHttpResult(context, problems, issued => Results.Created(
             $"/api/tenants/{tenantId}/invitations/{issued.InvitationId}",
             new InvitationCreatedResponse(issued.InvitationId, issued.ExpiresAt)));
+    }
+
+    private static Task<IResult> Resend(HttpContext context, IAntiforgery antiforgery, ApiProblemDetailsMapper problems, ISender sender, Guid tenantId, Guid invitationId) =>
+        OfferAsync(context, antiforgery, problems, tenantId, () => sender.Send(new ResendInvitationCommand(TenantId.From(tenantId), invitationId), context.RequestAborted));
+
+    private static Task<IResult> Cancel(HttpContext context, IAntiforgery antiforgery, ApiProblemDetailsMapper problems, ISender sender, Guid tenantId, Guid invitationId) =>
+        OfferAsync(context, antiforgery, problems, tenantId, () => sender.Send(new CancelInvitationCommand(TenantId.From(tenantId), invitationId), context.RequestAborted));
+
+    private static async Task<IResult> OfferAsync(
+        HttpContext context,
+        IAntiforgery antiforgery,
+        ApiProblemDetailsMapper problems,
+        Guid tenantId,
+        Func<Task<Result>> send)
+    {
+        var antiforgeryFailure = await Identity.ValidateAntiforgery(context, antiforgery, problems);
+        if (antiforgeryFailure is not null) return antiforgeryFailure;
+        if (tenantId == Guid.Empty) return problems.ToHttpResult(IdentityAccessErrors.InvalidInvitation());
+
+        var result = await send();
+        return result.IsSuccess ? Results.NoContent() : problems.ToHttpResult(result.Error!);
     }
 
     /// <summary>

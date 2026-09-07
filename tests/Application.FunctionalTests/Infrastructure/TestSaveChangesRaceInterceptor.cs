@@ -110,6 +110,15 @@ public sealed class TestSaveChangesRaceInterceptor : SaveChangesInterceptor
             throw new InvalidOperationException("invitation rollback after persisted effects");
         }
 
+        // The same shape for a membership's role assignments: the rows are written first and the failure arrives
+        // after, so what the enclosing transaction takes back is real state and not a staged change set.
+        if (TestApp.HasPendingAssignmentRollback &&
+            eventData.Context?.ChangeTracker.Entries<CleanArchitecture.Domain.IdentityAccess.Authorization.MembershipRole>().Any() == true &&
+            TestApp.ConsumeForcedAssignmentRollbackAfterPersistedEffects())
+        {
+            throw new InvalidOperationException("assignment rollback after persisted effects");
+        }
+
         return await base.SavedChangesAsync(eventData, result, cancellationToken);
     }
 

@@ -256,6 +256,8 @@ Routes are contractual drafts; generated OpenAPI becomes the implementation sour
 | `GET /api/identity/external`; `DELETE /api/identity/external/{provider}` | Authenticated + `identity.external.manage`, `RequiresTenant=false`; the delete additionally needs antiforgery and a recent proof | `200` `{ items: [{ handle, provider, providerEmail, linkedAt }] }`; bodyless `204`, `409` `last_authenticator_required`, `401` `recent_proof_required`, `404` `not_found` |
 | `PUT /api/identity/context/tenant` | Authenticated + antiforgery | `200` updated identity-context DTO; a lost update that never settles is `409` `session_concurrency_conflict` |
 | `POST /api/tenants/{tenantId}/invitations` | `members.invite` + antiforgery | `201` invitation DTO + `Location` |
+| `POST /api/tenants/{tenantId}/invitations/{invitationId}/resend` | `members.invite` + antiforgery; no body | bodyless `204`; the rotated token reaches the recipient's envelope and never the caller; `400` `invalid_invitation` for another tenant's offer or one the inviter can no longer make; `409` `invitation_conflict` for a withdrawn or accepted one |
+| `POST /api/tenants/{tenantId}/invitations/{invitationId}/cancel` | `members.manage` + antiforgery; no body | bodyless `204`, idempotent on a replay; `400` `invalid_invitation`; `409` `invitation_conflict` |
 | `POST /api/invitations/register` | Public + invitation token + antiforgery | neutral bodyless `202`; registration/confirmation only |
 | `POST /api/invitations/accept` | Authenticated + token + antiforgery | idempotent `200` acceptance DTO |
 | `POST /api/platform/bootstrap/recover` | public bodyless same-origin + antiforgery + rate limit; no identity, email, or replacement recipient input | valid opaque states: neutral bodyless `202`; missing/malformed antiforgery: `400` Problem Details `antiforgery_validation_failed`; exhausted limit: `429` Problem Details `rate_limit_exceeded` + `Retry-After` |
@@ -950,7 +952,24 @@ a test verified against a reverted fix:
 - **Reconciled with C6.** C6 named the same refusal `tenant_last_administrator` and added an `expectedStatus`
   precondition plus a recent C4 proof on the membership routes. Decided: C5 owns the definition, so
   `last_administrator_required` and the echoed `version` stand and C6's second spelling is withdrawn; C6's
-  `expectedStatus` precondition and proof requirement are kept, because they narrow rather than contradict.
+  `expectedStatus` precondition and proof requirement are kept, because they narrow rather than contradict. **As
+  built (Task 25):** `MemberStatusRequest` carries `version` and nothing else. The row's own concurrency token
+  does what `expectedStatus` was for — a caller acting on a member somebody else has since changed is refused —
+  and a second precondition meaning the same thing would be one more way for a client to be wrong.
+- **As built, where the implementation and this record differ.** Recorded because the decision governs and the
+  code is the evidence; none of it changes a rule, and section 4 still governs the wording.
+  - There is no `IEffectiveAdministratorReader`. The count is `IRoleAdministrationStore.CountAdministratorsAsync`,
+    called after the explicit flush inside the mutating transaction exactly as described. A port whose one
+    implementation, one caller and one query already live in the role store would have been a name, not a seam.
+  - The transfer route carries no proof field. C4's proof is a server-side row spent by action, so the caller
+    buys it at `POST /api/identity/credentials/reauthenticate` and the transfer names nothing; a field in the
+    request body would have been a second, weaker way to claim the same thing.
+  - The owner check runs **before** the proof is spent, so being refused for not being the owner costs nothing.
+  - `TenantMembership.Reinstate` exists in the Domain and is reachable from no route in this increment. Coming
+    back after a revocation is the acceptance of a fresh invitation, and the rest of that path is C6's.
+  - Task 25 added `POST .../invitations/{invitationId}/resend` and `.../cancel` to
+    [section 6](#6-initial-http-contract). Both handlers already existed and were reachable only through MediatR,
+    which is not "from the real interface"; the routes carry no body and answer bodyless `204`.
 - **Consumed by** Tasks 24 and 25.
 
 ### 14.6 C6 — Finite identity and membership lifecycle, and a fail-closed restore admission guard

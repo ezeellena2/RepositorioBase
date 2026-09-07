@@ -67,6 +67,53 @@ public sealed class TenantMembership : BaseEntity<MembershipId>
         tenant.IncrementAuthorizationVersion();
     }
 
+    /// <summary>Lifts a suspension. It is the reverse of `Suspend` and of nothing else (IA-REQ-053).</summary>
+    public void Reactivate(Tenant tenant)
+    {
+        EnsureTenant(tenant);
+        if (Status != MembershipStatus.Suspended)
+        {
+            throw new InvalidOperationException("Only suspended memberships can be reactivated.");
+        }
+
+        Status = MembershipStatus.Active;
+        tenant.IncrementAuthorizationVersion();
+    }
+
+    /// <summary>
+    /// Ends the membership. It is where an active or suspended member stops being one, and there is deliberately
+    /// no way from here back to `Active`: a person who was removed returns because somebody invited them again,
+    /// which is a different act by a different person.
+    /// </summary>
+    public void Revoke(Tenant tenant)
+    {
+        EnsureTenant(tenant);
+        if (Status is not (MembershipStatus.Active or MembershipStatus.Suspended))
+        {
+            throw new InvalidOperationException("Only active or suspended memberships can be revoked.");
+        }
+
+        Status = MembershipStatus.Revoked;
+        tenant.IncrementAuthorizationVersion();
+    }
+
+    /// <summary>
+    /// Returns a revoked membership to the invitation it came from, as pending rather than as active. What made
+    /// it revoked was a decision; what makes it a member again is the acceptance that follows, and treating those
+    /// as one step would let a removal be undone by whoever did it.
+    /// </summary>
+    public void Reinstate(Tenant tenant)
+    {
+        EnsureTenant(tenant);
+        if (Status != MembershipStatus.Revoked)
+        {
+            throw new InvalidOperationException("Only revoked memberships can be reinstated.");
+        }
+
+        Status = MembershipStatus.PendingConfirmation;
+        tenant.IncrementAuthorizationVersion();
+    }
+
     private void EnsureTenant(Tenant tenant)
     {
         ArgumentNullException.ThrowIfNull(tenant);

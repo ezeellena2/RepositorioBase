@@ -68,6 +68,25 @@ public sealed class OrganizationOwnerAuthorityTests : TestBase
         held.ShouldNotContain(Permissions.PlatformTenantsManage);
     }
 
+    /// <summary>
+    /// The one owner an `Organization` has, named the instant it has an active responsible member. "An
+    /// organization always has an owner" is an application invariant, so the moment it starts being true is worth
+    /// pinning: a registration that produced no owner would leave nobody able to transfer it.
+    /// </summary>
+    [Test]
+    public async Task Registering_an_organization_names_its_owner()
+    {
+        var (identityId, tenantId) = await RegisterAndConfirmAsync();
+
+        using var scope = FunctionalTestSetup.ScopeFactory.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var tenant = await context.Tenants.AsNoTracking().SingleAsync(candidate => candidate.Id == tenantId);
+        var membership = await context.TenantMemberships.AsNoTracking().SingleAsync(candidate => candidate.TenantId == tenantId);
+
+        tenant.OwnerMembershipId.ShouldBe(membership.Id);
+        membership.IdentityId.ShouldBe(identityId);
+    }
+
     private static async Task<(Guid IdentityId, TenantId TenantId)> RegisterAndConfirmAsync()
     {
         await IdentityHttpHarness.SeedPermissionCatalogAsync();

@@ -176,12 +176,20 @@ public sealed class InviteMemberPage(IPage page) : BasePage(page)
 {
     public override string PagePath => $"{BaseUrl}/members/invite";
 
-    public async Task InviteAsync(string email, string roleId)
+    /// <summary>
+    /// The role is chosen by the name a person reads, not by an identifier. The screen offers this
+    /// organization's own roles as checkboxes, so a name that is not offered fails here rather than being sent
+    /// to the server as an unknown identifier.
+    /// </summary>
+    public async Task InviteAsync(string email, string roleName)
     {
         await Page.FillAsync("#invite-email", email);
-        await Page.FillAsync("#invite-roles", roleId);
-        await Page.Locator("button[type='submit']").ClickAsync();
+        await Page.GetByLabel(roleName, new() { Exact = true }).CheckAsync();
+        await Page.GetByRole(AriaRole.Button, new() { Name = "Send invitation" }).ClickAsync();
     }
 
     public Task AssertSentAsync() => Assertions.Expect(Page.GetByRole(AriaRole.Status)).ToContainTextAsync("Invitation sent.");
+
+    public Task AssertOfferStandsAsync(string email) =>
+        Assertions.Expect(Page.GetByRole(AriaRole.Button, new() { Name = $"Resend to {email}" })).ToBeVisibleAsync();
 }

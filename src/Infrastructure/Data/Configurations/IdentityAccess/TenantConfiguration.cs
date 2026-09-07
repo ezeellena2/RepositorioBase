@@ -1,3 +1,4 @@
+using CleanArchitecture.Domain.IdentityAccess.Memberships;
 using CleanArchitecture.Domain.IdentityAccess.Tenants;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
@@ -22,6 +23,18 @@ public sealed class TenantConfiguration : IEntityTypeConfiguration<Tenant>
         // cannot become a place free text — very plausibly personal data — is written into (IA-REQ-043/044).
         builder.Property(tenant => tenant.SuspensionReason).HasConversion<string>().HasMaxLength(32);
         builder.Property(tenant => tenant.SuspendedAt);
+
+        // The one owner, as a reference on the tenant. The foreign key carries the tenant column as well as the
+        // membership one, so PostgreSQL refuses an owner belonging to a different organization rather than
+        // leaving that to a check the application could forget. `Restrict` because deleting the row somebody owns
+        // an organization by is not a thing that should quietly succeed.
+        builder.Property(tenant => tenant.OwnerMembershipId)
+            .HasConversion<Guid?>(id => id.HasValue ? id.Value.Value : null, value => value.HasValue ? MembershipId.From(value.Value) : null);
+        builder.HasOne<TenantMembership>()
+            .WithMany()
+            .HasForeignKey(tenant => new { TenantId = tenant.Id, tenant.OwnerMembershipId })
+            .HasPrincipalKey(membership => new { membership.TenantId, membership.Id })
+            .OnDelete(DeleteBehavior.Restrict);
 
         // Operational timestamps, kept out of the aggregate because no domain rule depends on them. They are
         // stamped by an interceptor and read only by the Platform projection.

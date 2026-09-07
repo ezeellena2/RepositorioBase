@@ -25,6 +25,7 @@ public static class TestApp
     private static bool _forceRegistrationRollbackAfterPersistedEffects;
     private static bool _forceConfirmationRollbackAfterPersistedEffects;
     private static bool _forceInvitationRollbackAfterPersistedEffects;
+    private static bool _forceAssignmentRollbackAfterPersistedEffects;
     private static bool _forceInvitationConcurrencyConflict;
     private static bool _forceSessionValidationConcurrentRevoke;
     private static bool _forceSessionRevokePersistenceFailure;
@@ -95,6 +96,10 @@ public static class TestApp
     public static bool HasPendingInvitationRollback => Volatile.Read(ref _forceInvitationRollbackAfterPersistedEffects);
 
     public static bool ConsumeForcedInvitationRollbackAfterPersistedEffects() => Interlocked.Exchange(ref _forceInvitationRollbackAfterPersistedEffects, false);
+
+    public static bool HasPendingAssignmentRollback => Volatile.Read(ref _forceAssignmentRollbackAfterPersistedEffects);
+
+    public static bool ConsumeForcedAssignmentRollbackAfterPersistedEffects() => Interlocked.Exchange(ref _forceAssignmentRollbackAfterPersistedEffects, false);
 
     public static bool ConsumeSessionValidationConcurrentRevoke() => Interlocked.Exchange(ref _forceSessionValidationConcurrentRevoke, false);
 
@@ -331,6 +336,13 @@ public static class TestApp
     /// </summary>
     public static void ForceInvitationRollbackAfterPersistedEffects() => _forceInvitationRollbackAfterPersistedEffects = true;
 
+    /// <summary>
+    /// Fails the next save that carries a membership's role assignments, after the rows have really been written.
+    /// Refusing before the write would satisfy the rollback assertion vacuously; the claim under test is that rows
+    /// which really landed are really taken back, along with the audit and the authorization version (IA-REQ-053).
+    /// </summary>
+    public static void ForceAssignmentRollbackAfterPersistedEffects() => _forceAssignmentRollbackAfterPersistedEffects = true;
+
     public static void SetValidatedOptionalSession(Guid? identityId, string? email, bool isInvalid = false)
     {
         _optionalSessionIdentityId = identityId;
@@ -427,6 +439,7 @@ public static class TestApp
         _forceRegistrationRollbackAfterPersistedEffects = false;
         _forceConfirmationRollbackAfterPersistedEffects = false;
         _forceInvitationRollbackAfterPersistedEffects = false;
+        _forceAssignmentRollbackAfterPersistedEffects = false;
         _forceInvitationConcurrencyConflict = false;
         _forceSessionValidationConcurrentRevoke = false;
         _forceSessionRevokePersistenceFailure = false;

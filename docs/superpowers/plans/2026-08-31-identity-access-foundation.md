@@ -1503,9 +1503,9 @@ npm test --prefix src/Web/ClientApp -- RolesPage.test.jsx
 
 **Request/tenant boundary:** `members.read` lists; `members.manage` changes memberships/withdraws offers; `members.invite` issues/reissues within delegated authority. Transfer uses the approved explicit ownership capability plus current-owner and fresh-proof checks. All administration is active-Organization scoped; route IDs never switch context. Public invite registration and authenticated identity-scoped acceptance preserve existing gates. Personal cannot invite and Organization administrators cannot change another identity's credentials/global state.
 
-- [ ] **RED:** list/edit only same-tenant members; revoke/suspend permissions on the next request without deleting the identity's other memberships. Exercise two concurrent last-admin removals, role edit racing owner transfer, transfer to inactive/foreign member, replayed transfer and self-removal. Assert at least one effective administrator in the committed state, not merely one row named “admin.”
-- [ ] **GREEN:** serialize administrative invariant checks with the mutation; transfer old/new owner state, role assignments, authorization version and audit atomically. Reuse existing invite/reissue/cancel handlers and token-envelope invalidation. Present explicit confirmation for ownership transfer and withdrawal; stale state produces the approved conflict and a refresh path.
-- [ ] **REFACTOR/verify:** add direct `Invitation.Issue` and `Reissue` tests with default `VersionedTokenHash` to close the existing narrow gap. Race accept/cancel/reissue and role widening; exactly one approved outcome survives and superseded mail tokens cannot be delivered or accepted. Inject rollback after real assignment mutation; deny-audit still persists through its independent writer with an exact allowlist. Expected runtime state/audit RED, then atomic administration GREEN.
+- [x] **RED:** list/edit only same-tenant members; revoke/suspend permissions on the next request without deleting the identity's other memberships. Exercise two concurrent last-admin removals, role edit racing owner transfer, transfer to inactive/foreign member, replayed transfer and self-removal. Assert at least one effective administrator in the committed state, not merely one row named “admin.”
+- [x] **GREEN:** serialize administrative invariant checks with the mutation; transfer old/new owner state, role assignments, authorization version and audit atomically. Reuse existing invite/reissue/cancel handlers and token-envelope invalidation. Present explicit confirmation for ownership transfer and withdrawal; stale state produces the approved conflict and a refresh path.
+- [x] **REFACTOR/verify:** add direct `Invitation.Issue` and `Reissue` tests with default `VersionedTokenHash` to close the existing narrow gap. Race accept/cancel/reissue and role widening; exactly one approved outcome survives and superseded mail tokens cannot be delivered or accepted. Inject rollback after real assignment mutation; deny-audit still persists through its independent writer with an exact allowlist. Expected runtime state/audit RED, then atomic administration GREEN.
 
 ```powershell
 dotnet test tests/Domain.UnitTests/Domain.UnitTests.csproj --filter "InvitationTests|RolePermissionTests"
@@ -1513,7 +1513,7 @@ dotnet test tests/Application.FunctionalTests/Application.FunctionalTests.csproj
 npm test --prefix src/Web/ClientApp -- MembersPage.test.jsx
 ```
 
-- [ ] **Done:** every named member/invitation action is reachable and tested, last-owner/admin and delegation invariants survive races, and no operation deletes global identity or modifies another tenant's membership.
+- [x] **Done:** every named member/invitation action is reachable and tested, last-owner/admin and delegation invariants survive races, and no operation deletes global identity or modifies another tenant's membership.
 
 ## Task 26: Implement bounded lifecycle, MFA recovery, retention and restore guards
 

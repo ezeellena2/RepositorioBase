@@ -383,6 +383,76 @@ and confirming the test fails, then restoring it. So was D1's backfill.
 - **`last_administrator_required` on C6's deactivate route stays unreachable**, because that route is C6's and C6
   is not accepted.
 
+## Task 25 — done 2026-09-07
+
+**Visible outcome met:** an administrator opens `/members`, sees who is in the organization and which one owns
+it, changes what a member holds, suspends, reactivates and removes people, and hands the organization over
+deliberately; from `/members/invite` they now offer roles by name, see every standing offer, and reissue or
+withdraw one.
+
+**What was missing rather than broken.** `ResendInvitationCommand` and `CancelInvitationCommand` had existed since
+Task 21 and were reachable only through MediatR — from tests, never from the product. Task 25's outcome says
+"from the real interface", so the two routes were added and the invite screen was rebuilt around them: role
+checkboxes instead of a box asking a person to type GUIDs, and the list of offers next to the form that makes
+them.
+
+| Step | What happened |
+|---|---|
+| RED | `MembershipLifecycleTests` for the transitions and the ownership rule; `MembershipAdministrationTests`, `OwnershipTransferTests` and `MembershipAtomicityTests` over the production HTTP pipeline; two contention cases in `ResendAndCancelInvitationTests`; `MembersPage.test.jsx` and `InviteMemberPage.test.jsx` |
+| GREEN | `TenantMembership.Reactivate`/`Revoke`/`Reinstate`; `Tenant.OwnerMembershipId` with `TransferOwnershipTo` and the `OrganizationOwnership` migration; `IMembershipAdministrationStore` and its store; `MembershipRequests`/`MembershipHandlers`; `MembershipEndpoints` and the two invitation routes; `MembersPage`, the rebuilt `InviteMemberPage` |
+| REFACTOR | `OrganizationScenario` extracted so the role and member suites share one organization harness; the assignment rollback hook added to the save interceptor; the two invitation races moved from ordering to real contention |
+
+**Commands run, all three from the plan.**
+
+```powershell
+dotnet test tests/Domain.UnitTests/Domain.UnitTests.csproj --filter "InvitationTests|RolePermissionTests"
+dotnet test tests/Application.FunctionalTests/Application.FunctionalTests.csproj --filter "MembershipAdministrationTests|OwnershipTransferTests|ResendAndCancelInvitationTests|RoleMembershipAuditTests"
+npm test --prefix src/Web/ClientApp -- MembersPage.test.jsx
+```
+
+Whole solution afterwards: Domain 191, Application.Unit 196, Infrastructure.Integration 261,
+Application.Functional 527, browser acceptance 21; client 192 with lint clean; Release build 0 errors.
+
+**Contracts proved.** A member list says who is in the organization, what each holds and which one owns it, and
+carries a name and an address and nothing else about the person (D4). Handing somebody a role is compared against
+the actor's whole conferred set, not the difference, so a role conferring one code the actor lacks is refused
+even when everything else in it is theirs. Every role change spends a proof and is refused without one (D2). The
+owner's own membership cannot be suspended or revoked, and transferring first is what makes them removable — the
+one way out of a rule that would otherwise be a trap. Ownership moves only for the current owner, only to an
+active member of the same organization, only with a live proof and the row's own `version`; another organization's
+membership is `404` rather than `403`; a repeat of a transfer that already holds answers the same `204` and
+records nothing new; and being refused for not being the owner spends no proof, proved by using the surviving one.
+A transfer is audited and notified through one outbox message carrying two membership ids, no address and no
+`OutboxSecret`. A failure after the assignment rows have really landed takes the rows, the audit and the
+authorization version back together, while the refusal that never ran leaves exactly `{ code, outcome }` through
+the denial writer's own scope. Withdrawing and reissuing one offer at the same time settle it once, and widening a
+role while its offer is being reissued leaves no live offer of it and no deliverable token — whichever of the two
+commits first.
+
+**Evidence rather than green.** Two of the first cases written were wrong and said so: one read the member list as
+an owner whose administration the case had just taken away and got a truthful `403`, and one built a "wider" role
+out of permissions the actor already held, so the ceiling had nothing to refuse. Both were fixed rather than
+relaxed. The widening-versus-reissue race was left honest in the same way: the widening really can lose on
+`Tenants.xmin`, so the test asserts the rule holds on the retry instead of pretending the loser cannot exist.
+
+**Named limitations.**
+
+- **`Reinstate` is unreachable.** The transition exists and is tested in the Domain; coming back after a
+  revocation is the acceptance of a fresh invitation, and the rest of that path is C6's and Task 26's.
+- **No route reads a single member.** `GET .../members/{membershipId}` was never in C5's table; the list is the
+  read, and the store's `FindAsync` exists to answer the write path.
+- **Ownership transfer sends no mail yet.** The outbox message is written in the same transaction, as
+  IA-REQ-027 requires; `identity.ownership.transferred.notice.requested` has no delivery handler, so the notice is
+  recorded and not yet delivered.
+- **C6 is still not accepted**, so deactivation, reactivation and the lifecycle half of membership stay unbuilt,
+  and `last_administrator_required` on C6's deactivate route stays unreachable.
+- **The plan's file list was a forecast and three entries did not survive it.** `TransferOwnership.cs` and
+  `TransferOwnershipHandler.cs` are not separate files: the transfer is one of five membership requests and lives
+  with them, because splitting the one that shares the floor check and the tenant guard from the four that use
+  the same rules would have meant copying them. `MembershipRole.cs` and `Invitation.cs` needed no change —
+  assignment is a whole-set replacement over existing rows and the invitation aggregate already had every
+  transition this task drives.
+
 ### Proposed requirements and the tasks they unblock
 
 Each entry proposes its own requirement numbers. IA-REQ-048 was accepted on 2026-09-06 and is normative in

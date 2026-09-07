@@ -110,6 +110,31 @@ export function createIdentityClient(transport = createApiTransport()) {
       body: { version },
     }),
 
+    // Member administration. `version` is the row's own concurrency token, echoed back so a change made against
+    // a member somebody else has since altered is refused rather than silently applied over theirs.
+    listMembers: (tenantId) => send(`/api/tenants/${encodeURIComponent(tenantId)}/members`, {
+      expect: ['items', 'nextCursor'],
+    }),
+    listTenantInvitations: (tenantId) => send(`/api/tenants/${encodeURIComponent(tenantId)}/invitations`, {
+      expect: ['items', 'nextCursor'],
+    }),
+    updateMemberRoles: (tenantId, membershipId, roleIds, version) =>
+      send(`/api/tenants/${encodeURIComponent(tenantId)}/members/${encodeURIComponent(membershipId)}/roles`, {
+        method: 'PUT',
+        body: { roleIds, version },
+        expect: ['membershipId', 'identityId', 'displayName', 'normalizedEmail', 'status', 'roleIds', 'isOwner', 'version'],
+      }),
+    changeMemberStatus: (tenantId, membershipId, change, version) =>
+      send(`/api/tenants/${encodeURIComponent(tenantId)}/members/${encodeURIComponent(membershipId)}/${encodeURIComponent(change)}`, {
+        method: 'POST',
+        body: { version },
+      }),
+    transferOwnership: (tenantId, toMembershipId, version) =>
+      send(`/api/tenants/${encodeURIComponent(tenantId)}/ownership/transfer`, {
+        method: 'POST',
+        body: { toMembershipId, version },
+      }),
+
     registerPersonal: (request) => send('/api/identity/personal/register', { method: 'POST', body: request }),
     createPersonalContext: (request) => send('/api/identity/personal', { method: 'POST', body: request }),
     getPersonalProfile: () => send('/api/identity/profile', {
@@ -126,6 +151,13 @@ export function createIdentityClient(transport = createApiTransport()) {
       body: { email, roleIds },
       expect: ['invitationId', 'expiresAt'],
     }),
+
+    // Reissuing rotates the token in the recipient's envelope and hands nothing back here; withdrawing ends the
+    // offer. Both name the invitation in the route and carry no body (IA-REQ-015/017/018).
+    resendInvitation: (tenantId, invitationId) =>
+      send(`/api/tenants/${encodeURIComponent(tenantId)}/invitations/${encodeURIComponent(invitationId)}/resend`, { method: 'POST' }),
+    cancelInvitation: (tenantId, invitationId) =>
+      send(`/api/tenants/${encodeURIComponent(tenantId)}/invitations/${encodeURIComponent(invitationId)}/cancel`, { method: 'POST' }),
 
     registerFromInvitation: (token, password) => send('/api/invitations/register', { method: 'POST', body: { token, password } }),
 
