@@ -24,6 +24,7 @@ import {
   RecoverPlatformBootstrapPage,
   RegisterPlatformInviteePage
 } from "./features/platform/invitations/PlatformInvitationPages";
+import { MfaRecoveryPage } from "./features/platform/invitations/MfaRecoveryPage";
 
 // The public routes are the ones a visitor reaches without a session: signing in, registering an organization,
 // the two halves of an invitation, and the Platform onboarding pages — a Platform invitee has no account yet,
@@ -67,6 +68,7 @@ const AppRoutes = [
   { path: '/platform/invitations/confirm', element: <ConfirmPlatformInviteePage /> },
   { path: '/platform/bootstrap/recover', element: <RecoverPlatformBootstrapPage /> },
   { path: '/platform/mfa', element: <ProtectedRoute><PlatformMfaEnrollmentPage /></ProtectedRoute> },
+  { path: '/platform/mfa/recover', element: <ProtectedRoute><MfaRecoveryPage /></ProtectedRoute> },
   { path: '/platform', element: <ProtectedRoute><PlatformPanel /></ProtectedRoute> }
 ];
 

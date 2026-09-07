@@ -51,6 +51,14 @@ export function createPlatformClient(transport) {
 
     stepUp: (code) => send('/api/platform/mfa/step-up', { method: 'POST', body: { code } }),
 
+    // Replacing a lost factor. The answer is shown once and there is no route that reads it back, so nothing
+    // here caches it and nothing stores it (IA-REQ-025, IA-REQ-041).
+    recoverMfa: (recoveryCode) => send('/api/platform/mfa/recover', {
+      method: 'POST',
+      body: { recoveryCode },
+      expect: ['sharedKey', 'provisioningUri', 'recoveryCodes'],
+    }),
+
     listOrganizations: (options) => send(page('/api/platform/organizations', options), { expect: DIRECTORY }),
     listIdentities: (options) => send(page('/api/platform/identities', options), { expect: DIRECTORY }),
     listAdministrators: (options) => send(page('/api/platform/admins', options), { expect: DIRECTORY }),
