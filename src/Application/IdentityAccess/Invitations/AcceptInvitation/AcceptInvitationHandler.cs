@@ -99,7 +99,12 @@ public sealed class AcceptInvitationCommandHandler(
             return Invalid();
         }
 
-        if (await context.TenantMemberships.AnyAsync(candidate => candidate.TenantId == tenant.Id && candidate.IdentityId == identityId, cancellationToken))
+        // A membership that already exists refuses the acceptance — unless it is `Revoked`, which is the record of
+        // a removal rather than a place in the organization. That row is the one this acceptance returns to life,
+        // because the tenant's unique membership index means there can never be a second one (IA-REQ-053).
+        var existing = await context.TenantMemberships
+            .SingleOrDefaultAsync(candidate => candidate.TenantId == tenant.Id && candidate.IdentityId == identityId, cancellationToken);
+        if (existing is not null && existing.Status != MembershipStatus.Revoked)
         {
             return Result<AcceptedInvitation>.Failure(IdentityAccessErrors.InvitationConflict());
         }
@@ -113,8 +118,21 @@ public sealed class AcceptInvitationCommandHandler(
             return Invalid();
         }
 
-        var membership = TenantMembership.CreateInvited(tenant, identityId);
-        context.TenantMemberships.Add(membership);
+        TenantMembership membership;
+        if (existing is null)
+        {
+            membership = TenantMembership.CreateInvited(tenant, identityId);
+            context.TenantMemberships.Add(membership);
+        }
+        else
+        {
+            // Returning is not the undoing of the removal. The membership comes back through the offer that was
+            // made — pending first, then activated by this acceptance — and it comes back with nothing: revoking
+            // deleted every assignment it held, so what it holds now is exactly what this offer names.
+            membership = existing;
+            membership.Reinstate(tenant);
+        }
+
         membership.Activate(tenant);
         roleAssigner.Assign(tenant, membership, offered.Roles);
 
