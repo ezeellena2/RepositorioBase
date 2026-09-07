@@ -20,7 +20,7 @@ public sealed class PasswordResetRequestConfiguration : IEntityTypeConfiguration
             // digest is not a hash of anything this system produced.
             table.HasCheckConstraint(
                 "CK_PasswordResetRequests_Lifecycle",
-                "\"Version\" > 0 AND \"ExpiresAt\" > \"IssuedAt\" AND (\"Status\" = 'Pending') = (\"SettledAt\" IS NULL) AND \"TokenHash\" ~ '^v1:[A-Za-z0-9+/]{42}[AEIMQUYcgkosw048]=$'");
+                "\"Version\" > 0 AND \"SecurityVersion\" >= 0 AND \"ExpiresAt\" > \"IssuedAt\" AND (\"Status\" = 'Pending') = (\"SettledAt\" IS NULL) AND \"TokenHash\" ~ '^v1:[A-Za-z0-9+/]{42}[AEIMQUYcgkosw048]=$'");
         });
 
         builder.HasKey(request => request.Id);
@@ -33,6 +33,7 @@ public sealed class PasswordResetRequestConfiguration : IEntityTypeConfiguration
         builder.Property(request => request.IssuedAt).IsRequired();
         builder.Property(request => request.ExpiresAt).IsRequired();
         builder.Property(request => request.SettledAt);
+        builder.Property(request => request.SecurityVersion).IsRequired();
         builder.Property(request => request.Version).IsConcurrencyToken().IsRequired();
 
         // One live link per identity. Reissuing supersedes rather than stacks, so there is never a second link a

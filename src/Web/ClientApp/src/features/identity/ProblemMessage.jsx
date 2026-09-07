@@ -6,6 +6,7 @@ const MESSAGES = {
   antiforgery_validation_failed: 'Your session moved on. Try that again.',
   authentication_required: 'Sign in to continue.',
   invalid_session: 'Your session is no longer valid. Sign in again.',
+  credential_superseded: 'Your password changed while you were signing in. Sign in again with the new one.',
   permission_denied: 'You do not have permission to do that here.',
   not_found: 'That is not available.',
   invalid_registration: 'Check the details and try again.',

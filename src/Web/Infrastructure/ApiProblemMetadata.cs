@@ -46,6 +46,7 @@ public static class ApiProblemMetadata
     /// The action needs a proof this session does not hold. It is `401` rather than `409` because retrying the
     /// same proof cannot succeed: the caller has to prove again (IA-REQ-051).
     /// </summary>
+    public static readonly ApiProblemContract CredentialSuperseded = new(StatusCodes.Status401Unauthorized, "credential_superseded");
     public static readonly ApiProblemContract RecentProofRequired = new(StatusCodes.Status401Unauthorized, "recent_proof_required");
 
     public static readonly ApiProblemContract InvalidCredentialProof = new(StatusCodes.Status400BadRequest, "invalid_credential_proof");

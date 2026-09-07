@@ -13,6 +13,7 @@ public sealed class ChangePasswordCommandHandler(
     IIdentityCredentialService credentials,
     IRecentIdentityProofStore proofs,
     ISessionIssuer issuer,
+    ISessionLock sessionLock,
     ICurrentSession currentSession,
     TimeProvider timeProvider) : IRequestHandler<ChangePasswordCommand, Result<ReplacedSession>>
 {
@@ -29,6 +30,11 @@ public sealed class ChangePasswordCommandHandler(
 
         return await transaction.ExecuteAsync(async ct =>
         {
+            // Taken before anything is read or written, so a sign-in that is validating this identity's old
+            // password right now cannot issue its session between this version advance and the revocation below.
+            if (!await sessionLock.TryAcquireAsync(identityId, ct))
+                return Result<ReplacedSession>.Failure(IdentityAccessErrors.SessionLockUnavailable());
+
             // The proof is spent first. Validating the policy before asking for authority would tell an unproved
             // caller which passwords this deployment accepts.
             if (!await proofs.TryConsumeAsync(identityId, actingSession, ProofActions.PasswordChange, ct))

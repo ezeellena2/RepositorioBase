@@ -193,10 +193,14 @@ public sealed class OpenApiContractTests : TestBase
         create.TryGetProperty("204", out _).ShouldBeTrue();
         create.GetProperty("204").TryGetProperty("content", out _).ShouldBeFalse();
         AssertProblemCodes(create, "400", "antiforgery_validation_failed", "invalid_request");
+        // The one non-neutral refusal a sign-in can reach: the credential it validated was replaced before the
+        // session could be issued, so no session exists to hand back. A stranger cannot provoke it — moving an
+        // identity's security version requires spending that identity's own proof or reset link (C2/C4).
+        AssertProblemCodes(create, "401", "credential_superseded");
         AssertProblemCodes(create, "429", "rate_limit_exceeded");
         create.GetProperty("429").GetProperty("headers").TryGetProperty("Retry-After", out _).ShouldBeTrue("the login 429 must advertise Retry-After");
         AssertProblemCodes(create, "500", "internal_server_error");
-        foreach (var status in new[] { "401", "403", "404", "409" }) create.TryGetProperty(status, out _).ShouldBeFalse($"POST sessions must not advertise {status}.");
+        foreach (var status in new[] { "403", "404", "409" }) create.TryGetProperty(status, out _).ShouldBeFalse($"POST sessions must not advertise {status}.");
 
         var revoke = paths.GetProperty("/api/identity/sessions/current").GetProperty("delete").GetProperty("responses");
         revoke.TryGetProperty("204", out _).ShouldBeTrue();

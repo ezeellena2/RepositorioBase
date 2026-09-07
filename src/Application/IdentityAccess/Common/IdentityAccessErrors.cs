@@ -111,6 +111,14 @@ public static class IdentityAccessErrors
     /// The action needs a proof this session does not hold: never issued, already spent, expired, or invalidated by
     /// a credential change. It is terminal rather than a conflict — retrying the same proof cannot succeed.
     /// </summary>
+    /// <summary>
+    /// The credential this sign-in validated was replaced before the session could be issued. It is the one
+    /// sign-in refusal that is not neutral, and it can be: reaching it requires the correct old password AND a
+    /// credential change only that identity could have made, so it tells a stranger nothing (C2/C4).
+    /// </summary>
+    public static ApplicationError CredentialSuperseded() =>
+        new("credential_superseded", ApplicationErrorCategory.Authentication, "Your password changed while you were signing in. Sign in again.");
+
     public static ApplicationError RecentProofRequired() =>
         new("recent_proof_required", ApplicationErrorCategory.Authentication, "This operation requires a recent identity proof.");
 

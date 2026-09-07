@@ -20,7 +20,7 @@ internal static class SessionEndpoints
         group.MapPost("/sessions", Create)
             .RequireRateLimiting(LoginRateLimitPartitioner.PolicyName)
             .Produces(StatusCodes.Status204NoContent)
-            .WithApiProblemDetails(ApiProblemMetadata.AntiforgeryValidationFailed, ApiProblemMetadata.InvalidRequest, ApiProblemMetadata.RateLimitExceeded, ApiProblemMetadata.InternalServerError)
+            .WithApiProblemDetails(ApiProblemMetadata.AntiforgeryValidationFailed, ApiProblemMetadata.InvalidRequest, ApiProblemMetadata.CredentialSuperseded, ApiProblemMetadata.RateLimitExceeded, ApiProblemMetadata.InternalServerError)
             .WithBodyBindingFailureCode(ApiProblemMetadata.InvalidRequest.Code);
         group.MapGet("/sessions", List)
             .RequireAuthorization()
@@ -86,7 +86,17 @@ internal static class SessionEndpoints
         var antiforgeryFailure = await Identity.ValidateAntiforgery(context, antiforgery, problems);
         if (antiforgeryFailure is not null) return antiforgeryFailure;
         var result = await sender.Send(command, context.RequestAborted);
-        if (result.IsFailure) return Results.NoContent();
+        if (result.IsFailure)
+        {
+            // Neutral for everything a stranger can provoke — a wrong password, an unknown address, an
+            // unconfirmed account — and explicit for the one refusal only a valid credential can reach: the
+            // credential was replaced while this very sign-in was being checked, so the session it would have
+            // issued must not exist and the caller is told so rather than handed a cookie (C2/C4).
+            return result.Error!.Code == ApiProblemMetadata.CredentialSuperseded.Code
+                ? problems.ToHttpResult(result.Error)
+                : Results.NoContent();
+        }
+
         var claims = new[]
         {
             new Claim(ClaimTypes.NameIdentifier, result.Value!.IdentityId.ToString()),

@@ -16,6 +16,7 @@ public sealed class RequestPasswordRecoveryCommandHandler(
     IApplicationTransaction transaction,
     IApplicationDbContext context,
     IIdentityAccountService identities,
+    IRecentIdentityProofStore proofs,
     ISecureTokenGenerator tokens,
     ITokenHasher tokenHasher,
     IOutboxSecretWriter secretWriter,
@@ -48,7 +49,11 @@ public sealed class RequestPasswordRecoveryCommandHandler(
             await SupersedePendingAsync(identity.Id, now, ct);
 
             var rawToken = tokens.Generate();
-            var reset = PasswordResetRequest.Issue(identity.Id, tokenHasher.Of(rawToken), now, Lifetime);
+
+            // The link is stamped with the version it is about. Asking for one changes no credential, so this
+            // read must not advance anything: supersession of an earlier link stays the explicit rule above.
+            var securityVersion = await proofs.CurrentVersionAsync(identity.Id, ct);
+            var reset = PasswordResetRequest.Issue(identity.Id, tokenHasher.Of(rawToken), now, Lifetime, securityVersion);
             var outbox = OutboxMessage.Create(MessageType, JsonSerializer.Serialize(new Envelope(reset.Id)), now);
             context.PasswordResetRequests.Add(reset);
             context.OutboxMessages.Add(outbox);
@@ -110,9 +115,11 @@ public sealed class ResetPasswordCommandHandler(
             var now = timeProvider.GetUtcNow();
             var reset = await context.PasswordResetRequests.SingleOrDefaultAsync(candidate => candidate.TokenHash == hash, ct);
 
-            // Unknown, spent, superseded and expired are one answer. Which of them it was is state the holder of a
-            // dead link was never shown.
-            if (reset is null || !reset.IsPendingAt(now)) return Result.Failure(IdentityAccessErrors.InvalidCredentialToken());
+            // Unknown, spent, superseded, expired and no-longer-about-this-credential are one answer. Which of
+            // them it was is state the holder of a dead link was never shown. The comparison happens here, before
+            // anything is written, so a link that lost its race leaves the password it would have replaced alone.
+            if (reset is null || !reset.IsPendingAt(now, await proofs.CurrentVersionAsync(reset.IdentityId, ct)))
+                return Result.Failure(IdentityAccessErrors.InvalidCredentialToken());
 
             var applied = await credentials.ReplacePasswordAsync(reset.IdentityId, request.NewPassword, ct);
             if (!applied.Succeeded) return Result.Failure(IdentityAccessErrors.PasswordPolicyFailed(applied.Errors));
