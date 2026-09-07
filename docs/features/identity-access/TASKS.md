@@ -446,12 +446,69 @@ relaxed. The widening-versus-reissue race was left honest in the same way: the w
   recorded and not yet delivered.
 - **C6 is still not accepted**, so deactivation, reactivation and the lifecycle half of membership stay unbuilt,
   and `last_administrator_required` on C6's deactivate route stays unreachable.
+- **Reopened and closed again on 2026-09-07.** A review of Tasks 21–25 found that four of this task's own rules
+  were stated but not enforced — the membership version, the return of a revoked member, the members screen under
+  `members.read` alone, and the continuation of every directory. They are fixed and pinned in
+  [the remediation section](#tasks-2125-review-remediation--done-2026-09-07); this task is closed on that evidence.
 - **The plan's file list was a forecast and three entries did not survive it.** `TransferOwnership.cs` and
   `TransferOwnershipHandler.cs` are not separate files: the transfer is one of five membership requests and lives
   with them, because splitting the one that shares the floor check and the tenant guard from the four that use
   the same rules would have meant copying them. `MembershipRole.cs` and `Invitation.cs` needed no change —
   assignment is a whole-set replacement over existing rows and the invitation aggregate already had every
   transition this task drives.
+
+## Tasks 21–25 review remediation — done 2026-09-07
+
+A review of Tasks 21–25 produced eight directed reproductions. They are kept as they were written and were used
+as the RED: **15 of 16 backend cases and 11 of 11 client cases failed** before any production code changed. Task 25
+is reopened by this section and closed again at the end of it, because every one of those cases is now green.
+
+Nothing here is a new requirement. Each item is a rule that was already stated and was not actually enforced, and
+each is recorded against the task that stated it.
+
+| # | Task | What was actually wrong | What now enforces it |
+|---|---|---|---|
+| R1A | 21, 22 | A sign-in validated the password, then issued a session **after** a password change or a recovery reset had already committed. The change revokes the sessions that exist when it runs, and this one did not exist yet, so it could not be revoked by anything the change did — the login had to refuse itself. It did not, and answered `204` with a working cookie. | The identity's security version is read **before** validation and compared again inside the issuing transaction, under the same per-identity advisory lock that credential changes now take first. Two interleavings survive: the change commits first and the comparison refuses, or the login commits first and the change's own revocation reaches it. |
+| R1B | 22 | A recovery link issued before an authenticated password change stayed usable, so a link mailed earlier silently undid a change made later. | `PasswordResetRequest` records the security version it was minted against and is refused when that version has moved. Unknown, spent, superseded, expired and no-longer-about-this-credential remain one answer. |
+| R2 | 23 | A provider proof was issued for any validly signed ID token. `prompt=login` is a request, and the reply never says whether it was honoured — so a round trip proved the browser held a provider session, not that a person was present. | The proof challenge sends `max_age`, which obliges the ID token to carry `auth_time`, and the callback refuses when that claim is absent, unreadable, future-dated beyond clock skew or older than five minutes. Fail-closed in every direction. |
+| R3 | 24 | Cancelling the offers of a widened role can only see committed offers. An offer validated but not yet inserted was invisible, so an invitation and a widening could both commit and the recipient ended up holding a permission the inviter never held. | A per-tenant role-authority advisory lock, taken first (and waiting) by a role change, taken last (and never waiting) by an offer, which then re-decides under it and answers `invitation_conflict` if it cannot. |
+| R4A | 24 | Editing only a role's permissions never rewrote the role row, so its `xmin` — the `version` the contract hands out — never moved and a second administrator's stale edit overwrote the first. | The write path rewrites the owning row in the same transaction, which moves the version and puts the token in the UPDATE's own `WHERE`. |
+| R4B | 25 | The same defect on `PUT .../members/{id}/roles`. | The same fix on the membership row. |
+| R5 | 25 | C5 allows `Revoked → Active` only through a fresh invitation, and both the issue path and acceptance refused anybody holding a membership row of any status — so a removed person could never return. | A `Revoked` row no longer blocks an offer, and accepting reinstates that same membership with only the newly offered roles. |
+| R6A | 23, 24, 25 | Every sensitive screen gated its buttons on a typed password, so an identity that arrived through Google could not begin an operation it held the permission for. | One shared `useIdentityProof` seam: it knows whether there is a password and which provider is linked, and either spends the password or starts a provider round trip bound to the same action. |
+| R6B | 25 | `/members` read the roster and the role catalogue in one `Promise.all`, so a session holding `members.read` without `roles.read` lost the whole screen to a `403` on the courtesy read. | On that screen `listMembers` is the only read that owns the error. Every other read answers `null` on refusal and is rendered as an absence. |
+| R6C | 24, 25 | The continuation page answered `500` — `x.Id.Value > cursor` is a member access on a value-converted property and EF cannot translate it — and no screen offered a way to ask for one. | The comparison is written through the identifier itself (`MembershipId` already documented the pattern; `RoleId` and `InvitationId` now match it), and all three directories offer a continuation that appends. |
+
+**Two defects were found by working rather than by the reproductions**, and both are fixed here.
+
+- Moving the cursor comparison to `RoleId.From(...)` made an all-zero cursor throw, because the identifiers refuse
+  an empty value — turning a well-formed guess into a `500`. Both decoders now read it as "not a position", which
+  is what their own comments already promised.
+- The first attempt at R1A reused the code `invalid_session` for the new refusal. That code is what the **neutral**
+  sign-in failure already returns, so every wrong password became a `401`: fourteen tests said so at once. The
+  refusal has its own `credential_superseded` code, and neutrality is verified by the tests that existed for it.
+
+**Commands run.** The eight reproductions, then every suite.
+
+```powershell
+dotnet test tests/Application.FunctionalTests/Application.FunctionalTests.csproj --filter "Revalidation|DelegatedAdministrationRevalidationTests|AdministrationDirectoryRevalidationTests"
+npm test --prefix src/Web/ClientApp -- IdentityAccessReviewRevalidation.test.jsx
+```
+
+**Named limitations that remain.**
+
+- **Real Google is still unverified, and that is not a code question.** The design relies on OIDC Core 1.0 §3.1.2.1:
+  once a request carries `max_age`, the ID token MUST include `auth_time`. Whether Google honours it can only be
+  established by a human running one real round trip with real credentials, which this work has not done and must
+  not fake. R2 is proved against a controlled provider that models a conformant one. **If that observation comes
+  back negative**, a single product decision is owed and must not be resolved by softening the check: either
+  provider proof is retired for providers that will not return `auth_time` (and a provider-only identity must set
+  a password before any sensitive change), or IA-REQ-051 is amended to name a second, explicitly weaker form of
+  evidence. The second is a documented weakening of C4 and has to be signed off as one.
+- **`TransferOwnershipAsync` echoes the recipient membership's version but writes only the tenant row**, so that
+  membership's exposed version does not move even though the member view's `isOwner` flips. It is the same class
+  of defect as R4 and was outside the reproductions' scope; it is recorded here rather than fixed quietly.
+- **C6 is still not accepted**, so nothing about identity lifecycle changed, and Task 26 remains blocked.
 
 ### Proposed requirements and the tasks they unblock
 

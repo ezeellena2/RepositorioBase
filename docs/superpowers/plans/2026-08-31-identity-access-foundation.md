@@ -1514,6 +1514,11 @@ npm test --prefix src/Web/ClientApp -- MembersPage.test.jsx
 ```
 
 - [x] **Done:** every named member/invitation action is reachable and tested, last-owner/admin and delegation invariants survive races, and no operation deletes global identity or modifies another tenant's membership.
+- [x] **Remediation (2026-09-07):** a review of Tasks 21-25 showed that four of this task's own rules were stated
+  but not enforced - the membership version did not move when only assignments changed, a revoked member could
+  never return, `/members` needed `roles.read` it should not have needed, and no directory could be paged past
+  its first hundred records. All are fixed against the review's own reproductions; see
+  `docs/features/identity-access/TASKS.md`, "Tasks 21-25 review remediation".
 
 ## Task 26: Implement bounded lifecycle, MFA recovery, retention and restore guards
 
