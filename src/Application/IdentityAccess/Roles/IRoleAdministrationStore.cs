@@ -69,16 +69,31 @@ public interface IRoleAdministrationStore
     Task<IReadOnlyList<string>> GrantableCodesAsync(TenantId tenantId, Guid actorId, CancellationToken cancellationToken);
 
     /// <summary>
-    /// How many distinct identities hold both halves of administration, over the state the transaction has
-    /// flushed. Lockout is excluded on purpose: it is a temporary condition, and counting it would let an
-    /// administrator make a tenant unadministrable by mistyping a password.
+    /// How many distinct identities could actually administer this tenant, over the state the transaction has
+    /// flushed: holding both halves, through an active membership and a role that still confers them, and in the
+    /// one account state that may sign in.
+    /// <para>
+    /// The account state belongs in the count because a membership outlives its identity being parked or
+    /// suspended — that is deliberate, so the way back restores authority instead of rebuilding it — and an
+    /// administrator nobody can sign in as is not a floor, it is the appearance of one.
+    /// </para>
+    /// <para>
+    /// Lockout is excluded on purpose, and stays excluded: it is a temporary condition that expires by itself,
+    /// and counting it would let an administrator make a tenant unadministrable by mistyping a password.
+    /// </para>
     /// </summary>
     Task<int> CountAdministratorsAsync(TenantId tenantId, CancellationToken cancellationToken);
 
     /// <summary>
     /// The same count, asked as "how many would be left if this identity could no longer act". Parking an account
-    /// leaves its memberships exactly where they were, so the count over the rows cannot notice — which is
-    /// precisely why the question has to be asked before the state changes rather than after it (IA-REQ-054).
+    /// leaves its memberships exactly where they were, so the leaving identity is still countable at the moment
+    /// the question is asked — which is precisely why the question has to be asked before the state changes, and
+    /// why it has to name who is leaving rather than trusting the rows to have noticed (IA-REQ-054).
+    /// <para>
+    /// Naming one identity is enough for one departure and not for two at once: two of them each ask about
+    /// themselves and each read the other as their replacement. Coordinating that is the caller's, and the
+    /// deactivation handler does it by taking the tenant's role-authority lock before it asks.
+    /// </para>
     /// </summary>
     Task<int> CountAdministratorsExceptAsync(TenantId tenantId, Guid identityId, CancellationToken cancellationToken);
 

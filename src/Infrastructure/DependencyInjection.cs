@@ -138,6 +138,8 @@ public static class DependencyInjection
         builder.Services.AddScoped<IOutboxDeliveryHandler, PersonalIntentConfirmationDeliveryHandler>();
         builder.Services.AddScoped<IOutboxDeliveryHandler, PersonalIntentSignInNoticeDeliveryHandler>();
         builder.Services.AddScoped<IOutboxDeliveryHandler, PasswordRecoveryDeliveryHandler>();
+        builder.Services.AddScoped<IOutboxDeliveryHandler, AccountReactivationDeliveryHandler>();
+        builder.Services.AddScoped<IOutboxDeliveryHandler, AccountLifecycleNoticeDeliveryHandler>();
         builder.Services.AddScoped<IOutboxDeliveryHandler, PlatformInvitationDeliveryHandler>();
         builder.Services.AddScoped<IOutboxDeliveryHandler, PlatformConfirmationDeliveryHandler>();
         builder.Services.AddScoped<IOutboxDeliveryHandler, PlatformSignInNoticeDeliveryHandler>();

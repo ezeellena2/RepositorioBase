@@ -1,6 +1,7 @@
 using System.Text.Json;
 using CleanArchitecture.Application.Common.Interfaces;
 using CleanArchitecture.Application.Common.Models;
+using CleanArchitecture.Application.IdentityAccess.Authorization;
 using CleanArchitecture.Application.IdentityAccess.Common;
 using CleanArchitecture.Application.IdentityAccess.Credentials;
 using CleanArchitecture.Application.IdentityAccess.Credentials.PasswordRecovery;
@@ -36,6 +37,7 @@ public sealed class DeactivateAccountCommandHandler(
     IRoleAdministrationStore roles,
     IPlatformMembershipActivator platformMemberships,
     ISessionLock sessionLock,
+    IRoleAuthorityLock authorityLock,
     ICurrentSession currentSession,
     TimeProvider timeProvider) : IRequestHandler<DeactivateAccountCommand, Result>
 {
@@ -92,34 +94,12 @@ public sealed class DeactivateAccountCommandHandler(
     }
 
     /// <summary>
-    /// Whether any `Organization` this person actively belongs to would be left with nobody holding both halves
-    /// of administration. Asked before the state moves, because parking leaves the membership rows untouched and
-    /// a count over those rows would therefore answer the same before and after.
+    /// The same question an operator's suspension asks, asked from the same place. Both routes stop an account
+    /// and both can empty an organization; keeping one copy of the question is what stops the two answers
+    /// drifting apart.
     /// </summary>
-    private async Task<bool> OrphansAnOrganizationAsync(Guid identityId, CancellationToken cancellationToken)
-    {
-        var tenants = await (
-            from membership in context.TenantMemberships
-            join tenant in context.Tenants on membership.TenantId equals tenant.Id
-            where membership.IdentityId == identityId
-                && membership.Status == MembershipStatus.Active
-                && tenant.Type == TenantType.Organization
-                && tenant.Status == TenantStatus.Active
-            select membership.TenantId)
-            .Distinct()
-            .ToListAsync(cancellationToken);
-
-        foreach (var tenantId in tenants)
-        {
-            // Only an organization this person actually administers can be orphaned by their leaving. One where
-            // they hold nothing loses nothing, and refusing there would strand somebody over a membership that
-            // never conferred anything.
-            if (await roles.CountAdministratorsAsync(tenantId, cancellationToken) == 0) continue;
-            if (await roles.CountAdministratorsExceptAsync(tenantId, identityId, cancellationToken) == 0) return true;
-        }
-
-        return false;
-    }
+    private Task<bool> OrphansAnOrganizationAsync(Guid identityId, CancellationToken cancellationToken) =>
+        IdentityLifecycleEffects.WouldOrphanAnOrganizationAsync(context, roles, authorityLock, identityId, cancellationToken);
 
     private Task<bool> OrphansThePlatformAsync(Guid identityId, CancellationToken cancellationToken) =>
         IdentityLifecycleEffects.WouldOrphanThePlatformAsync(context, platformMemberships, identityId, cancellationToken);

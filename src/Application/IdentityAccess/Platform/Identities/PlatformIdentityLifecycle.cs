@@ -7,6 +7,7 @@ using CleanArchitecture.Application.IdentityAccess.Common;
 using CleanArchitecture.Application.IdentityAccess.Credentials;
 using CleanArchitecture.Application.IdentityAccess.Lifecycle;
 using CleanArchitecture.Application.IdentityAccess.Platform.Administrators;
+using CleanArchitecture.Application.IdentityAccess.Roles;
 using CleanArchitecture.Application.IdentityAccess.Sessions;
 using CleanArchitecture.Domain.IdentityAccess.Auditing;
 using CleanArchitecture.Domain.IdentityAccess.Identities;
@@ -44,6 +45,8 @@ public sealed class SuspendIdentityCommandHandler(
     IIdentityLifecycleStore lifecycle,
     IRecentIdentityProofStore proofs,
     IPlatformMembershipActivator platformMemberships,
+    IRoleAdministrationStore roles,
+    IRoleAuthorityLock authorityLock,
     ISessionLock sessionLock,
     TimeProvider timeProvider) : IRequestHandler<SuspendIdentityCommand, Result>
 {
@@ -73,6 +76,17 @@ public sealed class SuspendIdentityCommandHandler(
             // person being stopped, which would otherwise issue a session after the revocation below has run.
             if (!await sessionLock.TryAcquireAsync(request.IdentityId, ct))
                 return Result.Failure(IdentityAccessErrors.SessionLockUnavailable());
+
+            // Asked after the session lock and before the state moves, in the same order the self-service route
+            // takes them, so the two never reach for a session lock and a tenant lock in opposite directions.
+            //
+            // An operator stopping an account empties an organization exactly as the person doing it themselves
+            // would, and the floor does not care which of the two happened (IA-REQ-053/054). Refusing here is
+            // also what keeps the organization repairable: once its last administrator is stopped, every write
+            // that checks the floor — including the one that would appoint a replacement — answers
+            // `last_administrator_required`, and nothing short of undoing this suspension gets out of that.
+            if (await IdentityLifecycleEffects.WouldOrphanAnOrganizationAsync(context, roles, authorityLock, request.IdentityId, ct))
+                return Result.Failure(IdentityAccessErrors.LastAdministratorRequired());
 
             var now = timeProvider.GetUtcNow();
             if (!await lifecycle.TrySuspendAsync(request.IdentityId, request.ExpectedStatus, ct))

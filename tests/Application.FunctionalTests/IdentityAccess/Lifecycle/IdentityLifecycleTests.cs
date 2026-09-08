@@ -1,13 +1,18 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
+using CleanArchitecture.Application.Common.Interfaces;
 using CleanArchitecture.Application.FunctionalTests.Infrastructure;
 using CleanArchitecture.Application.IdentityAccess.Authorization;
 using CleanArchitecture.Application.IdentityAccess.Credentials;
 using CleanArchitecture.Domain.IdentityAccess.Authorization;
+using CleanArchitecture.Domain.IdentityAccess.Identities;
+using CleanArchitecture.Domain.IdentityAccess.Security;
 using CleanArchitecture.Domain.IdentityAccess.Memberships;
 using CleanArchitecture.Domain.IdentityAccess.Outbox;
 using CleanArchitecture.Domain.IdentityAccess.Tenants;
 using CleanArchitecture.Infrastructure.Data;
+using CleanArchitecture.Infrastructure.Outbox;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using NUnit.Framework;
@@ -29,6 +34,68 @@ public sealed class IdentityLifecycleTests : TestBase
     private const string OtherPassword = "Replaced5678!";
 
     private static string Host() => $"https://lifecycle-{Guid.NewGuid():N}.localhost";
+
+    [TestCase("administratively_suspended")]
+    [TestCase("reactivated")]
+    public async Task Registering_the_shared_notice_handler_also_delivers_existing_administrative_outcomes(string outcome)
+    {
+        var email = $"notice-{Guid.NewGuid():N}@example.test";
+        var identityId = await IdentityHttpHarness.SeedConfirmedUserAsync(email, Password);
+        using var scope = FunctionalTestSetup.ScopeFactory.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var message = OutboxMessage.Create("identity.lifecycle.notice.requested",
+            JsonSerializer.Serialize(new Application.IdentityAccess.Lifecycle.DeactivateAccountCommandHandler.NoticeEnvelope(identityId, outcome)), DateTimeOffset.UtcNow);
+        context.OutboxMessages.Add(message);
+        await context.SaveChangesAsync();
+        var sink = await DispatchMailAsync(scope);
+        var delivered = sink.Messages.SingleOrDefault(item => item.Key == message.Id.ToString());
+        delivered.Recipient.ShouldBe(email);
+        delivered.Body.ShouldEndWith("/login");
+        delivered.Body.ShouldNotContain("#token=");
+        await context.Entry(message).ReloadAsync();
+        message.Status.ShouldBe(OutboxMessageStatus.Delivered);
+    }
+
+    [TestCase("expired")]
+    [TestCase("superseded")]
+    [TestCase("consumed")]
+    [TestCase("wrong-ticket")]
+    [TestCase("suspended")]
+    public async Task Delivery_does_not_mail_a_ticket_that_is_no_longer_usable(string reason)
+    {
+        var email = $"undeliverable-{Guid.NewGuid():N}@example.test";
+        await IdentityHttpHarness.SeedConfirmedUserAsync(email, Password);
+        using var harness = IdentityHttpHarness.CreateProductionHarness();
+        using var client = WithoutCookieJar(harness);
+        var host = Host();
+        await ParkAsync(client, host, email);
+        await RequestReturnAsync(client, host, email);
+        using var scope = FunctionalTestSetup.ScopeFactory.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var ticket = await context.AccountReactivationRequests.SingleAsync();
+        var message = await context.OutboxMessages.SingleAsync(item => item.Type == "identity.reactivation.requested");
+        var now = DateTimeOffset.UtcNow;
+        switch (reason)
+        {
+            case "expired":
+                context.Entry(ticket).Property(item => item.IssuedAt).CurrentValue = now.AddMinutes(-31);
+                context.Entry(ticket).Property(item => item.ExpiresAt).CurrentValue = now.AddMinutes(-1);
+                break;
+            case "superseded": ticket.Supersede(now); break;
+            case "consumed": ticket.Consume(now); break;
+            case "wrong-ticket": context.Entry(ticket).Property(item => item.TokenHash).CurrentValue = VersionedTokenHash.Of("another-ticket"); break;
+            case "suspended":
+                var user = await context.Users.SingleAsync(user => user.Id == ticket.IdentityId);
+                user.StatusBeforeSuspension = IdentityAccountStatus.SelfDeactivated;
+                user.Status = IdentityAccountStatus.AdministrativelySuspended;
+                break;
+        }
+        await context.SaveChangesAsync();
+        var sink = await DispatchMailAsync(scope);
+        sink.Messages.ShouldNotContain(item => item.Key == message.Id.ToString());
+        await context.Entry(message).ReloadAsync();
+        message.Status.ShouldBe(OutboxMessageStatus.Abandoned);
+    }
 
     [Test]
     public async Task Parking_an_account_shuts_every_door_it_had_open()
@@ -338,9 +405,46 @@ public sealed class IdentityLifecycleTests : TestBase
             .ToListAsync();
     }
 
-    /// <summary>The ticket the newest reactivation message actually carries, read from its sealed envelope.</summary>
-    private static async Task<string> DeliveredTicketAsync() =>
-        await SealedTokenAsync("identity.reactivation.requested");
+    /// <summary>Follow the mail produced by the registered handler and the real dispatcher.</summary>
+    private static async Task<string> DeliveredTicketAsync()
+    {
+        using var scope = FunctionalTestSetup.ScopeFactory.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var message = await context.OutboxMessages.Where(item => item.Type == "identity.reactivation.requested")
+            .OrderByDescending(item => item.CreatedAt).FirstAsync();
+        var sink = await DispatchMailAsync(scope);
+        var delivered = sink.Messages.Where(item => item.Key == message.Id.ToString()).ToList();
+        delivered.Count.ShouldBe(1, "the reactivation link must be delivered exactly once by a registered handler");
+        var recipient = await context.Users.Where(user => user.Id == context.AccountReactivationRequests
+            .OrderByDescending(ticket => ticket.IssuedAt).Select(ticket => ticket.IdentityId).First()).Select(user => user.Email).SingleAsync();
+        delivered[0].Recipient.ShouldBe(recipient);
+        var link = new Uri(delivered[0].Body.Split(' ', StringSplitOptions.RemoveEmptyEntries).Last());
+        link.AbsolutePath.ShouldBe("/account/reactivate");
+        link.Query.ShouldBeEmpty();
+        return Uri.UnescapeDataString(link.Fragment["#token=".Length..]);
+    }
+
+    private static async Task<LifecycleDeliverySink> DispatchMailAsync(IServiceScope scope)
+    {
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var sink = new LifecycleDeliverySink();
+        var dispatcher = new OutboxDispatcher(context, scope.ServiceProvider.GetRequiredService<IOutboxSecretReader>(),
+            scope.ServiceProvider.GetServices<IOutboxDeliveryHandler>(), TimeProvider.System, sink,
+            scope.ServiceProvider.GetRequiredService<Application.IdentityAccess.Lifecycle.IRecoveryAdmission>(), FunctionalTestMetrics.Instance);
+        await dispatcher.DispatchDueAsync(CancellationToken.None);
+        await dispatcher.DispatchDueAsync(CancellationToken.None);
+        return sink;
+    }
+
+    private sealed class LifecycleDeliverySink : IIdentityEmailSender
+    {
+        public List<(string Recipient, string Body, string Key)> Messages { get; } = [];
+        public Task<EmailDeliveryReceipt> SendAsync(string recipient, string subject, string body, string idempotencyKey, CancellationToken cancellationToken)
+        {
+            Messages.Add((recipient, body, idempotencyKey));
+            return Task.FromResult(new EmailDeliveryReceipt(true, Guid.NewGuid().ToString(), false));
+        }
+    }
 
     private static async Task<string> DeliveredPasswordTokenAsync() =>
         await SealedTokenAsync("identity.password.recovery.requested");

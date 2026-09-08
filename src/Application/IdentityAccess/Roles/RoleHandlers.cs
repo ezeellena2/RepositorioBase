@@ -321,6 +321,10 @@ internal static class RoleAuthority
     {
         try { return await transaction.ExecuteAsync(body, cancellationToken); }
         catch (AdministratorFloorViolation) { return Result<T>.Failure(IdentityAccessErrors.LastAdministratorRequired()); }
+        // The ceiling is declared in this class and raised, today, only from the membership side. Translating it
+        // here is what makes the declaration honest: an exception a module owns but does not answer for is a 500
+        // waiting for the first role write that re-reads its ceiling after committing.
+        catch (GrantCeilingViolation) { return Result<T>.Failure(IdentityAccessErrors.InvalidRoleOperation()); }
         catch (DbUpdateConcurrencyException) { return Result<T>.Failure(IdentityAccessErrors.RoleConcurrencyConflict()); }
     }
 
@@ -331,6 +335,7 @@ internal static class RoleAuthority
     {
         try { return await transaction.ExecuteAsync(body, cancellationToken); }
         catch (AdministratorFloorViolation) { return Result.Failure(IdentityAccessErrors.LastAdministratorRequired()); }
+        catch (GrantCeilingViolation) { return Result.Failure(IdentityAccessErrors.InvalidRoleOperation()); }
         catch (DbUpdateConcurrencyException) { return Result.Failure(IdentityAccessErrors.RoleConcurrencyConflict()); }
     }
 
@@ -346,4 +351,11 @@ internal static class RoleAuthority
     /// a caller as an exception: the handler turns it into `last_administrator_required`.
     /// </summary>
     internal sealed class AdministratorFloorViolation : Exception;
+
+    /// <summary>
+    /// The ceiling refusal, for the same reason and in the same shape: it is discovered after the write, so the
+    /// only way to honour it is to roll that write back. The handler turns it into the same answer the caller
+    /// would have received had the authority change landed a moment earlier.
+    /// </summary>
+    internal sealed class GrantCeilingViolation : Exception;
 }

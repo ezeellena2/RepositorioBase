@@ -84,6 +84,25 @@ public sealed class UpdateMemberRolesCommandHandler(
             context.AuditEvents.Add(MembershipAuthority.Audited(tenantId, actorId, request.MembershipId, "changed"));
             await context.SaveChangesAsync(ct);
 
+            // The ceiling again, now that the write is in place. The check above was made against authority read
+            // before anything was written, and between the two another administrator can narrow this actor's —
+            // which is a grant of a permission the actor no longer holds, made with the authority it held a
+            // moment ago (IA-REQ-053).
+            //
+            // Re-reading here is what makes the ceiling hold *at commit* rather than at request time, and the
+            // write above is what makes the re-read trustworthy. Every change that can narrow a ceiling — a
+            // membership suspended or revoked, a role retired, a permission taken out of one, the tenant itself
+            // suspended — moves this tenant's authorization version, and the assignment has just rewritten that
+            // same row. So a competing narrowing has either committed already, and this statement's own snapshot
+            // sees it, or it cannot commit until this transaction ends. There is no third case, which is why
+            // there is no window left here and no lock to take for it.
+            //
+            // Both halves are re-read, not only the actor's. A role that widened after it was priced confers
+            // something nobody weighed against the ceiling, which is the same violation from the other side.
+            MembershipAuthority.EnsureCeiling(
+                await members.CodesOfRolesAsync(tenantId, requested, ct),
+                await roles.GrantableCodesAsync(tenantId, actorId, ct));
+
             MembershipAuthority.EnsureFloor(await roles.CountAdministratorsAsync(tenantId, ct));
             return Result<MemberView>.Success(written.Member!);
         }, cancellationToken);
@@ -231,6 +250,20 @@ internal static class MembershipAuthority
         if (administrators == 0) throw new RoleAuthority.AdministratorFloorViolation();
     }
 
+    /// <summary>
+    /// Every code the assignment confers is one the actor may confer — asked after the write, and refused by
+    /// throwing, because a ceiling checked after the write can only be honoured by rolling that write back.
+    /// <para>
+    /// A null <paramref name="conferred"/> is a requested role that is no longer readable as a grantable set at
+    /// all, which is refused for the same reason rather than treated as conferring nothing.
+    /// </para>
+    /// </summary>
+    internal static void EnsureCeiling(IReadOnlyList<string>? conferred, IReadOnlyList<string> ceiling)
+    {
+        if (conferred is null || !conferred.All(code => ceiling.Contains(code, StringComparer.Ordinal)))
+            throw new RoleAuthority.GrantCeilingViolation();
+    }
+
     internal static Result<T> Failure<T>(MembershipWriteStatus status) => Result<T>.Failure(Describe(status));
 
     internal static Result Failure(MembershipWriteStatus status) => Result.Failure(Describe(status));
@@ -242,6 +275,10 @@ internal static class MembershipAuthority
     {
         try { return await transaction.ExecuteAsync(body, cancellationToken); }
         catch (RoleAuthority.AdministratorFloorViolation) { return Result<T>.Failure(IdentityAccessErrors.LastAdministratorRequired()); }
+        // The same answer the caller would have met had the revocation landed before their request, because that
+        // is what happened: the two operations were ordered, and this one lost. It is not a concurrency conflict
+        // to retry — the actor may not confer this now, and will not be able to until they hold it again.
+        catch (RoleAuthority.GrantCeilingViolation) { return Result<T>.Failure(IdentityAccessErrors.InvalidMembershipOperation()); }
         catch (DbUpdateConcurrencyException) { return Result<T>.Failure(IdentityAccessErrors.MembershipConcurrencyConflict()); }
     }
 
@@ -252,6 +289,10 @@ internal static class MembershipAuthority
     {
         try { return await transaction.ExecuteAsync(body, cancellationToken); }
         catch (RoleAuthority.AdministratorFloorViolation) { return Result.Failure(IdentityAccessErrors.LastAdministratorRequired()); }
+        // Carried here even though no body on this overload raises it today. The two overloads answer for the
+        // same family of writes, and an exception that only one of them translates is a 500 waiting for whoever
+        // moves a ceiling check into a membership operation that happens to return a bare `Result`.
+        catch (RoleAuthority.GrantCeilingViolation) { return Result.Failure(IdentityAccessErrors.InvalidMembershipOperation()); }
         catch (DbUpdateConcurrencyException) { return Result.Failure(IdentityAccessErrors.MembershipConcurrencyConflict()); }
     }
 

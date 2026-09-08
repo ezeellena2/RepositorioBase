@@ -1,7 +1,10 @@
+using CleanArchitecture.Application.FunctionalTests.IdentityAccess.Organizations;
 using CleanArchitecture.Application.FunctionalTests.Infrastructure;
+using CleanArchitecture.Application.IdentityAccess.Authorization;
 using CleanArchitecture.Application.IdentityAccess.Lifecycle;
 using CleanArchitecture.Application.IdentityAccess.Platform.Identities;
 using CleanArchitecture.Application.IdentityAccess.Platform.Queries;
+using CleanArchitecture.Application.IdentityAccess.Roles;
 using CleanArchitecture.Application.IdentityAccess.Sessions.CreateSession;
 using CleanArchitecture.Domain.IdentityAccess.Auditing;
 using CleanArchitecture.Domain.IdentityAccess.Identities;
@@ -115,6 +118,66 @@ public sealed class PlatformIdentityLifecycleTests : TestBase
         refused.IsFailure.ShouldBeTrue();
         refused.Error!.Code.ShouldBe("platform_last_owner");
         (await StatusAsync(owner.IdentityId)).ShouldBe(IdentityAccountStatus.Active);
+    }
+
+    /// <summary>
+    /// The same floor the person parking their own account meets, met by the operator stopping it for them
+    /// (IA-REQ-053/054). An organization does not care which of the two routes emptied it.
+    /// <para>
+    /// Refusing here is also what keeps the organization repairable. Once its last administrator is stopped,
+    /// every write that checks the floor answers `last_administrator_required` — including the one that would
+    /// appoint a replacement — so the state is not merely wrong, it is a state nothing but undoing this
+    /// suspension can leave.
+    /// </para>
+    /// </summary>
+    [Test]
+    public async Task Stopping_the_last_administrator_of_an_organization_is_refused_like_stopping_the_last_Platform_owner()
+    {
+        await PlatformScenario.ActiveOwnerAsync();
+        using var organization = await OrganizationScenario.CreateAsync("platform-floor");
+
+        // The premise the refusal rests on: the owner is the only identity holding both halves here, so stopping
+        // them is what would empty the organization rather than merely reduce it.
+        (await AdministratorsAsync(organization.TenantId)).ShouldBe(1);
+
+        var refused = await TestApp.SendAsync(new SuspendIdentityCommand(
+            organization.OwnerId, IdentitySuspensionReason.PolicyViolation, IdentityAccountStatus.Active));
+
+        refused.IsFailure.ShouldBeTrue();
+        refused.Error!.Code.ShouldBe("last_administrator_required");
+        (await StatusAsync(organization.OwnerId)).ShouldBe(IdentityAccountStatus.Active, "a refusal changes nothing");
+        (await AdministratorsAsync(organization.TenantId)).ShouldBe(1, "the organization still has somebody who can administer it");
+    }
+
+    /// <summary>
+    /// The other half of the floor, which is what stops it becoming a rule that refuses everything: an operator
+    /// may still stop an administrator while somebody else can administer the organization.
+    /// </summary>
+    [Test]
+    public async Task Stopping_an_administrator_who_is_not_the_last_one_is_allowed()
+    {
+        await PlatformScenario.ActiveOwnerAsync();
+        using var organization = await OrganizationScenario.CreateAsync("platform-floor-spare");
+        var deputy = await organization.AddMemberAsync("deputy", Permissions.MembersManage, Permissions.RolesManage);
+        (await AdministratorsAsync(organization.TenantId)).ShouldBe(2);
+
+        var stopped = await TestApp.SendAsync(new SuspendIdentityCommand(
+            deputy.IdentityId, IdentitySuspensionReason.PolicyViolation, IdentityAccountStatus.Active));
+
+        stopped.IsSuccess.ShouldBeTrue(stopped.Error?.Code);
+        (await StatusAsync(deputy.IdentityId)).ShouldBe(IdentityAccountStatus.AdministrativelySuspended);
+        (await AdministratorsAsync(organization.TenantId)).ShouldBe(1, "the one who was stopped no longer counts");
+    }
+
+    /// <summary>
+    /// Counted the way the floor counts, from a scope of its own, so the assertion reads committed rows rather
+    /// than anything the request left tracked.
+    /// </summary>
+    private static async Task<int> AdministratorsAsync(TenantId tenantId)
+    {
+        using var scope = FunctionalTestSetup.ScopeFactory.CreateScope();
+        return await scope.ServiceProvider.GetRequiredService<IRoleAdministrationStore>()
+            .CountAdministratorsAsync(tenantId, CancellationToken.None);
     }
 
     /// <summary>

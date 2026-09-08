@@ -1,6 +1,7 @@
 using CleanArchitecture.Application.IdentityAccess.Authorization;
 using CleanArchitecture.Application.IdentityAccess.Roles;
 using CleanArchitecture.Domain.IdentityAccess.Authorization;
+using CleanArchitecture.Domain.IdentityAccess.Identities;
 using CleanArchitecture.Domain.IdentityAccess.Memberships;
 using CleanArchitecture.Domain.IdentityAccess.Tenants;
 using CleanArchitecture.Infrastructure.Data;
@@ -97,8 +98,22 @@ public sealed class RoleAdministrationStore(ApplicationDbContext context) : IRol
     }
 
     /// <summary>
-    /// Distinct identities holding both halves of administration. Counted over the same projection the evaluator
-    /// decides with, so the floor cannot report an administrator the evaluator would refuse.
+    /// Distinct identities who could actually administer: holding both halves, and in the one account state that
+    /// may sign in.
+    /// <para>
+    /// The state is part of the count, not a detail beside it. A membership survives its identity being parked or
+    /// suspended — C6 keeps it deliberately, so the way back restores authority instead of rebuilding it — so the
+    /// association rows alone say "administrator" about somebody who cannot reach a single route. A floor counted
+    /// that way lets the last two administrators leave one after the other, each one counting the other as their
+    /// replacement (IA-REQ-053/054).
+    /// </para>
+    /// <para>
+    /// `Active` is the whole condition because `IdentityAccountStatus` is the whole condition: it is the single
+    /// source of "can this person sign in", and every other state names a reason they cannot. A lockout is
+    /// deliberately not among them — it is a temporary refusal that expires by itself, and counting somebody out
+    /// of the floor for mistyping a password would refuse administration the moment an administrator fumbles a
+    /// sign-in.
+    /// </para>
     /// </summary>
     public Task<int> CountAdministratorsAsync(TenantId tenantId, CancellationToken cancellationToken) =>
         CountAdministratorsExceptAsync(tenantId, Guid.Empty, cancellationToken);
@@ -109,6 +124,7 @@ public sealed class RoleAdministrationStore(ApplicationDbContext context) : IRol
         var held = await (
             from membership in context.TenantMemberships.AsNoTracking()
             join tenant in context.Tenants.AsNoTracking() on membership.TenantId equals tenant.Id
+            join user in context.Users.AsNoTracking() on membership.IdentityId equals user.Id
             join membershipRole in context.MembershipRoles.AsNoTracking()
                 on new { membership.TenantId, MembershipId = membership.Id } equals new { membershipRole.TenantId, membershipRole.MembershipId }
             join role in context.TenantRoles.AsNoTracking()
@@ -118,6 +134,7 @@ public sealed class RoleAdministrationStore(ApplicationDbContext context) : IRol
             where membership.TenantId == tenantId
                 && membership.IdentityId != identityId
                 && membership.Status == MembershipStatus.Active
+                && user.Status == IdentityAccountStatus.Active
                 && tenant.Status == TenantStatus.Active
                 && !role.IsRetired
                 && (rolePermission.PermissionCode == Permissions.RolesManage || rolePermission.PermissionCode == Permissions.MembersManage)
