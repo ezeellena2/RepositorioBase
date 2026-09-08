@@ -28,6 +28,7 @@ public sealed class IdentityContinuationStepDefinitions(ScenarioContext scenario
     private PasswordPages Passwords => new(Page);
     private OrganizationRolesPage Roles => new(Page);
     private OrganizationMembersPage Members => new(Page);
+    private StandingInvitationsPage Invitations => new(Page);
     private TenantSelectorPage Tenants => new(Page);
 
     private string Email
@@ -259,6 +260,81 @@ public sealed class IdentityContinuationStepDefinitions(ScenarioContext scenario
         var invite = page.GetByRole(AriaRole.Link, new() { Name = "Invite a member" });
         await Assertions.Expect(invite).ToHaveCountAsync(offered ? 1 : 0);
     }
+
+    // ---- one usable offer, and then none ----------------------------------------------------------------
+
+    [Given("an identity that has been invited to it")]
+    public async Task GivenAnIdentityHasBeenInvited()
+    {
+        var invitee = await IdentityAccessFixtures.ConfirmedIdentityAsync();
+        scenario.Set(invitee, "invitee");
+
+        await SignIn.GotoAsync();
+        await SignIn.SignInAsync(Email, Password);
+        await Invitations.GotoAsync();
+        await Invitations.InviteAsync(invitee.Email, RoleNameOf(scenario.Get<IdentityAccessFixtures.SeededOrganization>("organization")));
+
+        var first = await PlatformFixtures.DeliveredAsync(invitee.Email, "You have been invited");
+        scenario.Set(first, "first");
+    }
+
+    [When("the administrator resends the invitation")]
+    public async Task WhenTheAdministratorResends()
+    {
+        var invitee = scenario.Get<IdentityAccessFixtures.SeededIdentity>("invitee");
+        await Invitations.GotoAsync();
+        await Invitations.ResendAsync(invitee.Email);
+
+        // Named by the file the first mail arrived in, so "the newer one" is a fact rather than a guess about
+        // which of two files a clock wrote first.
+        var first = scenario.Get<PlatformFixtures.DeliveredMessage>("first");
+        scenario.Set(await PlatformFixtures.DeliveredAsync(invitee.Email, "You have been invited", [first.DropFile]), "second");
+    }
+
+    [Then("the link that was replaced no longer accepts")]
+    public Task ThenTheReplacedLinkIsDead() => AssertLinkRefusedAsync(scenario.Get<PlatformFixtures.DeliveredMessage>("first"));
+
+    [When("the administrator withdraws the invitation")]
+    public async Task WhenTheAdministratorWithdraws()
+    {
+        await Invitations.GotoAsync();
+        await Invitations.WithdrawAsync(scenario.Get<IdentityAccessFixtures.SeededIdentity>("invitee").Email);
+    }
+
+    [Then("the link that replaced it no longer accepts either")]
+    public Task ThenTheReplacementIsDeadToo() => AssertLinkRefusedAsync(scenario.Get<PlatformFixtures.DeliveredMessage>("second"));
+
+    [Then("the invitee holds no membership")]
+    public async Task ThenTheInviteeHoldsNothing()
+    {
+        var invitee = scenario.Get<IdentityAccessFixtures.SeededIdentity>("invitee");
+        (await IdentityAccessFixtures.MembershipCountAsync(scenario.Get<IdentityAccessFixtures.SeededOrganization>("organization"), invitee.Id))
+            .ShouldBe(0, "an offer that was rotated and then withdrawn made nobody a member");
+    }
+
+    /// <summary>
+    /// The invitee opens the link out of their own mailbox, in their own browser, signed in as themselves — and
+    /// is refused. Asserting from the administrator's browser would be asking the wrong person.
+    /// </summary>
+    private async Task AssertLinkRefusedAsync(PlatformFixtures.DeliveredMessage delivered)
+    {
+        var invitee = scenario.Get<IdentityAccessFixtures.SeededIdentity>("invitee");
+        await using var context = await PlaywrightSetup.NewContextAsync();
+        var page = await context.NewPageAsync();
+        var signIn = new IdentitySignInPage(page);
+        await signIn.GotoAsync();
+        await signIn.SignInAsync(invitee.Email, IdentityAccessFixtures.Password);
+
+        await page.GotoAsync($"{delivered.Path}{delivered.Fragment}".StartsWith('/')
+            ? new Uri(new Uri(page.Url), $"{delivered.Path}{delivered.Fragment}").ToString()
+            : $"{delivered.Path}{delivered.Fragment}");
+        await page.ReloadAsync();
+        await new InvitationPages(page).AcceptAsync();
+        await Assertions.Expect(page.GetByRole(AriaRole.Alert)).ToBeVisibleAsync();
+    }
+
+    /// <summary>The role the fixture created, which is what the invite screen offers by name.</summary>
+    private static string RoleNameOf(IdentityAccessFixtures.SeededOrganization organization) => $"role-{organization.RoleId:N}";
 
     // ---- the two ways a password moves ------------------------------------------------------------------
 

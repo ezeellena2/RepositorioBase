@@ -35,6 +35,15 @@ Scenario: An owner hands the organization to a member
     When the administrator signs in and hands the organization to the member
     Then the member holds the ownership and the administrator does not
 
+Scenario: Resending an invitation leaves one usable link, and withdrawing it leaves none
+    Given an organization with an administrator and a member who holds nothing
+    And an identity that has been invited to it
+    When the administrator resends the invitation
+    Then the link that was replaced no longer accepts
+    When the administrator withdraws the invitation
+    Then the link that replaced it no longer accepts either
+    And the invitee holds no membership
+
 Scenario: A forgotten password is reset from the delivered link and then changed from inside
     Given a confirmed identity that cannot remember its password
     When they ask for a reset link and follow the one delivered

@@ -91,6 +91,46 @@ public sealed class OwnDevicesPage(IPage page) : BasePage(page)
     }
 }
 
+/// <summary>Standing invitations, and the two things an administrator can do to one.</summary>
+public sealed class StandingInvitationsPage(IPage page) : BasePage(page)
+{
+    public override string PagePath => $"{BaseUrl}/members/invite";
+
+    public async Task InviteAsync(string email, string roleName)
+    {
+        await Assertions.Expect(Page.Locator("h1")).ToHaveTextAsync("Invite a member");
+        await Page.FillAsync("#invite-email", email);
+        await Page.GetByLabel(roleName, new() { Exact = true }).CheckAsync();
+        var response = await Page.RunAndWaitForResponseAsync(
+            () => Page.GetByRole(AriaRole.Button, new() { Name = "Send invitation" }).ClickAsync(),
+            candidate => candidate.Url.Contains("/invitations", StringComparison.Ordinal) && candidate.Request.Method == "POST");
+        if (response.Status is not (200 or 201 or 202 or 204))
+        {
+            throw new InvalidOperationException($"Inviting answered {response.Status}: {await response.TextAsync()}");
+        }
+    }
+
+    public Task ResendAsync(string email) => ActAsync($"Resend to {email}", "/resend");
+
+    /// <summary>Withdrawing answers the confirmation the screen asks for; a link that stops working is not undoable.</summary>
+    public Task WithdrawAsync(string email)
+    {
+        Page.Dialog += async (_, dialog) => await dialog.AcceptAsync();
+        return ActAsync($"Withdraw invitation to {email}", "/cancel");
+    }
+
+    private async Task ActAsync(string control, string route)
+    {
+        var response = await Page.RunAndWaitForResponseAsync(
+            () => Page.GetByRole(AriaRole.Button, new() { Name = control }).ClickAsync(),
+            candidate => candidate.Url.Contains(route, StringComparison.Ordinal) && candidate.Request.Method == "POST");
+        if (response.Status is not (200 or 202 or 204))
+        {
+            throw new InvalidOperationException($"\"{control}\" answered {response.Status}: {await response.TextAsync()}");
+        }
+    }
+}
+
 /// <summary>
 /// The organization's own roles. Every change here asks for the password first, and the permissions offered are
 /// only the ones the actor holds — an administrator cannot put into a role something they were never granted.
