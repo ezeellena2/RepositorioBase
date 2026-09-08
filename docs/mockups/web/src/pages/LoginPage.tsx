@@ -1,7 +1,7 @@
 import { useRef, useState, type FormEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Alert, AuthLayout, Button, Card, Field } from "../components";
-import { api, ApiError } from "../lib/api";
+import { api, ApiError, NetworkError } from "../lib/api";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -12,6 +12,9 @@ interface FieldErrors {
 
 export function LoginPage() {
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const next = params.get("next");
+  const expired = params.get("motivo") === "sesion";
   const passwordRef = useRef<HTMLInputElement>(null);
 
   const [email, setEmail] = useState("");
@@ -19,14 +22,15 @@ export function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
+  const [unconfirmed, setUnconfirmed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   function validate(): FieldErrors {
-    const next: FieldErrors = {};
-    if (!email.trim()) next.email = "Ingresá tu correo.";
-    else if (!EMAIL_PATTERN.test(email.trim())) next.email = "Ingresá un correo válido.";
-    if (!password) next.password = "Ingresá tu contraseña.";
-    return next;
+    const validation: FieldErrors = {};
+    if (!email.trim()) validation.email = "Ingresá tu correo.";
+    else if (!EMAIL_PATTERN.test(email.trim())) validation.email = "Ingresá un correo válido.";
+    if (!password) validation.password = "Ingresá tu contraseña.";
+    return validation;
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -36,20 +40,27 @@ export function LoginPage() {
     const validation = validate();
     setErrors(validation);
     setFormError(null);
+    setUnconfirmed(false);
     if (validation.email || validation.password) return;
 
     setSubmitting(true);
     try {
       await api.login({ email: email.trim(), password });
-      navigate("/app", { replace: true });
+      navigate(next ?? "/app", { replace: true });
     } catch (error) {
-      if (error instanceof ApiError && error.status === 401) {
+      if (error instanceof ApiError && error.status === 429) {
+        setFormError(error.message);
+      } else if (error instanceof ApiError && error.code === "unconfirmed") {
+        setUnconfirmed(true);
+        setFormError(error.message);
+      } else if (error instanceof ApiError && error.status === 401) {
         setFormError("El correo o la contraseña no son correctos.");
         setPassword("");
-        // El input recién se habilita cuando termina el render.
         requestAnimationFrame(() => passwordRef.current?.focus());
+      } else if (error instanceof NetworkError) {
+        setFormError("No pudimos conectarnos con el servidor. Probá de nuevo.");
       } else {
-        setFormError("No pudimos conectarnos. Probá de nuevo.");
+        setFormError("No pudimos completar el ingreso. Probá de nuevo.");
       }
     } finally {
       setSubmitting(false);
@@ -67,7 +78,17 @@ export function LoginPage() {
         }
       >
         <form className="form" onSubmit={handleSubmit} noValidate>
+          {expired && (
+            <Alert variant="info">
+              Tu sesión venció o fue revocada. Ingresá de nuevo para seguir donde estabas.
+            </Alert>
+          )}
           {formError && <Alert variant="error">{formError}</Alert>}
+          {unconfirmed && (
+            <Alert variant="info">
+              Buscá el correo de confirmación en la bandeja simulada del panel de demostración y seguí el enlace.
+            </Alert>
+          )}
 
           <Field
             label="Email"
@@ -76,7 +97,7 @@ export function LoginPage() {
             autoComplete="username"
             autoFocus
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(event) => setEmail(event.target.value)}
             error={errors.email}
             disabled={submitting}
           />
@@ -88,14 +109,14 @@ export function LoginPage() {
             name="password"
             autoComplete="current-password"
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            onChange={(event) => setPassword(event.target.value)}
             error={errors.password}
             disabled={submitting}
             action={
               <Button
                 type="button"
                 variant="text"
-                onClick={() => setShowPassword((v) => !v)}
+                onClick={() => setShowPassword((value) => !value)}
                 aria-pressed={showPassword}
                 tabIndex={-1}
               >

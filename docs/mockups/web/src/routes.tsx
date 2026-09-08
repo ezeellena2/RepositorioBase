@@ -1,12 +1,28 @@
 import { useEffect, useState } from "react";
-import { createBrowserRouter, RouterProvider } from "react-router-dom";
+import { createBrowserRouter, Outlet, RouterProvider } from "react-router-dom";
 import { Alert, Button, Card, Field } from "./components";
+import { DemoPanel } from "./components/demo/DemoPanel";
+import { AppShell } from "./components/shell/AppShell";
 import { api } from "./lib/api";
-import { AppPage } from "./pages/AppPage";
+import { SessionProvider } from "./lib/session";
 import { ConfirmPage } from "./pages/ConfirmPage";
+import { InvitationPage } from "./pages/InvitationPage";
 import { LoginPage } from "./pages/LoginPage";
+import { NotFoundPage } from "./pages/NotFoundPage";
 import { RegisterPage } from "./pages/RegisterPage";
 import { RegisterSentPage } from "./pages/RegisterSentPage";
+import { HomePage } from "./pages/app/HomePage";
+import { InvitationsPage } from "./pages/app/InvitationsPage";
+import { MembersPage } from "./pages/app/MembersPage";
+import { NewOrgPage } from "./pages/app/NewOrgPage";
+import { PlatformAdminsPage } from "./pages/platform/PlatformAdminsPage";
+import { PlatformAuditPage } from "./pages/platform/PlatformAuditPage";
+import { PlatformHomePage } from "./pages/platform/PlatformHomePage";
+import { PlatformIdentitiesPage } from "./pages/platform/PlatformIdentitiesPage";
+import { PlatformInvitationPage } from "./pages/platform/PlatformInvitationPage";
+import { PlatformMfaPage } from "./pages/platform/PlatformMfaPage";
+import { PlatformOrgsPage } from "./pages/platform/PlatformOrgsPage";
+import { PlatformShell } from "./pages/platform/PlatformShell";
 
 // Página de verificación del sistema visual. Se borra cuando existan las pantallas reales.
 function SistemaVisual() {
@@ -28,7 +44,7 @@ function SistemaVisual() {
           subtitle="Cada componente base en cada uno de sus estados."
           footer={
             <>
-              ¿Ya tenés cuenta? <a href="#">Iniciá sesión</a>
+              ¿Ya tenés cuenta? <a href="/login">Iniciá sesión</a>
             </>
           }
         >
@@ -62,13 +78,72 @@ function SistemaVisual() {
   );
 }
 
+/** El panel de demostración acompaña a todas las pantallas, fuera del producto. */
+function RootLayout() {
+  return (
+    <>
+      <Outlet />
+      <DemoPanel />
+    </>
+  );
+}
+
 const router = createBrowserRouter([
-  { path: "/", element: <SistemaVisual /> },
-  { path: "/login", element: <LoginPage /> },
-  { path: "/registro", element: <RegisterPage /> },
-  { path: "/registro/enviado", element: <RegisterSentPage /> },
-  { path: "/confirmar", element: <ConfirmPage /> },
-  { path: "/app", element: <AppPage /> },
+  {
+    element: <RootLayout />,
+    children: [
+      { path: "/", element: <SistemaVisual /> },
+      { path: "/login", element: <LoginPage /> },
+      { path: "/registro", element: <RegisterPage /> },
+      { path: "/registro/enviado", element: <RegisterSentPage /> },
+      { path: "/confirmar", element: <ConfirmPage /> },
+      { path: "/invitacion", element: <InvitationPage /> },
+
+      // Cliente
+      {
+        path: "/app",
+        element: (
+          <SessionProvider>
+            <AppShell />
+          </SessionProvider>
+        ),
+        children: [
+          { index: true, element: <HomePage /> },
+          { path: "miembros", element: <MembersPage /> },
+          { path: "invitaciones", element: <InvitationsPage /> },
+          { path: "organizaciones/nueva", element: <NewOrgPage /> },
+        ],
+      },
+
+      // Platform: contexto separado, sin enlaces desde el menú del cliente.
+      { path: "/platform/invitacion", element: <PlatformInvitationPage /> },
+      {
+        path: "/platform/mfa",
+        element: (
+          <SessionProvider>
+            <PlatformMfaPage />
+          </SessionProvider>
+        ),
+      },
+      {
+        path: "/platform",
+        element: (
+          <SessionProvider>
+            <PlatformShell />
+          </SessionProvider>
+        ),
+        children: [
+          { index: true, element: <PlatformHomePage /> },
+          { path: "organizaciones", element: <PlatformOrgsPage /> },
+          { path: "identidades", element: <PlatformIdentitiesPage /> },
+          { path: "administradores", element: <PlatformAdminsPage /> },
+          { path: "auditoria", element: <PlatformAuditPage /> },
+        ],
+      },
+
+      { path: "*", element: <NotFoundPage /> },
+    ],
+  },
 ]);
 
 export function AppRoutes() {

@@ -417,7 +417,7 @@ a:hover {
 .topbar {
   height: 56px;
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: 1fr auto;
   align-items: center;
   padding: 0 24px;
   background: var(--surface);
@@ -433,21 +433,97 @@ a:hover {
 
 .topbar__side--end {
   justify-content: flex-end;
-}
-
-.topbar__center {
-  display: flex;
-  justify-content: center;
-}
-
-.topbar__user {
-  font-size: 14px;
-  color: var(--ink-2);
+  align-self: stretch; /* el menú del usuario cuelga desde el borde del header, no del alto del botón */
 }
 
 .brand--sm {
   font-size: 18px;
   margin-bottom: 0;
+}
+
+/* Menú del usuario */
+
+.user-menu {
+  position: relative;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+}
+
+/* Avatar con las iniciales del usuario. */
+.user-menu__trigger {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--primary);
+  background: var(--primary-soft);
+  border: 1px solid transparent;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: border-color var(--transition), background-color var(--transition), box-shadow var(--transition);
+}
+
+.user-menu__trigger:hover {
+  border-color: #C9D3D9;
+}
+
+.user-menu__trigger:focus-visible {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: var(--focus);
+}
+
+.user-menu__pop {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 20;
+  min-width: 200px;
+  padding: 6px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  box-shadow: var(--shadow-card);
+}
+
+.user-menu__name {
+  padding: 8px 10px 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  border-bottom: 1px solid var(--line);
+}
+
+.user-menu__item {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink-2);
+  text-align: left;
+  background: none;
+  border: 0;
+  border-radius: var(--r-control);
+  cursor: pointer;
+  transition: background-color var(--transition), color var(--transition), box-shadow var(--transition);
+}
+
+.user-menu__item:hover {
+  color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.user-menu__item:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
 }
 
 .select {
@@ -478,7 +554,81 @@ a:hover {
   box-shadow: var(--focus);
 }
 
+/* Menú lateral: cambio de contexto */
+
+.app__body {
+  display: flex;
+  align-items: stretch;
+  min-height: calc(100vh - 56px);
+}
+
+.sidenav {
+  position: relative;
+  flex: 0 0 264px;
+  width: 264px;
+  padding: 16px;
+  background: var(--surface);
+  border-right: 1px solid var(--line);
+  transition: flex-basis var(--transition), width var(--transition), padding var(--transition);
+}
+
+.sidenav.is-collapsed {
+  flex-basis: 52px;
+  width: 52px;
+  padding: 16px 10px;
+}
+
+/* Botón sobre el borde: mismo lugar desplegado y colapsado, solo gira la flecha. */
+.sidenav__toggle {
+  position: absolute;
+  top: 20px;
+  right: -14px;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: var(--ink-2);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(22, 33, 43, 0.08);
+  cursor: pointer;
+  transition: border-color var(--transition), background-color var(--transition), box-shadow var(--transition);
+}
+
+.sidenav__toggle:hover {
+  color: var(--primary);
+  background: var(--primary-soft);
+  border-color: #C9D3D9;
+}
+
+.sidenav__toggle:focus-visible {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: var(--focus);
+}
+
+.sidenav__arrow {
+  transition: transform var(--transition);
+}
+
+.sidenav.is-collapsed .sidenav__arrow {
+  transform: rotate(180deg);
+}
+
+.sidenav__panel[hidden] {
+  display: none;
+}
+
+.sidenav__panel .select {
+  width: 100%;
+}
+
 .app__main {
+  flex: 1;
+  min-width: 0;
   max-width: 960px;
   margin: 0 auto;
   padding: 32px;

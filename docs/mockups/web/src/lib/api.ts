@@ -2,33 +2,169 @@ export interface Health {
   ok: true;
 }
 
-export interface Tenant {
+export type OrgRole = "owner" | "admin" | "member";
+export type OrgStatus = "active" | "suspended";
+export type OrgType = "persona" | "empresa";
+export type Permission = "members.view" | "members.invite" | "members.manage" | "org.manage";
+export type InvitationStatus = "pending" | "accepted" | "cancelled" | "expired";
+
+export interface OrgSummary {
   id: string;
-  type: "persona" | "empresa";
   name: string;
+  type: OrgType;
+  status: OrgStatus;
+  role: OrgRole;
+  roleLabel: string;
+}
+
+export interface ActiveOrg extends OrgSummary {
+  cuit: string;
+  suspendedReason: string | null;
+  permissions: Permission[];
+  version: number;
+}
+
+export interface PlatformState {
+  role: "owner" | "admin";
+  activated: boolean;
+  mfaEnrolled: boolean;
+  recoveryCodesSaved: boolean;
+  stepUpFresh: boolean;
+}
+
+export interface PendingInvitation {
+  token: string;
+  orgName: string;
+  role: OrgRole;
 }
 
 export interface Me {
-  user: { id: string; name: string; email: string };
-  activeTenant: (Tenant & { cuit: string }) | null;
-  tenants: Tenant[];
+  user: { id: string; name: string; email: string; confirmed: boolean };
+  activeOrg: ActiveOrg | null;
+  orgs: OrgSummary[];
+  pendingInvitations: PendingInvitation[];
+  platform: PlatformState | null;
+}
+
+export interface Member {
+  id: string;
+  name: string;
+  email: string;
+  role: OrgRole;
+  roleLabel: string;
+}
+
+export interface OrgInvitation {
+  id: string;
+  email: string;
+  role: OrgRole;
+  status: InvitationStatus;
+  expiresAt: string;
+  token: string;
+}
+
+export interface InvitationView {
+  token: string;
+  scope: "org" | "platform";
+  email: string;
+  role: string;
+  roleLabel: string;
+  status: InvitationStatus;
+  orgName: string;
+  invitedByName: string | null;
+  expiresAt: string;
+  next: "register" | "confirm" | "login" | "accept" | "other-identity" | "none";
+  viewerEmail: string | null;
+  alreadyMember: boolean;
+}
+
+export interface Page<T> {
+  page: T[];
+  nextCursor: string | null;
+  total: number;
+}
+
+export interface PlatformOrgRow {
+  id: string;
+  name: string;
+  status: OrgStatus;
+  suspendedReason: string | null;
+  membersCount: number;
+  createdAt: string;
+  version: number;
+}
+
+export interface PlatformIdentityRow {
+  id: string;
+  name: string;
+  email: string;
+  confirmed: boolean;
+  orgsCount: number;
+  createdAt: string;
+}
+
+export interface PlatformAdminRow {
+  id: string;
+  name: string;
+  email: string;
+  role: "owner" | "admin";
+  activated: boolean;
+  mfaEnrolled: boolean;
+}
+
+export interface AuditRow {
+  id: string;
+  at: string;
+  actorEmail: string;
+  action: string;
+  target: string;
+  detail: string;
+  result: "ok" | "denegado";
+}
+
+export interface PlatformMe {
+  role: "owner" | "admin";
+  activated: boolean;
+  mfa: { enrolled: boolean; recoveryCodesSaved: boolean; verifiedAt: string | null };
+  stepUpFresh: boolean;
+}
+
+export interface Mail {
+  id: string;
+  to: string;
+  subject: string;
+  body: string;
+  link: string | null;
+  kind: "registro" | "confirmacion" | "invitacion" | "invitacion-platform" | "aviso";
+  sentAt: string;
+}
+
+export interface Scenario {
+  id: string;
+  journey: "A" | "B" | "C" | "D";
+  name: string;
+  description: string;
+  start: string;
+  hint: string;
 }
 
 /** Error devuelto por la API con { error: { code, message } }. */
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
-  constructor(status: number, code: string, message: string) {
+  readonly retryAfter?: number;
+  constructor(status: number, code: string, message: string, retryAfter?: number) {
     super(message);
     this.status = status;
     this.code = code;
+    this.retryAfter = retryAfter;
   }
 }
 
 /** La API no respondió: red caída, servidor apagado, respuesta ilegible. */
 export class NetworkError extends Error {
   constructor() {
-    super("network");
+    super("No pudimos comunicarnos con el servidor.");
   }
 }
 
@@ -58,20 +194,74 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
   }
 
   if (!response.ok) {
+    const error = (payload as { error?: { code?: string; message?: string; retryAfter?: number } } | null)?.error;
     if (response.status >= 500) throw new NetworkError();
-    const error = (payload as { error?: { code?: string; message?: string } } | null)?.error;
-    throw new ApiError(response.status, error?.code ?? "unknown", error?.message ?? "Error");
+    throw new ApiError(response.status, error?.code ?? "unknown", error?.message ?? "Error", error?.retryAfter);
   }
   return payload as T;
 }
 
 export const api = {
   health: () => request<Health>("GET", "/api/health"),
+
+  // Recorrido A
   register: (input: { cuit: string; name: string; email: string; password: string }) =>
     request<void>("POST", "/api/auth/register", input),
   confirm: (token: string) => request<void>("POST", "/api/auth/confirm", { token }),
   login: (input: { email: string; password: string }) => request<void>("POST", "/api/auth/login", input),
   logout: () => request<void>("POST", "/api/auth/logout"),
   me: () => request<Me>("GET", "/api/me"),
-  selectTenant: (tenantId: string) => request<Me>("PUT", "/api/me/tenant", { tenantId }),
+
+  // Recorrido B
+  selectOrg: (orgId: string) => request<Me>("PUT", "/api/me/org", { orgId }),
+  createOrg: (input: { cuit: string; name: string }) => request<Me>("POST", "/api/orgs", input),
+
+  // Recorrido C
+  members: (orgId: string) => request<{ members: Member[] }>("GET", `/api/orgs/${orgId}/members`),
+  invitations: (orgId: string) =>
+    request<{ invitations: OrgInvitation[]; assignableRoles: OrgRole[] }>("GET", `/api/orgs/${orgId}/invitations`),
+  invite: (orgId: string, input: { email: string; role: OrgRole }) =>
+    request<unknown>("POST", `/api/orgs/${orgId}/invitations`, input),
+  cancelInvitation: (orgId: string, invitationId: string) =>
+    request<unknown>("POST", `/api/orgs/${orgId}/invitations/${invitationId}/cancel`),
+  invitation: (token: string) => request<InvitationView>("GET", `/api/invitations/${token}`),
+  registerFromInvitation: (token: string, input: { name: string; password: string }) =>
+    request<void>("POST", `/api/invitations/${token}/register`, input),
+  acceptInvitation: (token: string) =>
+    request<{ alreadyAccepted: boolean; me: Me }>("POST", `/api/invitations/${token}/accept`),
+
+  // Recorrido D
+  platformMe: () => request<PlatformMe>("GET", "/api/platform/me"),
+  mfaEnroll: () => request<{ secret: string; simulatedCode: string }>("POST", "/api/platform/mfa/enroll"),
+  mfaVerify: (code: string) => request<{ recoveryCodes: string[] }>("POST", "/api/platform/mfa/verify", { code }),
+  mfaAck: () => request<{ activated: boolean }>("POST", "/api/platform/mfa/recovery-codes/ack"),
+  stepUp: (code: string) => request<{ stepUpFresh: boolean }>("POST", "/api/platform/step-up", { code }),
+  platformOrgs: (cursor?: string | null) =>
+    request<Page<PlatformOrgRow>>("GET", `/api/platform/orgs${cursor ? `?cursor=${cursor}` : ""}`),
+  platformIdentities: (cursor?: string | null) =>
+    request<Page<PlatformIdentityRow>>("GET", `/api/platform/identities${cursor ? `?cursor=${cursor}` : ""}`),
+  platformAdmins: (cursor?: string | null) =>
+    request<Page<PlatformAdminRow>>("GET", `/api/platform/admins${cursor ? `?cursor=${cursor}` : ""}`),
+  platformAudit: (cursor?: string | null) =>
+    request<Page<AuditRow>>("GET", `/api/platform/audit${cursor ? `?cursor=${cursor}` : ""}`),
+  suspendOrg: (orgId: string, input: { reason: string; version: number }) =>
+    request<PlatformOrgRow>("POST", `/api/platform/orgs/${orgId}/suspend`, input),
+  reactivateOrg: (orgId: string, input: { version: number }) =>
+    request<PlatformOrgRow>("POST", `/api/platform/orgs/${orgId}/reactivate`, input),
+  invitePlatformAdmin: (email: string) => request<unknown>("POST", "/api/platform/admins", { email }),
+  revokePlatformAdmin: (userId: string) => request<void>("DELETE", `/api/platform/admins/${userId}`),
+  bootstrapRecover: () => request<{ message: string }>("POST", "/api/platform/bootstrap/recover"),
+  acceptPlatformInvitation: (token: string) =>
+    request<{ me: Me }>("POST", `/api/platform/invitations/${token}/accept`),
+
+  // Panel de demostración
+  scenarios: () => request<{ scenarios: Scenario[] }>("GET", "/api/dev/scenarios"),
+  applyScenario: (id: string) =>
+    request<{ id: string; start: string; hint: string; name: string }>("POST", "/api/dev/scenario", { id }),
+  resetDemo: () => request<void>("POST", "/api/dev/reset"),
+  mails: () => request<{ mails: Mail[] }>("GET", "/api/dev/mails"),
+  failNext: (mode: "network" | "conflict" | "notfound" | null) =>
+    request<{ failNext: string | null }>("POST", "/api/dev/fail-next", { mode }),
+  revokeSession: () => request<void>("POST", "/api/dev/revoke-session"),
+  expireStepUp: () => request<void>("POST", "/api/dev/expire-step-up"),
 };
