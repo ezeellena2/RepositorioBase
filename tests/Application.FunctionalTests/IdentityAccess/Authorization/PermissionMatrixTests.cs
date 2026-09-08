@@ -1,6 +1,7 @@
 using System.Net;
 using CleanArchitecture.Application.Common.Interfaces;
 using CleanArchitecture.Application.Common.Exceptions;
+using CleanArchitecture.Application.IdentityAccess.Invitations.InviteMember;
 using CleanArchitecture.Application.TodoLists.Commands.CreateTodoList;
 using CleanArchitecture.Domain.Entities;
 using CleanArchitecture.Domain.IdentityAccess.Auditing;
@@ -69,6 +70,56 @@ public sealed class PermissionMatrixTests : TestBase
         audit.ActorId.ShouldBe(actorId);
         audit.SessionId.ShouldBe(sessionId);
         audit.Metadata.ShouldBe(new Dictionary<string, string> { ["code"] = "endpoint.authorization", ["outcome"] = "permission_denied" });
+    }
+
+    /// <summary>
+    /// The exact field set of a denial, asked of the record rather than of the two keys anybody remembers to
+    /// check (IA-REQ-026, IA-REQ-029).
+    /// <para>
+    /// A denial is written about somebody who was refused, which is the moment a system is most tempted to say
+    /// why in detail: what they asked for, who they asked about, what they submitted. None of that belongs in a
+    /// record read later by people who are neither. The assertion walks every public member of the persisted
+    /// entity, so a column added afterwards and quietly filled with request data fails here rather than shipping.
+    /// </para>
+    /// </summary>
+    [Test]
+    public async Task A_denial_records_the_allowlisted_fields_and_nothing_the_refused_request_carried()
+    {
+        const string recipient = "denied.invitee@example.test";
+        var tenant = Tenant.CreateOrganization(TenantSlug.From($"denial-fields-{Guid.NewGuid():N}"));
+        await TestApp.AddAsync(tenant);
+        var actorId = await TestApp.RunAsDefaultUserAsync();
+        TestApp.SetCurrentTenant(tenant.Id);
+        TestApp.SetApplicationPermissionGranted(false);
+
+        await Should.ThrowAsync<ForbiddenAccessException>(
+            () => TestApp.SendAsync(new InviteMemberCommand(tenant.Id, recipient, [Guid.NewGuid()])));
+
+        var audit = (await TestApp.ListAsync<AuditEvent>()).Single(item => item.EventType == "authorization.denied");
+        audit.ActorId.ShouldBe(actorId);
+        audit.CorrelationId.ShouldNotBeNullOrWhiteSpace();
+        audit.OccurredAt.ShouldNotBe(default);
+        audit.Metadata.Keys.Order(StringComparer.Ordinal).ToArray().ShouldBe(
+            ["code", "outcome"],
+            customMessage: "a denial says which permission and which refusal, and nothing else");
+
+        // Every public member of the record, not the three anybody thinks to check. A denial that learned to
+        // carry a note, a reason, or the request it refused would land in one of these.
+        var carried = typeof(AuditEvent).GetProperties()
+            .Select(property => property.GetValue(audit))
+            .SelectMany(value => value switch
+            {
+                IReadOnlyDictionary<string, string> metadata => metadata.SelectMany(entry => new[] { entry.Key, entry.Value }),
+                null => [],
+                _ => [value.ToString() ?? string.Empty]
+            })
+            .ToArray();
+
+        foreach (var secret in new[] { recipient, "denied.invitee", tenant.Slug.Value })
+        {
+            carried.Any(value => value.Contains(secret, StringComparison.OrdinalIgnoreCase))
+                .ShouldBeFalse($"'{secret}' came out of the refused request and has no business in the record of its refusal");
+        }
     }
 
     [Test]

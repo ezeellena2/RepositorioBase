@@ -204,6 +204,27 @@ public sealed class InvitationTests
         Should.Throw<ArgumentException>(() => invitation.Accept(tenant, Guid.Empty, Now.AddDays(1)));
     }
 
+    /// <summary>
+    /// The default hash is the one nobody hashes anything to get, so it is the one that would slip through: a
+    /// caller who never obtained a token, or a row read back into a struct that was never populated, arrives here
+    /// holding <c>default</c>. Both entry points refuse it, and the state is unchanged either way — an invitation
+    /// that reissued to a hash matching nothing would be an offer no delivered link could ever answer.
+    /// </summary>
+    [Test]
+    public void An_invitation_cannot_be_issued_or_reissued_with_a_hash_nobody_produced()
+    {
+        var tenant = Organization();
+        var role = Role.Create(tenant, "member");
+
+        Should.Throw<ArgumentException>(
+            () => Invitation.Issue(tenant, "ana@example.test", [role], default, Now, Now.AddDays(7)));
+
+        var pending = Pending(out var issued);
+        Should.Throw<ArgumentException>(() => pending.Reissue(issued, default, Now.AddDays(1), Now.AddDays(8)));
+        pending.TokenHash.Matches("invitation-test-token").ShouldBeTrue("a refused reissue leaves the offer that was already delivered");
+        pending.Status.ShouldBe(InvitationStatus.Pending);
+    }
+
     /// <summary>An invitation cannot be settled before it was issued; the database restates the same bound.</summary>
     [Test]
     public void A_terminal_event_cannot_precede_the_invitation_it_settles()
