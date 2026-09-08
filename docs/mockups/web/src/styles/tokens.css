@@ -1,29 +1,24 @@
 :root {
-  --bg: #f4f6f8;
-  --bg-glow: radial-gradient(ellipse 60% 50% at 50% 0%, #e3ecf0 0%, transparent 70%);
-  --surface: #ffffff;
-
-  --ink: #16212b;
-  --ink-2: #4a5b66;
-  --muted: #7a8b95;
-  --line: #dde4e8;
-  --line-hover: #c9d3d9;
-
-  --primary: #0e5c66;
-  --primary-hover: #0b4a52;
-  --primary-soft: #e3eef0;
-
-  --danger: #b3412a;
-  --danger-soft: #f9e8e4;
-  --success: #1f6b40;
-  --success-soft: #e1f0e7;
-
+  --bg: #F4F6F8;
+  --bg-glow: radial-gradient(ellipse 60% 50% at 50% 0%, #E3ECF0 0%, transparent 70%);
+  --surface: #FFFFFF;
+  --ink: #16212B;
+  --ink-2: #4A5B66;
+  --muted: #7A8B95;
+  --line: #DDE4E8;
+  --primary: #0E5C66;
+  --primary-hover: #0B4A52;
+  --primary-soft: #E3EEF0;
+  --danger: #B3412A;
+  --danger-soft: #F9E8E4;
+  --success: #1F6B40;
+  --success-soft: #E1F0E7;
   --r-card: 12px;
   --r-control: 8px;
-
   --shadow-card: 0 1px 2px rgba(22, 33, 43, 0.04), 0 16px 40px -20px rgba(22, 33, 43, 0.2);
   --focus: 0 0 0 3px var(--primary-soft);
 
-  --font-display: 'Manrope', system-ui, sans-serif;
-  --font-body: 'Source Sans 3', system-ui, sans-serif;
+  --font-display: "Manrope", sans-serif;
+  --font-text: "Source Sans 3", sans-serif;
+  --transition: 120ms ease;
 }
