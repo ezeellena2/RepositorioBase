@@ -23,6 +23,18 @@ public class AspireSetup
 
     private static string KeyRingPath { get; } = Path.Combine(MailDropPath, "keys");
 
+    /// <summary>
+    /// This run's own database, inside the server container a developer already has running.
+    /// <para>
+    /// It is not a preference. The Platform bootstrap happens once in a deployment's life, and the journeys that
+    /// walk it — the first owner reaching the panel, recovery of an invitation that could not arrive — can only
+    /// be walked against a database nobody has bootstrapped. Reusing a shared one makes those scenarios pass
+    /// once and then fail forever, and resetting somebody's development database to fix that is not this suite's
+    /// to do. A database of its own is the isolation, and it is dropped when the run ends.
+    /// </para>
+    /// </summary>
+    internal static string DatabaseName { get; } = $"acceptance_{Guid.NewGuid():N}";
+
     private static readonly TimeSpan DefaultTimeout = TimeSpan.FromMinutes(8);
 
     public static IDistributedApplicationTestingBuilder Builder { get; private set; } = null!;
@@ -47,6 +59,7 @@ public class AspireSetup
                     // own frontend, whose port only exists once the host has allocated it.
                     "--IdentityAccess:Email:PublicOrigin=https://localhost",
                     $"--IdentityAccess:Email:LocalDropPath={MailDropPath}",
+                    $"--IdentityAccess:Database:Name={DatabaseName}",
                     // The web application seals the tokens and the worker opens them, so they need the same key
                     // ring and the same discriminator. Without it every envelope is unreadable and every message
                     // fails closed — which is the deployment prerequisite EMAIL-SETUP.md states, met locally.
@@ -124,8 +137,38 @@ public class AspireSetup
     [OneTimeTearDown]
     public async Task OneTimeTearDown()
     {
+        var connectionString = await App.GetConnectionStringAsync(Services.Database);
         await App.DisposeAsync();
         // The drop holds live invitation links, so it does not outlive the run that produced them.
         if (Directory.Exists(MailDropPath)) Directory.Delete(MailDropPath, recursive: true);
+        await DropRunDatabaseAsync(connectionString);
+    }
+
+    /// <summary>
+    /// Removes only the database this run created, by name, from the server it created it on. Nothing else on
+    /// that server is touched — a developer's own database is somebody else's to keep.
+    /// </summary>
+    private static async Task DropRunDatabaseAsync(string? connectionString)
+    {
+        if (string.IsNullOrWhiteSpace(connectionString)) return;
+        try
+        {
+            var admin = new Npgsql.NpgsqlConnectionStringBuilder(connectionString)
+            {
+                Database = "postgres",
+                Pooling = false,
+                CommandTimeout = 60
+            };
+            await using var connection = new Npgsql.NpgsqlConnection(admin.ConnectionString);
+            await connection.OpenAsync();
+            await using var drop = new Npgsql.NpgsqlCommand($"DROP DATABASE IF EXISTS \"{DatabaseName}\" WITH (FORCE);", connection);
+            await drop.ExecuteNonQueryAsync();
+        }
+        catch (Exception failure) when (failure is Npgsql.NpgsqlException or TimeoutException or InvalidOperationException)
+        {
+            // A database left behind is untidy, not wrong, and it is named so it can be found. Failing the run
+            // over the cleanup would turn a tidy-up problem into a red suite.
+            TestContext.Progress.WriteLine($"The run database {DatabaseName} could not be dropped: {failure.GetType().Name}.");
+        }
     }
 }

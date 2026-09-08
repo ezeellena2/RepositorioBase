@@ -111,8 +111,8 @@ internal static class AcceptanceTestCredentials
         await WaitForIdentitySchemaAsync(connection, cancellationToken);
         await using var command = new NpgsqlCommand(
             """
-            INSERT INTO "AspNetUsers" ("Id", "UserName", "NormalizedUserName", "Email", "NormalizedEmail", "EmailConfirmed", "PasswordHash", "SecurityStamp", "ConcurrencyStamp", "PhoneNumber", "PhoneNumberConfirmed", "TwoFactorEnabled", "LockoutEnd", "LockoutEnabled", "AccessFailedCount")
-            VALUES (@id, @userName, @normalizedUserName, @email, @normalizedEmail, TRUE, @passwordHash, @securityStamp, @concurrencyStamp, NULL, FALSE, FALSE, NULL, TRUE, 0);
+            INSERT INTO "AspNetUsers" ("Id", "UserName", "NormalizedUserName", "Email", "NormalizedEmail", "EmailConfirmed", "PasswordHash", "SecurityStamp", "ConcurrencyStamp", "PhoneNumber", "PhoneNumberConfirmed", "TwoFactorEnabled", "LockoutEnd", "LockoutEnabled", "AccessFailedCount", "Status")
+            VALUES (@id, @userName, @normalizedUserName, @email, @normalizedEmail, TRUE, @passwordHash, @securityStamp, @concurrencyStamp, NULL, FALSE, FALSE, NULL, TRUE, 0, 'Active');
             """, connection);
         command.Parameters.AddWithValue("id", user.Id);
         command.Parameters.AddWithValue("userName", user.UserName!);

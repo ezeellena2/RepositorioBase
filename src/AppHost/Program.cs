@@ -9,12 +9,17 @@ CleanArchitecture.AppHost.LocalDevelopmentSetup.EnsureConfigured(builder);
 
 builder.AddAzureContainerAppEnvironment("aca-env");
 
+// The server container is persistent, so a developer's data survives a restart. The database inside it can
+// still be named per run: some ceremonies happen once in a deployment's life — the Platform bootstrap is one —
+// and walking those from a cold start needs a database nobody has bootstrapped, not a reset of the one somebody
+// is using. An unnamed run keeps the shared default.
+var databaseName = builder.Configuration["IdentityAccess:Database:Name"];
 var databaseServer = builder
     .AddAzurePostgresFlexibleServer(Services.DatabaseServer)
     .WithPasswordAuthentication()
     .RunAsContainer(container => 
         container.WithLifetime(ContainerLifetime.Persistent))
-    .AddDatabase(Services.Database);
+    .AddDatabase(Services.Database, string.IsNullOrWhiteSpace(databaseName) ? null : databaseName);
 
 var web = builder.AddProject<Projects.Web>(Services.WebApi)
     .WithReference(databaseServer)

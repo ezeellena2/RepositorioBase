@@ -109,8 +109,11 @@ internal static class IdentityAccessFixtures
         await using var connection = await OpenAsync();
         await ExecuteAsync(
             connection,
-            "INSERT INTO \"AspNetUsers\" (\"Id\", \"UserName\", \"NormalizedUserName\", \"Email\", \"NormalizedEmail\", \"EmailConfirmed\", \"PasswordHash\", \"SecurityStamp\", \"ConcurrencyStamp\", \"PhoneNumberConfirmed\", \"TwoFactorEnabled\", \"LockoutEnabled\", \"AccessFailedCount\") " +
-            "VALUES (@id, @email, @normalized, @email, @normalized, TRUE, @hash, @stamp, @stamp, FALSE, FALSE, TRUE, 0);",
+            // `Status` is stated rather than left to its default. The persisted status is what decides whether an
+            // identity may sign in, and its default is the fail-closed `PendingConfirmation` — a premise that said
+            // "confirmed" only in `EmailConfirmed` would be seeding an account that cannot sign in.
+            "INSERT INTO \"AspNetUsers\" (\"Id\", \"UserName\", \"NormalizedUserName\", \"Email\", \"NormalizedEmail\", \"EmailConfirmed\", \"PasswordHash\", \"SecurityStamp\", \"ConcurrencyStamp\", \"PhoneNumberConfirmed\", \"TwoFactorEnabled\", \"LockoutEnabled\", \"AccessFailedCount\", \"Status\") " +
+            "VALUES (@id, @email, @normalized, @email, @normalized, TRUE, @hash, @stamp, @stamp, FALSE, FALSE, TRUE, 0, 'Active');",
             ("id", identityId), ("email", email), ("normalized", email.ToUpperInvariant()), ("hash", hash), ("stamp", Guid.NewGuid().ToString("N")));
         return new SeededIdentity(identityId, email);
     }
