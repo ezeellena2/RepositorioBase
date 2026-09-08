@@ -17,7 +17,7 @@ The [plan runs Tasks 17–28](../../superpowers/plans/2026-08-31-identity-access
 Real-PII and production/reference compliance remain separate gates, so local functional closure authorizes no
 deployment and certifies nothing.
 
-## Continuation roadmap mapping — 17–25 done, 26–28 remaining
+## Continuation roadmap mapping — 17–27 done, 28 remaining
 
 | Plan task | Work | Tracking | Dependency/approval boundary |
 |---|---|---|---|
@@ -31,7 +31,7 @@ deployment and certifies nothing.
 | 24 | Custom Organization role administration | IA-005 continuation; IA-009 evidence | 17 C5 |
 | 25 | Membership administration, ownership transfer and invitation lifecycle | IA-005/008 continuation; IA-009 evidence | 21/24; 17 C5 |
 | 26 | Lifecycle, MFA recovery, retention executor, restore admission guard and both halves of the documentary dispute | IA-011/012/015; existing event owners | **Unblocked 2026-09-07**: C6 accepted with withdrawal E1 |
-| 27 | Remaining budget scopes on the shared store, keys, deployment guards and operations evidence | IA-015; IA-007/012/014 control owners | **Unblocked 2026-09-07**: 26; port and adapter already landed in 19 |
+| 27 | Remaining budget scopes on the shared store, keys, deployment guards and operations evidence | IA-015; IA-007/012/014 control owners | **Done 2026-09-07.** 26; port and adapter already landed in 19. Multi-machine limits, real mail, real Google and production remain outside it |
 | 28 | Fixed full-journey acceptance and scoped closure | IA-009 evidence only; all continuation owners | 18–27 local evidence; separate PII/production/reference gates |
 
 The roadmap requirement owners remain in SPEC; this mapping does not invent approved IA-REQ identifiers.
@@ -796,6 +796,49 @@ that failed when it was deleted, which is the check that would have caught them.
 been read — and passed with the lock removed. The pause had to move to the lock itself before the test could tell
 the two versions apart. That is the third test in this task found to be proving nothing, and the reason every fix
 here carries a recorded vacuity check.
+
+## Task 27 — done 2026-09-07
+
+**Prove shared abuse controls, deployment safeguards and operations.** Seven units, each with a failing test
+first, a minimal fix, a recorded vacuity check and a run.
+
+**The state that was found.** Four of the five budgets IA-REQ-057 names were held in a field of whichever process
+answered — two `TimeProviderFixedWindowRateLimiter` partitions for login, and two static `ConcurrentDictionary`
+instances for the Platform second factor and bootstrap recovery. Only `personal.document.claim` was a row. That
+is not a limit for a deployment that is more than one process: an attacker escapes it by alternating instances
+and a restart refunds every attempt anybody spent. Two of the four docstrings said so plainly and no test had
+ever caught it, because a suite that only ever asks one process cannot tell the two designs apart.
+
+| Unit | What changed | Vacuity check |
+|---|---|---|
+| 27.1 login budgets | Both onto the shared store, with a middleware of our own in place of the ASP.NET rate limiter — which could express a rejection but not an outage. `SharedAbuseControlTests` (3): two hosts over one database, a disposed host, and the outage. | 3 of 3 fail against the previous design; neutering the refusal fails 7 of 17 login tests. |
+| 27.2 Platform budgets | Second factor and bootstrap recovery onto the store; `ISharedAttemptBudget` gains `ClearAsync`, because an accepted code has always cleared what the failures spent. `IPlatformMfaAttemptLimiter` goes with its only implementation. | The two new Platform tests fail against the previous design; neutering `ClearAsync` fails 2 of 6 MFA limit tests. |
+| 27.3 expiry sweep | Closed windows swept in the worker loop, five thousand a run, oldest first. Moving every budget into one table made that table the thing a varied key can grow, and refusing to write would hand the attacker the limit they wanted removed. | Sweeping nothing fails both; removing the bound fails the bounded one. |
+| 27.4 key compatibility | `WebWorkerKeyCompatibilityTests` (7): seal in one provider, open in another, across a restart and a rotation; refuse a wrong discriminator, purpose, certificate and envelope. | — (new evidence, no production change; one expectation was corrected, below.) |
+| 27.5 deployment guards | A refusal to start for a deployment armed for restore without a verification key, and for real personal data with no readable retention policy or no document key. `IdentityDeploymentGuardTests` (6) start the real host. | Emptying the guard fails 3 of 6. |
+| 27.6 transport and telemetry | `IdentitySecurityHeaders` — CSP, framing, referrer, sniffing, and `no-store` on the API. Plus `SafeTelemetryTests` (3) for an address, a password, a session handle and a document number. | Removing the middleware fails 3 of 5; the absence checks were verified by asking them to find their own witness. |
+| 27.7 metrics | Four instruments with closed label sets, and no label naming a caller — not the key, not the digest, which is stable per caller and would count one person across days. | Adding a key label fails the label test. |
+
+**Runs:** functional 654/654, Infrastructure integration 301/301, Application unit 199/199. The plan's two named
+filters: integration 75/75, functional 37/37.
+
+**One expectation was wrong, and is recorded rather than dropped.** Data Protection does not refuse a key ring it
+cannot decrypt: it skips the keys it cannot read and writes one of its own. A deployment given the wrong wrapping
+certificate looks healthy — new mail is sealed and delivered — while every envelope already in flight is dead,
+and nothing warns. The test now asserts both halves, because the second is the one an operator meets, and
+[OPERATIONS.md](OPERATIONS.md) names `reason=envelope_unreadable` as the alert that finds it.
+
+**Two tests were deleted with the design they served**, and neither was deleted to obtain green — both passed
+either way. `TimeProviderFixedWindowRateLimiterTests` proved the arithmetic of an in-process fixed window, which
+is now PostgreSQL's and is covered by `SharedAttemptBudgetTests`; the class it tested no longer exists.
+
+**What Task 27 does not close.**
+
+| Open | Why |
+|---|---|
+| Genuinely multi-machine limits | Two hosts in one test process share a database and nothing else — the property under test — but not a network. |
+| Real mail domain, real Google, real PII, production | External gates, each owned outside this repository; see [OPERATIONS.md](OPERATIONS.md) §3. |
+| A deployment running the web application without the worker | Sweeps no attempt-budget rows and runs no retention. Named in OPERATIONS rather than fixed, because the worker is where maintenance belongs. |
 
 ## Tasks 21–25 review remediation — done 2026-09-07
 

@@ -43,10 +43,10 @@ person who lost their authenticator is already inside the Platform tenant by the
 | `409 platform_mfa_concurrency_conflict` | two devices recovered at once and this one lost; the other holds the factor that exists |
 | `429 rate_limit_exceeded` + `Retry-After` | the per-identity budget that `/verify` and `/step-up` share |
 
-**Known gap.** SPEC also gives this route `503 service_unavailable` when the shared budget store is unreachable
-(IA-REQ-057). The limiter cannot currently distinguish "unreachable" from "exhausted", and fail-closed behaviour
-is Task 27's subject for *every* budget rather than this route alone. Until then, an unreachable store answers
-like an exhausted budget, which is the wrong thing to tell somebody. It is listed in Task 27, not fixed here.
+**Closed by Task 27 (2026-09-07).** The per-identity budget is now a row in the shared store, so it holds
+across instances and restarts, and an unreachable store answers `503 service_unavailable` with `Retry-After: 30`
+rather than `429`. Telling somebody who spent nothing that they spent everything is a lie, and it hides the
+outage from whoever is watching. Both answers are declared on this route.
 
 ## Retention
 
@@ -188,7 +188,7 @@ signs the evidence with a key it made up, and no external authority issued anyth
 | Real personal data (G2) | the deployment's data owner | nothing here has run against real data; the mode stays `Synthetic` |
 | Production (G3) | the deployment owner | out of scope for every task up to 28 |
 | Legal or compliance certification of retention and erasure | legal | this file describes a mechanism, not an assessment of whether the periods somebody configures are lawful |
-| `503` on an unreachable budget store | Task 27 | the limiter cannot yet distinguish unreachable from exhausted |
+| Genuinely multi-machine abuse limits | a deployment | Task 27 proved the budgets across two independently constructed hosts over one database, and across the disposal of the one that spent them. That is the property, but two hosts in one process are not a network |
 | Categories other than sessions and documents | a later task | skipped and recorded, not implemented |
 | Live restore certification | the restore authority | a physical copy proves the adapter and the pipeline; no external authority issued the evidence |
 | "Insufficient external deletion evidence keeps Personal data quarantined" | a later task | nothing in this system models external deletion evidence, so the clause has no code to exercise |
