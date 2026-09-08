@@ -26,6 +26,10 @@ app.UseHttpsRedirection();
 // that may itself be restored is the thing this guard exists to prevent (IA-REQ-055).
 app.UseMiddleware<CleanArchitecture.Web.Infrastructure.Identity.RecoveryAdmissionMiddleware>();
 
+// Above everything that writes a response, and below the admission guard, which answers before there is an
+// application to protect. A header a route can forget is a header the next route will (IA-REQ-026/027).
+app.UseIdentitySecurityHeaders();
+
 app.UseFileServer();
 
 app.MapOpenApi();

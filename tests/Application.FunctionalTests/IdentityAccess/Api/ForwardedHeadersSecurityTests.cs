@@ -65,4 +65,52 @@ public sealed class ForwardedHeadersSecurityTests : TestBase
         context.Request.Scheme.ShouldBe("http");
         context.Request.Host.Host.ShouldBe("internal.localhost");
     }
+
+    /// <summary>
+    /// Every control this system has over authentication ends at the browser, and none of what happens there is
+    /// decided by a handler — so none of it can be checked by asking one. These are asked of a real response.
+    /// </summary>
+    [TestCase("/api/identity/antiforgery")]
+    [TestCase("/index.html")]
+    public async Task Every_response_carries_the_headers_a_session_cookie_depends_on(string path)
+    {
+        using var harness = IdentityHttpHarness.CreateProductionHarness();
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"https://headers.localhost{path}");
+
+        var response = await harness.Client.SendAsync(request);
+
+        Header(response, "X-Content-Type-Options").ShouldBe("nosniff");
+        Header(response, "Referrer-Policy").ShouldBe("no-referrer");
+        Header(response, "X-Frame-Options").ShouldBe("DENY");
+        Header(response, "Cross-Origin-Opener-Policy").ShouldBe("same-origin");
+        var policy = Header(response, "Content-Security-Policy");
+        policy.ShouldContain("frame-ancestors 'none'", customMessage: "a framed page is a stealable session");
+        policy.ShouldContain("script-src 'self'", customMessage: "the half of the policy that stops injection");
+        policy.ShouldContain("form-action 'self'", customMessage: "an antiforgery token must not be postable elsewhere");
+        policy.ShouldContain("object-src 'none'");
+        policy.ShouldContain("base-uri 'self'");
+    }
+
+    /// <summary>
+    /// An API response is an answer about one caller. A shared cache holding one is that caller's session handed
+    /// to the next person through it, which is why this one is not left to the handler that wrote the body.
+    /// </summary>
+    [Test]
+    public async Task An_api_response_is_never_stored_and_never_indexed()
+    {
+        using var harness = IdentityHttpHarness.CreateProductionHarness();
+        using var request = new HttpRequestMessage(HttpMethod.Get, "https://headers.localhost/api/identity/antiforgery");
+
+        var response = await harness.Client.SendAsync(request);
+
+        response.Headers.CacheControl!.NoStore.ShouldBeTrue();
+        Header(response, "X-Robots-Tag").ShouldContain("noindex");
+    }
+
+    private static string Header(HttpResponseMessage response, string name) =>
+        response.Headers.TryGetValues(name, out var values)
+            ? string.Join(", ", values)
+            : response.Content.Headers.TryGetValues(name, out var contentValues)
+                ? string.Join(", ", contentValues)
+                : throw new AssertionException($"The response carried no {name} header.");
 }
