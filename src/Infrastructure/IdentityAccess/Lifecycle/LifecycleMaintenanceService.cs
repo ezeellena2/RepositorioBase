@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging;
 namespace CleanArchitecture.Infrastructure.IdentityAccess.Lifecycle;
 
 /// <summary>
-/// Runs retention maintenance on a fixed cadence (IA-REQ-056, C6's maintenance row).
+/// Runs retention maintenance and the attempt-budget sweep on a fixed cadence (IA-REQ-056, IA-REQ-057).
 /// <para>
 /// It is internal by construction: no route, no permission, no caller that is a person. An operator's only
 /// powers over erasure are to read what the policy says and to stop it with a hold — ordering one is not among
@@ -37,6 +37,12 @@ public sealed class LifecycleMaintenanceService(
                 // Only a run that did something is worth a line. A worker announcing every quarter-hour of
                 // finding nothing is a worker nobody reads.
                 if (!report.DidNothing) logger.LogInformation("Retention maintenance erased {Erased} rows.", report.Erased);
+
+                // Closed attempt windows decide nothing and are the one thing anybody who can reach a bounded
+                // route can make more of. A count only: the rows hold digests, and even those are not for a log.
+                var swept = await scope.ServiceProvider
+                    .GetRequiredService<Security.AttemptBudgetCleanup>().RunOnceAsync(stoppingToken);
+                if (swept > 0) logger.LogInformation("Swept {Swept} closed attempt-budget windows.", swept);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
