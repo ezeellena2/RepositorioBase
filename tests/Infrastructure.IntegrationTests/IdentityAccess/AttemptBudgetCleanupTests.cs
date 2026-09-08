@@ -3,6 +3,7 @@ using CleanArchitecture.Infrastructure.Data;
 using CleanArchitecture.Infrastructure.IdentityAccess.Security;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using CleanArchitecture.Infrastructure.IntegrationTests.TestDoubles;
 
 namespace CleanArchitecture.Infrastructure.IntegrationTests.IdentityAccess;
 
@@ -74,7 +75,7 @@ public sealed class AttemptBudgetCleanupTests
     }
 
     private static ISharedAttemptBudget Adapter(IServiceScope scope, DateTimeOffset now) =>
-        new PostgreSqlAttemptBudget(scope.ServiceProvider.GetRequiredService<ApplicationDbContext>(), new FixedTime(now));
+        new PostgreSqlAttemptBudget(scope.ServiceProvider.GetRequiredService<ApplicationDbContext>(), new FixedTime(now), TestMetrics.Instance);
 
     private sealed class FixedTime(DateTimeOffset now) : TimeProvider
     {

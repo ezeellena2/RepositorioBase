@@ -98,7 +98,8 @@ public class WebApiFactory(
             services.AddScoped<CleanArchitecture.Application.IdentityAccess.Security.ISharedAttemptBudget>(provider =>
                 new TestSharedAttemptBudget(new CleanArchitecture.Infrastructure.IdentityAccess.Security.PostgreSqlAttemptBudget(
                     provider.GetRequiredService<CleanArchitecture.Infrastructure.Data.ApplicationDbContext>(),
-                    provider.GetRequiredService<TimeProvider>())));
+                    provider.GetRequiredService<TimeProvider>(),
+                    provider.GetRequiredService<CleanArchitecture.Infrastructure.IdentityAccess.Observability.IdentityAccessMetrics>())));
 
             if (useTestIdentityAccessDoubles)
             {

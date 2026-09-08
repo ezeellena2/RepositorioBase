@@ -58,7 +58,8 @@ public sealed class RetentionMaintenanceCycle(
     IRetentionPolicy policy,
     IPersonalDataMode personalDataMode,
     TimeProvider timeProvider,
-    IRetentionSubjectLock subjectLock)
+    IRetentionSubjectLock subjectLock,
+    Observability.IdentityAccessMetrics metrics)
 {
     /// <summary>The fifth advisory space, after registration, sessions, external subjects and role authority.</summary>
     private const int LockSpace = 0x5E5513;
@@ -131,6 +132,7 @@ public sealed class RetentionMaintenanceCycle(
         }
 
         if (skipped is { } recorded) await RecordSkipAsync(rule.Category, recorded, cancellationToken);
+        metrics.RecordErasure(rule.Category.ToString(), erased);
         return new RetentionCategoryOutcome(rule.Category, erased, skipped);
     }
 

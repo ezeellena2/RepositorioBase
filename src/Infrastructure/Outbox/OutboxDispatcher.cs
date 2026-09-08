@@ -14,7 +14,8 @@ public sealed class OutboxDispatcher(
     IEnumerable<IOutboxDeliveryHandler> handlers,
     TimeProvider timeProvider,
     IIdentityEmailSender sender,
-    IRecoveryAdmission admission)
+    IRecoveryAdmission admission,
+    IdentityAccess.Observability.IdentityAccessMetrics metrics)
 {
     private static readonly TimeSpan LeaseDuration = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan ReceiptRetention = TimeSpan.FromHours(24);
@@ -182,6 +183,10 @@ public sealed class OutboxDispatcher(
         {
             await context.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
+
+            // One funnel for every outcome, so a reason nobody thought to count cannot slip past. The codes are
+            // the closed set above; a provider's own message never gets here, and never should.
+            metrics.RecordSettlement(status.ToString(), code);
             return status == OutboxMessageStatus.Delivered;
         }
         finally { if (secret is not null) context.Entry(secret).State = EntityState.Detached; }

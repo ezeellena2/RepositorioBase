@@ -16,7 +16,10 @@ namespace CleanArchitecture.Infrastructure.IdentityAccess.Security;
 /// attempt failed would want.
 /// </para>
 /// </summary>
-public sealed class PostgreSqlAttemptBudget(ApplicationDbContext context, TimeProvider timeProvider) : ISharedAttemptBudget
+public sealed class PostgreSqlAttemptBudget(
+    ApplicationDbContext context,
+    TimeProvider timeProvider,
+    Observability.IdentityAccessMetrics metrics) : ISharedAttemptBudget
 {
     /// <summary>What a caller is told to wait when the store itself is unreachable. A **product default**.</summary>
     private static readonly TimeSpan OutageRetryAfter = TimeSpan.FromSeconds(30);
@@ -63,15 +66,15 @@ public sealed class PostgreSqlAttemptBudget(ApplicationDbContext context, TimePr
 
             // No row comes back when the conditional update matched nothing, which is what "already at the limit"
             // looks like from here. PostgreSQL decided it under the row lock, so parallel callers cannot both win.
-            return admitted is null
+            return Counted(budget, admitted is null
                 ? new AttemptBudgetDecision(AttemptBudgetOutcome.Exhausted, expiresAt - now)
-                : new AttemptBudgetDecision(AttemptBudgetOutcome.Admitted, TimeSpan.Zero);
+                : new AttemptBudgetDecision(AttemptBudgetOutcome.Admitted, TimeSpan.Zero));
         }
         catch (Exception failure) when (failure is NpgsqlException or InvalidOperationException or TimeoutException)
         {
             // Fail closed, and say what actually happened. Answering "too many attempts" here would tell a person
             // they did something they did not do, and would hide an outage from whoever is watching (amendment A5).
-            return new AttemptBudgetDecision(AttemptBudgetOutcome.Unavailable, OutageRetryAfter);
+            return Counted(budget, new AttemptBudgetDecision(AttemptBudgetOutcome.Unavailable, OutageRetryAfter));
         }
     }
 
@@ -99,6 +102,17 @@ public sealed class PostgreSqlAttemptBudget(ApplicationDbContext context, TimePr
             // The budget stands. Clearing is the generous direction, so failing to clear is the safe one, and the
             // caller has already succeeded at what they came to do — telling them about the store would be noise.
         }
+    }
+
+    /// <summary>
+    /// Counts the decision by scope and outcome, and by nothing else. The key never becomes a label: a metric
+    /// label outlives a log line and is indexed, so a per-caller one would be a directory of who tried what,
+    /// built by the very thing meant to be watching for abuse (IA-REQ-029).
+    /// </summary>
+    private AttemptBudgetDecision Counted(AttemptBudget budget, AttemptBudgetDecision decision)
+    {
+        metrics.Record(budget, decision.Outcome);
+        return decision;
     }
 
     /// <summary>

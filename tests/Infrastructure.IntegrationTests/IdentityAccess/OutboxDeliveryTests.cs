@@ -385,7 +385,7 @@ public sealed class OutboxDeliveryTests
         await using (var failing = new ApplicationDbContext(failingOptions))
         {
             var first = new OutboxDispatcher(failing, new OutboxSecretReader(failing, protector),
-                [new InvitationEmailDeliveryHandler(failing, EmailOptions)], clock, sender, NotRecovering);
+                [new InvitationEmailDeliveryHandler(failing, EmailOptions)], clock, sender, NotRecovering, TestMetrics.Instance);
             await Should.ThrowAsync<InvalidOperationException>(() => first.DispatchDueAsync(CancellationToken.None));
         }
         transport.AcceptedCount.ShouldBe(1);
@@ -399,7 +399,7 @@ public sealed class OutboxDeliveryTests
         clock.Advance(TimeSpan.FromMinutes(minutes));
         if (rotateKey) emailOptions.Value.ApiKey = "rotated-isolated-test-key";
         var retry = new OutboxDispatcher(context, new OutboxSecretReader(context, protector),
-            [new InvitationEmailDeliveryHandler(context, EmailOptions)], clock, sender, NotRecovering);
+            [new InvitationEmailDeliveryHandler(context, EmailOptions)], clock, sender, NotRecovering, TestMetrics.Instance);
         await retry.DispatchDueAsync(CancellationToken.None);
         await retry.DispatchDueAsync(CancellationToken.None);
         transport.AcceptedCount.ShouldBe(1, "the transport accepts one logical message even after a process restart");
@@ -526,7 +526,7 @@ public sealed class OutboxDeliveryTests
             context,
             new OutboxSecretReader(context, scope.ServiceProvider.GetRequiredService<Microsoft.AspNetCore.DataProtection.IDataProtectionProvider>()),
             [new InvitationEmailDeliveryHandler(context, EmailOptions), new EmailConfirmationDeliveryHandler(context, EmailOptions)],
-            clock, sink, NotRecovering);
+            clock, sink, NotRecovering, TestMetrics.Instance);
     }
 
     /// <summary>
@@ -581,7 +581,7 @@ public sealed class OutboxDeliveryTests
             [new PasswordRecoveryDeliveryHandler(context, EmailOptions)],
             clock,
             sink,
-            NotRecovering);
+            NotRecovering, TestMetrics.Instance);
         (await dispatcher.DispatchDueAsync(CancellationToken.None)).ShouldBe(1);
 
         var sent = sink.Sent.Single();

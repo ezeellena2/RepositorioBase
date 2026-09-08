@@ -11,6 +11,7 @@ using CleanArchitecture.Infrastructure.Identity;
 using CleanArchitecture.Infrastructure.IdentityAccess.Lifecycle;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using CleanArchitecture.Infrastructure.IntegrationTests.TestDoubles;
 
 namespace CleanArchitecture.Infrastructure.IntegrationTests.IdentityAccess;
 
@@ -273,7 +274,7 @@ public sealed class RetentionLifecycleTests
             new FixedPolicy(policy),
             new FixedMode(mode),
             new FixedTime(Now),
-            new RetentionSubjectLock(context));
+            new RetentionSubjectLock(context), TestMetrics.Instance);
         return await cycle.Bounded(bounds ?? RetentionMaintenanceBounds.Default).RunOnceAsync(CancellationToken.None);
     }
 

@@ -166,7 +166,7 @@ public sealed class RetentionHoldRaceTests : TestBase
         if (barrier is not null) subjectLock = new PausedLock(subjectLock, barrier);
 
         var cycle = new RetentionMaintenanceCycle(
-            context, new FixedPolicy(), new FixedMode(), new FixedTime(Now), subjectLock);
+            context, new FixedPolicy(), new FixedMode(), new FixedTime(Now), subjectLock, FunctionalTestMetrics.Instance);
         return await cycle.Bounded(RetentionMaintenanceBounds.Default).RunOnceAsync(CancellationToken.None);
     }
 

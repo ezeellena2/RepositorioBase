@@ -54,7 +54,10 @@ public static class Extensions
             {
                 metrics.AddAspNetCoreInstrumentation()
                     .AddHttpClientInstrumentation()
-                    .AddRuntimeInstrumentation();
+                    .AddRuntimeInstrumentation()
+                    // Named here rather than referenced, because ServiceDefaults sits under Infrastructure and
+                    // not above it. The constant it mirrors is IdentityAccessMetrics.MeterName.
+                    .AddMeter("CleanArchitecture.IdentityAccess");
             })
             .WithTracing(tracing =>
             {

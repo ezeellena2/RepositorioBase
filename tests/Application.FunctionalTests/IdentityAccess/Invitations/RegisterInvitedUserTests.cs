@@ -307,7 +307,7 @@ public sealed class RegisterInvitedUserTests : TestBase
         var sink = new RegistrationDeliverySink();
         var dispatcher = new OutboxDispatcher(scope.ServiceProvider.GetRequiredService<ApplicationDbContext>(),
             scope.ServiceProvider.GetRequiredService<IOutboxSecretReader>(), scope.ServiceProvider.GetServices<IOutboxDeliveryHandler>(), TimeProvider.System, sink,
-            scope.ServiceProvider.GetRequiredService<CleanArchitecture.Application.IdentityAccess.Lifecycle.IRecoveryAdmission>());
+            scope.ServiceProvider.GetRequiredService<CleanArchitecture.Application.IdentityAccess.Lifecycle.IRecoveryAdmission>(), FunctionalTestMetrics.Instance);
         await dispatcher.DispatchDueAsync(CancellationToken.None);
         await dispatcher.DispatchDueAsync(CancellationToken.None);
         (await TestApp.ListAsync<Domain.IdentityAccess.Outbox.OutboxMessage>()).Single(item => item.Id == message.Id)

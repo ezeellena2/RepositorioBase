@@ -3,6 +3,7 @@ using CleanArchitecture.Infrastructure.Data;
 using CleanArchitecture.Infrastructure.IdentityAccess.Security;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using CleanArchitecture.Infrastructure.IntegrationTests.TestDoubles;
 
 namespace CleanArchitecture.Infrastructure.IntegrationTests.IdentityAccess;
 
@@ -29,7 +30,7 @@ public sealed class SharedAttemptBudgetTests
     private static ISharedAttemptBudget Adapter(IServiceScope scope, DateTimeOffset now) =>
         new PostgreSqlAttemptBudget(
             scope.ServiceProvider.GetRequiredService<ApplicationDbContext>(),
-            new FixedTime(now));
+            new FixedTime(now), TestMetrics.Instance);
 
     [TearDown]
     public async Task Remove_only_this_tests_budgets()
@@ -125,7 +126,7 @@ public sealed class SharedAttemptBudgetTests
             .UseNpgsql("Host=127.0.0.1;Port=1;Database=absent;Username=absent;Password=absent;Timeout=1;Command Timeout=1")
             .Options;
         await using var unreachable = new ApplicationDbContext(options);
-        var adapter = new PostgreSqlAttemptBudget(unreachable, new FixedTime(Now));
+        var adapter = new PostgreSqlAttemptBudget(unreachable, new FixedTime(Now), TestMetrics.Instance);
 
         var decision = await adapter.SpendAsync(Budget(3), "someone", CancellationToken.None);
 

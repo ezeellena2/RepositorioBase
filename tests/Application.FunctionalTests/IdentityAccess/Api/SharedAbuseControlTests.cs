@@ -185,7 +185,7 @@ public sealed class SharedAbuseControlTests : TestBase
         using var scope = FunctionalTestSetup.ScopeFactory.CreateScope();
         var independent = new PostgreSqlAttemptBudget(
             scope.ServiceProvider.GetRequiredService<CleanArchitecture.Infrastructure.Data.ApplicationDbContext>(),
-            scope.ServiceProvider.GetRequiredService<TimeProvider>());
+            scope.ServiceProvider.GetRequiredService<TimeProvider>(), FunctionalTestMetrics.Instance);
 
         var decision = await independent.SpendAsync(budget, key, CancellationToken.None);
 

@@ -178,7 +178,7 @@ public sealed class OutboxAdmissionTests
             [new InvitationEmailDeliveryHandler(context, EmailOptions)],
             new ControlledTimeProvider(Origin),
             sink,
-            admission);
+            admission, TestMetrics.Instance);
     }
 
     /// <summary>
