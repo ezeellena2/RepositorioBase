@@ -194,6 +194,8 @@ public static class DependencyInjection
         // Anything scoped would re-read it per request, which is slower and no safer; anything durable would have
         // to live in the restored database, which is exactly what must not be able to open it (IA-REQ-055).
         builder.Services.AddSingleton<CleanArchitecture.Application.IdentityAccess.Lifecycle.IRecoveryAdmission, CleanArchitecture.Infrastructure.IdentityAccess.Lifecycle.ConfiguredRecoveryAdmission>();
+        // Both processes, because both would otherwise start into the same two contradictions.
+        builder.Services.AddSingleton<IHostedService, CleanArchitecture.Infrastructure.IdentityAccess.Lifecycle.IdentityDeploymentGuard>();
         builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.Authorization.IRoleAuthorityLock, CleanArchitecture.Infrastructure.IdentityAccess.RoleAuthorityLock>();
         builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.Members.IMembershipAdministrationStore, CleanArchitecture.Infrastructure.IdentityAccess.MembershipAdministrationStore>();
         builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.ExternalLogins.IExternalCallbackRecorder, CleanArchitecture.Application.IdentityAccess.ExternalLogins.ExternalCallbackRecorder>();

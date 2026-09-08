@@ -28,7 +28,8 @@ public class WebApiFactory(
     bool useTestIdentityAccessDoubles = true,
     TimeProvider? timeProvider = null,
     IReadOnlyDictionary<string, string?>? settings = null,
-    Action<IServiceCollection>? configureTestServices = null) : WebApplicationFactory<Program>
+    Action<IServiceCollection>? configureTestServices = null,
+    bool keepDeploymentGuard = false) : WebApplicationFactory<Program>
 {
     /// <summary>A fixed 32-byte key. This suite never handles a real document, so nothing here needs protecting.</summary>
     private const string TestDocumentFingerprintKey = "dGVzdC1maW5nZXJwcmludC1rZXktMzItYnl0ZXMhISE=";
@@ -66,6 +67,13 @@ public class WebApiFactory(
             if (!string.IsNullOrWhiteSpace(environmentName))
             {
                 services.RemoveAll<IHostedService>();
+
+                // Put back exactly the one a test is asking about. Restoring all of them would start a delivery
+                // loop and a migration in every scenario that only wanted to know whether the host comes up.
+                if (keepDeploymentGuard)
+                {
+                    services.AddSingleton<IHostedService, CleanArchitecture.Infrastructure.IdentityAccess.Lifecycle.IdentityDeploymentGuard>();
+                }
             }
             if (useTestAuthentication)
             {

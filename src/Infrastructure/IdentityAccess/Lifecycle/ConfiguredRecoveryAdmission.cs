@@ -53,7 +53,8 @@ public sealed class ConfiguredRecoveryAdmission : IRecoveryAdmission
 
         // Armed and unable to verify. Deliberately not "unarmed": an operator who deployed the evidence and
         // forgot the key must not thereby get a fully open deployment on restored data, which is the exact shape
-        // of mistake this guard exists for. Task 27 turns it into a refusal to start at all.
+        // of mistake this guard exists for. A deployment in that state now also refuses to start, in
+        // IdentityDeploymentGuard — this remains the answer for anything that constructs the adapter directly.
         var key = Trimmed(section["VerificationKey"]);
         if (key is null) return RecoveryAdmission.ClosedBecause(RecoveryAdmissionReason.EvidenceInvalid);
 
