@@ -3,6 +3,10 @@
 Everything here is local. Nothing in this file activates an email provider or sends a real message; see
 [EMAIL-SETUP.md](EMAIL-SETUP.md) for that, and read the section on delivery below before assuming a link arrived.
 
+Two neighbours: [OPERATIONS.md](OPERATIONS.md) is what an operator configures and watches once this run is behind
+them, and [RECOVERY-AND-RETENTION.md](RECOVERY-AND-RETENTION.md) is what happens to a lost second factor and to
+stored personal data.
+
 ## Prerequisites
 
 1. **.NET SDK 10** and **Node 20+**.
@@ -101,7 +105,9 @@ same neutral `202` whatever address you type, and the confirmation lands in the 
 same mailed confirmation. **Read the limitation below before you rely on it.**
 
 **Your profile.** `/identity/profile` shows the name, display name and address, and the masked document if one
-was recorded. Only the two names are editable; the document is not, and the correction route is not built.
+was recorded. Only the two names are editable. The document is not: correcting one takes two parties, and all
+this screen does is ask for a review. If you signed in without a personal context — because you arrived through
+an organization — this is also where you claim one, with a name and a document rather than by registering again.
 
 **Your devices.** `/identity/sessions` lists where you are signed in, marks the one you are using, and ends
 another one or all the others. Both ask for your password first, which buys a single-use server-side proof. Five
@@ -154,10 +160,15 @@ it produced:
 1. open the invitation link from the drop folder (`/platform/invitations/register#token=…`) and choose a password;
 2. open the confirmation that arrives next (`/platform/invitations/confirm#token=…`) and confirm the address;
 3. sign in normally at `/login`;
-4. complete the second factor at `/platform/mfa#token=…` — the same invitation token as step 1, which is what
-   binds the ceremony to the offer rather than to whoever is signed in. Enrol, enter a code from an authenticator,
-   and acknowledge the recovery codes;
+4. open the **invitation link from step 1 again** and take "Set up your second factor". There is no URL to type:
+   the ceremony is bound to the offer rather than to whoever is signed in, and the page you already have is the
+   one holding the token that says so. Enrol, enter a code from an authenticator, and acknowledge the recovery
+   codes;
 5. the Platform panel is then at `/platform`.
+
+If the authenticator is later lost, `/platform/mfa/recover` replaces the factor for a caller who proves a
+password a moment beforehand and spends one unused recovery code. The replacement has been proved by nobody, so
+the next Platform change asks for a step-up with the new authenticator.
 
 The membership becomes active only at step 4's acknowledgement. Before it, the account exists and can sign in, and
 holds nothing — the panel answers that the area is for an MFA-authenticated Platform administrator.
@@ -258,10 +269,6 @@ npm run build --prefix src/Web/ClientApp
 ```
 
 The acceptance suite starts the whole application, including the frontend, so it is the slowest by a wide margin
-and needs Docker running. **It also needs a database it has not run against before**: it asserts a cold start that
-the Platform bootstrap never repeats, so it is `21/21` on a fresh database and fails on a second run against the
-same one. Drop and recreate `CleanArchitectureDb` in the `dbserver-*` container between runs. Making the suite
-repeatable is Task 28's. **It also needs a database it has not run against before**: it asserts a cold start that
-the Platform bootstrap never repeats, so it is `21/21` on a fresh database and fails on a second run against the
-same one. Drop and recreate `CleanArchitectureDb` in the `dbserver-*` container between runs. Making the suite
-repeatable is Task 28's.
+and needs Docker running. It is repeatable: it walks a cold start the Platform bootstrap never repeats, so it
+creates a database of its own inside the `dbserver-*` container each run and drops it at the end. Your own
+`CleanArchitectureDb` is not touched, and nothing needs recreating between runs.

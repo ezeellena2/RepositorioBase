@@ -9,6 +9,7 @@ The package adopts the reference standard's business semantics, not its workflow
 - [SPEC.md](SPEC.md): behavior, invariants, contracts, and acceptance criteria.
 - [TASKS.md](TASKS.md): slices, dependencies, review forecast, and status.
 - [TRACEABILITY.md](TRACEABILITY.md): requirement → task → test → evidence.
+- [DELIVERY.md](DELIVERY.md): what was delivered, what it is evidence for, and what it is not.
 - [RUNNING-LOCALLY.md](RUNNING-LOCALLY.md): the synthetic run, end to end.
 - [OPERATIONS.md](OPERATIONS.md): what an operator configures, what they can watch, and what they still cannot do.
 - [RECOVERY-AND-RETENTION.md](RECOVERY-AND-RETENTION.md): lost second factors, stored personal data, restore admission.
@@ -18,4 +19,4 @@ The package adopts the reference standard's business semantics, not its workflow
 
 ## Status
 
-The planning package remains under human review for the pending Identity Access slices. Tasks IA-002 and IA-003 are implemented with a PostgreSQL-only template, a safe baseline migration, and no default credentials; this does not authorize the remaining runtime behavior.
+**Local B2B/B2C identity access is functionally complete with synthetic data** as of 2026-09-07 (plan Tasks 17–28). That sentence is the whole claim: real personal data, production, Google activation and live restore certification are separate gates and remain open, each with a named owner in [DELIVERY.md](DELIVERY.md#6-what-is-not-closed-and-who-owns-it).

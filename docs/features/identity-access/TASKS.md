@@ -17,7 +17,7 @@ The [plan runs Tasks 17–28](../../superpowers/plans/2026-08-31-identity-access
 Real-PII and production/reference compliance remain separate gates, so local functional closure authorizes no
 deployment and certifies nothing.
 
-## Continuation roadmap mapping — 17–27 done, 28 remaining
+## Continuation roadmap mapping — 17–28 done; the external gates stay open
 
 | Plan task | Work | Tracking | Dependency/approval boundary |
 |---|---|---|---|
@@ -32,7 +32,7 @@ deployment and certifies nothing.
 | 25 | Membership administration, ownership transfer and invitation lifecycle | IA-005/008 continuation; IA-009 evidence | 21/24; 17 C5 |
 | 26 | Lifecycle, MFA recovery, retention executor, restore admission guard and both halves of the documentary dispute | IA-011/012/015; existing event owners | **Unblocked 2026-09-07**: C6 accepted with withdrawal E1 |
 | 27 | Remaining budget scopes on the shared store, keys, deployment guards and operations evidence | IA-015; IA-007/012/014 control owners | **Done 2026-09-07.** 26; port and adapter already landed in 19. Multi-machine limits, real mail, real Google and production remain outside it |
-| 28 | Fixed full-journey acceptance and scoped closure | IA-009 evidence only; all continuation owners | 18–27 local evidence; separate PII/production/reference gates |
+| 28 | Fixed full-journey acceptance and scoped closure | IA-009 evidence only; all continuation owners | **Done 2026-09-07.** 18–27 local evidence. The claim it closes is exactly "local B2B/B2C functional completion with synthetic data"; real PII, production and full reference compliance are separate gates and remain open |
 
 The roadmap requirement owners remain in SPEC; this mapping does not invent approved IA-REQ identifiers.
 Custom roles and full membership administration are explicit continuation work even though their initial
@@ -840,6 +840,79 @@ is now PostgreSQL's and is covered by `SharedAttemptBudgetTests`; the class it t
 | Real mail domain, real Google, real PII, production | External gates, each owned outside this repository; see [OPERATIONS.md](OPERATIONS.md) §3. |
 | A deployment running the web application without the worker | Sweeps no attempt-budget rows and runs no retention. Named in OPERATIONS rather than fixed, because the worker is where maintenance belongs. |
 
+## Task 28 — done 2026-09-07
+
+**Prove the complete local journeys and close only the achieved scope.**
+
+**The state that was found.** The acceptance suite was `7/21`, and neither cause was a defect in what it was
+meant to prove. The seeded accounts said "confirmed" in `EmailConfirmed` and said nothing in `Status`, whose
+default is the fail-closed `PendingConfirmation` — so every scenario that signed in was signing in as an account
+that may not. The rest were the Platform journeys, which walk a ceremony that happens once in a deployment's
+life and can only fail against a database somebody has already bootstrapped.
+
+**The isolation, because the fix for that is not to reset somebody's database.** A run now names its own database
+inside the persistent server container and drops it at the end (`IdentityAccess:Database:Name`, unset everywhere
+else). The server stays persistent and nothing else on it is touched. The suite went from "21/21 on a fresh
+database, and broken on the second run" to repeatable.
+
+**The journeys added, by matrix row.**
+
+| Row | Added | Where |
+|---|---|---|
+| Personal newcomer → confirmation → sign-in → own profile | the document is masked and the submitted digits appear nowhere, in the markup either | `IdentityContinuation.feature` |
+| Existing identity adds Personal → both contexts | **had no screen**; see the defect below | same |
+| Devices → end another → the other device is out | two browser contexts, because a device list needs a second device | same |
+| Delivered reset → sign-in → change from inside | both checks in a browser of their own: whether a password works is a fact about the credential, not about the browser that changed it | same |
+| Custom role → assignment → permission removal → ownership transfer | asked in the member's browser, and the transfer through the confirmation the product asks for | same |
+| Invite → resend → withdraw | one usable link after a rotation, none after a withdrawal, and nobody made a member | same |
+| Later Platform administrator; existing identity invited to Platform | the two branches the plan names by hand | `PlatformOperations.feature` |
+
+**One defect found and fixed inside scope.** `createPersonalContext` was a client method with no caller. Somebody
+signed in with no personal context was pointed at `/personal/register` — the newcomer signup, which asks for an
+address and a password they already have, behind a route that answers a stranger's neutral acknowledgement. They
+would have been told nothing and given nothing. The profile page now offers the claim itself.
+
+**Two backend gaps the plan names, closed by hand.** `Invitation.Issue/Reissue(default)` is refused at both entry
+points, and a denial's field set is asserted over every public member of the persisted record rather than the two
+keys anybody remembers to check.
+
+**One property of the system the suite had to stop hiding.** Every browser reaches the application through one
+loopback proxy, so twenty sign-in attempts per five minutes was one budget shared by every scenario — the suite
+spent it and answered `429`. Each context now arrives from an address of its own, which is what the journeys
+actually are: different people on different machines. The budget is real and still spent.
+
+**What has no browser journey, and why.** Google. Making one requires either a controlled provider on an HTTPS
+endpoint the web process trusts, or turning `RequireHttpsMetadata` off in production code — the first is a
+property of the machine and the second is weakening a security default to make a test convenient. The protocol
+itself is proved at the request level against a controlled provider that really speaks it, including PKCE, nonce
+and the issuer, audience, signature and expiry negatives, and the SPA halves are proved by client tests. Real
+Google was already an external gate and stays one.
+
+**Verification run, 2026-09-07, from the repository root.** Counts are this run's, not a copy of an earlier
+green one.
+
+| Command | Exit | Result |
+|---|---|---|
+| `dotnet build CleanArchitecture.slnx -v minimal` | 0 | 0 errors, 2 warnings |
+| `dotnet build CleanArchitecture.slnx -c Release -v minimal` | 0 | 0 errors, 2 warnings |
+| `dotnet test CleanArchitecture.slnx --no-build` | 0 | 1 377 discovered, 1 377 executed, 1 377 passed, 0 failed, 0 skipped |
+| `npm test --prefix src/Web/ClientApp` | 0 | 23 files, 219 passed, 0 failed |
+| `npm run lint --prefix src/Web/ClientApp` | 0 | clean |
+| `npm run build --prefix src/Web/ClientApp` | 0 | built |
+| `git diff --check` | 0 | clean |
+
+Per suite: Domain unit 192/192, Application unit 199/199, Infrastructure integration 301/301, Web acceptance
+30/30, Application functional 655/655.
+
+**Both warnings are `ASPIRE010`**, on `AppHost` and `TestAppHost`: the Aspire CLI bundle is not installed in
+this repository. It is not an applicable warning for anything in this task and nothing here suppresses it —
+it is named so a reader does not have to wonder whether "0 errors, 2 warnings" is hiding something.
+
+**Infrastructure used:** Docker, one persistent PostgreSQL server container, and the acceptance run's own
+database inside it, created and dropped by the run. Playwright with Chromium, headless. No external account of
+any kind was contacted: mail went to a local drop folder and the OpenID Connect provider was the controlled one
+the tests stand up.
+
 ## Tasks 21–25 review remediation — done 2026-09-07
 
 A review of Tasks 21–25 produced eight directed reproductions. They are kept as they were written and were used
@@ -1021,7 +1094,9 @@ Reconciled against source at `7e9eb55`; this is not a new integration-test run o
   hash factory. `Invitation.Issue`/`Reissue` guard `IsEmpty`, and decoding/re-encoding plus the canonical SQL
   constraint reject alternate Base64 padding. `VersionedTokenHashTests.The_only_public_way_to_obtain_a_hash_is_to_hash_a_token`,
   `A_non_canonical_encoding_is_not_a_persisted_hash` and `The_default_value_is_empty` exist. Direct Issue/Reissue
-  tests with `default` were not found; that narrow coverage gap is not the former missing implementation.
+  tests with `default` were not found; **that narrow coverage gap is closed by Task 28 (2026-09-07)** —
+  `InvitationTests.An_invitation_cannot_be_issued_or_reissued_with_a_hash_nobody_produced` refuses both entry
+  points and shows that a refused reissue leaves the offer that was already delivered standing.
 - **Implementation corrected:** `InvitationCanonicalForm` and `InvitationRecipientComposition` disable and
   restore `TR_Invitations_PreventSettledChange` around data repair.
   `MigrationUpgradeTests.Invitation_canonicalization_upgrades_settled_and_colliding_rows_and_leaves_the_trigger_operative`
