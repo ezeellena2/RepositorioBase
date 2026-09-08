@@ -1,0 +1,254 @@
+namespace CleanArchitecture.Web.AcceptanceTests.StepDefinitions;
+
+/// <summary>
+/// The journeys Tasks 19-25 added, driven through the browser.
+/// <para>
+/// Two of them need more than one browser: a device list is only meaningful when there is another device, and
+/// what "ending" one does is only observable from that other device. Each context is a separate browser as far
+/// as cookies are concerned, which is what makes them two devices rather than two tabs.
+/// </para>
+/// </summary>
+[Binding]
+public sealed class IdentityContinuationStepDefinitions(ScenarioContext scenario)
+{
+    private static IBrowserContext? primaryContext;
+    private static IBrowserContext? otherContext;
+    private static IPage? primaryPage;
+    private static IPage? otherPage;
+
+    private static IPage Page => primaryPage ?? throw new InvalidOperationException("The continuation feature has no page.");
+
+    private static IPage Other => otherPage ?? throw new InvalidOperationException("This scenario has no second device.");
+
+    private IdentitySignInPage SignIn => new(Page);
+    private ConfirmEmailPage Confirmation => new(Page);
+    private PersonalRegisterPage PersonalRegister => new(Page);
+    private PersonalProfilePage Profile => new(Page);
+    private OwnDevicesPage Devices => new(Page);
+    private PasswordPages Passwords => new(Page);
+    private TenantSelectorPage Tenants => new(Page);
+
+    private string Email
+    {
+        get => scenario.Get<string>("email");
+        set => scenario.Set(value, "email");
+    }
+
+    private string Password
+    {
+        get => scenario.Get<string>("password");
+        set => scenario.Set(value, "password");
+    }
+
+    [BeforeScenario("IdentityContinuation")]
+    public static async Task BeforeContinuationScenario()
+    {
+        primaryContext = await PlaywrightSetup.NewContextAsync();
+        primaryPage = await primaryContext.NewPageAsync();
+    }
+
+    [AfterScenario("IdentityContinuation")]
+    public static async Task AfterContinuationScenario()
+    {
+        foreach (var context in new[] { primaryContext, otherContext })
+        {
+            if (context is not null) await context.DisposeAsync();
+        }
+
+        primaryContext = otherContext = null;
+        primaryPage = otherPage = null;
+    }
+
+    // ---- a personal account of one's own ----------------------------------------------------------------
+
+    [Given("a visitor sets up a personal account")]
+    public async Task GivenAVisitorSetsUpAPersonalAccount()
+    {
+        Email = $"personal-{Guid.NewGuid():N}@example.test";
+        Password = IdentityAccessFixtures.Password;
+        // Eight digits, drawn rather than counted: the acceptance database outlives no run now, but a document
+        // is unique across every identity and a fixed one would collide with itself on a rerun.
+        scenario.Set(Random.Shared.Next(10_000_000, 99_999_999).ToString(), "document");
+        await PersonalRegister.GotoAsync();
+        await PersonalRegister.RegisterAsync("Ana Pérez", "Ana", scenario.Get<string>("document"), Email, Password);
+    }
+
+    [Then("setting up answers neutrally without revealing whether the address was taken")]
+    public Task ThenSettingUpIsNeutral() => PersonalRegister.AssertNeutralAcknowledgementAsync();
+
+    [When("they open the delivered confirmation link and confirm")]
+    public async Task WhenTheyConfirm()
+    {
+        var delivered = await PlatformFixtures.DeliveredAsync(Email, "Confirm your email");
+        await Confirmation.OpenDeliveredAsync(delivered);
+        await Confirmation.AssertFragmentClearedAsync();
+        await Confirmation.ConfirmAsync();
+    }
+
+    [When("they sign in with the password they hold")]
+    public async Task WhenTheySignIn()
+    {
+        await SignIn.GotoAsync();
+        await SignIn.SignInAsync(Email, Password);
+    }
+
+    [Then("their profile shows the document masked and never the number they submitted")]
+    public async Task ThenTheDocumentIsMasked()
+    {
+        await Profile.GotoAsync();
+        await Profile.AssertDocumentMaskedAsync(scenario.Get<string>("document"));
+    }
+
+    [Given("a confirmed identity that belongs to one organization")]
+    public async Task GivenAConfirmedIdentityWithOneMembership()
+    {
+        var identity = await IdentityAccessFixtures.ConfirmedIdentityAsync();
+        Email = identity.Email;
+        Password = IdentityAccessFixtures.Password;
+        var organization = await IdentityAccessFixtures.OrganizationAsync("Acme", "members.read");
+        await IdentityAccessFixtures.MembershipAsync(organization, identity);
+        scenario.Set(organization, "organization");
+    }
+
+    [When("they add a personal context to the identity they already have")]
+    public async Task WhenTheyAddAPersonalContext()
+    {
+        scenario.Set(Random.Shared.Next(10_000_000, 99_999_999).ToString(), "document");
+        await Profile.GotoAsync();
+        await Profile.AddPersonalContextAsync("Ana Pérez", "Ana", scenario.Get<string>("document"));
+    }
+
+    [Then("both the organization and their personal context are offered to them")]
+    public async Task ThenBothContextsAreOffered()
+    {
+        var organization = scenario.Get<IdentityAccessFixtures.SeededOrganization>("organization");
+        await Tenants.GotoAsync();
+        await Tenants.AssertOffersAsync(organization.Slug);
+
+        // Two contexts and one identity: the person did not acquire a second account, they acquired a second
+        // place to be. The personal one is named by the tenant it is, so it is found by not being the other.
+        var personal = await Tenants.OtherThanAsync(organization.Slug);
+        await Tenants.ChooseAsync(personal);
+        await new IdentityContextPage(Page).GotoAsync();
+        await new IdentityContextPage(Page).AssertActiveOrganizationAsync(personal);
+    }
+
+    // ---- devices ----------------------------------------------------------------------------------------
+
+    [Given("a confirmed identity signed in on two devices")]
+    public async Task GivenAnIdentitySignedInOnTwoDevices()
+    {
+        var identity = await IdentityAccessFixtures.ConfirmedIdentityAsync();
+        Email = identity.Email;
+        Password = IdentityAccessFixtures.Password;
+
+        await SignIn.GotoAsync();
+        await SignIn.SignInAsync(Email, Password);
+
+        otherContext = await PlaywrightSetup.NewContextAsync();
+        otherPage = await otherContext.NewPageAsync();
+        var elsewhere = new IdentitySignInPage(Other);
+        await elsewhere.GotoAsync();
+        await elsewhere.SignInAsync(Email, Password);
+    }
+
+    [When("they end the other device from their device list")]
+    public async Task WhenTheyEndTheOtherDevice()
+    {
+        await Devices.GotoAsync();
+        await Devices.AssertVisibleAsync();
+        await Devices.ProveAsync(Password);
+        await Devices.EndTheOtherDeviceAsync();
+    }
+
+    [Then("the other device is sent back to sign in")]
+    public async Task ThenTheOtherDeviceIsSignedOut()
+    {
+        await new IdentityContextPage(Other).GotoAsync();
+        await new IdentitySignInPage(Other).AssertVisibleAsync();
+    }
+
+    [Then("their own device is still signed in")]
+    public async Task ThenTheirOwnDeviceStillWorks()
+    {
+        await new IdentityContextPage(Page).GotoAsync();
+        await new IdentityContextPage(Page).AssertVisibleAsync();
+    }
+
+    // ---- the two ways a password moves ------------------------------------------------------------------
+
+    [Given("a confirmed identity that cannot remember its password")]
+    public async Task GivenAnIdentityThatForgotItsPassword()
+    {
+        var identity = await IdentityAccessFixtures.ConfirmedIdentityAsync();
+        Email = identity.Email;
+        Password = IdentityAccessFixtures.Password;
+    }
+
+    [When("they ask for a reset link and follow the one delivered")]
+    public async Task WhenTheyResetFromTheDeliveredLink()
+    {
+        await Passwords.GotoAsync();
+        await Passwords.AskForALinkAsync(Email);
+
+        var delivered = await PlatformFixtures.DeliveredAsync(Email, "Reset your password");
+        await Passwords.OpenDeliveredAsync(delivered);
+        await Passwords.AssertFragmentClearedAsync();
+        await Passwords.ChooseAsync(ChosenPassword);
+    }
+
+    [Then("the password they had no longer signs them in")]
+    public Task ThenTheOldPasswordIsRefused() => AssertRefusedAsync(Password);
+
+    [Then("the one they chose does")]
+    public Task ThenTheChosenPasswordWorks() => AssertAcceptedAsync(ChosenPassword);
+
+    [When("they change their password from inside")]
+    public async Task WhenTheyChangeItFromInside()
+    {
+        // Signed in on this browser first: "from inside" is the point of the step, and the checks above ran in
+        // browsers of their own precisely so they would leave this one holding nothing.
+        await SignIn.GotoAsync();
+        await SignIn.SignInAsync(Email, ChosenPassword);
+        await Passwords.ChangeAsync(ChosenPassword, ReplacementPassword);
+    }
+
+    [Then("the password they just replaced no longer signs them in")]
+    public async Task ThenTheReplacedPasswordIsRefused()
+    {
+        await AssertRefusedAsync(ChosenPassword);
+        await AssertAcceptedAsync(ReplacementPassword);
+    }
+
+    private const string ChosenPassword = "Chosen4Acceptance!";
+    private const string ReplacementPassword = "Replaced4Acceptance!";
+
+    /// <summary>
+    /// A refused sign-in is deliberately the same bodyless answer a wrong address gets, so what is asserted is
+    /// that no session came of it.
+    /// <para>
+    /// Both password checks run in a browser of their own. Whether a password still works is a fact about the
+    /// credential, not about the browser that changed it — and asking the browser that just changed one means
+    /// asking a page whose session was rotated underneath it, which answers about the wrong thing.
+    /// </para>
+    /// </summary>
+    private Task AssertRefusedAsync(string password) => InAFreshBrowserAsync(async signIn =>
+    {
+        var response = await signIn.AttemptSignInAsync(Email, password);
+        response.Status.ShouldBe(204, "a refused sign-in is neutral, not an error");
+        response.Headers.ContainsKey("set-cookie").ShouldBeFalse("a refused sign-in issues no session");
+        await signIn.AssertVisibleAsync();
+    });
+
+    private Task AssertAcceptedAsync(string password) =>
+        InAFreshBrowserAsync(signIn => signIn.SignInAsync(Email, password));
+
+    private static async Task InAFreshBrowserAsync(Func<IdentitySignInPage, Task> ask)
+    {
+        await using var context = await PlaywrightSetup.NewContextAsync();
+        var page = await context.NewPageAsync();
+        var signIn = new IdentitySignInPage(page);
+        await signIn.GotoAsync();
+        await ask(signIn);
+    }
+}

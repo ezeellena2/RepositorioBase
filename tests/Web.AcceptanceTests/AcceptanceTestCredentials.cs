@@ -129,7 +129,14 @@ internal static class AcceptanceTestCredentials
     {
         while (true)
         {
-            await using var command = new NpgsqlCommand("SELECT to_regclass('\"AspNetUsers\"') IS NOT NULL;", connection);
+            // The table *and* the column a later migration adds: `AspNetUsers` appears with the baseline and
+            // grows afterwards, so waiting only for the table provisions into a half-migrated database.
+            await using var command = new NpgsqlCommand(
+                """
+                SELECT to_regclass('"AspNetUsers"') IS NOT NULL
+                   AND EXISTS (SELECT 1 FROM information_schema.columns
+                               WHERE table_name = 'AspNetUsers' AND column_name = 'Status');
+                """, connection);
             if ((bool)(await command.ExecuteScalarAsync(cancellationToken))!)
             {
                 return;

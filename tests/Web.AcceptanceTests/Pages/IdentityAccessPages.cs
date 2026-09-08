@@ -121,6 +121,23 @@ public sealed class TenantSelectorPage(IPage page) : BasePage(page)
 
     public Task AssertOffersAsync(string name) =>
         Assertions.Expect(Page.GetByRole(AriaRole.Button, new() { Name = name })).ToBeVisibleAsync();
+
+    /// <summary>
+    /// The other context this identity is offered, named by the screen rather than by the test. A personal
+    /// tenant is known by the slug it was given, which nobody outside the application chose — so a journey that
+    /// asserted a name of its own would be asserting its own guess.
+    /// </summary>
+    public async Task<string> OtherThanAsync(string known)
+    {
+        // Scoped to the screen's own region: the page furniture is lists too, and counting those would be
+        // counting the navigation.
+        var offered = Page.GetByRole(AriaRole.Region, new() { Name = "Choose an organization" }).GetByRole(AriaRole.Button);
+        await Assertions.Expect(offered).ToHaveCountAsync(2);
+        var names = await offered.AllInnerTextsAsync();
+        return names
+            .Select(name => name.Replace(" (current)", string.Empty, StringComparison.Ordinal).Trim())
+            .Single(name => !string.Equals(name, known, StringComparison.Ordinal));
+    }
 }
 
 /// <summary>The two halves of an invitation. Both carry their token in the URL fragment, never in the query.</summary>

@@ -149,6 +149,47 @@ describe('personal pages', () => {
     renderPage(<PersonalProfilePage />);
 
     expect(await screen.findByRole('status')).toHaveTextContent(/no personal context yet/i);
-    expect(screen.getByRole('link', { name: /set up a personal account/i })).toHaveAttribute('href', '/personal/register');
+  });
+
+  /**
+   * Somebody who is already signed in does not register again. Pointing them at the newcomer signup asks for an
+   * address and a password they already have, and the route behind it answers the neutral acknowledgement a
+   * stranger gets — so the person who wanted a personal account is told nothing and given none.
+   */
+  it('lets a signed-in identity add a personal context without registering a second time', async () => {
+    server.use(antiforgery(), contextIs(signedInContext()));
+    server.use(http.get('/api/identity/profile', () => problem(404, 'personal_profile_not_found')));
+    const claims = [];
+    server.use(http.post('/api/identity/personal', async ({ request }) => {
+      claims.push(await request.json());
+      return new HttpResponse(null, { status: 204 });
+    }));
+
+    renderPage(<PersonalProfilePage />);
+    await screen.findByRole('status');
+    await userEvent.type(screen.getByLabelText('Full name'), 'Jane Doe');
+    await userEvent.type(screen.getByLabelText('Display name'), 'Jane');
+    await userEvent.type(screen.getByLabelText('DNI'), '30111222');
+    await userEvent.click(screen.getByRole('button', { name: /add my personal account/i }));
+
+    await waitFor(() => expect(claims).toHaveLength(1));
+    expect(claims[0]).toEqual({ fullName: 'Jane Doe', displayName: 'Jane', documentNumber: '30111222' });
+    expect(Object.keys(claims[0])).not.toContain('email');
+    expect(Object.keys(claims[0])).not.toContain('password');
+  });
+
+  it('says what was refused when a document already belongs to somebody else', async () => {
+    server.use(antiforgery(), contextIs(signedInContext()));
+    server.use(http.get('/api/identity/profile', () => problem(404, 'personal_profile_not_found')));
+    server.use(http.post('/api/identity/personal', () => problem(409, 'personal_context_conflict')));
+
+    renderPage(<PersonalProfilePage />);
+    await screen.findByRole('status');
+    await userEvent.type(screen.getByLabelText('Full name'), 'Jane Doe');
+    await userEvent.type(screen.getByLabelText('Display name'), 'Jane');
+    await userEvent.type(screen.getByLabelText('DNI'), '30111222');
+    await userEvent.click(screen.getByRole('button', { name: /add my personal account/i }));
+
+    expect(await screen.findByRole('alert')).toBeVisible();
   });
 });

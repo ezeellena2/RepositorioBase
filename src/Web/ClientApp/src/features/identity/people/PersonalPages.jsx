@@ -96,6 +96,46 @@ function DocumentDispute({ client, available, country, type }) {
 }
 
 /**
+ * Adding a personal context to an identity that already exists.
+ *
+ * It is deliberately not the signup at `/personal/register`. That page is for a stranger: it asks for an address
+ * and a password this person already has, and the route behind it answers the same neutral acknowledgement
+ * whether or not the address is taken — so somebody who is already signed in would be told nothing and given
+ * nothing. What they need is the claim itself, which is the identity they are holding plus a document.
+ */
+function AddPersonalContext({ client, onAdded }) {
+  const [form, setForm] = useState({ fullName: '', displayName: '', documentNumber: '' });
+  const { submit, problem, isBusy, result } = useSubmit((request) => client.createPersonalContext(request));
+  const update = (field) => (event) => setForm((current) => ({ ...current, [field]: event.target.value }));
+
+  // Reloading rather than rendering what was sent: what a claim becomes is the server's answer, and the masked
+  // number this page then shows is the only form of it that ever comes back.
+  useEffect(() => {
+    if (result !== null && result !== undefined) onAdded();
+  }, [result, onAdded]);
+
+  return (
+    <form onSubmit={(event) => { event.preventDefault(); submit(form); }}>
+      <ProblemMessage problem={problem} />
+      <label htmlFor="add-personal-full-name">Full name</label>
+      <input id="add-personal-full-name" value={form.fullName} onChange={update('fullName')} required />
+      <label htmlFor="add-personal-display-name">Display name</label>
+      <input id="add-personal-display-name" value={form.displayName} onChange={update('displayName')} required />
+      <label htmlFor="add-personal-document">DNI</label>
+      <input
+        id="add-personal-document"
+        inputMode="numeric"
+        autoComplete="off"
+        value={form.documentNumber}
+        onChange={update('documentNumber')}
+        required
+      />
+      <button type="submit" disabled={isBusy}>Add my personal account</button>
+    </form>
+  );
+}
+
+/**
  * The owner's own profile. The document is shown masked and is never editable here: correcting one is a separate
  * verified process that takes two parties, and all this screen can do is start it. `correctionAvailable` is what
  * decides whether the form is offered, because at most one dispute is open at a time (IA-REQ-058).
@@ -140,7 +180,7 @@ export function PersonalProfilePage() {
       <section aria-labelledby="profile-heading">
         <h1 id="profile-heading">Your profile</h1>
         <p role="status">You have no personal context yet.</p>
-        <p><Link to="/personal/register">Set up a personal account</Link></p>
+        <AddPersonalContext client={identity.client} onAdded={load} />
       </section>
     );
   }

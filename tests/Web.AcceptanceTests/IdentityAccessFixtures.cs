@@ -59,8 +59,15 @@ internal static class IdentityAccessFixtures
     {
         for (var attempt = 0; attempt < 150; attempt++)
         {
+            // The tables *and* the columns a later migration adds. `AspNetUsers` appears with the baseline and
+            // grows afterwards, so a fixture that only waited for the table would write into a half-migrated one.
             await using var command = new NpgsqlCommand(
-                "SELECT to_regclass('\"AspNetUsers\"') IS NOT NULL AND to_regclass('\"Invitations\"') IS NOT NULL;", connection);
+                """
+                SELECT to_regclass('"AspNetUsers"') IS NOT NULL
+                   AND to_regclass('"Invitations"') IS NOT NULL
+                   AND EXISTS (SELECT 1 FROM information_schema.columns
+                               WHERE table_name = 'AspNetUsers' AND column_name = 'Status');
+                """, connection);
             if ((bool)(await command.ExecuteScalarAsync())!) return;
             await Task.Delay(TimeSpan.FromMilliseconds(200));
         }
