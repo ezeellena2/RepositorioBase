@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useIdentity } from '../context/IdentityProvider';
 import { ProblemMessage } from '../ProblemMessage';
 import { useFragmentToken } from '../useFragmentToken';
@@ -43,7 +43,12 @@ export function AcceptInvitationPage() {
   const identity = useIdentity();
   const navigate = useNavigate();
   const token = useFragmentToken();
-  const { submit, problem, isBusy, result } = useSubmit((secret) => identity.client.acceptInvitation(secret));
+  const { submit, problem, isBusy, result } = useSubmit(async (secret) => {
+    const accepted = await identity.client.acceptInvitation(secret);
+    // reload returns null on a read failure; acceptance still succeeded and must not be submitted again.
+    await identity.reload();
+    return accepted;
+  });
 
   return (
     <section aria-labelledby="invitation-accept-heading">
@@ -52,13 +57,19 @@ export function AcceptInvitationPage() {
       {result ? (
         <>
           <p role="status">You are a member now.</p>
-          <button type="button" onClick={() => navigate('/identity')}>Continue</button>
+          {identity.isAuthenticated ? <button type="button" onClick={() => navigate('/identity')}>Continue</button> : (
+            <>
+              <ProblemMessage problem={identity.contextProblem} />
+              <p>Your membership was saved, but your access could not be refreshed. <Link to="/login">Sign in to continue</Link>.</p>
+            </>
+          )}
         </>
       ) : (
         <button type="button" disabled={isBusy || !identity?.isAuthenticated} onClick={() => submit(token ?? '')}>
           Accept
         </button>
       )}
+      {isBusy && <p role="status">Accepting and refreshing your access…</p>}
       {!identity?.isAuthenticated && <p>Sign in with the invited address first.</p>}
     </section>
   );

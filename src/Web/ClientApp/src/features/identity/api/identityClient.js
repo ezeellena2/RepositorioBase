@@ -59,6 +59,9 @@ export function createIdentityClient(transport = createApiTransport()) {
     requestPasswordRecovery: (email) => send('/api/identity/credentials/password/recovery', { method: 'POST', body: { email } }),
     resetPassword: (token, newPassword) => send('/api/identity/credentials/password/reset', { method: 'POST', body: { token, newPassword } }),
     changePassword: (newPassword) => send('/api/identity/credentials/password', { method: 'PUT', body: { newPassword } }),
+    deactivateAccount: () => send('/api/identity/account/deactivate', { method: 'POST' }),
+    requestAccountReactivation: (email) => send('/api/identity/account/reactivation-requests', { method: 'POST', body: { email } }),
+    reactivateAccount: (reactivationToken, password) => send('/api/identity/account/reactivate', { method: 'POST', body: { reactivationToken, password } }),
     // Whether there is a password at all, and when it last changed. Two screens are dishonest without it: an
     // account whose only way in is a provider must not be offered an unlink that can only be refused.
     getOwnCredentials: () => send('/api/identity/credentials', {

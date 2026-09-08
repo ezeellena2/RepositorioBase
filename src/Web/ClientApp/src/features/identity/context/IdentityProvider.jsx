@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, startTransition, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { createIdentityClient, IdentityProblem } from '../api/identityClient';
 
 const IdentityContext = createContext(null);
@@ -81,6 +81,21 @@ export function IdentityProvider({ children, client }) {
     return selected;
   }, [identityClient]);
 
+  const deactivateAccount = useCallback(async (onDeactivated) => {
+    await identityClient.deactivateAccount();
+    // Only a successful deactivation ends this session. The endpoint also deleted the antiforgery cookie.
+    // Finish the pair and let the caller leave its protected route before clearing context unmounts it.
+    await identityClient.bootstrapAntiforgery().catch(() => undefined);
+    if (mounted.current) {
+      // Router navigation is a transition too; commit the destination and sign-out together.
+      startTransition(() => {
+        onDeactivated();
+        setContext(null);
+        setContextProblem(null);
+      });
+    }
+  }, [identityClient]);
+
   const value = useMemo(() => ({
     client: identityClient,
     context,
@@ -90,8 +105,9 @@ export function IdentityProvider({ children, client }) {
     signIn,
     signOut,
     selectTenant,
+    deactivateAccount,
     reload: loadContext,
-  }), [identityClient, context, contextProblem, isLoading, signIn, signOut, selectTenant, loadContext]);
+  }), [identityClient, context, contextProblem, isLoading, signIn, signOut, selectTenant, deactivateAccount, loadContext]);
 
   return <IdentityContext.Provider value={value}>{children}</IdentityContext.Provider>;
 }

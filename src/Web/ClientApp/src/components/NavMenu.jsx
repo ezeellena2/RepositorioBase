@@ -33,6 +33,7 @@ function IdentityLinks() {
     <>
       <li><Link to="/identity">Your access</Link></li>
       <li><Link to="/identity/profile">Your profile</Link></li>
+      <li><Link to="/identity/account">Your account</Link></li>
       <li><Link to="/identity/sessions">Your devices</Link></li>
       <li><Link to="/identity/password">Your password</Link></li>
       <li><Link to="/identity/external">Sign-in providers</Link></li>

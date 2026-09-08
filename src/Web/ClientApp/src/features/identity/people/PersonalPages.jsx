@@ -105,14 +105,17 @@ function DocumentDispute({ client, available, country, type }) {
  */
 function AddPersonalContext({ client, onAdded }) {
   const [form, setForm] = useState({ fullName: '', displayName: '', documentNumber: '' });
-  const { submit, problem, isBusy, result } = useSubmit((request) => client.createPersonalContext(request));
+  const [created, setCreated] = useState(false);
+  const { submit, problem, isBusy } = useSubmit(async (request) => {
+    await client.createPersonalContext(request);
+    setCreated(true);
+    setForm({ fullName: '', displayName: '', documentNumber: '' });
+    await onAdded();
+  });
   const update = (field) => (event) => setForm((current) => ({ ...current, [field]: event.target.value }));
 
-  // Reloading rather than rendering what was sent: what a claim becomes is the server's answer, and the masked
-  // number this page then shows is the only form of it that ever comes back.
-  useEffect(() => {
-    if (result !== null && result !== undefined) onAdded();
-  }, [result, onAdded]);
+  // Saving succeeded before either read begins. A failed refresh must never offer to create it again.
+  if (created) return <p role="status">Your personal account was added. Refreshing your access…</p>;
 
   return (
     <form onSubmit={(event) => { event.preventDefault(); submit(form); }}>
@@ -160,7 +163,7 @@ export function PersonalProfilePage() {
       setLoaded(null);
       setLoadProblem(error.problem ?? { code: 'unexpected' });
     }
-  }, [identity]);
+  }, [identity.client]);
 
   useEffect(() => {
     let cancelled = false;
@@ -180,7 +183,10 @@ export function PersonalProfilePage() {
       <section aria-labelledby="profile-heading">
         <h1 id="profile-heading">Your profile</h1>
         <p role="status">You have no personal context yet.</p>
-        <AddPersonalContext client={identity.client} onAdded={load} />
+        <AddPersonalContext client={identity.client} onAdded={async () => {
+          // Failure clears shared context and the protected route shows the existing sign-in/read error.
+          if (await identity.reload()) await load();
+        }} />
       </section>
     );
   }

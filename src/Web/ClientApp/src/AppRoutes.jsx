@@ -25,6 +25,7 @@ import {
   RegisterPlatformInviteePage
 } from "./features/platform/invitations/PlatformInvitationPages";
 import { MfaRecoveryPage } from "./features/platform/invitations/MfaRecoveryPage";
+import { AccountPage, RequestReactivationPage, ReactivateAccountPage } from "./features/identity/lifecycle/AccountLifecyclePages";
 
 // The public routes are the ones a visitor reaches without a session: signing in, registering an organization,
 // the two halves of an invitation, and the Platform onboarding pages — a Platform invitee has no account yet,
@@ -44,6 +45,9 @@ const AppRoutes = [
   { path: '/organizations/register', element: <RegisterOrganizationPage /> },
   { path: '/personal/register', element: <PersonalRegisterPage /> },
   { path: '/identity/profile', element: <ProtectedRoute><PersonalProfilePage /></ProtectedRoute> },
+  { path: '/identity/account', element: <ProtectedRoute><AccountPage /></ProtectedRoute> },
+  { path: '/account/reactivation-request', element: <RequestReactivationPage /> },
+  { path: '/account/reactivate', element: <ReactivateAccountPage /> },
   { path: '/identity/sessions', element: <ProtectedRoute><SessionsPage /></ProtectedRoute> },
   { path: '/identity/password', element: <ProtectedRoute><ChangePasswordPage /></ProtectedRoute> },
   { path: '/identity/external', element: <ProtectedRoute><ExternalAccountsPage /></ProtectedRoute> },

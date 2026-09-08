@@ -65,6 +65,7 @@ export function LoginPage() {
       </form>
       <button type="button" onClick={continueWithGoogle}>Continue with Google</button>
       <p><Link to="/credentials/forgot">Forgot your password?</Link></p>
+      <p><Link to="/account/reactivation-request">Reactivate your account</Link></p>
     </section>
   );
 }
