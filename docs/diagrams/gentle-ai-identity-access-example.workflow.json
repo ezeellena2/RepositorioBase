@@ -1,0 +1,95 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Gentle AI e Identity Access",
+    "quality_profile": "showcase",
+    "output": "docs/diagrams/gentle-ai-identity-access-example.workflow.html"
+  },
+  "lanes": [
+    { "id": "direccion", "label": "Dirección humana" },
+    { "id": "gentle", "label": "Workflow Gentle AI" },
+    { "id": "identity", "label": "Desarrollo Identity Access" }
+  ],
+  "phases": [
+    { "id": "entender", "label": "Entender", "fromCol": 0, "toCol": 2 },
+    { "id": "construir", "label": "Construir", "fromCol": 3, "toCol": 3, "variant": "emphasis" },
+    { "id": "cerrar", "label": "Cerrar y decidir", "fromCol": 4, "toCol": 5, "variant": "dashed" }
+  ],
+  "groups": [],
+  "mainPath": [
+    "objetivo",
+    "ruta",
+    "contrato",
+    "slice",
+    "desarrollar",
+    "probar",
+    "revisar",
+    "decision"
+  ],
+  "semanticChecks": {
+    "allowedRoots": ["objetivo"],
+    "allowedTerminals": ["decision"],
+    "requiredPaths": [
+      { "from": "objetivo", "to": "decision" },
+      { "from": "slice", "to": "revisar" }
+    ]
+  },
+  "nodes": [
+    { "id": "objetivo", "lane": "gentle", "col": 0, "type": "external", "label": "Definir resultado", "sublabel": "la persona marca el objetivo", "width": 154 },
+    { "id": "ruta", "lane": "gentle", "col": 1, "type": "backend", "label": "Elegir ruta mínima", "sublabel": "inline, delegada o SDD", "width": 154 },
+    { "id": "contrato", "lane": "gentle", "col": 2, "type": "security", "label": "Confirmar contrato", "sublabel": "SPEC, ADR y alcance", "width": 154 },
+    { "id": "slice", "lane": "gentle", "col": 3, "type": "cloud", "label": "Tomar próximo slice", "sublabel": "dependencias en Ready", "width": 154 },
+    { "id": "desarrollar", "lane": "gentle", "col": 4, "type": "backend", "label": "Desarrollar", "sublabel": "RED → GREEN → REFACTOR", "width": 160 },
+    { "id": "probar", "lane": "gentle", "col": 5, "type": "database", "label": "Probar y verificar", "sublabel": "evidencia proporcional", "width": 158 },
+    { "id": "revisar", "lane": "identity", "col": 5, "type": "security", "label": "Revisar y registrar", "sublabel": "TASKS y TRACEABILITY", "width": 160 },
+    { "id": "decision", "lane": "direccion", "col": 5, "type": "security", "label": "Decidir siguiente paso", "sublabel": "C6 sigue como gate humano", "width": 166 }
+  ],
+  "edges": [
+    { "id": "objetivo_ruta", "from": "objetivo", "to": "ruta", "label": "objetivo", "variant": "default", "role": "main" },
+    { "id": "ruta_contrato", "from": "ruta", "to": "contrato", "label": "ruta elegida", "variant": "emphasis", "role": "main" },
+    { "id": "contrato_slice", "from": "contrato", "to": "slice", "label": "alcance válido", "variant": "default", "role": "main" },
+    { "id": "slice_desarrollo", "from": "slice", "to": "desarrollar", "label": "slice listo", "variant": "emphasis", "role": "main" },
+    { "id": "desarrollo_prueba", "from": "desarrollar", "to": "probar", "label": "candidato", "variant": "default", "role": "main" },
+    { "id": "prueba_revision", "from": "probar", "to": "revisar", "label": "evidencia", "variant": "emphasis", "role": "main" },
+    { "id": "revision_decision", "from": "revisar", "to": "decision", "label": "estado actualizado", "variant": "security", "role": "main" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Cómo decide Gentle AI",
+      "items": [
+        "Usa la ruta válida más pequeña para alcanzar el resultado",
+        "SDD requiere invocación o aceptación explícita",
+        "La revisión con recibos sólo opera si el usuario la habilita"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Identity Access registrado",
+      "items": [
+        "Tasks 18–25 figuran completadas en los registros posteriores",
+        "Las correcciones más recientes siguen pendientes de cierre documental",
+        "Cada cambio debe conservar contratos, capas e invariantes multitenant"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Fronteras todavía abiertas",
+      "items": [
+        "C6 continúa abierta y bloquea Tasks 26–27; Task 28 depende de ellas",
+        "La validación Google live todavía no está demostrada",
+        "PII real y producción conservan gates humanos separados"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Fuentes de verdad",
+      "items": [
+        "AGENTS.md y Engram gobiernan el workflow operativo",
+        "ADR-004, SPEC, TASKS y TRACEABILITY gobiernan Identity Access",
+        "Ante encabezados históricos inconsistentes prevalece la decisión posterior fechada"
+      ]
+    }
+  ]
+}

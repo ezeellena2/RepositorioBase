@@ -98,6 +98,12 @@ The `<available_skills>` block in your system prompt is authoritative — it lis
 **Self-check BEFORE every response**: does this request match any skill in `<available_skills>`? If yes, read the matching SKILL.md (using your agent's read mechanism) BEFORE generating your reply. This is a blocking requirement, not optional context. Skipping it is a discipline failure.
 
 Multiple skills can apply at once. Match by file context (extensions, paths) and task context (what the user is asking for).
+### Project engineering standards
+
+- Register [engineering-standards](.agents/skills/engineering-standards/SKILL.md) as the local skill for feature implementation, bug fixes, refactoring, architecture design, code review, and creating or modifying tests. Agents performing that work must read it before starting.
+- Do not require this skill or its specialist combinations for simple conceptual questions, status reads, purely administrative changes, or documentation without technical impact.
+- For each delegation that designs, writes, fixes, refactors, or reviews code, or creates/modifies tests, inject `C:/Users/ezequ/source/repos/RepositorioBase/.agents/skills/engineering-standards/SKILL.md` under `Skills to load before work`; require the agent to read it and its required local reference. Pass exact skill paths, not copied rules.
+- Prefer this local skill over incompatible generic global advice while preserving approved SPECs, accepted ADRs, and verified repository conventions. Existing Gentle AI routing and review rules remain authoritative; this skill does not force SDD or additional ceremony.
 
 <!-- gentle-ai:engram-protocol -->
 ## Engram Persistent Memory — Protocol

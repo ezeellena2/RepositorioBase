@@ -108,6 +108,16 @@ same mailed confirmation. **Read the limitation below before you rely on it.**
 was recorded. Only the two names are editable. The document is not: correcting one takes two parties, and all
 this screen does is ask for a review. If you signed in without a personal context — because you arrived through
 an organization — this is also where you claim one, with a name and a document rather than by registering again.
+After creating it, **Organizations** offers the personal context without reloading the application. Accepting a
+member invitation refreshes that same selector; if refreshing fails, the saved membership is not submitted again.
+
+**Your account.** `/identity/account` deactivates your account after a deliberate confirmation and the existing
+identity proof. It ends every session and sends a deactivation notice. From **Reactivate your account** on the
+login page, request a link; the neutral acknowledgement does not reveal account status. Follow the delivered
+`/account/reactivate#token=…` link and enter your current password. Reactivation creates no session: sign in
+afterwards. If you have forgotten your password or never set one, use **Reset or set a password** first, then
+request reactivation. This flow cannot lift an administrative suspension, and a last administrator or Platform
+owner must give someone else that responsibility before deactivating.
 
 **Your devices.** `/identity/sessions` lists where you are signed in, marks the one you are using, and ends
 another one or all the others. Both ask for your password first, which buys a single-use server-side proof. Five
