@@ -191,6 +191,49 @@ internal static class IdentityAccessFixtures
         return token;
     }
 
+    /// <summary>
+    /// An organization whose administrator may run it: read and manage members, read and manage roles, and
+    /// invite — the last because the roles screen offers only permissions the actor holds, so an administrator
+    /// who could not invite could not put inviting into a role either. Their membership is the owner.
+    /// </summary>
+    internal static async Task<SeededOrganization> AdministeredOrganizationAsync(SeededIdentity administrator)
+    {
+        var organization = await OrganizationAsync(
+            "Acme", "members.read", "members.manage", "roles.read", "roles.manage", "members.invite",
+            "tenant.ownership.transfer");
+        await MembershipAsync(organization, administrator);
+        await using var connection = await OpenAsync();
+        await ExecuteAsync(
+            connection,
+            "UPDATE \"Tenants\" SET \"OwnerMembershipId\" = (SELECT \"Id\" FROM \"TenantMemberships\" WHERE \"TenantId\" = @tenantId AND \"IdentityId\" = @identityId) WHERE \"Id\" = @tenantId;",
+            ("tenantId", organization.TenantId), ("identityId", administrator.Id));
+        return organization;
+    }
+
+    /// <summary>A membership with no role at all, which is what "holds nothing" has to mean.</summary>
+    internal static async Task PlainMembershipAsync(SeededOrganization organization, SeededIdentity identity)
+    {
+        await using var connection = await OpenAsync();
+        await ExecuteAsync(
+            connection,
+            "INSERT INTO \"TenantMemberships\" (\"Id\", \"TenantId\", \"IdentityId\", \"Status\") VALUES (@id, @tenantId, @identityId, 'Active');",
+            ("id", Guid.NewGuid()), ("tenantId", organization.TenantId), ("identityId", identity.Id));
+    }
+
+    /// <summary>Which identity the organization currently belongs to, read back through its owning membership.</summary>
+    internal static async Task<Guid?> OwnerIdentityIdAsync(SeededOrganization organization)
+    {
+        await using var connection = await OpenAsync();
+        await using var command = new NpgsqlCommand(
+            """
+            SELECT m."IdentityId"
+            FROM "Tenants" t JOIN "TenantMemberships" m ON m."Id" = t."OwnerMembershipId"
+            WHERE t."Id" = @tenantId;
+            """, connection);
+        command.Parameters.AddWithValue("tenantId", organization.TenantId);
+        return await command.ExecuteScalarAsync() as Guid?;
+    }
+
     internal static async Task<long> MembershipCountAsync(SeededOrganization organization, Guid identityId)
     {
         await using var connection = await OpenAsync();

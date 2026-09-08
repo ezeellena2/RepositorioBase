@@ -26,6 +26,8 @@ public sealed class IdentityContinuationStepDefinitions(ScenarioContext scenario
     private PersonalProfilePage Profile => new(Page);
     private OwnDevicesPage Devices => new(Page);
     private PasswordPages Passwords => new(Page);
+    private OrganizationRolesPage Roles => new(Page);
+    private OrganizationMembersPage Members => new(Page);
     private TenantSelectorPage Tenants => new(Page);
 
     private string Email
@@ -173,6 +175,89 @@ public sealed class IdentityContinuationStepDefinitions(ScenarioContext scenario
     {
         await new IdentityContextPage(Page).GotoAsync();
         await new IdentityContextPage(Page).AssertVisibleAsync();
+    }
+
+    // ---- what a role decides, and who the organization belongs to ---------------------------------------
+
+    [Given("an organization with an administrator and a member who holds nothing")]
+    public async Task GivenAnOrganizationWithAnAdministratorAndAMember()
+    {
+        var administrator = await IdentityAccessFixtures.ConfirmedIdentityAsync();
+        var member = await IdentityAccessFixtures.ConfirmedIdentityAsync();
+        var organization = await IdentityAccessFixtures.AdministeredOrganizationAsync(administrator);
+        await IdentityAccessFixtures.PlainMembershipAsync(organization, member);
+
+        Email = administrator.Email;
+        Password = IdentityAccessFixtures.Password;
+        scenario.Set(administrator, "administrator");
+        scenario.Set(member, "member");
+        scenario.Set(organization, "organization");
+        scenario.Set($"inviters-{Guid.NewGuid():N}", "role");
+    }
+
+    [When("the administrator signs in and puts the invitation permission into a role of their own")]
+    public async Task WhenTheAdministratorCreatesARole()
+    {
+        await SignIn.GotoAsync();
+        await SignIn.SignInAsync(Email, Password);
+        await Roles.GotoAsync();
+        await Roles.CreateWithAsync(scenario.Get<string>("role"), "members.invite", Password);
+    }
+
+    [When("they give that role to the member")]
+    public async Task WhenTheyGiveTheRoleToTheMember()
+    {
+        await Members.GotoAsync();
+        await Members.GiveRoleAsync(scenario.Get<IdentityAccessFixtures.SeededIdentity>("member").Email, scenario.Get<string>("role"), Password);
+    }
+
+    [Then("the member is offered the invitation action")]
+    public Task ThenTheMemberMayInvite() => AssertMemberIsOfferedInvitingAsync(offered: true);
+
+    [When("the administrator takes the permission back out of the role")]
+    public async Task WhenTheyTakeThePermissionBack()
+    {
+        await Roles.GotoAsync();
+        await Roles.TakePermissionOutAsync(scenario.Get<string>("role"), "members.invite", Password);
+    }
+
+    [Then("the member is no longer offered it")]
+    public Task ThenTheMemberMayNotInvite() => AssertMemberIsOfferedInvitingAsync(offered: false);
+
+    [When("the administrator signs in and hands the organization to the member")]
+    public async Task WhenTheyTransferOwnership()
+    {
+        await SignIn.GotoAsync();
+        await SignIn.SignInAsync(Email, Password);
+        await Members.GotoAsync();
+        await Members.TransferOwnershipAsync(scenario.Get<IdentityAccessFixtures.SeededIdentity>("member").Email, Password);
+    }
+
+    [Then("the member holds the ownership and the administrator does not")]
+    public async Task ThenOwnershipMoved()
+    {
+        var owner = await IdentityAccessFixtures.OwnerIdentityIdAsync(scenario.Get<IdentityAccessFixtures.SeededOrganization>("organization"));
+        owner.ShouldBe(scenario.Get<IdentityAccessFixtures.SeededIdentity>("member").Id);
+        owner.ShouldNotBe(scenario.Get<IdentityAccessFixtures.SeededIdentity>("administrator").Id);
+    }
+
+    /// <summary>
+    /// Asked of the member's own browser, because what a role grants is only meaningful as what the person it
+    /// was given to can then do. A fresh browser each time, so the answer is the server's rather than a screen
+    /// that has been open since before the change.
+    /// </summary>
+    private async Task AssertMemberIsOfferedInvitingAsync(bool offered)
+    {
+        var member = scenario.Get<IdentityAccessFixtures.SeededIdentity>("member");
+        await using var context = await PlaywrightSetup.NewContextAsync();
+        var page = await context.NewPageAsync();
+        var signIn = new IdentitySignInPage(page);
+        await signIn.GotoAsync();
+        await signIn.SignInAsync(member.Email, IdentityAccessFixtures.Password);
+        await new IdentityContextPage(page).GotoAsync();
+
+        var invite = page.GetByRole(AriaRole.Link, new() { Name = "Invite a member" });
+        await Assertions.Expect(invite).ToHaveCountAsync(offered ? 1 : 0);
     }
 
     // ---- the two ways a password moves ------------------------------------------------------------------

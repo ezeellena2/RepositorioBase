@@ -91,6 +91,104 @@ public sealed class OwnDevicesPage(IPage page) : BasePage(page)
     }
 }
 
+/// <summary>
+/// The organization's own roles. Every change here asks for the password first, and the permissions offered are
+/// only the ones the actor holds — an administrator cannot put into a role something they were never granted.
+/// </summary>
+public sealed class OrganizationRolesPage(IPage page) : BasePage(page)
+{
+    public override string PagePath => $"{BaseUrl}/roles";
+
+    public async Task CreateWithAsync(string name, string permission, string password)
+    {
+        await Assertions.Expect(Page.Locator("h1")).ToHaveTextAsync("Roles");
+        await Page.FillAsync("#roles-password", password);
+        await Page.FillAsync("#role-name", name);
+        await Page.CheckAsync(PermissionBox(permission));
+        await SaveAsync("Create role");
+    }
+
+    public async Task TakePermissionOutAsync(string name, string permission, string password)
+    {
+        await Assertions.Expect(Page.Locator("h1")).ToHaveTextAsync("Roles");
+        await Page.FillAsync("#roles-password", password);
+        await Page.GetByRole(AriaRole.Button, new() { Name = $"Edit {name}" }).ClickAsync();
+        await Page.UncheckAsync(PermissionBox(permission));
+        await SaveAsync("Save role");
+    }
+
+    /// <summary>
+    /// A permission code carries a dot, which a CSS selector reads as a class rather than as part of the
+    /// identifier. Matching the attribute says what was meant.
+    /// </summary>
+    private static string PermissionBox(string permission) => $"[id=\"permission-{permission}\"]";
+
+    private async Task SaveAsync(string control)
+    {
+        var response = await Page.RunAndWaitForResponseAsync(
+            () => Page.GetByRole(AriaRole.Button, new() { Name = control }).ClickAsync(),
+            candidate => candidate.Url.Contains("/roles", StringComparison.Ordinal) &&
+                         candidate.Request.Method is "POST" or "PUT");
+        if (response.Status is not (200 or 201 or 204))
+        {
+            throw new InvalidOperationException($"\"{control}\" answered {response.Status}: {await response.TextAsync()}");
+        }
+    }
+}
+
+/// <summary>
+/// The organization's members. A member is found by the address beside their name, because a seeded identity has
+/// no profile and therefore no name of its own — and the address is what the screen shows next to it.
+/// </summary>
+public sealed class OrganizationMembersPage(IPage page) : BasePage(page)
+{
+    public override string PagePath => $"{BaseUrl}/members";
+
+    public async Task GiveRoleAsync(string memberEmail, string roleName, string password)
+    {
+        var member = await RowAsync(memberEmail);
+        await Page.FillAsync("#members-password", password);
+        await member.GetByRole(AriaRole.Button, new() { NameRegex = new Regex("^Edit roles of ") }).ClickAsync();
+        await member.GetByLabel(roleName, new() { Exact = true }).CheckAsync();
+        var response = await Page.RunAndWaitForResponseAsync(
+            () => member.GetByRole(AriaRole.Button, new() { Name = "Save roles" }).ClickAsync(),
+            candidate => candidate.Url.Contains("/roles", StringComparison.Ordinal) &&
+                         candidate.Request.Method == "PUT");
+        if (response.Status is not (200 or 204))
+        {
+            throw new InvalidOperationException($"Saving roles answered {response.Status}: {await response.TextAsync()}");
+        }
+    }
+
+    /// <summary>
+    /// Handing the organization over, through the confirmation the screen asks for. It is the one change nobody
+    /// can undo alone, so the product asks twice — and a journey that dismissed the question would be walking a
+    /// path no person can.
+    /// </summary>
+    public async Task TransferOwnershipAsync(string memberEmail, string password)
+    {
+        var member = await RowAsync(memberEmail);
+        await Page.FillAsync("#members-password", password);
+        Page.Dialog += async (_, dialog) => await dialog.AcceptAsync();
+        var response = await Page.RunAndWaitForResponseAsync(
+            () => member.GetByRole(AriaRole.Button, new() { NameRegex = new Regex("^Transfer ownership to ") }).ClickAsync(),
+            candidate => candidate.Url.Contains("/ownership/transfer", StringComparison.Ordinal) &&
+                         candidate.Request.Method == "POST");
+        if (response.Status is not (200 or 204))
+        {
+            throw new InvalidOperationException($"Transferring ownership answered {response.Status}: {await response.TextAsync()}");
+        }
+    }
+
+    private async Task<ILocator> RowAsync(string memberEmail)
+    {
+        await Assertions.Expect(Page.Locator("h1")).ToHaveTextAsync("Members");
+        var row = Page.Locator("li").Filter(new() { HasTextString = memberEmail });
+        await Assertions.Expect(row).ToHaveCountAsync(1);
+        return row;
+    }
+}
+
 /// <summary>The two halves of a password moving: a mailed link for somebody locked out, and a change from inside.</summary>
 public sealed class PasswordPages(IPage page) : BasePage(page)
 {

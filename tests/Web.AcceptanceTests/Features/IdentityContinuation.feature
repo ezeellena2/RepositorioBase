@@ -22,6 +22,19 @@ Scenario: A person ends another device from the list of the devices they hold
     Then the other device is sent back to sign in
     And their own device is still signed in
 
+Scenario: A custom role decides what a member may do, and taking the permission back takes the action away
+    Given an organization with an administrator and a member who holds nothing
+    When the administrator signs in and puts the invitation permission into a role of their own
+    And they give that role to the member
+    Then the member is offered the invitation action
+    When the administrator takes the permission back out of the role
+    Then the member is no longer offered it
+
+Scenario: An owner hands the organization to a member
+    Given an organization with an administrator and a member who holds nothing
+    When the administrator signs in and hands the organization to the member
+    Then the member holds the ownership and the administrator does not
+
 Scenario: A forgotten password is reset from the delivered link and then changed from inside
     Given a confirmed identity that cannot remember its password
     When they ask for a reset link and follow the one delivered
