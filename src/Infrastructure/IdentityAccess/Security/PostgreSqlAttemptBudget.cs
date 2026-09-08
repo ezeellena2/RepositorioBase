@@ -21,6 +21,10 @@ public sealed class PostgreSqlAttemptBudget(ApplicationDbContext context, TimePr
     /// <summary>What a caller is told to wait when the store itself is unreachable. A **product default**.</summary>
     private static readonly TimeSpan OutageRetryAfter = TimeSpan.FromSeconds(30);
 
+    private const string Forget = """
+        DELETE FROM "IdentityAttemptBudgets" WHERE "Scope" = @scope AND "KeyHash" = @keyHash;
+        """;
+
     private const string Spend = """
         INSERT INTO "IdentityAttemptBudgets" ("Scope", "KeyHash", "WindowStart", "Count", "ExpiresAt")
         VALUES (@scope, @keyHash, @windowStart, 1, @expiresAt)
@@ -68,6 +72,32 @@ public sealed class PostgreSqlAttemptBudget(ApplicationDbContext context, TimePr
             // Fail closed, and say what actually happened. Answering "too many attempts" here would tell a person
             // they did something they did not do, and would hide an outage from whoever is watching (amendment A5).
             return new AttemptBudgetDecision(AttemptBudgetOutcome.Unavailable, OutageRetryAfter);
+        }
+    }
+
+    public async Task ClearAsync(AttemptBudget budget, string key, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(budget.Scope);
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+
+        try
+        {
+            var connectionString = context.Database.GetConnectionString()
+                ?? throw new InvalidOperationException("The attempt budget store has no connection string.");
+            await using var connection = new NpgsqlConnection(connectionString);
+            await connection.OpenAsync(cancellationToken);
+
+            // Every window, not only the current one: forgiving somebody for the last quarter of an hour and
+            // holding them to the one before it is not forgiveness, it is a surprise.
+            await using var command = new NpgsqlCommand(Forget, connection);
+            command.Parameters.AddWithValue("scope", budget.Scope);
+            command.Parameters.AddWithValue("keyHash", Digest(budget.Scope, key));
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+        catch (Exception failure) when (failure is NpgsqlException or InvalidOperationException or TimeoutException)
+        {
+            // The budget stands. Clearing is the generous direction, so failing to clear is the safe one, and the
+            // caller has already succeeded at what they came to do — telling them about the store would be noise.
         }
     }
 

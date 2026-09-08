@@ -9,6 +9,7 @@ using CleanArchitecture.Domain.IdentityAccess.Memberships;
 using CleanArchitecture.Domain.IdentityAccess.Platform;
 using CleanArchitecture.Domain.IdentityAccess.Tenants;
 using Microsoft.EntityFrameworkCore;
+using CleanArchitecture.Application.IdentityAccess.Security;
 
 namespace CleanArchitecture.Application.IdentityAccess.Platform.Mfa;
 
@@ -78,7 +79,7 @@ public sealed class VerifyPlatformMfaEnrollmentCommandHandler(
     ICurrentSession session,
     ITokenHasher tokenHasher,
     IPlatformMfaVerifier verifier,
-    IPlatformMfaAttemptLimiter attempts,
+    ISharedAttemptBudget attempts,
     TimeProvider timeProvider) : IRequestHandler<VerifyPlatformMfaEnrollmentCommand, Result>
 {
     public Task<Result> Handle(VerifyPlatformMfaEnrollmentCommand request, CancellationToken cancellationToken) =>
@@ -90,8 +91,9 @@ public sealed class VerifyPlatformMfaEnrollmentCommandHandler(
 
             // Spent before the code is compared and keyed on the identity, so signing in again to obtain a fresh
             // session buys nothing: the same identity meets the same budget (IA-REQ-041).
-            var lease = await attempts.TryAcquireAsync(admission.Value!.IdentityId, ct);
-            if (!lease.IsAcquired) return Result.Failure(IdentityAccessErrors.MfaAttemptsExhausted(lease.RetryAfterSeconds));
+            var decision = await attempts.SpendAsync(
+                PlatformAttemptBudgets.MfaAttempt, PlatformAttemptBudgets.MfaKey(admission.Value!.IdentityId), ct);
+            if (PlatformAttemptBudgets.MfaRefusal(decision) is { } refusal) return Result.Failure(refusal);
 
             var enrollment = await PlatformMfaGate.FindEnrollmentAsync(context, admission.Value.IdentityId, ct);
             if (enrollment is null) return Result.Failure(IdentityAccessErrors.InvalidInvitation());
@@ -99,7 +101,8 @@ public sealed class VerifyPlatformMfaEnrollmentCommandHandler(
 
             enrollment.Verify(admission.Value.SessionId, now);
             await context.SaveChangesAsync(ct);
-            await attempts.ResetAsync(admission.Value.IdentityId, ct);
+            await attempts.ClearAsync(
+                PlatformAttemptBudgets.MfaAttempt, PlatformAttemptBudgets.MfaKey(admission.Value.IdentityId), ct);
             return Result.Success();
         }, cancellationToken);
 }
@@ -189,7 +192,7 @@ public sealed class StepUpPlatformMfaCommandHandler(
     IApplicationDbContext context,
     ICurrentSession session,
     IPlatformMfaVerifier verifier,
-    IPlatformMfaAttemptLimiter attempts,
+    ISharedAttemptBudget attempts,
     TimeProvider timeProvider) : IRequestHandler<StepUpPlatformMfaCommand, Result>
 {
     public Task<Result> Handle(StepUpPlatformMfaCommand request, CancellationToken cancellationToken) =>
@@ -202,8 +205,9 @@ public sealed class StepUpPlatformMfaCommandHandler(
 
             // The same budget as enrollment verification, because it is the same secret and the same guess. A
             // limit on one of the two routes would only move the guessing to the other.
-            var lease = await attempts.TryAcquireAsync(identityId, ct);
-            if (!lease.IsAcquired) return Result.Failure(IdentityAccessErrors.MfaAttemptsExhausted(lease.RetryAfterSeconds));
+            var decision = await attempts.SpendAsync(
+                PlatformAttemptBudgets.MfaAttempt, PlatformAttemptBudgets.MfaKey(identityId), ct);
+            if (PlatformAttemptBudgets.MfaRefusal(decision) is { } refusal) return Result.Failure(refusal);
 
             var now = PlatformInvitationDelivery.ToStorablePrecision(timeProvider.GetUtcNow());
             var enrollment = await PlatformMfaGate.FindEnrollmentAsync(context, identityId, ct);
@@ -222,7 +226,7 @@ public sealed class StepUpPlatformMfaCommandHandler(
 
             enrollment.RecordStepUp(sessionId.Value, now);
             await context.SaveChangesAsync(ct);
-            await attempts.ResetAsync(identityId, ct);
+            await attempts.ClearAsync(PlatformAttemptBudgets.MfaAttempt, PlatformAttemptBudgets.MfaKey(identityId), ct);
             return Result.Success();
         }, cancellationToken);
 }

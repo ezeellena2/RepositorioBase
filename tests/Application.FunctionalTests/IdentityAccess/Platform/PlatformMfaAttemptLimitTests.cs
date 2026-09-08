@@ -1,6 +1,6 @@
 using CleanArchitecture.Application.FunctionalTests.Infrastructure;
+using CleanArchitecture.Application.IdentityAccess.Platform;
 using CleanArchitecture.Application.IdentityAccess.Platform.Mfa;
-using CleanArchitecture.Infrastructure.Platform;
 
 namespace CleanArchitecture.Application.FunctionalTests.IdentityAccess.Platform;
 
@@ -26,7 +26,7 @@ public sealed class PlatformMfaAttemptLimitTests : TestBase
     {
         var invitee = await EnrolledAsync();
 
-        for (var attempt = 0; attempt < PlatformMfaAttemptLimiter.Budget; attempt++)
+        for (var attempt = 0; attempt < PlatformAttemptBudgets.MfaAttempt.Limit; attempt++)
         {
             var refused = await TestApp.SendAsync(new VerifyPlatformMfaEnrollmentCommand(invitee.Token, WrongCode));
             refused.Error!.Code.ShouldBe("invalid_invitation", "a wrong code is still only a wrong code.");
@@ -46,7 +46,7 @@ public sealed class PlatformMfaAttemptLimitTests : TestBase
     public async Task A_new_session_does_not_restore_the_budget()
     {
         var invitee = await EnrolledAsync();
-        for (var attempt = 0; attempt < PlatformMfaAttemptLimiter.Budget; attempt++)
+        for (var attempt = 0; attempt < PlatformAttemptBudgets.MfaAttempt.Limit; attempt++)
         {
             await TestApp.SendAsync(new VerifyPlatformMfaEnrollmentCommand(invitee.Token, WrongCode));
         }
@@ -63,7 +63,7 @@ public sealed class PlatformMfaAttemptLimitTests : TestBase
     public async Task An_exhausted_budget_refuses_the_right_code_too()
     {
         var invitee = await EnrolledAsync();
-        for (var attempt = 0; attempt < PlatformMfaAttemptLimiter.Budget; attempt++)
+        for (var attempt = 0; attempt < PlatformAttemptBudgets.MfaAttempt.Limit; attempt++)
         {
             await TestApp.SendAsync(new VerifyPlatformMfaEnrollmentCommand(invitee.Token, WrongCode));
         }
@@ -79,7 +79,7 @@ public sealed class PlatformMfaAttemptLimitTests : TestBase
     public async Task One_identity_exhausting_its_budget_leaves_another_untouched()
     {
         var first = await EnrolledAsync();
-        for (var attempt = 0; attempt < PlatformMfaAttemptLimiter.Budget; attempt++)
+        for (var attempt = 0; attempt < PlatformAttemptBudgets.MfaAttempt.Limit; attempt++)
         {
             await TestApp.SendAsync(new VerifyPlatformMfaEnrollmentCommand(first.Token, WrongCode));
         }
@@ -101,7 +101,7 @@ public sealed class PlatformMfaAttemptLimitTests : TestBase
     public async Task An_accepted_code_clears_what_the_failures_spent()
     {
         var invitee = await EnrolledAsync();
-        for (var attempt = 0; attempt < PlatformMfaAttemptLimiter.Budget - 1; attempt++)
+        for (var attempt = 0; attempt < PlatformAttemptBudgets.MfaAttempt.Limit - 1; attempt++)
         {
             await TestApp.SendAsync(new VerifyPlatformMfaEnrollmentCommand(invitee.Token, WrongCode));
         }
@@ -109,7 +109,7 @@ public sealed class PlatformMfaAttemptLimitTests : TestBase
         (await TestApp.SendAsync(new VerifyPlatformMfaEnrollmentCommand(invitee.Token, PlatformMfaTests.TotpCode(invitee.SharedKey))))
             .IsSuccess.ShouldBeTrue();
 
-        for (var attempt = 0; attempt < PlatformMfaAttemptLimiter.Budget; attempt++)
+        for (var attempt = 0; attempt < PlatformAttemptBudgets.MfaAttempt.Limit; attempt++)
         {
             (await TestApp.SendAsync(new VerifyPlatformMfaEnrollmentCommand(invitee.Token, WrongCode)))
                 .Error!.Code.ShouldBe("invalid_invitation", "the budget started over when the code was accepted.");
@@ -125,7 +125,7 @@ public sealed class PlatformMfaAttemptLimitTests : TestBase
     {
         var owner = await PlatformScenario.ActiveOwnerAsync();
 
-        for (var attempt = 0; attempt < PlatformMfaAttemptLimiter.Budget; attempt++)
+        for (var attempt = 0; attempt < PlatformAttemptBudgets.MfaAttempt.Limit; attempt++)
         {
             (await TestApp.SendAsync(new StepUpPlatformMfaCommand(WrongCode))).Error!.Code.ShouldBe("invalid_session");
         }

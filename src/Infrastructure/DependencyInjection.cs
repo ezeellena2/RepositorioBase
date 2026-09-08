@@ -118,8 +118,9 @@ public static class DependencyInjection
         builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.Platform.IPlatformMfaSessionProof>(provider => provider.GetRequiredService<CleanArchitecture.Infrastructure.Platform.RecentMfaVerifier>());
         builder.Services.AddSingleton<CleanArchitecture.Application.IdentityAccess.Platform.Bootstrap.IPlatformBootstrapOptions, CleanArchitecture.Infrastructure.Platform.ConfiguredPlatformBootstrapper>();
         builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.Platform.Bootstrap.IPlatformSystemRoleProvisioner, CleanArchitecture.Infrastructure.Platform.PlatformSystemRoleProvisioner>();
-        builder.Services.AddSingleton<CleanArchitecture.Application.IdentityAccess.Platform.Bootstrap.IPlatformBootstrapRecoveryRateLimiter, CleanArchitecture.Infrastructure.Platform.PlatformBootstrapRecoveryRateLimiter>();
-        builder.Services.AddSingleton<CleanArchitecture.Application.IdentityAccess.Platform.Mfa.IPlatformMfaAttemptLimiter, CleanArchitecture.Infrastructure.Platform.PlatformMfaAttemptLimiter>();
+        // Scoped, not singleton: the budget it spends is a row read through a scoped context, and a singleton
+        // holding one would be a captive dependency as well as the process-local counter this used to be.
+        builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.Platform.Bootstrap.IPlatformBootstrapRecoveryRateLimiter, CleanArchitecture.Infrastructure.Platform.PlatformBootstrapRecoveryRateLimiter>();
         builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.Platform.IPlatformOperationalProjectionReader, CleanArchitecture.Infrastructure.Platform.PlatformOperationalProjectionReader>();
         builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.Platform.Bootstrap.RecoverPendingPlatformOwnerInvitationValidator>();
         builder.Services.AddScoped<CleanArchitecture.Application.IdentityAccess.Platform.Bootstrap.BootstrapPlatformOwner>();

@@ -66,7 +66,8 @@ internal static class PlatformMfaEndpoints
     /// The two gates that accept an authenticator code answer everything the others do, plus the bounded-attempt
     /// refusal — the one answer a client must be able to tell apart from a wrong code (IA-REQ-041).
     /// </summary>
-    private static readonly ApiProblemContract[] CodeGate = [.. Gate, ApiProblemMetadata.RateLimitExceeded];
+    private static readonly ApiProblemContract[] CodeGate =
+        [.. Gate, ApiProblemMetadata.RateLimitExceeded, ApiProblemMetadata.ServiceUnavailable];
 
     private static async Task<IResult> Enroll(
         HttpContext context,

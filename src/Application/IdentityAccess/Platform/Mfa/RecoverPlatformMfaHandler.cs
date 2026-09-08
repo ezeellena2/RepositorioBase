@@ -9,6 +9,7 @@ using CleanArchitecture.Domain.IdentityAccess.Auditing;
 using CleanArchitecture.Domain.IdentityAccess.Identities;
 using CleanArchitecture.Domain.IdentityAccess.Platform;
 using Microsoft.EntityFrameworkCore;
+using CleanArchitecture.Application.IdentityAccess.Security;
 
 namespace CleanArchitecture.Application.IdentityAccess.Platform.Mfa;
 
@@ -29,7 +30,7 @@ public sealed class RecoverPlatformMfaCommandHandler(
     IRecentIdentityProofStore proofs,
     IPlatformMfaVerifier verifier,
     IPlatformRecoveryCodeFactory recoveryCodes,
-    IPlatformMfaAttemptLimiter attempts,
+    ISharedAttemptBudget attempts,
     TimeProvider timeProvider) : IRequestHandler<RecoverPlatformMfaCommand, Result<PlatformMfaEnrollmentDetails>>
 {
     public async Task<Result<PlatformMfaEnrollmentDetails>> Handle(RecoverPlatformMfaCommand request, CancellationToken cancellationToken)
@@ -46,9 +47,10 @@ public sealed class RecoverPlatformMfaCommandHandler(
 
                 // Spent before the code is compared and keyed on the identity, so signing in again to obtain a
                 // fresh session buys nothing: the same identity meets the same budget (IA-REQ-041).
-                var lease = await attempts.TryAcquireAsync(identityId, ct);
-                if (!lease.IsAcquired)
-                    return Result<PlatformMfaEnrollmentDetails>.Failure(IdentityAccessErrors.MfaAttemptsExhausted(lease.RetryAfterSeconds));
+                var decision = await attempts.SpendAsync(
+                    PlatformAttemptBudgets.MfaAttempt, PlatformAttemptBudgets.MfaKey(identityId), ct);
+                if (PlatformAttemptBudgets.MfaRefusal(decision) is { } refusal)
+                    return Result<PlatformMfaEnrollmentDetails>.Failure(refusal);
 
                 // The proof is spent before anything is read. Asking for authority after looking would let an
                 // unproved caller learn whether an enrollment exists at all.
@@ -77,7 +79,7 @@ public sealed class RecoverPlatformMfaCommandHandler(
                 context.AuditEvents.Add(AuditEvent.CreateSessionEvent(
                     identityId, sessionId.Value, "platform.mfa.recovered", AuditCorrelation.Current(), "factor_replaced"));
                 await context.SaveChangesAsync(ct);
-                await attempts.ResetAsync(identityId, ct);
+                await attempts.ClearAsync(PlatformAttemptBudgets.MfaAttempt, PlatformAttemptBudgets.MfaKey(identityId), ct);
 
                 // Shown exactly once, like the enrollment that produced the factor being replaced. Nothing here
                 // is readable again: the secret is stored encrypted and the codes only as hashes.

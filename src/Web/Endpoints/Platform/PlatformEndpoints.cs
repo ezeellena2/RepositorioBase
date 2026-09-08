@@ -54,6 +54,7 @@ internal static class PlatformEndpoints
             .WithApiProblemDetails(
                 ApiProblemMetadata.AntiforgeryValidationFailed,
                 ApiProblemMetadata.RateLimitExceeded,
+                ApiProblemMetadata.ServiceUnavailable,
                 ApiProblemMetadata.InternalServerError);
 
         group.MapGet("/organizations", ListOrganizations)

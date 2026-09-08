@@ -1,5 +1,13 @@
 using System.Net;
 using CleanArchitecture.Application.FunctionalTests.Infrastructure;
+using CleanArchitecture.Application.FunctionalTests.IdentityAccess.Platform;
+using CleanArchitecture.Application.IdentityAccess.People;
+using CleanArchitecture.Application.IdentityAccess.People.CreatePersonalContext;
+using CleanArchitecture.Application.IdentityAccess.Platform;
+using CleanArchitecture.Application.IdentityAccess.Platform.Bootstrap;
+using CleanArchitecture.Application.IdentityAccess.Security;
+using CleanArchitecture.Infrastructure.IdentityAccess.Security;
+using Microsoft.Extensions.DependencyInjection;
 using static CleanArchitecture.Application.FunctionalTests.Infrastructure.IdentityHttpHarness;
 
 namespace CleanArchitecture.Application.FunctionalTests.IdentityAccess.Api;
@@ -91,6 +99,104 @@ public sealed class SharedAbuseControlTests : TestBase
         (await CountAsync<CleanArchitecture.Domain.IdentityAccess.Sessions.UserSession>())
             .ShouldBe(0, "failing closed means the credential is never checked at all");
     }
+
+    [Test]
+    [Category("LoginControls")]
+    public async Task The_platform_second_factor_budget_is_one_budget_across_two_independently_constructed_instances()
+    {
+        var owner = await PlatformScenario.ActiveOwnerAsync();
+        const string host = "https://shared-mfa.localhost";
+        const string wrong = "000000";
+
+        // Three guesses answered by one deployment and two by another. The budget is five, and which instance a
+        // load balancer picked is not something an attacker should be able to spend.
+        using (var first = CreateProductionHarness())
+        {
+            var one = new PlatformOperator(first, host);
+            await one.SignInAsync(OwnerEmail, PlatformScenario.ValidPassword);
+            for (var attempt = 1; attempt <= 3; attempt++)
+            {
+                (await one.PostAsync("/api/platform/mfa/step-up", new { code = wrong }))
+                    .StatusCode.ShouldBe(HttpStatusCode.Unauthorized, $"guess {attempt} is a wrong code, not a refusal");
+            }
+        }
+
+        // The instance that counted the first three is gone, which is what a restart looks like from outside.
+        using var second = CreateProductionHarness();
+        var two = new PlatformOperator(second, host);
+        await two.SignInAsync(OwnerEmail, PlatformScenario.ValidPassword);
+        for (var attempt = 4; attempt <= 5; attempt++)
+        {
+            (await two.PostAsync("/api/platform/mfa/step-up", new { code = wrong }))
+                .StatusCode.ShouldBe(HttpStatusCode.Unauthorized, $"guess {attempt} is still inside the budget");
+        }
+
+        using var exhausted = await two.PostAsync("/api/platform/mfa/step-up", new { code = PlatformScenario.TotpCode(owner.SharedKey) });
+        exhausted.StatusCode.ShouldBe(HttpStatusCode.TooManyRequests, "the sixth guess is over the budget, right code or not");
+
+        // And the counter is a row rather than a field: an adapter that never saw one of those requests finds the
+        // budget spent. That is the only kind of counter a restart cannot refund.
+        await AlreadySpentAsync(PlatformAttemptBudgets.MfaAttempt, PlatformAttemptBudgets.MfaKey(owner.IdentityId));
+    }
+
+    [Test]
+    [Category("LoginControls")]
+    public async Task The_bootstrap_recovery_budget_is_a_row_an_instance_that_never_saw_the_attempt_can_read()
+    {
+        await PlatformScenario.BootstrapAsync(OwnerEmail);
+        var pending = await PlatformScenario.SingleInvitationAsync();
+        PlatformScenario.RunAnonymously();
+
+        for (var attempt = 1; attempt <= 5; attempt++)
+        {
+            (await TestApp.SendAsync(new RecoverPendingPlatformOwnerInvitationCommand())).IsSuccess
+                .ShouldBeTrue($"attempt {attempt} of five is inside the budget");
+        }
+
+        var refused = await TestApp.SendAsync(new RecoverPendingPlatformOwnerInvitationCommand());
+        refused.Error!.Code.ShouldBe("rate_limit_exceeded");
+
+        await AlreadySpentAsync(PlatformAttemptBudgets.BootstrapRecovery, BootstrapKey(pending.Id.Value));
+    }
+
+    [Test]
+    [Category("LoginControls")]
+    public async Task The_personal_document_claim_budget_is_a_row_an_instance_that_never_saw_the_attempt_can_read()
+    {
+        var identityId = await IdentityHttpHarness.SeedConfirmedUserAsync($"claimer-{Guid.NewGuid():N}@example.test", PlatformScenario.ValidPassword);
+        PlatformScenario.RunAs(identityId);
+
+        // Three claims is the budget C3 set, and it is the one scope Task 19 already put in the store. What was
+        // never shown is that a second instance reads the same row, which is the whole reason it is there.
+        for (var attempt = 1; attempt <= 3; attempt++)
+        {
+            await TestApp.SendAsync(new CreatePersonalContextCommand("Claim Er", "Claim", $"{20000000 + attempt}"));
+        }
+
+        await AlreadySpentAsync(PersonalAttemptBudgets.DocumentClaim, identityId.ToString("N"));
+    }
+
+    /// <summary>
+    /// Asks a freshly built adapter — a different object, a different connection, and one that answered none of
+    /// the requests above — to spend one more attempt. A budget held in this process would admit it.
+    /// </summary>
+    private static async Task AlreadySpentAsync(AttemptBudget budget, string key)
+    {
+        using var scope = FunctionalTestSetup.ScopeFactory.CreateScope();
+        var independent = new PostgreSqlAttemptBudget(
+            scope.ServiceProvider.GetRequiredService<CleanArchitecture.Infrastructure.Data.ApplicationDbContext>(),
+            scope.ServiceProvider.GetRequiredService<TimeProvider>());
+
+        var decision = await independent.SpendAsync(budget, key, CancellationToken.None);
+
+        decision.Outcome.ShouldBe(
+            AttemptBudgetOutcome.Exhausted,
+            $"the {budget.Scope} budget has to be the row, not a field in whichever process answered");
+    }
+
+    private static string BootstrapKey(Guid pendingInvitationId) => $"{pendingInvitationId:N}|unknown";
+
+    private const string OwnerEmail = "platform-owner@example.test";
 
     private static async Task<HttpResponseMessage> AttemptAsync(ProductionHarness harness, string host, string email, string client)
     {

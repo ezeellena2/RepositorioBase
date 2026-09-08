@@ -15,4 +15,8 @@ public sealed class TestSharedAttemptBudget(ISharedAttemptBudget inner) : IShare
         TestApp.IsAttemptBudgetUnavailable()
             ? Task.FromResult(new AttemptBudgetDecision(AttemptBudgetOutcome.Unavailable, TimeSpan.FromSeconds(30)))
             : inner.SpendAsync(budget, key, cancellationToken);
+
+    /// <summary>An unreachable store forgets nothing, which is the real adapter's behaviour too.</summary>
+    public Task ClearAsync(AttemptBudget budget, string key, CancellationToken cancellationToken) =>
+        TestApp.IsAttemptBudgetUnavailable() ? Task.CompletedTask : inner.ClearAsync(budget, key, cancellationToken);
 }

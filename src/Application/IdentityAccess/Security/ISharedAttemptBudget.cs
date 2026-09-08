@@ -30,4 +30,15 @@ public interface ISharedAttemptBudget
     /// identity never becomes a row anyone can read back.
     /// </summary>
     Task<AttemptBudgetDecision> SpendAsync(AttemptBudget budget, string key, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Forgets what <paramref name="key"/> has spent, for budgets whose successful outcome clears them — a second
+    /// factor accepted, for instance, so an administrator is not held by their own typing.
+    /// <para>
+    /// It is deliberately not the inverse of a refusal: nothing a caller can fail at clears a budget, only
+    /// something they can succeed at. An implementation that cannot reach the store simply leaves the budget
+    /// standing, because the safe direction here is the one that keeps counting.
+    /// </para>
+    /// </summary>
+    Task ClearAsync(AttemptBudget budget, string key, CancellationToken cancellationToken);
 }

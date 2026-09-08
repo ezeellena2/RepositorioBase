@@ -38,15 +38,8 @@ public sealed class RecoverPendingPlatformOwnerInvitationCommandHandler(
             .AsNoTracking()
             .FirstOrDefaultAsync(invitation => invitation.IsOwner && invitation.Status == PlatformAdminInvitationStatus.Pending, cancellationToken);
 
-        var lease = await rateLimiter.TryAcquireAsync(pending?.Id.Value, cancellationToken);
-        if (!lease.IsAcquired)
-        {
-            return Result.Failure(new ApplicationError(
-                "rate_limit_exceeded",
-                ApplicationErrorCategory.RateLimited,
-                "Too many recovery attempts. Try again later.",
-                retryAfterSeconds: lease.RetryAfterSeconds));
-        }
+        var decision = await rateLimiter.TryAcquireAsync(pending?.Id.Value, cancellationToken);
+        if (PlatformAttemptBudgets.RecoveryRefusal(decision) is { } refusal) return Result.Failure(refusal);
 
         if (pending is null) return Result.Success();
 

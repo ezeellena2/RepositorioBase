@@ -1,5 +1,6 @@
 using CleanArchitecture.Application.Common.Models;
 using CleanArchitecture.Application.Common.Security;
+using CleanArchitecture.Application.IdentityAccess.Security;
 
 namespace CleanArchitecture.Application.IdentityAccess.Platform.Bootstrap;
 
@@ -20,12 +21,6 @@ public sealed record PlatformRecoveryDecision(bool IsEligible, string? Recipient
     public static PlatformRecoveryDecision Ineligible { get; } = new(false, null);
 }
 
-/// <summary>The lease a limiter grants, and how long to wait when it does not.</summary>
-public sealed record PlatformRecoveryLease(bool IsAcquired, int RetryAfterSeconds)
-{
-    public static PlatformRecoveryLease Granted { get; } = new(true, 0);
-}
-
 /// <summary>
 /// Bounds how often recovery may run.
 /// <para>
@@ -33,8 +28,12 @@ public sealed record PlatformRecoveryLease(bool IsAcquired, int RetryAfterSecond
 /// implementation derives — never by anything the caller supplies. A limiter an attacker can re-key per attempt
 /// is not a limit, and a bodyless request gives them nothing to re-key with only if the key comes from elsewhere.
 /// </para>
+/// <para>
+/// The decision comes back whole rather than as a boolean, because "the store could not be reached" is a third
+/// answer and one a caller must be able to tell from "you have had your five" (IA-REQ-057).
+/// </para>
 /// </summary>
 public interface IPlatformBootstrapRecoveryRateLimiter
 {
-    Task<PlatformRecoveryLease> TryAcquireAsync(Guid? pendingInvitationId, CancellationToken cancellationToken);
+    Task<AttemptBudgetDecision> TryAcquireAsync(Guid? pendingInvitationId, CancellationToken cancellationToken);
 }

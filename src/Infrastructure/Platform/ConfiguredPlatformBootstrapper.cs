@@ -8,6 +8,7 @@ using CleanArchitecture.Infrastructure.Data;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using CleanArchitecture.Application.IdentityAccess.Security;
 
 namespace CleanArchitecture.Infrastructure.Platform;
 
@@ -103,48 +104,21 @@ public sealed class PlatformSystemRoleProvisioner(ApplicationDbContext context) 
 /// caller input would be one an attacker re-keys per attempt.
 /// </para>
 /// <para>
-/// The budget is five attempts per fifteen minutes. The SPEC fixes no number, so this is a choice: enough that an
-/// operator retrying a failed delivery is not blocked, few enough that the endpoint cannot be used to hammer the
-/// outbox. It is in-process, which is the right scope for a ceremony that runs at most a handful of times in a
-/// deployment's life; a distributed limiter would be worth it only if this endpoint were hot, and it never is.
+/// The budget lives in the shared store, so it is one budget for the deployment rather than one per process. It
+/// used to be a static dictionary, which meant a restart refunded every attempt and two instances doubled it —
+/// invisible from inside one process, and never something a caller had to earn (IA-REQ-057).
 /// </para>
 /// </summary>
-public sealed class PlatformBootstrapRecoveryRateLimiter(IHttpContextAccessor httpContextAccessor, TimeProvider timeProvider)
+public sealed class PlatformBootstrapRecoveryRateLimiter(IHttpContextAccessor httpContextAccessor, ISharedAttemptBudget budgets)
     : IPlatformBootstrapRecoveryRateLimiter
 {
-    internal const int Budget = 5;
-    internal static readonly TimeSpan Window = TimeSpan.FromMinutes(15);
+    /// <summary>Hosts that report no address share one key rather than each escaping the budget.</summary>
+    private const string UnknownSource = "unknown";
 
-    private static readonly ConcurrentDictionary<string, Queue<DateTimeOffset>> Attempts = new(StringComparer.Ordinal);
-
-    public Task<PlatformRecoveryLease> TryAcquireAsync(Guid? pendingInvitationId, CancellationToken cancellationToken)
+    public Task<AttemptBudgetDecision> TryAcquireAsync(Guid? pendingInvitationId, CancellationToken cancellationToken)
     {
-        var now = timeProvider.GetUtcNow();
-        var source = httpContextAccessor.HttpContext?.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        var source = httpContextAccessor.HttpContext?.Connection.RemoteIpAddress?.ToString() ?? UnknownSource;
         var key = $"{pendingInvitationId?.ToString("N") ?? "none"}|{source}";
-        var attempts = Attempts.GetOrAdd(key, _ => new Queue<DateTimeOffset>());
-
-        lock (attempts)
-        {
-            while (attempts.Count > 0 && now - attempts.Peek() > Window)
-            {
-                attempts.Dequeue();
-            }
-
-            if (attempts.Count >= Budget)
-            {
-                var retryAfter = (int)Math.Ceiling((Window - (now - attempts.Peek())).TotalSeconds);
-                return Task.FromResult(new PlatformRecoveryLease(false, Math.Max(retryAfter, 1)));
-            }
-
-            attempts.Enqueue(now);
-            return Task.FromResult(PlatformRecoveryLease.Granted);
-        }
+        return budgets.SpendAsync(CleanArchitecture.Application.IdentityAccess.Platform.PlatformAttemptBudgets.BootstrapRecovery, key, cancellationToken);
     }
-
-    /// <summary>
-    /// Clears the in-process budget. It is public because the budget outlives a test — it is process state, not
-    /// database state — and a suite where one test inherits another's attempts is one that fails by order.
-    /// </summary>
-    public static void Reset() => Attempts.Clear();
 }
