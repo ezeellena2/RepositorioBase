@@ -30,6 +30,7 @@ public sealed class IdentityContinuationStepDefinitions(ScenarioContext scenario
     private OrganizationMembersPage Members => new(Page);
     private StandingInvitationsPage Invitations => new(Page);
     private TenantSelectorPage Tenants => new(Page);
+    private AccountLifecyclePage Account => new(Page);
 
     private string Email
     {
@@ -63,6 +64,44 @@ public sealed class IdentityContinuationStepDefinitions(ScenarioContext scenario
     }
 
     // ---- a personal account of one's own ----------------------------------------------------------------
+
+    [Given("a confirmed identity with no administrative responsibility")]
+    public async Task GivenAnAccountWithoutAdministrativeResponsibility()
+    {
+        var identity = await IdentityAccessFixtures.ConfirmedIdentityAsync();
+        Email = identity.Email;
+        Password = IdentityAccessFixtures.Password;
+    }
+
+    [When("they deactivate their account from the account navigation")]
+    public Task WhenTheyDeactivate() => Account.DeactivateFromNavigationAsync(Password);
+
+    [Then("signing in is refused while their account is deactivated")]
+    public async Task ThenParkedSignInIsRefused()
+    {
+        await Page.GetByRole(AriaRole.Link, new() { Name = "Sign in", Exact = true }).ClickAsync();
+        var refused = await SignIn.AttemptSignInAsync(Email, Password);
+        // Sign-in deliberately answers neutrally; no cookie and no authenticated UI is the refusal.
+        (await refused.AllHeadersAsync()).ContainsKey("set-cookie").ShouldBeFalse();
+        await SignIn.AssertProblemAsync();
+        await SignIn.AssertVisibleAsync();
+    }
+
+    [When("they request reactivation from login and follow the delivered link")]
+    public async Task WhenTheyFollowReactivationMail()
+    {
+        await Account.RequestFromLoginAsync(Email);
+        // Both messages must pass through local delivery, not a test-only token reader.
+        await PlatformFixtures.DeliveredAsync(Email, "Your account was deactivated");
+        var delivered = await PlatformFixtures.DeliveredAsync(Email, "Reactivate your account");
+        await Account.OpenDeliveredAsync(delivered);
+    }
+
+    [When("they reactivate with their current password")]
+    public Task WhenTheyReactivate() => Account.ReactivateAsync(Password);
+
+    [Then("reactivation has not signed them in")]
+    public Task ThenReactivationCreatesNoSession() => Account.AssertSignedOutAsync();
 
     [Given("a visitor sets up a personal account")]
     public async Task GivenAVisitorSetsUpAPersonalAccount()
@@ -125,14 +164,14 @@ public sealed class IdentityContinuationStepDefinitions(ScenarioContext scenario
     public async Task ThenBothContextsAreOffered()
     {
         var organization = scenario.Get<IdentityAccessFixtures.SeededOrganization>("organization");
-        await Tenants.GotoAsync();
+        await Page.GetByRole(AriaRole.Link, new() { Name = "Organizations", Exact = true }).ClickAsync();
         await Tenants.AssertOffersAsync(organization.Slug);
 
         // Two contexts and one identity: the person did not acquire a second account, they acquired a second
         // place to be. The personal one is named by the tenant it is, so it is found by not being the other.
         var personal = await Tenants.OtherThanAsync(organization.Slug);
         await Tenants.ChooseAsync(personal);
-        await new IdentityContextPage(Page).GotoAsync();
+        await Page.GetByRole(AriaRole.Link, new() { Name = "Your access", Exact = true }).ClickAsync();
         await new IdentityContextPage(Page).AssertActiveOrganizationAsync(personal);
     }
 

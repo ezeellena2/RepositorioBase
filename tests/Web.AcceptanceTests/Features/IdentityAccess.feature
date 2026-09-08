@@ -39,19 +39,23 @@ Scenario: Permissions do not cross organizations
     And they select the organization where they may not invite
     Then the invite action is not offered
 
+@ContextRefresh
 Scenario: A newcomer joins through an invitation exactly once
     Given a member invites a newcomer
     When the newcomer registers from the invitation
     And the newcomer confirms the address
     And the newcomer signs in and accepts the invitation
     Then they hold one membership in the inviting organization
+    And the accepted organization can be selected through application navigation
     When the newcomer accepts the same invitation again
     Then they still hold one membership
 
+@ContextRefresh
 Scenario: An identity that already exists accepts an invitation without registering again
     Given a confirmed identity is invited to an organization
     When they sign in and accept the invitation
     Then they hold one membership in the inviting organization
+    And the accepted organization can be selected through application navigation
 
 Scenario: A revoked session stops authenticating
     Given a confirmed identity with one active membership

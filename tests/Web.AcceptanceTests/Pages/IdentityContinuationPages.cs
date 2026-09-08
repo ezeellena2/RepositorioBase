@@ -2,6 +2,58 @@ using System.Text.RegularExpressions;
 
 namespace CleanArchitecture.Web.AcceptanceTests.Pages;
 
+public sealed class AccountLifecyclePage(IPage page) : BasePage(page)
+{
+    public override string PagePath => $"{BaseUrl}/identity/account";
+
+    public async Task DeactivateFromNavigationAsync(string password)
+    {
+        await Page.GetByRole(AriaRole.Link, new() { Name = "Your account", Exact = true }).ClickAsync();
+        await Page.GetByLabel("Current password").FillAsync(password);
+        await Page.GetByRole(AriaRole.Checkbox).CheckAsync();
+        await Page.GetByRole(AriaRole.Button, new() { Name = "Deactivate my account" }).ClickAsync();
+        await Assertions.Expect(Page.GetByRole(AriaRole.Status)).ToContainTextAsync("Your account is deactivated");
+        await Assertions.Expect(Page.GetByRole(AriaRole.Link, new() { Name = "Your access" })).ToHaveCountAsync(0);
+    }
+
+    public async Task RequestFromLoginAsync(string email)
+    {
+        await Page.GetByRole(AriaRole.Link, new() { Name = "Reactivate your account", Exact = true }).ClickAsync();
+        // Login also has an Email field; wait for the SPA destination before filling its form.
+        await Assertions.Expect(Page.Locator("h1")).ToHaveTextAsync("Reactivate your account");
+        await Page.GetByLabel("Email", new() { Exact = true }).FillAsync(email);
+        var response = await Page.RunAndWaitForResponseAsync(
+            () => Page.GetByRole(AriaRole.Button, new() { Name = "Send reactivation link" }).ClickAsync(),
+            candidate => candidate.Url.EndsWith("/api/identity/account/reactivation-requests", StringComparison.Ordinal) && candidate.Request.Method == "POST");
+        response.Status.ShouldBe(202);
+        await Assertions.Expect(Page.GetByRole(AriaRole.Status)).ToContainTextAsync("If that account can be reactivated");
+    }
+
+    internal async Task OpenDeliveredAsync(PlatformFixtures.DeliveredMessage delivered)
+    {
+        await Page.GotoAsync($"{BaseUrl}{delivered.Path}{delivered.Fragment}");
+        await Assertions.Expect(Page).Not.ToHaveURLAsync(new Regex("#token="));
+    }
+
+    public async Task ReactivateAsync(string password)
+    {
+        await Page.GetByLabel("Current password").FillAsync(password);
+        var response = await Page.RunAndWaitForResponseAsync(
+            () => Page.GetByRole(AriaRole.Button, new() { Name = "Reactivate my account" }).ClickAsync(),
+            candidate => candidate.Url.EndsWith("/api/identity/account/reactivate", StringComparison.Ordinal) && candidate.Request.Method == "POST");
+        response.Status.ShouldBe(204);
+        (await response.AllHeadersAsync()).ContainsKey("set-cookie").ShouldBeFalse("reactivation creates no session");
+        await Assertions.Expect(Page.GetByRole(AriaRole.Status)).ToContainTextAsync("Your account is active again");
+    }
+
+    public async Task AssertSignedOutAsync()
+    {
+        await Assertions.Expect(Page.GetByRole(AriaRole.Link, new() { Name = "Your access" })).ToHaveCountAsync(0);
+        await Page.GetByRole(AriaRole.Link, new() { Name = "Sign in", Exact = true }).ClickAsync();
+        await new IdentitySignInPage(Page).AssertVisibleAsync();
+    }
+}
+
 /// <summary>A stranger setting up an account of their own, whose answer is the same whatever happened.</summary>
 public sealed class PersonalRegisterPage(IPage page) : BasePage(page)
 {

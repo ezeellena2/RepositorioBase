@@ -249,6 +249,16 @@ public sealed class IdentityAccessStepDefinitions(ScenarioContext scenario)
     public async Task ThenTheyHoldOneMembership() =>
         (await IdentityAccessFixtures.MembershipCountAsync(Organization, Identity.Id)).ShouldBe(1);
 
+    [Then("the accepted organization can be selected through application navigation")]
+    public async Task ThenAcceptedOrganizationIsAvailableWithoutReload()
+    {
+        await Page.GetByRole(AriaRole.Link, new() { Name = "Organizations", Exact = true }).ClickAsync();
+        await Tenants.AssertOffersAsync(Organization.Slug);
+        await Tenants.ChooseAsync(Organization.Slug);
+        await Page.GetByRole(AriaRole.Link, new() { Name = "Your access", Exact = true }).ClickAsync();
+        await Context.AssertActiveOrganizationAsync(Organization.Slug);
+    }
+
     [Then("they still hold one membership")]
     public Task ThenTheyStillHoldOneMembership() => ThenTheyHoldOneMembership();
 

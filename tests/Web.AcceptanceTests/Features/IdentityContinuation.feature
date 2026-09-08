@@ -3,6 +3,18 @@ Feature: Identity continuation journeys
     What Tasks 19-25 added, driven through the browser a person would use rather than asserted at the request
     level alone: a personal account of one's own, the devices a person holds, and the two ways a password moves.
 
+@AccountLifecycle
+Scenario: A person deactivates their account and returns through the delivered email without an automatic session
+    Given a confirmed identity with no administrative responsibility
+    When they sign in with the password they hold
+    And they deactivate their account from the account navigation
+    Then signing in is refused while their account is deactivated
+    When they request reactivation from login and follow the delivered link
+    And they reactivate with their current password
+    Then reactivation has not signed them in
+    When they sign in with the password they hold
+    Then their own device is still signed in
+
 Scenario: A newcomer sets up a personal account and their document is never shown in full
     Given a visitor sets up a personal account
     Then setting up answers neutrally without revealing whether the address was taken
@@ -10,6 +22,7 @@ Scenario: A newcomer sets up a personal account and their document is never show
     And they sign in with the password they hold
     Then their profile shows the document masked and never the number they submitted
 
+@ContextRefresh
 Scenario: An identity that already has an organization adds a personal context
     Given a confirmed identity that belongs to one organization
     When they sign in with the password they hold
