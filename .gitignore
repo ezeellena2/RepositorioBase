@@ -488,3 +488,6 @@ $RECYCLE.BIN/
 
 # Local AI runtime state
 .atl/
+
+# Attachment cache written by the Codex client, never project content
+.codex-remote-attachments/
