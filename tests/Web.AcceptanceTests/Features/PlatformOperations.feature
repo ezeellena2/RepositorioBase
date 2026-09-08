@@ -33,6 +33,19 @@ Scenario: The panel offers no prohibited capability
     Then the panel offers no impersonation, deletion or context override
     And the owner is the one offered the administrator invitation
 
+Scenario: A later administrator is invited from the panel and walks the same gates
+    Given the first owner has been walked in from the deployment's cold start
+    When the owner invites another administrator
+    And that administrator answers the delivered invitation, confirms, signs in and proves a second factor
+    Then Platform holds two memberships and the panel is offered to the new administrator
+
+Scenario: An identity that already exists is invited to Platform and keeps the password it had
+    Given the first owner has been walked in from the deployment's cold start
+    And an identity that already has an account of its own
+    When the owner invites that identity to Platform
+    And it answers the invitation with a different password
+    Then the password it already had is the one that still signs it in
+
 # Last on purpose. One browser serves the whole feature and the walk above is cached, so signing out here ends
 # the session every earlier scenario operates from; reordering this would strand them with no failure that says so.
 Scenario: A returning owner proves the second factor again before the directories open

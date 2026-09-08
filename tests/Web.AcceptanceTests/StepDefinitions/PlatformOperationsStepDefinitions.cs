@@ -174,6 +174,107 @@ public sealed class PlatformOperationsStepDefinitions(ScenarioContext scenario)
     [Then("the owner is the one offered the administrator invitation")]
     public Task ThenTheOwnerMayInvite() => Panel.AssertCanInviteAdministratorAsync();
 
+    // ---- the two branches the browser had never walked (Task 28) ----------------------------------------
+
+    [When("the owner invites another administrator")]
+    public async Task WhenTheOwnerInvitesAnotherAdministrator()
+    {
+        var invitee = $"platform-admin-{Guid.NewGuid():N}@example.test";
+        scenario.Set(invitee, "invitee");
+        await Panel.GotoAsync();
+        await Panel.InviteAdministratorAsync(invitee, scenario.Get<OwnerWalk>("walk").SharedKey);
+    }
+
+    /// <summary>
+    /// The same gates the owner met, walked by somebody who was invited rather than bootstrapped — and in a
+    /// browser of their own, because they are a different person and a shared jar would make them the owner.
+    /// </summary>
+    [When("that administrator answers the delivered invitation, confirms, signs in and proves a second factor")]
+    public async Task WhenTheAdministratorWalksTheGates()
+    {
+        var invitee = scenario.Get<string>("invitee");
+        await using var context = await PlaywrightSetup.NewContextAsync();
+        var page = await context.NewPageAsync();
+        var invitation = new PlatformInvitationPages(page);
+
+        var delivered = await PlatformFixtures.DeliveredAsync(invitee, "invited to Platform");
+        await invitation.OpenDeliveredAsync(delivered);
+        await invitation.RegisterAsync(PlatformFixtures.Password);
+        await invitation.AssertNeutralAcknowledgementAsync();
+
+        var confirmation = await PlatformFixtures.DeliveredAsync(invitee, "Confirm your Platform address");
+        await invitation.OpenDeliveredAsync(confirmation);
+        await invitation.ConfirmAsync();
+
+        await new IdentitySignInPage(page).GotoAsync();
+        await new IdentitySignInPage(page).SignInAsync(invitee, PlatformFixtures.Password);
+
+        // Back to the invitation, which is where the last gate is — the same continuation the owner took, and
+        // the same reason: the ceremony is bound to the offer rather than to whoever is signed in.
+        await invitation.OpenDeliveredAsync(delivered);
+        await invitation.ContinueToSecondFactorAsync();
+        await invitation.CompleteMfaAsync();
+
+        var panel = new PlatformOperationsPage(page);
+        await panel.GotoAsync();
+        await panel.AssertOfferedAsync();
+        scenario.Set(await PlatformFixtures.PlatformMembershipsAsync(), "memberships");
+    }
+
+    [Then("Platform holds two memberships and the panel is offered to the new administrator")]
+    public void ThenPlatformHoldsTwoMemberships() =>
+        scenario.Get<long>("memberships").ShouldBe(2, "the owner and the administrator they invited, and nobody else");
+
+    [Given("an identity that already has an account of its own")]
+    public async Task GivenAnIdentityThatAlreadyHasAnAccount()
+    {
+        var identity = await IdentityAccessFixtures.ConfirmedIdentityAsync();
+        scenario.Set(identity.Email, "invitee");
+    }
+
+    [When("the owner invites that identity to Platform")]
+    public async Task WhenTheOwnerInvitesThatIdentity()
+    {
+        await Panel.GotoAsync();
+        await Panel.InviteAdministratorAsync(scenario.Get<string>("invitee"), scenario.Get<OwnerWalk>("walk").SharedKey);
+    }
+
+    /// <summary>
+    /// The branch that matters here: an invitee who already has an identity submits a password, and the one they
+    /// already had is the one that still works. A route that took the submitted one would be a way to replace
+    /// anybody's password by inviting their address to Platform.
+    /// </summary>
+    [When("it answers the invitation with a different password")]
+    public async Task WhenItAnswersWithADifferentPassword()
+    {
+        var invitee = scenario.Get<string>("invitee");
+        await using var context = await PlaywrightSetup.NewContextAsync();
+        var page = await context.NewPageAsync();
+        var invitation = new PlatformInvitationPages(page);
+
+        var delivered = await PlatformFixtures.DeliveredAsync(invitee, "invited to Platform");
+        await invitation.OpenDeliveredAsync(delivered);
+        await invitation.RegisterAsync("SomethingElse4Platform!");
+        await invitation.AssertNeutralAcknowledgementAsync();
+    }
+
+    [Then("the password it already had is the one that still signs it in")]
+    public async Task ThenTheOriginalPasswordStillWorks()
+    {
+        var invitee = scenario.Get<string>("invitee");
+        await using var context = await PlaywrightSetup.NewContextAsync();
+        var page = await context.NewPageAsync();
+        var signIn = new IdentitySignInPage(page);
+
+        await signIn.GotoAsync();
+        var refused = await signIn.AttemptSignInAsync(invitee, "SomethingElse4Platform!");
+        refused.Status.ShouldBe(204, "a refused sign-in is neutral, not an error");
+        refused.Headers.ContainsKey("set-cookie").ShouldBeFalse("the password the invitation carried was never adopted");
+
+        await signIn.GotoAsync();
+        await signIn.SignInAsync(invitee, IdentityAccessFixtures.Password);
+    }
+
     /// <summary>
     /// The reproduction of R3, as a person performs it. Nothing is seeded and nothing is fabricated: the "Log out"
     /// link in the navigation, the real sign-in form, and the panel's own step-up.

@@ -220,4 +220,24 @@ public sealed class PlatformOperationsPage(IPage page) : BasePage(page)
     /// </summary>
     public Task AssertCanInviteAdministratorAsync() =>
         Assertions.Expect(Page.GetByRole(AriaRole.Form, new() { Name = "Invite an administrator" })).ToBeVisibleAsync();
+
+    /// <summary>
+    /// Invites, from the panel's own form. Inviting is a Platform change, so the factor is proved first — and
+    /// that is the product's rule rather than the test's convenience: a session with a stale step-up is refused.
+    /// </summary>
+    public async Task InviteAdministratorAsync(string email, string sharedKey)
+    {
+        await AssertCanInviteAdministratorAsync();
+        await StepUpAsync(sharedKey);
+        await Page.FillAsync("#platform-invite-email", email);
+        var response = await Page.RunAndWaitForResponseAsync(
+            () => Page.GetByRole(AriaRole.Form, new() { Name = "Invite an administrator" })
+                .GetByRole(AriaRole.Button, new() { Name = "Invite" }).ClickAsync(),
+            candidate => candidate.Url.EndsWith("/api/platform/admins/invitations", StringComparison.Ordinal) &&
+                         candidate.Request.Method == "POST");
+        if (response.Status is not (200 or 201 or 202 or 204))
+        {
+            throw new InvalidOperationException($"Inviting an administrator answered {response.Status}: {await response.TextAsync()}");
+        }
+    }
 }
