@@ -2,7 +2,6 @@ using System.Net;
 using System.Text;
 using CleanArchitecture.Web.Infrastructure.Identity;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.RateLimiting;
 
 namespace CleanArchitecture.Infrastructure.IntegrationTests.IdentityAccess;
 
@@ -172,7 +171,7 @@ public sealed class LoginRateLimitKeyMiddlewareTests
         context.Connection.RemoteIpAddress = remoteAddress;
         context.Request.Method = HttpMethods.Post;
         context.Request.Path = "/api/identity/sessions";
-        context.SetEndpoint(new Endpoint(_ => Task.CompletedTask, new EndpointMetadataCollection(new EnableRateLimitingAttribute(LoginRateLimitPartitioner.PolicyName)), "login"));
+        context.SetEndpoint(new Endpoint(_ => Task.CompletedTask, new EndpointMetadataCollection(LoginAttemptBudgetMetadata.Instance), "login"));
         context.Request.Body = new MemoryStream(body);
         context.Request.ContentLength = body.Length;
         context.Request.ContentType = contentType;
@@ -186,7 +185,7 @@ public sealed class LoginRateLimitKeyMiddlewareTests
         context.Request.Method = HttpMethods.Post;
         context.Request.Path = "/api/identity/sessions";
         var metadata = loginEndpoint
-            ? new EndpointMetadataCollection(new EnableRateLimitingAttribute(LoginRateLimitPartitioner.PolicyName))
+            ? new EndpointMetadataCollection(LoginAttemptBudgetMetadata.Instance)
             : new EndpointMetadataCollection();
         context.SetEndpoint(new Endpoint(_ => Task.CompletedTask, metadata, loginEndpoint ? "login" : "other"));
         var bytes = Encoding.UTF8.GetBytes(body);

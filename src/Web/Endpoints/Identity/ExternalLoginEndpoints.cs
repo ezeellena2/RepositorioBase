@@ -31,9 +31,9 @@ internal static class ExternalLoginEndpoints
     internal static void Map(RouteGroupBuilder group)
     {
         group.MapPost("/external/{provider}/login/start", StartLogin)
-            .RequireRateLimiting(LoginRateLimitPartitioner.PolicyName)
+            .RequireLoginAttemptBudgets()
             .Produces<ExternalChallengeResponse>(StatusCodes.Status200OK)
-            .WithApiProblemDetails(ApiProblemMetadata.AntiforgeryValidationFailed, ApiProblemMetadata.InvalidExternalLogin, ApiProblemMetadata.InvalidSession, ApiProblemMetadata.RateLimitExceeded, ApiProblemMetadata.InternalServerError);
+            .WithApiProblemDetails(ApiProblemMetadata.AntiforgeryValidationFailed, ApiProblemMetadata.InvalidExternalLogin, ApiProblemMetadata.InvalidSession, ApiProblemMetadata.RateLimitExceeded, ApiProblemMetadata.ServiceUnavailable, ApiProblemMetadata.InternalServerError);
 
         group.MapPost("/external/{provider}/link/start", StartLink)
             .RequireAuthorization()
@@ -53,9 +53,9 @@ internal static class ExternalLoginEndpoints
             .ExcludeFromDescription();
 
         group.MapPost("/external/complete", Complete)
-            .RequireRateLimiting(LoginRateLimitPartitioner.PolicyName)
+            .RequireLoginAttemptBudgets()
             .Produces(StatusCodes.Status204NoContent)
-            .WithApiProblemDetails(ApiProblemMetadata.AntiforgeryValidationFailed, ApiProblemMetadata.AuthenticationRequired, ApiProblemMetadata.InvalidSession, ApiProblemMetadata.PermissionDenied, ApiProblemMetadata.InvalidExternalLogin, ApiProblemMetadata.ExternalLoginConflict, ApiProblemMetadata.ProviderAlreadyLinked, ApiProblemMetadata.RateLimitExceeded, ApiProblemMetadata.InternalServerError);
+            .WithApiProblemDetails(ApiProblemMetadata.AntiforgeryValidationFailed, ApiProblemMetadata.AuthenticationRequired, ApiProblemMetadata.InvalidSession, ApiProblemMetadata.PermissionDenied, ApiProblemMetadata.InvalidExternalLogin, ApiProblemMetadata.ExternalLoginConflict, ApiProblemMetadata.ProviderAlreadyLinked, ApiProblemMetadata.RateLimitExceeded, ApiProblemMetadata.ServiceUnavailable, ApiProblemMetadata.InternalServerError);
 
         group.MapGet("/external", ListLinks)
             .RequireAuthorization()

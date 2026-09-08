@@ -36,21 +36,23 @@ internal static class AccountLifecycleEndpoints
                 ApiProblemMetadata.InternalServerError);
 
         group.MapPost("/account/reactivation-requests", RequestReturn)
-            .RequireRateLimiting(LoginRateLimitPartitioner.PolicyName)
+            .RequireLoginAttemptBudgets()
             .Produces(StatusCodes.Status202Accepted)
             .WithApiProblemDetails(
                 ApiProblemMetadata.AntiforgeryValidationFailed,
                 ApiProblemMetadata.RateLimitExceeded,
+                ApiProblemMetadata.ServiceUnavailable,
                 ApiProblemMetadata.InternalServerError)
             .WithBodyBindingFailureCode(ApiProblemMetadata.InvalidRequest.Code);
 
         group.MapPost("/account/reactivate", Reactivate)
-            .RequireRateLimiting(LoginRateLimitPartitioner.PolicyName)
+            .RequireLoginAttemptBudgets()
             .Produces(StatusCodes.Status204NoContent)
             .WithApiProblemDetails(
                 ApiProblemMetadata.AntiforgeryValidationFailed,
                 ApiProblemMetadata.InvalidReactivation,
                 ApiProblemMetadata.RateLimitExceeded,
+                ApiProblemMetadata.ServiceUnavailable,
                 ApiProblemMetadata.InternalServerError)
             // A body this route cannot read is one more way of not holding a usable ticket, and it answers like
             // every other one.

@@ -16,11 +16,12 @@ internal static class SessionEndpoints
 {
     internal static void Map(RouteGroupBuilder group)
     {
-        // The only rate-limited route: chained client-address and normalized-account transport partitions (IA-REQ-019).
+        // The only rate-limited route: chained client-address and normalized-account budgets over the shared
+        // store (IA-REQ-019). It declares both refusals, because an unreachable store answers `503` and not `429`.
         group.MapPost("/sessions", Create)
-            .RequireRateLimiting(LoginRateLimitPartitioner.PolicyName)
+            .RequireLoginAttemptBudgets()
             .Produces(StatusCodes.Status204NoContent)
-            .WithApiProblemDetails(ApiProblemMetadata.AntiforgeryValidationFailed, ApiProblemMetadata.InvalidRequest, ApiProblemMetadata.CredentialSuperseded, ApiProblemMetadata.RateLimitExceeded, ApiProblemMetadata.InternalServerError)
+            .WithApiProblemDetails(ApiProblemMetadata.AntiforgeryValidationFailed, ApiProblemMetadata.InvalidRequest, ApiProblemMetadata.CredentialSuperseded, ApiProblemMetadata.RateLimitExceeded, ApiProblemMetadata.ServiceUnavailable, ApiProblemMetadata.InternalServerError)
             .WithBodyBindingFailureCode(ApiProblemMetadata.InvalidRequest.Code);
         group.MapGet("/sessions", List)
             .RequireAuthorization()

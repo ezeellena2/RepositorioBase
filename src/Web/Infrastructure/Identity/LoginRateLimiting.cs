@@ -1,15 +1,18 @@
-using System.Threading.RateLimiting;
 using CleanArchitecture.Application.Common.Models;
-using Microsoft.AspNetCore.RateLimiting;
+using CleanArchitecture.Application.IdentityAccess.Security;
 
 namespace CleanArchitecture.Web.Infrastructure.Identity;
 
 /// <summary>
-/// Transport rate limiting for the login endpoint (IA-REQ-019): two chained fixed-window partitions with zero
-/// queue, per client address (global limiter that is a no-op for every other endpoint) and per normalized account
-/// (the named policy only <c>POST /api/identity/sessions</c> carries). Rejections go through the shared RFC 9457
-/// writer with a stable code and <c>Retry-After</c>. Identity lockout is a separate control owned by the account
-/// service; both stay distinct on purpose.
+/// Transport rate limiting for the login endpoint (IA-REQ-019): two chained fixed windows over the shared attempt
+/// store, per client address and per normalized account. Identity lockout is a separate control owned by the
+/// account service; both stay distinct on purpose.
+/// <para>
+/// The budgets live in PostgreSQL rather than in this process. An in-memory limiter is not a limit for a
+/// deployment that is more than one process: an attacker escapes it by reaching the other instance, and a restart
+/// refunds every attempt anybody had spent. Neither weakness is visible from inside one process, which is why the
+/// evidence for this lives in tests that build two hosts and dispose one (IA-REQ-057).
+/// </para>
 /// </summary>
 public static class LoginRateLimiting
 {
@@ -18,41 +21,88 @@ public static class LoginRateLimiting
     public static readonly TimeSpan ClientWindow = TimeSpan.FromMinutes(5);
     public static readonly TimeSpan AccountWindow = TimeSpan.FromMinutes(15);
 
-    private const string UnlimitedPartition = "unlimited";
-    private const string RateLimitExceededCode = "rate_limit_exceeded";
+    /// <summary>
+    /// The two budgets, named. The scopes are separate so one address spending its budget cannot collide with an
+    /// account's, and the numbers are a **product choice** — the SPEC fixes none — set high enough that a person
+    /// mistyping a password is not locked out and low enough that a password list is not walked through this route.
+    /// </summary>
+    public static readonly AttemptBudget ClientBudget = new("identity.login.client", ClientPermitLimit, ClientWindow);
 
-    public static IServiceCollection AddLoginRateLimiting(this IServiceCollection services)
+    public static readonly AttemptBudget AccountBudget = new("identity.login.account", AccountPermitLimit, AccountWindow);
+
+    public static IApplicationBuilder UseLoginAttemptBudgets(this IApplicationBuilder app) =>
+        app.UseMiddleware<LoginAttemptBudgetMiddleware>();
+
+    /// <summary>
+    /// Declares that a route is bounded by the login budgets. Endpoint metadata rather than a path comparison,
+    /// so the route stays the router's to name and nothing has to be kept in step with a string.
+    /// </summary>
+    public static RouteHandlerBuilder RequireLoginAttemptBudgets(this RouteHandlerBuilder builder) =>
+        builder.WithMetadata(LoginAttemptBudgetMetadata.Instance);
+}
+
+/// <summary>The marker <see cref="LoginRateLimiting.RequireLoginAttemptBudgets"/> puts on the login route.</summary>
+public sealed class LoginAttemptBudgetMetadata
+{
+    public static readonly LoginAttemptBudgetMetadata Instance = new();
+
+    private LoginAttemptBudgetMetadata()
     {
-        services.AddRateLimiter(options => options.RejectionStatusCode = StatusCodes.Status429TooManyRequests);
-        services.AddOptions<RateLimiterOptions>().Configure<TimeProvider>((options, timeProvider) =>
+    }
+}
+
+/// <summary>
+/// Spends the login budgets before the endpoint sees the request, so a refused attempt never reaches a password
+/// hash, an audit record or a session (IA-REQ-019).
+/// </summary>
+public sealed class LoginAttemptBudgetMiddleware(RequestDelegate next)
+{
+    public async Task InvokeAsync(HttpContext context, ISharedAttemptBudget budgets, IProblemDetailsService problems)
+    {
+        if (!LoginRateLimitKeyMiddleware.IsLoginEndpoint(context))
         {
-            options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
-                LoginRateLimitKeyMiddleware.IsLoginEndpoint(context) && context.Items[LoginRateLimitKeyMiddleware.ClientKeyItem] is string clientKey
-                    ? RateLimitPartition.Get(clientKey, _ => new TimeProviderFixedWindowRateLimiter(ClientPermitLimit, ClientWindow, timeProvider))
-                    : RateLimitPartition.GetNoLimiter(UnlimitedPartition));
+            await next(context);
+            return;
+        }
 
-            options.AddPolicy(LoginRateLimitPartitioner.PolicyName, context =>
-                context.Items[LoginRateLimitKeyMiddleware.AccountKeyItem] is string accountKey
-                    ? RateLimitPartition.Get(accountKey, _ => new TimeProviderFixedWindowRateLimiter(AccountPermitLimit, AccountWindow, timeProvider))
-                    : RateLimitPartition.GetNoLimiter(UnlimitedPartition));
+        // The client address first, and the account only if the address was admitted. Spending the account budget
+        // for a caller who is already over their own would let one address lock out any account it can name.
+        if (context.Items[LoginRateLimitKeyMiddleware.ClientKeyItem] is string clientKey &&
+            await RefusedAsync(context, budgets, problems, LoginRateLimiting.ClientBudget, clientKey))
+        {
+            return;
+        }
 
-            options.OnRejected = WriteRejectionAsync;
-        });
+        if (context.Items[LoginRateLimitKeyMiddleware.AccountKeyItem] is string accountKey &&
+            await RefusedAsync(context, budgets, problems, LoginRateLimiting.AccountBudget, accountKey))
+        {
+            return;
+        }
 
-        return services;
+        await next(context);
     }
 
-    private static async ValueTask WriteRejectionAsync(OnRejectedContext context, CancellationToken cancellationToken)
+    private static async Task<bool> RefusedAsync(
+        HttpContext context,
+        ISharedAttemptBudget budgets,
+        IProblemDetailsService problems,
+        AttemptBudget budget,
+        string key)
     {
-        // Both partitions are fixed windows that always report the remaining window; the longer window is the
-        // conservative fallback should a lease ever arrive without it, because the contract requires Retry-After.
-        var retryAfterSeconds = context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter)
-            ? Math.Max(1, (int)Math.Ceiling(retryAfter.TotalSeconds))
-            : (int)AccountWindow.TotalSeconds;
-        var problems = context.HttpContext.RequestServices.GetRequiredService<CleanArchitecture.Web.Infrastructure.IProblemDetailsService>();
-        await problems.WriteAsync(
-            context.HttpContext,
-            new ApplicationError(RateLimitExceededCode, ApplicationErrorCategory.RateLimited, retryAfterSeconds: retryAfterSeconds),
-            cancellationToken);
+        var decision = await budgets.SpendAsync(budget, key, context.RequestAborted);
+        if (decision.IsAdmitted) return false;
+
+        // The contract requires Retry-After on both refusals, and the two are deliberately different answers: a
+        // caller who really spent their attempts is told so, and an outage is told as an outage rather than as
+        // something the caller did (IA-REQ-057).
+        var retryAfterSeconds = Math.Max(1, (int)Math.Ceiling(decision.RetryAfter.TotalSeconds));
+        var error = decision.Outcome == AttemptBudgetOutcome.Unavailable
+            ? new ApplicationError(ServiceUnavailableCode, ApplicationErrorCategory.Unavailable, retryAfterSeconds: retryAfterSeconds)
+            : new ApplicationError(RateLimitExceededCode, ApplicationErrorCategory.RateLimited, retryAfterSeconds: retryAfterSeconds);
+        await problems.WriteAsync(context, error, context.RequestAborted);
+        return true;
     }
+
+    private const string RateLimitExceededCode = "rate_limit_exceeded";
+    private const string ServiceUnavailableCode = "service_unavailable";
 }

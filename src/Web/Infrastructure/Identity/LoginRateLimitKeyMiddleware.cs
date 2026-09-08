@@ -2,15 +2,14 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http.Features;
-using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Primitives;
 using Microsoft.Net.Http.Headers;
 
 namespace CleanArchitecture.Web.Infrastructure.Identity;
 
 /// <summary>
-/// Derives the opaque login partition keys before <c>UseRateLimiter</c> runs. It acts only on the endpoint that
-/// carries the <see cref="LoginRateLimitPartitioner.PolicyName"/> policy, decodes the JSON body the way the endpoint
+/// Derives the opaque login partition keys before the budgets are spent. It acts only on the endpoint that
+/// carries <see cref="LoginAttemptBudgetMetadata"/>, decodes the JSON body the way the endpoint
 /// binder does (declared charset honored, byte order marks tolerated), buffers it so the endpoint can still bind it,
 /// and never logs the address, the email or the keys. A body that cannot be attributed to an account but might still
 /// reach the endpoint falls into a shared fail-closed partition instead of escaping the account limit.
@@ -55,10 +54,7 @@ public sealed class LoginRateLimitKeyMiddleware(RequestDelegate next)
     }
 
     public static bool IsLoginEndpoint(HttpContext context) =>
-        string.Equals(
-            context.GetEndpoint()?.Metadata.GetMetadata<EnableRateLimitingAttribute>()?.PolicyName,
-            LoginRateLimitPartitioner.PolicyName,
-            StringComparison.Ordinal);
+        context.GetEndpoint()?.Metadata.GetMetadata<LoginAttemptBudgetMetadata>() is not null;
 
     /// <summary>IPv4 clients behind dual-stack listeners arrive as IPv4-mapped IPv6 addresses; both spellings are one client.</summary>
     private static string ClientAddress(IPAddress? address) =>
@@ -187,7 +183,7 @@ public sealed class LoginRateLimitKeyMiddleware(RequestDelegate next)
 
 public static class LoginRateLimitKeyMiddlewareExtensions
 {
-    /// <summary>Must run before <c>UseRateLimiter()</c> so both login partitions can read their keys.</summary>
+    /// <summary>Must run before <c>UseLoginAttemptBudgets()</c> so both login budgets can read their keys.</summary>
     public static IApplicationBuilder UseLoginRateLimitKeys(this IApplicationBuilder app) =>
         app.UseMiddleware<LoginRateLimitKeyMiddleware>();
 }

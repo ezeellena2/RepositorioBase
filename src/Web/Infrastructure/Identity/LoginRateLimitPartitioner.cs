@@ -10,9 +10,6 @@ namespace CleanArchitecture.Web.Infrastructure.Identity;
 /// </summary>
 public static class LoginRateLimitPartitioner
 {
-    /// <summary>Named rate-limiting policy that only <c>POST /api/identity/sessions</c> carries.</summary>
-    public const string PolicyName = "identity-login";
-
     private const string AccountDomain = "account:";
     private const string ClientDomain = "ip:";
     private const string SentinelDomain = "sentinel:";

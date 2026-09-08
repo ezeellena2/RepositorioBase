@@ -62,8 +62,6 @@ public static class DependencyInjection
             options.Cookie.HttpOnly = true;
             options.Cookie.SameSite = SameSiteMode.Lax;
         });
-        builder.Services.AddLoginRateLimiting();
-
         // Registered only when a client is configured, so a deployment without one simply does not offer it.
         builder.AddGoogleExternalLogin();
 

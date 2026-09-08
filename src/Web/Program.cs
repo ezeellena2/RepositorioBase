@@ -32,9 +32,10 @@ app.MapOpenApi();
 app.MapScalarApiReference();
 
 app.UseExceptionHandler(options => { });
-// Login partition keys must exist before the limiter runs; only POST /api/identity/sessions carries a policy.
+// Login partition keys must exist before the budgets are spent; only POST /api/identity/sessions carries the
+// marker. Both run before authentication, so a refused attempt reaches no credential and no session.
 app.UseLoginRateLimitKeys();
-app.UseRateLimiter();
+app.UseLoginAttemptBudgets();
 app.UseAuthentication();
 app.UseAuthorization();
 

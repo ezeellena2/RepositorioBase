@@ -20,9 +20,9 @@ internal static class PasswordEndpoints
     internal static void Map(RouteGroupBuilder group)
     {
         group.MapPost("/credentials/password/recovery", Recover)
-            .RequireRateLimiting(LoginRateLimitPartitioner.PolicyName)
+            .RequireLoginAttemptBudgets()
             .Produces(StatusCodes.Status202Accepted)
-            .WithApiProblemDetails(ApiProblemMetadata.AntiforgeryValidationFailed, ApiProblemMetadata.RateLimitExceeded, ApiProblemMetadata.InternalServerError)
+            .WithApiProblemDetails(ApiProblemMetadata.AntiforgeryValidationFailed, ApiProblemMetadata.RateLimitExceeded, ApiProblemMetadata.ServiceUnavailable, ApiProblemMetadata.InternalServerError)
             .WithBodyBindingFailureCode(ApiProblemMetadata.InvalidRequest.Code);
 
         group.MapPost("/credentials/password/reset", Reset)
