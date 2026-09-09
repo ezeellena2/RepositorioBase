@@ -66,6 +66,7 @@ public sealed class PlatformOperationalProjectionReader(ApplicationDbContext con
             .Select(user => new PlatformIdentityProjection(
                 user.Id,
                 user.NormalizedEmail!,
+                user.Status.ToString(),
                 user.EmailConfirmed,
                 user.LockoutEnd != null && user.LockoutEnd > DateTimeOffset.UtcNow,
                 context.TenantMemberships.Count(membership => membership.IdentityId == user.Id),

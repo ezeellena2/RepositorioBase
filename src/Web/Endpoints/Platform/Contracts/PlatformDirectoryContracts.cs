@@ -18,6 +18,7 @@ public sealed record PlatformOrganizationResponse(
 public sealed record PlatformIdentityResponse(
     Guid IdentityId,
     string NormalizedEmail,
+    string AccountStatus,
     bool EmailConfirmed,
     bool IsLockedOut,
     int MembershipCount,

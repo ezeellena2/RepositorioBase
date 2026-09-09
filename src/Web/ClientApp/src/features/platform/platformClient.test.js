@@ -124,6 +124,80 @@ describe('platform client', () => {
     await expect(clientWith().listOrganizations()).rejects.toThrow(/succeeded|value/i);
   });
 
+  it('sends the reason and the status the operator read, and nothing else, when suspending an account', async () => {
+    server.use(antiforgery());
+    const seen = captured('post', '/api/platform/identities/:identityId/suspend', () => new HttpResponse(null, { status: 204 }));
+
+    await clientWith().suspendIdentity('identity-1', 'PolicyViolation', 'Active');
+
+    expect(seen.url.pathname).toBe('/api/platform/identities/identity-1/suspend');
+    expect(seen.body).toEqual({ reason: 'PolicyViolation', expectedStatus: 'Active' });
+    expect(seen.headers.get('X-CSRF-TOKEN')).toBe(ANTIFORGERY_TOKEN);
+  });
+
+  it('carries the operator acknowledgement when reactivating an account', async () => {
+    server.use(antiforgery());
+    const seen = captured('post', '/api/platform/identities/:identityId/reactivate', () => new HttpResponse(null, { status: 204 }));
+
+    await clientWith().reactivateIdentity('identity-1', 'Suspended', true);
+
+    expect(seen.body).toEqual({ expectedStatus: 'Suspended', acknowledgeSelfDeactivation: true });
+  });
+
+  /**
+   * A deployment with no configured policy answers with every optional field null. That is the honest description
+   * of "this system will not delete anything", so reading it has to succeed — declaring those members would turn
+   * the honest answer into contract drift.
+   */
+  it('reads the retention policy without a token and survives a policy whose optional members are null', async () => {
+    const seen = captured('get', '/api/platform/retention/policy', () => HttpResponse.json({
+      policyId: null,
+      version: null,
+      owner: null,
+      approvedOn: null,
+      source: null,
+      personalDataMode: 'Pseudonymized',
+      activeHoldCount: 0,
+      categories: [],
+    }));
+
+    const policy = await clientWith().readRetentionPolicy();
+
+    expect(seen.headers.get('X-CSRF-TOKEN')).toBeNull();
+    expect(policy.personalDataMode).toBe('Pseudonymized');
+    expect(policy.categories).toEqual([]);
+  });
+
+  it('reads back the hold it placed, from the created view', async () => {
+    server.use(antiforgery());
+    const seen = captured('post', '/api/platform/retention/holds', () => HttpResponse.json({
+      holdId: 'hold-1',
+      subjectIdentityId: 'identity-1',
+      reasonCode: 'LitigationHold',
+      reference: 'CASE-42',
+      placedAt: '2026-01-01T00:00:00Z',
+      placedByMembershipId: 'membership-1',
+      releasedAt: null,
+      version: 1,
+    }, { status: 201 }));
+
+    const hold = await clientWith().placeRetentionHold('identity-1', 'LitigationHold', 'CASE-42');
+
+    expect(seen.body).toEqual({ subjectIdentityId: 'identity-1', reasonCode: 'LitigationHold', reference: 'CASE-42' });
+    expect(hold.holdId).toBe('hold-1');
+  });
+
+  it('releases a hold with nothing but its identifier', async () => {
+    server.use(antiforgery());
+    const seen = captured('delete', '/api/platform/retention/holds/:holdId', () => new HttpResponse(null, { status: 204 }));
+
+    await clientWith().releaseRetentionHold('hold-1');
+
+    expect(seen.url.pathname).toBe('/api/platform/retention/holds/hold-1');
+    expect(seen.body).toBeNull();
+    expect(seen.headers.get('X-CSRF-TOKEN')).toBe(ANTIFORGERY_TOKEN);
+  });
+
   it('cannot be built without the identity transport', () => {
     expect(() => createPlatformClient(undefined)).toThrow(/transport/i);
   });

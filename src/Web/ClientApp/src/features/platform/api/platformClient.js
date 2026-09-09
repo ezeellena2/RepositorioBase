@@ -64,6 +64,44 @@ export function createPlatformClient(transport) {
     listAdministrators: (options) => send(page('/api/platform/admins', options), { expect: DIRECTORY }),
     listAudit: (options) => send(page('/api/platform/audit', options), { expect: DIRECTORY }),
 
+    // Stopping and restarting one account. `expectedStatus` is the state the operator read in the directory, and
+    // the server only lands the write if the account is still in it (IA-REQ-054): it is a precondition the client
+    // must carry, not a hint it may drop.
+    suspendIdentity: (identityId, reason, expectedStatus) =>
+      send(`/api/platform/identities/${encodeURIComponent(identityId)}/suspend`, {
+        method: 'POST',
+        body: { reason, expectedStatus },
+      }),
+
+    reactivateIdentity: (identityId, expectedStatus, acknowledgeSelfDeactivation) =>
+      send(`/api/platform/identities/${encodeURIComponent(identityId)}/reactivate`, {
+        method: 'POST',
+        body: { expectedStatus, acknowledgeSelfDeactivation },
+      }),
+
+    // Only the three members a policy always has are declared. A deployment with no configured policy answers with
+    // `policyId`, `version`, `owner`, `approvedOn` and `source` all null, and that is the honest description of
+    // "this system will not delete anything" (IA-REQ-056). Declaring them would make every such deployment read as
+    // contract drift instead, because a declared member has to be present. `getContext` omits `activeTenant` for
+    // the same reason.
+    readRetentionPolicy: () => send('/api/platform/retention/policy', {
+      expect: ['personalDataMode', 'activeHoldCount', 'categories'],
+    }),
+
+    // `releasedAt` is absent for the same reason: a hold that was just placed has not been released, so the field
+    // is null on the only answer this call can receive.
+    placeRetentionHold: (subjectIdentityId, reasonCode, reference) =>
+      send('/api/platform/retention/holds', {
+        method: 'POST',
+        body: { subjectIdentityId, reasonCode, reference },
+        expect: ['holdId', 'subjectIdentityId', 'reasonCode', 'reference', 'placedAt', 'placedByMembershipId', 'version'],
+      }),
+
+    // Bodyless: the route is idempotent and deliberately silent about whether the hold existed, so there is
+    // nothing to send beyond which one to release.
+    releaseRetentionHold: (holdId) =>
+      send(`/api/platform/retention/holds/${encodeURIComponent(holdId)}`, { method: 'DELETE' }),
+
     suspendOrganization: (tenantId, reason) =>
       send(`/api/platform/organizations/${encodeURIComponent(tenantId)}/suspend`, { method: 'POST', body: { reason } }),
 

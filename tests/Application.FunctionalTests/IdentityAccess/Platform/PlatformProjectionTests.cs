@@ -67,11 +67,16 @@ public sealed class PlatformProjectionTests : TestBase
 
         var item = page.Items.ShouldHaveSingleItem();
         Fields(item).ShouldBe([
-            "EmailConfirmed", "IdentityId", "IsLockedOut", "LastSeenUtc", "MembershipCount", "MfaStatus", "NormalizedEmail"
+            "AccountStatus", "EmailConfirmed", "IdentityId", "IsLockedOut", "LastSeenUtc", "MembershipCount",
+            "MfaStatus", "NormalizedEmail"
         ]);
         item.IdentityId.ShouldBe(owner.IdentityId);
         item.EmailConfirmed.ShouldBeTrue();
         item.MfaStatus.ShouldBe("Active");
+        // The status is what the operator screen reads before it may suspend or reactivate: the suspend and
+        // reactivate routes demand the state the operator saw as a precondition, and without it in the directory
+        // there is nothing honest to send.
+        item.AccountStatus.ShouldBe("Active");
 
         var payload = JsonSerializer.Serialize(page);
         payload.ShouldNotContain("passwordHash", Case.Insensitive);

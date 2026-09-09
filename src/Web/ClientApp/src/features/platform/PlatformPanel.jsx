@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useIdentity } from '../identity/context/IdentityProvider';
 import { ProblemMessage } from '../identity/ProblemMessage';
 import { useSubmit } from '../identity/useSubmit';
 import { usePlatformClient } from './invitations/PlatformInvitationPages';
+import { PlatformStepUpForm } from './shared/PlatformStepUpForm';
+import { usePlatformRead } from './shared/usePlatformRead';
 
 /**
  * The Platform panel (IA-REQ-045).
@@ -17,37 +19,6 @@ import { usePlatformClient } from './invitations/PlatformInvitationPages';
  */
 const REASONS = ['PolicyViolation', 'SecurityIncident', 'BillingHold', 'OperatorRequest'];
 
-function useDirectory(load, enabled = true) {
-  const [page, setPage] = useState(null);
-  const [problem, setProblem] = useState(null);
-
-  const refresh = useCallback(async (cursor) => {
-    try {
-      setPage(await load({ cursor }));
-      setProblem(null);
-    } catch (failure) {
-      // A directory that cannot be read shows why rather than an empty table, which would read as "there is
-      // nothing here" — a very different statement from "you were refused".
-      setProblem(failure?.problem ?? { code: 'internal_server_error', status: 0 });
-      setPage(null);
-    }
-  }, [load]);
-
-  // The first page is loaded inside an async body rather than from the effect directly, so nothing is set
-  // synchronously while the component is still rendering. It is not loaded at all while the session still owes
-  // its second factor: asking would produce three refusals the visitor can do nothing about, and the panel
-  // already knows the one thing they can do.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      if (!cancelled && enabled) await refresh(undefined);
-    })();
-    return () => { cancelled = true; };
-  }, [refresh, enabled]);
-
-  return { page, problem, refresh };
-}
-
 export function PlatformPanel() {
   const identity = useIdentity();
   const platform = usePlatformClient();
@@ -61,9 +32,12 @@ export function PlatformPanel() {
   const mayLoad = identityContext?.activeTenant?.type === 'Platform' &&
     identityContext?.session?.requiresTwoFactor !== true &&
     (identityContext?.permissions ?? []).includes('platform.organizations.read');
-  const organizations = useDirectory(useCallback((options) => platform.listOrganizations(options), [platform]), mayLoad);
-  const administrators = useDirectory(useCallback((options) => platform.listAdministrators(options), [platform]), mayLoad);
-  const audit = useDirectory(useCallback((options) => platform.listAudit(options), [platform]), mayLoad);
+  // The panel reads `page`, `problem` and `refresh`; the `status` discriminator the shared hook also returns is
+  // for a screen that has to tell "no rows" apart from "you were refused", which three tables with their own
+  // refusal message already do.
+  const organizations = usePlatformRead(useCallback((options) => platform.listOrganizations(options), [platform]), mayLoad);
+  const administrators = usePlatformRead(useCallback((options) => platform.listAdministrators(options), [platform]), mayLoad);
+  const audit = usePlatformRead(useCallback((options) => platform.listAudit(options), [platform]), mayLoad);
 
   const permissions = identity?.context?.permissions ?? [];
   const isPlatform = identity?.context?.activeTenant?.type === 'Platform';
@@ -98,20 +72,16 @@ export function PlatformPanel() {
         <h1 id="platform-panel-heading">Platform</h1>
         <ProblemMessage problem={actionProblem} />
         <p>This session has not proved your second factor yet. Enter a code from your authenticator to continue.</p>
-        <form
-          aria-label="Step up"
-          onSubmit={(event) => {
-            event.preventDefault();
-            run(async () => {
-              await platform.stepUp(stepUpCode);
-              await identity.reload();
-            });
-          }}
-        >
-          <label htmlFor="platform-step-up">Authenticator code</label>
-          <input id="platform-step-up" type="text" inputMode="numeric" value={stepUpCode} onChange={(event) => setStepUpCode(event.target.value)} required />
-          <button type="submit" disabled={isBusy}>Step up</button>
-        </form>
+        <PlatformStepUpForm
+          inputId="platform-step-up"
+          code={stepUpCode}
+          onCodeChange={setStepUpCode}
+          isBusy={isBusy}
+          onSubmit={() => run(async () => {
+            await platform.stepUp(stepUpCode);
+            await identity.reload();
+          })}
+        />
       </section>
     );
   }
@@ -123,14 +93,13 @@ export function PlatformPanel() {
 
       {/* A Platform change needs a recent proof of the second factor, so the panel offers one rather than
           letting the administrator discover the refusal after composing an action. */}
-      <form
-        aria-label="Step up"
-        onSubmit={(event) => { event.preventDefault(); run(() => platform.stepUp(stepUpCode)); }}
-      >
-        <label htmlFor="platform-step-up">Authenticator code</label>
-        <input id="platform-step-up" type="text" inputMode="numeric" value={stepUpCode} onChange={(event) => setStepUpCode(event.target.value)} required />
-        <button type="submit" disabled={isBusy}>Step up</button>
-      </form>
+      <PlatformStepUpForm
+        inputId="platform-step-up"
+        code={stepUpCode}
+        onCodeChange={setStepUpCode}
+        isBusy={isBusy}
+        onSubmit={() => run(() => platform.stepUp(stepUpCode))}
+      />
 
       <h2>Organizations</h2>
       <ProblemMessage problem={organizations.problem} />

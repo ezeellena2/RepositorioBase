@@ -7,6 +7,15 @@
     <OpenApiDocumentsDirectory>./wwwroot/openapi/</OpenApiDocumentsDirectory>
     <OpenApiGenerateDocumentsOptions>--file-name v1</OpenApiGenerateDocumentsOptions>
     <OpenApiGenerateDocumentsOnBuild>true</OpenApiGenerateDocumentsOnBuild>
+    <!--
+      The SPA's TypeScript belongs to the SPA's own toolchain, not to MSBuild. Visual Studio otherwise compiles
+      every tsconfig.json under this project with the TypeScript SDK it ships with — 4.3 at the time of writing —
+      which rejects `moduleResolution: bundler`, `allowImportingTsExtensions` and `moduleDetection` as unknown and
+      fails the build on configuration that is correct for the 5.9 compiler in ClientApp/node_modules. Nothing is
+      lost by blocking it: ClientApp/tsconfig.json sets `noEmit`, so it type-checks rather than produces output,
+      and vite builds what ships.
+    -->
+    <TypeScriptCompileBlocked>true</TypeScriptCompileBlocked>
   </PropertyGroup>
 
   <ItemGroup>

@@ -57,5 +57,32 @@ describe('navigation', () => {
     expect(screen.queryByRole('link', { name: 'Members' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Invite a member' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Platform' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Platform identities' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Retention' })).not.toBeInTheDocument();
+  });
+
+  /**
+   * Reading the account directory, reading the retention policy and operating the panel are granted separately, so
+   * each operator entry answers to its own permission rather than to whichever one the panel happens to hold.
+   */
+  it('names each operator screen only to the permission that opens it', async () => {
+    server.use(antiforgery(), contextIs(signedInContext({ permissions: ['platform.identities.read'] })));
+
+    renderMenu();
+
+    expect(await screen.findByRole('link', { name: 'Platform identities' })).toBeInTheDocument();
+    expect(hrefOf('Platform identities')).toBe('/platform/identities');
+    expect(screen.queryByRole('link', { name: 'Retention' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Platform' })).not.toBeInTheDocument();
+  });
+
+  it('names the retention screen to the permission that opens it', async () => {
+    server.use(antiforgery(), contextIs(signedInContext({ permissions: ['platform.retention.read'] })));
+
+    renderMenu();
+
+    expect(await screen.findByRole('link', { name: 'Retention' })).toBeInTheDocument();
+    expect(hrefOf('Retention')).toBe('/platform/retention');
+    expect(screen.queryByRole('link', { name: 'Platform identities' })).not.toBeInTheDocument();
   });
 });

@@ -39,10 +39,17 @@ public sealed record PlatformOrganizationProjection(
 /// <summary>
 /// An identity as Platform may see it. The normalized email is present because the directory permission is what
 /// gates reaching this projection at all; nothing else about the person is.
+/// <para>
+/// The account status is here because suspending and reactivating take it as a precondition (IA-REQ-054): an
+/// operator sends back the state they read, and the write only lands if the account is still in it. Where the
+/// account was before an operator stopped it is deliberately absent — that is what its owner chose about their own
+/// account, and it is not part of what an operator needs in order to act.
+/// </para>
 /// </summary>
 public sealed record PlatformIdentityProjection(
     Guid IdentityId,
     string NormalizedEmail,
+    string AccountStatus,
     bool EmailConfirmed,
     bool IsLockedOut,
     int MembershipCount,

@@ -31,6 +31,8 @@ public sealed class PlatformOperationsStepDefinitions(ScenarioContext scenario)
     private static PlatformRecoveryPage Recovery => new(Page);
     private static PlatformInvitationPages Invitation => new(Page);
     private static PlatformOperationsPage Panel => new(Page);
+    private static PlatformIdentitiesPage Identities => new(Page);
+    private static PlatformRetentionPage Retention => new(Page);
 
     /// <summary>
     /// One browser for the whole feature, because it is one person. The session the ceremony ends with is the
@@ -273,6 +275,100 @@ public sealed class PlatformOperationsStepDefinitions(ScenarioContext scenario)
 
         await signIn.GotoAsync();
         await signIn.SignInAsync(invitee, IdentityAccessFixtures.Password);
+    }
+
+    // ---- the operator screens, walked and photographed ---------------------------------------------------
+
+    /// <summary>
+    /// Which account this journey stops, chosen the way the screen chooses what to show. The directory renders one
+    /// page of twenty-five ordered by identity and offers nothing to search by, so an account seeded here is not
+    /// necessarily one an operator could reach — the subject has to be one that page really lists.
+    /// <para>
+    /// Belonging to nothing is what makes it safe to stop. An account that administers an organization alone is
+    /// refused by the product, and the owner's own account is refused for the same kind of reason; an account with
+    /// no membership at all is neither, and no other journey in this run signs in as one.
+    /// </para>
+    /// </summary>
+    [Given("an account the identities directory lists")]
+    public async Task GivenAnAccountTheDirectoryLists()
+    {
+        var account = await PlatformFixtures.ScalarAsync(
+            """
+            SELECT listed."NormalizedEmail"
+            FROM (SELECT "Id", "NormalizedEmail", "Status" FROM "AspNetUsers" ORDER BY "Id" LIMIT 25) AS listed
+            WHERE listed."Status" = 'Active'
+              AND NOT EXISTS (SELECT 1 FROM "TenantMemberships" m WHERE m."IdentityId" = listed."Id")
+            LIMIT 1;
+            """)
+            ?? throw new InvalidOperationException(
+                "The page the identities directory renders lists no active account that belongs to nothing, so this run has none to stop.");
+        scenario.Set(account, "account");
+    }
+
+    /// <summary>
+    /// The step-up is taken on the panel, because the directory offers none to a session that has already proved
+    /// the factor: what a change needs is a <em>recent</em> proof, and the panel is where this session renews it.
+    /// </summary>
+    [When("they step up and open the identities directory")]
+    public async Task WhenTheyOpenTheIdentitiesDirectory()
+    {
+        await Panel.GotoAsync();
+        await Panel.StepUpAsync(scenario.Get<OwnerWalk>("walk").SharedKey);
+        await Identities.GotoAsync();
+        await Identities.AssertOfferedAsync();
+    }
+
+    [Then("that account is listed with the status it holds")]
+    public async Task ThenTheAccountIsListedWithItsStatus()
+    {
+        var status = await Identities.StatusOfAsync(scenario.Get<string>("account"));
+        status.ShouldBe("Active", "the premise chose an account the deployment holds as active, and the screen has to say so too.");
+        scenario.Set(status, "status");
+        await Identities.CaptureAsync("01-identities-directory");
+    }
+
+    [When("they suspend it for a reason from the closed set")]
+    public async Task WhenTheySuspendTheAccount()
+    {
+        await Identities.ArmSuspensionAsync(scenario.Get<string>("account"), "SecurityIncident");
+        await Identities.CaptureAsync("02-suspend-confirmation");
+        await Identities.ConfirmSuspensionAsync();
+    }
+
+    [Then("the directory shows it administratively suspended")]
+    public async Task ThenTheDirectoryShowsItSuspended()
+    {
+        await Identities.AssertStatusAsync(scenario.Get<string>("account"), "AdministrativelySuspended");
+        await Identities.CaptureAsync("03-directory-after-the-suspension");
+    }
+
+    [When("they lift the suspension with the acknowledgement left unticked")]
+    public async Task WhenTheyLiftTheSuspension()
+    {
+        await Identities.ArmReactivationAsync(scenario.Get<string>("account"));
+        await Identities.AssertAcknowledgementUntickedAsync();
+        await Identities.CaptureAsync("04-reactivate-confirmation");
+        await Identities.ConfirmReactivationAsync();
+    }
+
+    /// <summary>
+    /// Into the state that preceded the suspension, which for this account is the one the first reading recorded.
+    /// Asserting the remembered reading rather than the word "Active" is what makes it the same statement the
+    /// product makes: a suspension is lifted back to where it interrupted the account.
+    /// </summary>
+    [Then("the directory shows it back in the status it held before")]
+    public async Task ThenTheDirectoryShowsItRestored()
+    {
+        await Identities.AssertStatusAsync(scenario.Get<string>("account"), scenario.Get<string>("status"));
+        await Identities.CaptureAsync("05-directory-after-the-suspension-was-lifted");
+    }
+
+    [Then("the retention policy is offered on the same visit")]
+    public async Task ThenTheRetentionPolicyIsOffered()
+    {
+        await Retention.GotoAsync();
+        await Retention.AssertPolicyOfferedAsync();
+        await Retention.CaptureAsync("06-retention-policy");
     }
 
     /// <summary>

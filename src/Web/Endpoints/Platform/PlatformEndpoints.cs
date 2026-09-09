@@ -158,7 +158,7 @@ internal static class PlatformEndpoints
         var result = await sender.Send(new ListPlatformIdentitiesQuery(Page(limit, cursor)), context.RequestAborted);
         return result.ToHttpResult(context, problems, page => Results.Ok(new PlatformIdentityDirectoryResponse(
             page.Items.Select(item => new PlatformIdentityResponse(
-                item.IdentityId, item.NormalizedEmail, item.EmailConfirmed, item.IsLockedOut,
+                item.IdentityId, item.NormalizedEmail, item.AccountStatus, item.EmailConfirmed, item.IsLockedOut,
                 item.MembershipCount, item.MfaStatus, item.LastSeenUtc)).ToArray(),
             page.NextCursor)));
     }

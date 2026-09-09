@@ -241,3 +241,141 @@ public sealed class PlatformOperationsPage(IPage page) : BasePage(page)
         }
     }
 }
+
+/// <summary>
+/// The operator directory of accounts, and the two lifecycle changes it offers (IA-REQ-054).
+/// <para>
+/// Everything here is asked of the row a person is looking at. The status a journey reports is the cell the
+/// screen rendered, not the column the database keeps: an operator acts on what they were shown, and a directory
+/// that showed something else would be the defect worth catching.
+/// </para>
+/// </summary>
+public sealed class PlatformIdentitiesPage(IPage page) : BasePage(page)
+{
+    public override string PagePath => $"{BaseUrl}/platform/identities";
+
+    public Task AssertOfferedAsync() =>
+        Assertions.Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Identities" })).ToBeVisibleAsync();
+
+    /// <summary>The status the screen states for one account, read off its row.</summary>
+    public async Task<string> StatusOfAsync(string address)
+    {
+        var status = StatusCellOf(address);
+        await Assertions.Expect(status).ToBeVisibleAsync();
+        return (await status.InnerTextAsync()).Trim();
+    }
+
+    public Task AssertStatusAsync(string address, string status) =>
+        Assertions.Expect(StatusCellOf(address)).ToHaveTextAsync(status);
+
+    /// <summary>
+    /// Opens the confirmation and chooses the reason on it. Neither change is done on a click, and the reason is
+    /// picked from the closed set the screen offers — there is nowhere on it to type one of your own.
+    /// </summary>
+    public async Task ArmSuspensionAsync(string address, string reason)
+    {
+        await Page.GetByRole(AriaRole.Button, new() { Name = $"Suspend {address}" }).ClickAsync();
+        await Assertions.Expect(SuspensionForm).ToBeVisibleAsync();
+        await Page.SelectOptionAsync("#platform-identity-suspension-reason", reason);
+    }
+
+    public async Task ConfirmSuspensionAsync()
+    {
+        var response = await Page.RunAndWaitForResponseAsync(
+            () => SuspensionForm.GetByRole(AriaRole.Button, new() { Name = "Confirm suspension" }).ClickAsync(),
+            candidate => candidate.Url.EndsWith("/suspend", StringComparison.Ordinal) &&
+                         candidate.Url.Contains("/api/platform/identities/", StringComparison.Ordinal));
+        if (response.Status != 204)
+        {
+            throw new InvalidOperationException($"Suspending an account answered {response.Status}: {await response.TextAsync()}");
+        }
+    }
+
+    public async Task ArmReactivationAsync(string address)
+    {
+        await Page.GetByRole(AriaRole.Button, new() { Name = $"Reactivate {address}" }).ClickAsync();
+        await Assertions.Expect(ReactivationForm).ToBeVisibleAsync();
+    }
+
+    /// <summary>
+    /// The acknowledgement arrives unticked. It is the operator saying they know where the account will land, so
+    /// a form that offered it already ticked would be saying that on their behalf.
+    /// </summary>
+    public Task AssertAcknowledgementUntickedAsync() =>
+        Assertions.Expect(Page.Locator("#platform-identity-acknowledge")).Not.ToBeCheckedAsync();
+
+    public async Task ConfirmReactivationAsync()
+    {
+        var response = await Page.RunAndWaitForResponseAsync(
+            () => ReactivationForm.GetByRole(AriaRole.Button, new() { Name = "Confirm reactivation" }).ClickAsync(),
+            candidate => candidate.Url.EndsWith("/reactivate", StringComparison.Ordinal) &&
+                         candidate.Url.Contains("/api/platform/identities/", StringComparison.Ordinal));
+        if (response.Status != 204)
+        {
+            throw new InvalidOperationException($"Lifting a suspension answered {response.Status}: {await response.TextAsync()}");
+        }
+    }
+
+    public Task CaptureAsync(string name) => PlatformScreenshots.CaptureAsync(Page, name);
+
+    private ILocator SuspensionForm => Page.GetByRole(AriaRole.Form, new() { Name = "Confirm suspension" });
+
+    private ILocator ReactivationForm => Page.GetByRole(AriaRole.Form, new() { Name = "Confirm reactivation" });
+
+    /// <summary>The second cell of the account's row: Address, Account status, Identity, Actions.</summary>
+    private ILocator StatusCellOf(string address) =>
+        Page.GetByRole(AriaRole.Row).Filter(new() { HasText = address }).GetByRole(AriaRole.Cell).Nth(1);
+}
+
+/// <summary>
+/// Retention: what this deployment's rules are. There is no purge control on it and there never will be, so a
+/// journey here reads the policy rather than exercising one.
+/// </summary>
+public sealed class PlatformRetentionPage(IPage page) : BasePage(page)
+{
+    public override string PagePath => $"{BaseUrl}/platform/retention";
+
+    public async Task AssertPolicyOfferedAsync()
+    {
+        await Assertions.Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Retention" })).ToBeVisibleAsync();
+        await Assertions.Expect(Page.GetByTestId("retention-personal-data-mode")).ToBeVisibleAsync();
+        await Assertions.Expect(Page.GetByTestId("retention-active-holds")).ToBeVisibleAsync();
+    }
+
+    public Task CaptureAsync(string name) => PlatformScreenshots.CaptureAsync(Page, name);
+}
+
+/// <summary>
+/// Where the operator screens are photographed. The pictures are a deliverable rather than a debugging aid — the
+/// screens were commissioned to be looked at, and "passed" shows nobody what was built — and they are written
+/// into the build's own ignored <c>artifacts/</c> tree, so a run leaves the repository as it found it.
+/// </summary>
+internal static class PlatformScreenshots
+{
+    private static string Folder { get; } = Path.Combine(ArtifactsRoot(), "screenshots", "platform-operator-screens");
+
+    internal static Task CaptureAsync(IPage page, string name)
+    {
+        Directory.CreateDirectory(Folder);
+        return page.ScreenshotAsync(new PageScreenshotOptions
+        {
+            Path = Path.Combine(Folder, $"{name}.png"),
+            FullPage = true
+        });
+    }
+
+    /// <summary>
+    /// The build puts this assembly under <c>artifacts/bin/…</c>, so the ignored tree is the one the run is
+    /// already executing out of. Walking up to it by name survives a layout change that a counted number of
+    /// parent directories would silently follow to the wrong place.
+    /// </summary>
+    private static string ArtifactsRoot()
+    {
+        for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
+        {
+            if (string.Equals(directory.Name, "artifacts", StringComparison.OrdinalIgnoreCase)) return directory.FullName;
+        }
+
+        throw new InvalidOperationException($"No artifacts directory contains {AppContext.BaseDirectory}.");
+    }
+}

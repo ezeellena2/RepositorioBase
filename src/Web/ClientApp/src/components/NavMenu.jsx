@@ -44,6 +44,8 @@ function IdentityLinks() {
       {/* Offered only to a session already operating as Platform. It is a convenience, not a control: the
           panel and the API both reauthorize regardless of what the navigation shows. */}
       {permissions.includes('platform.organizations.read') && <li><Link to="/platform">Platform</Link></li>}
+      {permissions.includes('platform.identities.read') && <li><Link to="/platform/identities">Platform identities</Link></li>}
+      {permissions.includes('platform.retention.read') && <li><Link to="/platform/retention">Retention</Link></li>}
       <li><a href="/login" onClick={handleSignOut}>Log out</a></li>
     </>
   );

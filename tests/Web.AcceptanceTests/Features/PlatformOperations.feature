@@ -46,6 +46,20 @@ Scenario: An identity that already exists is invited to Platform and keeps the p
     And it answers the invitation with a different password
     Then the password it already had is the one that still signs it in
 
+# The account is chosen from what the directory lists rather than seeded for the occasion: the screen renders one
+# page of it, ordered by identity and with nothing to search by, so an account written for this scenario is not
+# necessarily one an operator could reach. Everything the scenario states is read off the row.
+Scenario: An owner stops one account from the identities directory and lifts the suspension again
+    Given the first owner has been walked in from the deployment's cold start
+    And an account the identities directory lists
+    When they step up and open the identities directory
+    Then that account is listed with the status it holds
+    When they suspend it for a reason from the closed set
+    Then the directory shows it administratively suspended
+    When they lift the suspension with the acknowledgement left unticked
+    Then the directory shows it back in the status it held before
+    And the retention policy is offered on the same visit
+
 # Last on purpose. One browser serves the whole feature and the walk above is cached, so signing out here ends
 # the session every earlier scenario operates from; reordering this would strand them with no failure that says so.
 Scenario: A returning owner proves the second factor again before the directories open

@@ -4,6 +4,7 @@
  */
 const MESSAGES = {
   antiforgery_validation_failed: 'Your session moved on. Try that again.',
+  validation_failed: 'Some of what you sent was not accepted. Check the details and try again.',
   authentication_required: 'Sign in to continue.',
   invalid_session: 'Your session is no longer valid. Sign in again.',
   credential_superseded: 'Your password changed while you were signing in. Sign in again with the new one.',
@@ -32,14 +33,22 @@ const MESSAGES = {
   owner_required: 'Only the current owner can do that.',
   invalid_reactivation: 'That reactivation link is not usable, or the password did not match. Ask for a new link and try again.',
   platform_last_owner: 'This would leave the Platform with no owner. Somebody else has to hold it first.',
-  identity_concurrency_conflict: 'Your account changed while you were working. Refresh and try again.',
+  // Actor-neutral on purpose. The same code answers a person changing their own account and an operator acting on
+  // somebody else's, and "your account" is simply false in the second case.
+  identity_concurrency_conflict: 'That account changed while you were working. Refresh and try again.',
   identity_reactivation_unavailable: 'That account cannot be reactivated.',
   platform_mfa_concurrency_conflict: 'Your second factor changed while you were working. Start again.',
   invalid_document_dispute: 'Check the document details and try again.',
   document_dispute_conflict: 'A correction for this document is already being reviewed.',
   self_resolution_refused: 'A correction to your own document has to be reviewed by somebody else.',
   document_already_recorded: 'That document is already recorded against another account.',
+  // Declared only on the document-dispute resolve route, which this change does not deliver. It is here so the
+  // catalogue matches the codes the API can already answer with: stated, not covered.
+  personal_profile_not_found: 'There is no personal profile on that account.',
+  retention_hold_conflict: 'A hold with that reason already stands for this person.',
+  retention_hold_subject_purged: 'Those records are already erased, so a hold cannot be placed now.',
   rate_limit_exceeded: 'Too many attempts. Wait a moment and try again.',
+  service_unavailable: 'That is temporarily unavailable. Try again shortly.',
   internal_server_error: 'Something went wrong. Try again.',
 };
 

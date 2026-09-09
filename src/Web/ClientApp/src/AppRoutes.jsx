@@ -25,6 +25,8 @@ import {
   RegisterPlatformInviteePage
 } from "./features/platform/invitations/PlatformInvitationPages";
 import { MfaRecoveryPage } from "./features/platform/invitations/MfaRecoveryPage";
+import { PlatformIdentitiesPage } from "./features/platform/identities/PlatformIdentitiesPage";
+import { PlatformRetentionPage } from "./features/platform/retention/PlatformRetentionPage";
 import { AccountPage, RequestReactivationPage, ReactivateAccountPage } from "./features/identity/lifecycle/AccountLifecyclePages";
 
 // The public routes are the ones a visitor reaches without a session: signing in, registering an organization,
@@ -73,6 +75,11 @@ const AppRoutes = [
   { path: '/platform/bootstrap/recover', element: <RecoverPlatformBootstrapPage /> },
   { path: '/platform/mfa', element: <ProtectedRoute><PlatformMfaEnrollmentPage /></ProtectedRoute> },
   { path: '/platform/mfa/recover', element: <ProtectedRoute><MfaRecoveryPage /></ProtectedRoute> },
+  // The two operator screens over routes the server already served and nothing reached. Each gates itself on its
+  // own permission rather than on the panel's, because reading accounts, changing one, and reading the retention
+  // policy are separately granted and an operator can hold any of them without the others.
+  { path: '/platform/identities', element: <ProtectedRoute><PlatformIdentitiesPage /></ProtectedRoute> },
+  { path: '/platform/retention', element: <ProtectedRoute><PlatformRetentionPage /></ProtectedRoute> },
   { path: '/platform', element: <ProtectedRoute><PlatformPanel /></ProtectedRoute> }
 ];
 
