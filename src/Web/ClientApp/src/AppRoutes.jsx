@@ -1,6 +1,4 @@
 import { Counter } from "./components/Counter";
-import { Weather } from "./components/Weather";
-import { Tasks } from "./components/Todo";
 import { Home } from "./components/Home";
 import { ProtectedRoute } from "./components/api-authorization/ProtectedRoute";
 import { LoginPage } from "./features/identity/login/LoginPage";
@@ -38,8 +36,6 @@ import { AccountPage, RequestReactivationPage, ReactivateAccountPage } from "./f
 const AppRoutes = [
   { index: true, element: <Home /> },
   { path: '/counter', element: <Counter /> },
-  { path: '/weather', element: <ProtectedRoute><Weather /></ProtectedRoute> },
-  { path: '/todo', element: <ProtectedRoute><Tasks /></ProtectedRoute> },
   { path: '/login', element: <LoginPage /> },
   // Where a visitor chooses what they are registering. It exists because the two answers are different products
   // for the same person, and guessing for them is how somebody ends up with the wrong one.

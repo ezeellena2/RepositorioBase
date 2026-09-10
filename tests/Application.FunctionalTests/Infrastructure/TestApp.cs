@@ -20,7 +20,6 @@ public static class TestApp
     private static TenantId? _tenantId;
     private static bool _httpAuthorizationGranted;
     private static bool _applicationPermissionGranted;
-    private static bool _forceTodoItemConcurrencyConflict;
     private static bool _forceUnexpectedFailure;
     private static bool _forceRegistrationRollbackAfterPersistedEffects;
     private static bool _forceConfirmationRollbackAfterPersistedEffects;
@@ -79,8 +78,6 @@ public static class TestApp
     public static bool IsHttpAuthorizationGranted() => _httpAuthorizationGranted;
 
     public static bool IsApplicationPermissionGranted() => _applicationPermissionGranted;
-
-    public static bool ConsumeForcedTodoItemConcurrencyConflict() => Interlocked.Exchange(ref _forceTodoItemConcurrencyConflict, false);
 
     public static bool ConsumeForcedUnexpectedFailure() => Interlocked.Exchange(ref _forceUnexpectedFailure, false);
 
@@ -321,8 +318,6 @@ public static class TestApp
 
     public static void ForceSessionRevokePersistenceFailure() => _forceSessionRevokePersistenceFailure = true;
 
-    public static void ForceTodoItemConcurrencyConflict() => _forceTodoItemConcurrencyConflict = true;
-
     public static void ForceUnexpectedFailure() => _forceUnexpectedFailure = true;
 
     public static void ForceRegistrationRollbackAfterPersistedEffects() => _forceRegistrationRollbackAfterPersistedEffects = true;
@@ -434,7 +429,6 @@ public static class TestApp
         _tenantId = null;
         _httpAuthorizationGranted = false;
         _applicationPermissionGranted = false;
-        _forceTodoItemConcurrencyConflict = false;
         _forceUnexpectedFailure = false;
         _forceRegistrationRollbackAfterPersistedEffects = false;
         _forceConfirmationRollbackAfterPersistedEffects = false;

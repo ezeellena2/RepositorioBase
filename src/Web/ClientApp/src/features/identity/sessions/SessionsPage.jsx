@@ -1,8 +1,41 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link as RouterLink } from 'react-router-dom';
+import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
+import Link from '@mui/material/Link';
+import List from '@mui/material/List';
+import ListItem from '@mui/material/ListItem';
+import ListItemText from '@mui/material/ListItemText';
+import Paper from '@mui/material/Paper';
+import Skeleton from '@mui/material/Skeleton';
+import Stack from '@mui/material/Stack';
+import TextField from '@mui/material/TextField';
+import Typography from '@mui/material/Typography';
 import { useIdentity } from '../context/IdentityProvider';
 import { ProblemMessage } from '../ProblemMessage';
 import { useIdentityProof } from '../useIdentityProof';
+
+/**
+ * A width this screen chooses rather than inherits. It is a hybrid — one proof field and a handful of rows, never
+ * a directory — so it takes the single-object measure instead of the container: a device row is a label, a time
+ * and its own ending control, which reads at this width, while a full-width container would strand three rows and
+ * a password field down the left edge of an empty page. The section below states the same cap on itself, because
+ * a form owns its width wherever it is put.
+ */
+const page = { maxWidth: 560 };
+const header = { alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap' };
+const supporting = { mt: 0.5, maxWidth: 640 };
+const proofSection = { p: { xs: 2, sm: 3 }, maxWidth: 560 };
+const deviceRow = { gap: 2, flexWrap: 'wrap' };
+const deviceName = { alignItems: 'baseline', flexWrap: 'wrap' };
+const empty = { p: 4, textAlign: 'center' };
+
+/**
+ * A waiting row is the height of the row it stands in for, so the list does not jump when the devices land: a
+ * dense `ListItem` is 4px above and below a two-line `ListItemText`, whose multiline margins are 6px each and
+ * whose two `body2` lines are 20px each.
+ */
+const rowHeight = 4 + 6 + 20 + 20 + 6 + 4;
 
 /**
  * The devices an identity is signed in on, and the two ways to end one (IA-REQ-049).
@@ -84,68 +117,115 @@ export function SessionsPage() {
   }, [waiting, sessions, proof.isReady]);
 
   return (
-    <section aria-labelledby="sessions-heading">
-      <h1 id="sessions-heading">Your devices</h1>
-      <ProblemMessage problem={problem} />
-      <p>Signing in somewhere else does not sign you out here. Ending a device asks for your password first.</p>
+    <Stack component="section" aria-labelledby="sessions-heading" spacing={3} sx={page}>
+      <Stack direction="row" spacing={2} sx={header}>
+        <Box>
+          <Typography id="sessions-heading" component="h1" variant="h5">Your devices</Typography>
+          <Typography variant="body2" color="text.secondary" sx={supporting}>
+            Signing in somewhere else does not sign you out here. Ending a device asks for your password first.
+          </Typography>
+        </Box>
+        {/* Ending every other device at once is the widest thing this screen can do and the least often wanted, so
+            it carries the same weight as the per-row ending control rather than the weight of a primary action.
+            Nothing here is `contained`: this screen has no constructive primary action to spend it on. */}
+        {proof.canProve && (
+          <Button
+            type="button"
+            variant="outlined"
+            color="error"
+            disabled={isBusy || !proof.canBegin(password)}
+            onClick={() => run(
+              'sessions.revoke-others',
+              () => identity.client.revokeOtherSessions(),
+              { returnTo: SessionsPath, operation: 'revoke-others' })}
+          >
+            End every other device
+          </Button>
+        )}
+      </Stack>
 
+      <ProblemMessage problem={problem} />
+
+      {/* The field is a control, so it is given a container and the container carries the width; the two branches
+          beside it are prose about the identity rather than something to fill in, so they stay on the page. */}
       {proof.hasPassword ? (
-        <>
-          <label htmlFor="sessions-password">Password</label>
-          <input
+        <Paper variant="outlined" sx={proofSection}>
+          <TextField
             id="sessions-password"
+            label="Password"
             type="password"
             autoComplete="current-password"
+            fullWidth
             value={password}
             onChange={(event) => setPassword(event.target.value)}
           />
-        </>
+        </Paper>
       ) : proof.provider !== null ? (
-        <p>You have no password here. Ending a device asks {proof.provider} to confirm it is you.</p>
+        <Typography variant="body2" color="text.secondary">
+          You have no password here. Ending a device asks {proof.provider} to confirm it is you.
+        </Typography>
       ) : (
         // A mailed reset is the one way in that needs no proof, which is exactly why it is the way out of here.
-        <p>
+        <Typography variant="body2" color="text.secondary">
           You signed in with a provider and have no password yet, so there is nothing to prove with.{' '}
-          <Link to="/credentials/forgot">Set a password</Link> and this page can end a device.
-        </p>
+          <Link component={RouterLink} to="/credentials/forgot">Set a password</Link> and this page can end a device.
+        </Typography>
       )}
 
       {/* The rows wait for the proof seam as well as for the list. Showing a device before this screen knows
           what it may offer would render the ending controls twice: once wrong, then again right. */}
-      <ul>
-        {(sessions === null || !proof.isReady ? [] : sessions).map((session) => (
-          <li key={session.sessionRef}>
-            <span>{session.deviceLabel}</span>
-            {session.isCurrent && <span> — this device</span>}
-            <span> · last seen {session.lastSeenAt}</span>
-            {!session.isCurrent && proof.canProve && (
-              <button
-                type="button"
-                disabled={isBusy || !proof.canBegin(password)}
-                onClick={() => run(
-                  'sessions.revoke-one',
-                  () => identity.client.revokeSession(session.sessionRef),
-                  { returnTo: SessionsPath, operation: 'revoke-one', target: session.sessionRef })}
-              >
-                End this device
-              </button>
-            )}
-          </li>
-        ))}
-      </ul>
-
-      {proof.canProve && (
-        <button
-          type="button"
-          disabled={isBusy || !proof.canBegin(password)}
-          onClick={() => run(
-            'sessions.revoke-others',
-            () => identity.client.revokeOtherSessions(),
-            { returnTo: SessionsPath, operation: 'revoke-others' })}
-        >
-          End every other device
-        </button>
+      {sessions === null || !proof.isReady ? (
+        <Stack spacing={1} role="status" aria-label="Loading">
+          {[0, 1, 2].map((placeholder) => <Skeleton key={placeholder} variant="rounded" height={rowHeight} />)}
+        </Stack>
+      ) : sessions.length === 0 ? (
+        <Paper variant="outlined" sx={empty}>
+          <Typography variant="body2" color="text.secondary">No devices are signed in.</Typography>
+        </Paper>
+      ) : (
+        <Paper variant="outlined">
+          <List dense disablePadding>
+            {sessions.map((session, index) => (
+              <ListItem key={session.sessionRef} divider={index < sessions.length - 1} sx={deviceRow}>
+                <ListItemText
+                  slotProps={{ primary: { component: 'div' } }}
+                  primary={(
+                    <Stack direction="row" spacing={1} useFlexGap sx={deviceName}>
+                      <Typography id={`device-${session.sessionRef}`} variant="body2">{session.deviceLabel}</Typography>
+                      {/* Deliberately one element holding exactly this text, and deliberately not a chip: the
+                          marker for the device being used is read back with its dash. */}
+                      {session.isCurrent && (
+                        <Typography variant="caption" color="text.secondary">&mdash; this device</Typography>
+                      )}
+                    </Stack>
+                  )}
+                  secondary={`last seen ${session.lastSeenAt}`}
+                />
+                {/* Every one of these is named "End this device" — the name a person reads in the row they are
+                    looking at, and the name several callers read back, so it cannot change. What distinguishes
+                    them is the description: the row's own device label, which a screen reader announces after the
+                    name and which leaves that name untouched. */}
+                {!session.isCurrent && proof.canProve && (
+                  <Button
+                    type="button"
+                    variant="outlined"
+                    color="error"
+                    size="small"
+                    aria-describedby={`device-${session.sessionRef}`}
+                    disabled={isBusy || !proof.canBegin(password)}
+                    onClick={() => run(
+                      'sessions.revoke-one',
+                      () => identity.client.revokeSession(session.sessionRef),
+                      { returnTo: SessionsPath, operation: 'revoke-one', target: session.sessionRef })}
+                  >
+                    End this device
+                  </Button>
+                )}
+              </ListItem>
+            ))}
+          </List>
+        </Paper>
       )}
-    </section>
+    </Stack>
   );
 }

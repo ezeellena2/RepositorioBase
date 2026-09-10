@@ -35,6 +35,15 @@ app.UseFileServer();
 app.MapOpenApi();
 app.MapScalarApiReference();
 
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwaggerUI(options =>
+    {
+        options.RoutePrefix = "swagger";
+        options.SwaggerEndpoint("/openapi/v1.json", "RepositorioBase API v1");
+    });
+}
+
 app.UseExceptionHandler(options => { });
 // Login partition keys must exist before the budgets are spent; only POST /api/identity/sessions carries the
 // marker. Both run before authentication, so a refused attempt reaches no credential and no session.

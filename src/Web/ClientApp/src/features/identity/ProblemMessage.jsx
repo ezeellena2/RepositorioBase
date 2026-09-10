@@ -1,3 +1,7 @@
+import Alert from '@mui/material/Alert';
+import Box from '@mui/material/Box';
+import Typography from '@mui/material/Typography';
+
 /**
  * Shows what the API said and nothing more. The stable code decides the message, so the wording is ours and the
  * server's diagnostics stay where they belong; field errors are shown only where the API indexed them.
@@ -57,14 +61,16 @@ export function ProblemMessage({ problem }) {
 
   const fields = Object.entries(problem.errors ?? {});
   return (
-    <div role="alert">
-      <p>{MESSAGES[problem.code] ?? 'That request could not be completed.'}</p>
-      {problem.retryAfterSeconds !== undefined && <p>Try again in {problem.retryAfterSeconds} seconds.</p>}
-      {fields.length > 0 && (
-        <ul>
-          {fields.map(([field, messages]) => <li key={field}>{field}: {messages.join(' ')}</li>)}
-        </ul>
+    <Alert severity="error">
+      <Typography variant="body2">{MESSAGES[problem.code] ?? 'That request could not be completed.'}</Typography>
+      {problem.retryAfterSeconds !== undefined && (
+        <Typography variant="body2">Try again in {problem.retryAfterSeconds} seconds.</Typography>
       )}
-    </div>
+      {fields.length > 0 && (
+        <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
+          {fields.map(([field, messages]) => <li key={field}>{field}: {messages.join(' ')}</li>)}
+        </Box>
+      )}
+    </Alert>
   );
 }

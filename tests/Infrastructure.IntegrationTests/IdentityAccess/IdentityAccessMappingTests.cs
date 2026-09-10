@@ -46,10 +46,6 @@ public sealed class IdentityAccessMappingTests
         auditEvent.GetCheckConstraints().ShouldContain(constraint => constraint.Name == "CK_AuditEvents_Ids_NotEmpty" && constraint.Sql.Contains("ActorId", StringComparison.Ordinal));
         auditEvent.FindProperty("Metadata")!.GetValueComparer().ShouldNotBeNull();
         auditEvent.GetForeignKeys().Single(key => key.Properties.Single().Name == "ActorId").DeleteBehavior.ShouldBe(DeleteBehavior.NoAction);
-        var todoItem = model.FindEntityType("CleanArchitecture.Domain.Entities.TodoItem")!;
-        todoItem.FindProperty("Version")!.IsConcurrencyToken.ShouldBeTrue();
-        todoItem.GetCheckConstraints().ShouldContain(constraint => constraint.Name == "CK_TodoItems_AuditActors_NotEmpty");
-        model.FindEntityType("CleanArchitecture.Domain.Entities.TodoList")!.GetCheckConstraints().ShouldContain(constraint => constraint.Name == "CK_TodoLists_AuditActors_NotEmpty");
         model.FindEntityType("Microsoft.AspNetCore.Identity.IdentityRole<System.Guid>")!.GetCheckConstraints().ShouldContain(constraint => constraint.Name == "CK_AspNetRoles_Id_NotEmpty");
     }
 }

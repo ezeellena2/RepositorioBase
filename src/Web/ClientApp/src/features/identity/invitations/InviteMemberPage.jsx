@@ -1,6 +1,62 @@
 import { useCallback, useEffect, useState } from 'react';
+import Alert from '@mui/material/Alert';
+import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
+import Checkbox from '@mui/material/Checkbox';
+import Chip from '@mui/material/Chip';
+import CircularProgress from '@mui/material/CircularProgress';
+import FormControl from '@mui/material/FormControl';
+import FormControlLabel from '@mui/material/FormControlLabel';
+import FormGroup from '@mui/material/FormGroup';
+import FormLabel from '@mui/material/FormLabel';
+import Paper from '@mui/material/Paper';
+import Skeleton from '@mui/material/Skeleton';
+import Stack from '@mui/material/Stack';
+import Table from '@mui/material/Table';
+import TableBody from '@mui/material/TableBody';
+import TableCell from '@mui/material/TableCell';
+import TableContainer from '@mui/material/TableContainer';
+import TableHead from '@mui/material/TableHead';
+import TableRow from '@mui/material/TableRow';
+import TextField from '@mui/material/TextField';
+import Typography from '@mui/material/Typography';
 import { useIdentity } from '../context/IdentityProvider';
 import { ProblemMessage } from '../ProblemMessage';
+
+/** Required without the asterisk MUI would add, which would rename the field for everything that reads its label. */
+const requiredField = { inputLabel: { required: false } };
+
+const header = { alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap' };
+const supporting = { mt: 0.5, maxWidth: 640 };
+
+/**
+ * One column, and the same one for the form and for the answer the form gets back. The cap lives here rather than
+ * on the `Paper` so that a confirmation, a refusal and the two fields they are about are all the same width: an
+ * alert stretched across the shell to say something about a two-field form is wider than the thing it reports on.
+ */
+const compose = { maxWidth: 560 };
+const form = { p: { xs: 2, sm: 3 } };
+const empty = { p: 4, textAlign: 'center' };
+const refusal = { p: 2 };
+const note = { mt: 1 };
+const chips = { flexWrap: 'wrap' };
+const rowActions = { flexWrap: 'wrap', justifyContent: 'flex-end' };
+const start = { alignSelf: 'flex-start' };
+
+/**
+ * The wait belongs to the control that started it. `isBusy` disables everything, because any of these writes
+ * reloads the list underneath the rest, but only the pressed button shows the spinner — four spinners for one
+ * request would say that four things are happening. It carries no role: this screen resolves `role="status"` as a
+ * single element and that one is spoken for by the confirmation.
+ */
+const spinner = (busy) => (busy ? <CircularProgress size={16} color="inherit" /> : null);
+
+/**
+ * An offer's state is a closed set the server owns, so the colour is a lookup rather than a condition. A standing
+ * offer is neutral because nothing has happened to it yet, and a state this screen has not been taught falls back
+ * to the same neutral chip instead of being guessed at.
+ */
+const statusColor = { Accepted: 'success', Cancelled: 'error', Expired: 'warning' };
 
 /**
  * Offering somebody a place in the organization, and everything that can still happen to that offer
@@ -18,14 +74,19 @@ import { ProblemMessage } from '../ProblemMessage';
 export function InviteMemberPage() {
   const identity = useIdentity();
   const tenantId = identity.context?.activeTenant?.id ?? null;
-  const [roles, setRoles] = useState(null);
-  const [invitations, setInvitations] = useState(null);
+  // Three answers, not two: `undefined` is "not asked yet" and holds the shape of what is coming, `null` is the
+  // refusal this screen says out loud, and an array is the part of the organization this inviter may read.
+  const [roles, setRoles] = useState(undefined);
+  const [invitations, setInvitations] = useState(undefined);
   const [nextCursor, setNextCursor] = useState(null);
   const [roleIds, setRoleIds] = useState([]);
   const [email, setEmail] = useState('');
   const [problem, setProblem] = useState(null);
   const [sent, setSent] = useState(null);
-  const [isBusy, setIsBusy] = useState(false);
+  // What is running, not merely that something is. Every control still waits for whatever it is — a resend
+  // reloads the list the other rows are drawn from — but the wait is shown where it was asked for.
+  const [pending, setPending] = useState(null);
+  const isBusy = pending !== null;
 
   // A refused list is answered with null rather than thrown: an inviter may hold `members.invite` without
   // `roles.read` or `members.read`, and losing the whole screen over a part of it they were never promised
@@ -61,8 +122,8 @@ export function InviteMemberPage() {
     return () => { cancelled = true; };
   }, [read]);
 
-  const run = async (act) => {
-    setIsBusy(true);
+  const run = async (token, act) => {
+    setPending(token);
     setProblem(null);
     try {
       const value = await act();
@@ -72,14 +133,14 @@ export function InviteMemberPage() {
       setProblem(error.problem ?? { code: 'unexpected' });
       return undefined;
     } finally {
-      setIsBusy(false);
+      setPending(null);
     }
   };
 
   const invite = async (event) => {
     event.preventDefault();
     setSent(null);
-    const issued = await run(() => identity.client.inviteMember(tenantId, email, roleIds));
+    const issued = await run('send', () => identity.client.inviteMember(tenantId, email, roleIds));
     if (issued) {
       setSent(issued);
       setEmail('');
@@ -90,7 +151,7 @@ export function InviteMemberPage() {
   // A continuation appends, so every offer the reader has seen stays on screen. Each page the server hands out
   // is disjoint from the last, so an offer cannot be listed twice.
   const showMore = async () => {
-    setIsBusy(true);
+    setPending('more');
     setProblem(null);
     try {
       const next = await identity.client.listTenantInvitations(tenantId, nextCursor);
@@ -99,97 +160,240 @@ export function InviteMemberPage() {
     } catch (error) {
       setProblem(error.problem ?? { code: 'unexpected' });
     } finally {
-      setIsBusy(false);
+      setPending(null);
     }
   };
 
   const toggleRole = (roleId) => setRoleIds((current) =>
     current.includes(roleId) ? current.filter((held) => held !== roleId) : [...current, roleId]);
 
+  // A dead end rather than a failure, and it is still this screen: the same title and the sentence that says what
+  // is missing. It is framed as the single-object screen it is — the raised card belongs to the public entrance,
+  // and this route renders inside the shell, where a full-width elevated slab holding two sentences claims the
+  // whole page for the least of them.
   if (tenantId === null) {
     return (
-      <section aria-labelledby="invite-heading">
-        <h1 id="invite-heading">Invite a member</h1>
-        <p>Choose an organization first. An invitation belongs to one organization, and this session is not in one.</p>
-      </section>
+      <Stack component="section" aria-labelledby="invite-heading" spacing={3} sx={compose}>
+        <Box>
+          <Typography id="invite-heading" component="h1" variant="h5">Invite a member</Typography>
+          <Typography variant="body2" color="text.secondary" sx={supporting}>
+            Choose an organization first. An invitation belongs to one organization, and this session is not in one.
+          </Typography>
+        </Box>
+        {/* A dead end with exactly one way out, and no control offering it: the label would be a user-visible
+            string this screen has never carried, so it is reported rather than written. */}
+      </Stack>
     );
   }
 
   const nameOf = (roleId) => roles?.find((role) => role.roleId === roleId)?.name ?? roleId;
 
   return (
-    <section aria-labelledby="invite-heading">
-      <h1 id="invite-heading">Invite a member</h1>
-      <ProblemMessage problem={problem} />
-      {sent && <p role="status">Invitation sent. It expires on {new Date(sent.expiresAt).toLocaleString()}.</p>}
+    <Stack component="section" aria-labelledby="invite-heading" spacing={3}>
+      {/* The header row keeps its right-hand slot empty on purpose. This screen's primary action is the form's own
+          submit, and a second control carrying that same name would be two buttons answering to one name for
+          everything that finds a button by what it says. The title stays inside a `Box` so that anything the screen
+          ever has to say beneath it is a sibling of the heading and never part of it. */}
+      <Stack direction="row" spacing={2} sx={header}>
+        <Box>
+          <Typography id="invite-heading" component="h1" variant="h5">Invite a member</Typography>
+        </Box>
+      </Stack>
 
-      <form onSubmit={invite}>
-        <label htmlFor="invite-email">Email</label>
-        <input id="invite-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
+      {/* What the form is told belongs to the form. The confirmation names an expiry for the address in the field
+          above it, and a refusal is about the request that field just made, so both share the form's column
+          instead of being announced across the whole shell. */}
+      <Stack spacing={2} sx={compose}>
+        <ProblemMessage problem={problem} />
+        {sent && (
+          <Alert severity="success" role="status">
+            Invitation sent. It expires on {new Date(sent.expiresAt).toLocaleString()}.
+          </Alert>
+        )}
 
-        <fieldset>
-          <legend>Roles to offer</legend>
-          {roles === null && <p>You cannot see this organization&rsquo;s roles, so there are none to offer here.</p>}
-          {roles?.length === 0 && <p>This organization has no roles to offer yet.</p>}
-          {roles?.map((role) => (
-            <label key={role.roleId} htmlFor={`invite-role-${role.roleId}`}>
-              <input
-                id={`invite-role-${role.roleId}`}
-                type="checkbox"
-                checked={roleIds.includes(role.roleId)}
-                onChange={() => toggleRole(role.roleId)}
-              />
-              {role.name}
-            </label>
-          ))}
-        </fieldset>
+        <Paper variant="outlined" component="form" onSubmit={invite} sx={form}>
+          <Stack spacing={2}>
+            <TextField
+              id="invite-email"
+              label="Email"
+              type="email"
+              required
+              fullWidth
+              slotProps={requiredField}
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+            />
 
-        <button type="submit" disabled={isBusy}>Send invitation</button>
-      </form>
-
-      <h2>Invitations</h2>
-      {invitations === null ? <p>You cannot see this organization&rsquo;s invitations.</p> : (
-        <ul>
-          {invitations.length === 0 && <li>No invitation has been sent yet.</li>}
-          {invitations.map((invitation) => (
-            <li key={invitation.invitationId}>
-              <span>{invitation.normalizedEmail}</span>
-              <span> &middot; {invitation.status}</span>
-              <span> &middot; expires {new Date(invitation.expiresAt).toLocaleString()}</span>
-              <span> &middot; {invitation.roleIds.length === 0 ? 'no roles' : invitation.roleIds.map(nameOf).join(', ')}</span>
-
-              {/* Only a standing offer can be reissued or withdrawn. One already accepted or already withdrawn
-                  is shown because it happened, not because there is anything left to do to it. */}
-              {invitation.status === 'Pending' && (
-                <>
-                  <button
-                    type="button"
-                    disabled={isBusy}
-                    onClick={() => run(() => identity.client.resendInvitation(tenantId, invitation.invitationId))}
-                  >
-                    Resend to {invitation.normalizedEmail}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={isBusy}
-                    onClick={() => {
-                      if (window.confirm(`Withdraw the invitation to ${invitation.normalizedEmail}? Their link stops working.`)) {
-                        run(() => identity.client.cancelInvitation(tenantId, invitation.invitationId));
-                      }
-                    }}
-                  >
-                    Withdraw invitation to {invitation.normalizedEmail}
-                  </button>
-                </>
+            <FormControl component="fieldset">
+              <FormLabel component="legend">Roles to offer</FormLabel>
+              {roles === undefined && (
+                <Stack spacing={1} sx={note}>
+                  {[0, 1].map((placeholder) => <Skeleton key={placeholder} variant="rounded" height={38} />)}
+                </Stack>
               )}
-            </li>
-          ))}
-        </ul>
-      )}
+              {/* A refusal and an empty catalogue are different facts and must not read alike. What this reader
+                  may not see is said at its own weight; an organization that simply has no roles yet stays a
+                  quiet aside, because that one is about the organization rather than about them. */}
+              {roles === null && (
+                <Typography component="p" variant="subtitle2" sx={note}>
+                  You cannot see this organization&rsquo;s roles, so there are none to offer here.
+                </Typography>
+              )}
+              {roles?.length === 0 && (
+                <Typography variant="body2" color="text.secondary" sx={note}>This organization has no roles to offer yet.</Typography>
+              )}
+              <FormGroup>
+                {roles?.map((role) => (
+                  <FormControlLabel
+                    key={role.roleId}
+                    htmlFor={`invite-role-${role.roleId}`}
+                    control={(
+                      <Checkbox
+                        id={`invite-role-${role.roleId}`}
+                        checked={roleIds.includes(role.roleId)}
+                        onChange={() => toggleRole(role.roleId)}
+                      />
+                    )}
+                    label={role.name}
+                  />
+                ))}
+              </FormGroup>
+            </FormControl>
 
-      {nextCursor !== null && (
-        <button type="button" disabled={isBusy} onClick={showMore}>Show more invitations</button>
-      )}
-    </section>
+            <Button
+              type="submit"
+              variant="contained"
+              disabled={isBusy}
+              startIcon={spinner(pending === 'send')}
+              sx={start}
+            >
+              Send invitation
+            </Button>
+          </Stack>
+        </Paper>
+      </Stack>
+
+      <Stack spacing={2}>
+        {/* A section under an `h5` page title, so it is a section's weight. The level stays h2 — what changes is
+            how loudly it is set, not where it sits in the outline. */}
+        <Typography component="h2" variant="subtitle1">Invitations</Typography>
+
+        {/* The wait holds the shape of the offers rather than saying a word about itself, so the list does not
+            arrive by pushing the form up the page. */}
+        {invitations === undefined ? (
+          <Stack spacing={1}>
+            {[0, 1, 2].map((placeholder) => <Skeleton key={placeholder} variant="rounded" height={57} />)}
+          </Stack>
+        ) : invitations === null ? (
+          // Deliberately not the empty block. An organization that has never invited anybody and an organization
+          // whose offers this reader may not see are two different facts, and the centred, quiet block that says
+          // "there is nothing here" would make them look like one. The refusal is set left, tight and at its own
+          // weight: it is a statement about the reader, not about the list.
+          <Paper variant="outlined" sx={refusal}>
+            <Typography component="p" variant="subtitle2">You cannot see this organization&rsquo;s invitations.</Typography>
+          </Paper>
+        ) : invitations.length === 0 ? (
+          <Paper variant="outlined" sx={empty}>
+            <Typography variant="body2" color="text.secondary">No invitation has been sent yet.</Typography>
+          </Paper>
+        ) : (
+          <TableContainer component={Paper} variant="outlined">
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell component="th" scope="col">Recipient</TableCell>
+                  <TableCell component="th" scope="col">State</TableCell>
+                  <TableCell component="th" scope="col">Roles</TableCell>
+                  <TableCell component="th" scope="col" align="right">Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {invitations.map((invitation) => (
+                  <TableRow key={invitation.invitationId} hover>
+                    <TableCell>
+                      <Typography variant="body2">{invitation.normalizedEmail}</Typography>
+                      <Typography component="div" variant="caption" color="text.secondary">
+                        expires {new Date(invitation.expiresAt).toLocaleString()}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        size="small"
+                        variant="outlined"
+                        label={invitation.status}
+                        color={statusColor[invitation.status] ?? 'default'}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      {invitation.roleIds.length === 0 ? (
+                        <Typography variant="caption" color="text.secondary">no roles</Typography>
+                      ) : (
+                        <Stack direction="row" spacing={0.5} useFlexGap sx={chips}>
+                          {invitation.roleIds.map((roleId) => <Chip key={roleId} size="small" label={nameOf(roleId)} />)}
+                        </Stack>
+                      )}
+                    </TableCell>
+                    <TableCell align="right">
+                      {/* Only a standing offer can be reissued or withdrawn. One already accepted or already withdrawn
+                          is shown because it happened, not because there is anything left to do to it. */}
+                      <Stack direction="row" spacing={1} useFlexGap sx={rowActions}>
+                        {invitation.status === 'Pending' && (
+                          <>
+                            <Button
+                              type="button"
+                              size="small"
+                              disabled={isBusy}
+                              startIcon={spinner(pending === `resend-${invitation.invitationId}`)}
+                              onClick={() => run(
+                                `resend-${invitation.invitationId}`,
+                                () => identity.client.resendInvitation(tenantId, invitation.invitationId),
+                              )}
+                            >
+                              Resend to {invitation.normalizedEmail}
+                            </Button>
+                            <Button
+                              type="button"
+                              size="small"
+                              color="error"
+                              disabled={isBusy}
+                              startIcon={spinner(pending === `withdraw-${invitation.invitationId}`)}
+                              onClick={() => {
+                                // The browser's own confirmation, deliberately: ending somebody's way in is asked
+                                // for by the browser rather than by the page.
+                                if (window.confirm(`Withdraw the invitation to ${invitation.normalizedEmail}? Their link stops working.`)) {
+                                  run(
+                                    `withdraw-${invitation.invitationId}`,
+                                    () => identity.client.cancelInvitation(tenantId, invitation.invitationId),
+                                  );
+                                }
+                              }}
+                            >
+                              Withdraw invitation to {invitation.normalizedEmail}
+                            </Button>
+                          </>
+                        )}
+                      </Stack>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
+
+        {nextCursor !== null && (
+          <Button
+            type="button"
+            variant="outlined"
+            disabled={isBusy}
+            startIcon={spinner(pending === 'more')}
+            onClick={showMore}
+            sx={start}
+          >
+            Show more invitations
+          </Button>
+        )}
+      </Stack>
+    </Stack>
   );
 }

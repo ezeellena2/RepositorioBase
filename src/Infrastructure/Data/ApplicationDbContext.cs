@@ -1,6 +1,5 @@
 using System.Reflection;
 using CleanArchitecture.Application.Common.Interfaces;
-using CleanArchitecture.Domain.Entities;
 using CleanArchitecture.Domain.IdentityAccess.Auditing;
 using CleanArchitecture.Domain.IdentityAccess.Authorization;
 using CleanArchitecture.Domain.IdentityAccess.Invitations;
@@ -21,10 +20,6 @@ namespace CleanArchitecture.Infrastructure.Data;
 public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid>, Guid>, IApplicationDbContext
 {
     public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options) { }
-
-    public DbSet<TodoList> TodoLists => Set<TodoList>();
-
-    public DbSet<TodoItem> TodoItems => Set<TodoItem>();
 
     public DbSet<Tenant> Tenants => Set<Tenant>();
 

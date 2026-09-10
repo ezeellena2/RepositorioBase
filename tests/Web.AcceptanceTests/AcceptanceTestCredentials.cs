@@ -8,7 +8,6 @@ namespace CleanArchitecture.Web.AcceptanceTests;
 
 internal static class AcceptanceTestCredentials
 {
-    private const string ApplicationPermissionClaimType = "permission";
     private static Credentials? _credentials;
 
     public static async Task CreateAsync(DistributedApplication app, CancellationToken cancellationToken)
@@ -21,29 +20,6 @@ internal static class AcceptanceTestCredentials
         _credentials = new Credentials($"Acceptance!{Guid.NewGuid():N}a1", string.Empty);
     }
 
-    private static async Task GrantApplicationPermissionsAsync(DistributedApplication app, Credentials credentials, CancellationToken cancellationToken)
-    {
-        var connectionString = await app.GetConnectionStringAsync(Services.Database)
-            ?? throw new InvalidOperationException("Acceptance database connection string is unavailable.");
-        await using var connection = new NpgsqlConnection(connectionString);
-        await connection.OpenAsync(cancellationToken);
-
-        foreach (var permission in new[] { "todos.read", "todos.write", "weather.read" })
-        {
-            await using var command = new NpgsqlCommand(
-                """
-                INSERT INTO "AspNetUserClaims" ("UserId", "ClaimType", "ClaimValue")
-                SELECT "Id", @claimType, @claimValue
-                FROM "AspNetUsers"
-                WHERE "NormalizedEmail" = @email;
-                """, connection);
-            command.Parameters.AddWithValue("claimType", ApplicationPermissionClaimType);
-            command.Parameters.AddWithValue("claimValue", permission);
-            command.Parameters.AddWithValue("email", credentials.Email.ToUpperInvariant());
-            await command.ExecuteNonQueryAsync(cancellationToken);
-        }
-    }
-
     public static async Task SignInAsync(LoginPage loginPage)
     {
         var credentials = _credentials ?? throw new InvalidOperationException(
@@ -51,7 +27,6 @@ internal static class AcceptanceTestCredentials
 
         var sessionCredentials = credentials.CreateSessionCredentials();
         await ProvisionConfirmedActiveUserAsync(AspireSetup.App, sessionCredentials, CancellationToken.None);
-        await GrantApplicationPermissionsAsync(AspireSetup.App, sessionCredentials, CancellationToken.None);
         await loginPage.SetAuthenticationCookieAsync(await CreateSessionAsync(AspireSetup.App, sessionCredentials, CancellationToken.None));
     }
 

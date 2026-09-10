@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -29,8 +29,6 @@ namespace CleanArchitecture.Infrastructure.Data.Migrations
                     BEGIN PERFORM "UserId"::uuid FROM "AspNetUserLogins"; EXCEPTION WHEN invalid_text_representation THEN RAISE EXCEPTION 'IdentityAccess requires every AspNetUserLogins.UserId to be a parseable UUID'; END;
                     BEGIN PERFORM "UserId"::uuid, "RoleId"::uuid FROM "AspNetUserRoles"; EXCEPTION WHEN invalid_text_representation THEN RAISE EXCEPTION 'IdentityAccess requires every AspNetUserRoles key to be a parseable UUID'; END;
                     BEGIN PERFORM "UserId"::uuid FROM "AspNetUserTokens"; EXCEPTION WHEN invalid_text_representation THEN RAISE EXCEPTION 'IdentityAccess requires every AspNetUserTokens.UserId to be a parseable UUID'; END;
-                    BEGIN PERFORM "CreatedBy"::uuid, "LastModifiedBy"::uuid FROM "TodoLists" WHERE "CreatedBy" IS NOT NULL OR "LastModifiedBy" IS NOT NULL; EXCEPTION WHEN invalid_text_representation THEN RAISE EXCEPTION 'IdentityAccess requires non-null TodoLists audit actors to be parseable UUIDs'; END;
-                    BEGIN PERFORM "CreatedBy"::uuid, "LastModifiedBy"::uuid FROM "TodoItems" WHERE "CreatedBy" IS NOT NULL OR "LastModifiedBy" IS NOT NULL; EXCEPTION WHEN invalid_text_representation THEN RAISE EXCEPTION 'IdentityAccess requires non-null TodoItems audit actors to be parseable UUIDs'; END;
                     IF EXISTS (SELECT 1 FROM "AspNetUsers" WHERE "Id"::uuid = '00000000-0000-0000-0000-000000000000'::uuid) OR EXISTS (SELECT 1 FROM "AspNetRoles" WHERE "Id"::uuid = '00000000-0000-0000-0000-000000000000'::uuid) THEN
                         RAISE EXCEPTION 'IdentityAccess does not permit an all-zero identity key';
                     END IF;
@@ -54,47 +52,11 @@ namespace CleanArchitecture.Infrastructure.Data.Migrations
                 ALTER TABLE "AspNetUserRoles" ALTER COLUMN "UserId" TYPE uuid USING "UserId"::uuid;
                 ALTER TABLE "AspNetUserRoles" ALTER COLUMN "RoleId" TYPE uuid USING "RoleId"::uuid;
                 ALTER TABLE "AspNetUserTokens" ALTER COLUMN "UserId" TYPE uuid USING "UserId"::uuid;
-                ALTER TABLE "TodoLists" ALTER COLUMN "CreatedBy" TYPE uuid USING "CreatedBy"::uuid;
-                ALTER TABLE "TodoLists" ALTER COLUMN "LastModifiedBy" TYPE uuid USING "LastModifiedBy"::uuid;
-                ALTER TABLE "TodoItems" ALTER COLUMN "CreatedBy" TYPE uuid USING "CreatedBy"::uuid;
-                ALTER TABLE "TodoItems" ALTER COLUMN "LastModifiedBy" TYPE uuid USING "LastModifiedBy"::uuid;
                 """);
 
-            migrationBuilder.AlterColumn<Guid>(
-                name: "LastModifiedBy",
-                table: "TodoLists",
-                type: "uuid",
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "text",
-                oldNullable: true);
 
-            migrationBuilder.AlterColumn<Guid>(
-                name: "CreatedBy",
-                table: "TodoLists",
-                type: "uuid",
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "text",
-                oldNullable: true);
 
-            migrationBuilder.AlterColumn<Guid>(
-                name: "LastModifiedBy",
-                table: "TodoItems",
-                type: "uuid",
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "text",
-                oldNullable: true);
 
-            migrationBuilder.AlterColumn<Guid>(
-                name: "CreatedBy",
-                table: "TodoItems",
-                type: "uuid",
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "text",
-                oldNullable: true);
 
             migrationBuilder.AlterColumn<Guid>(
                 name: "UserId",
@@ -170,15 +132,7 @@ namespace CleanArchitecture.Infrastructure.Data.Migrations
                 table: "AspNetRoles",
                 sql: "\"Id\" <> '00000000-0000-0000-0000-000000000000'::uuid");
 
-            migrationBuilder.AddCheckConstraint(
-                name: "CK_TodoLists_AuditActors_NotEmpty",
-                table: "TodoLists",
-                sql: "(\"CreatedBy\" IS NULL OR \"CreatedBy\" <> '00000000-0000-0000-0000-000000000000'::uuid) AND (\"LastModifiedBy\" IS NULL OR \"LastModifiedBy\" <> '00000000-0000-0000-0000-000000000000'::uuid)");
 
-            migrationBuilder.AddCheckConstraint(
-                name: "CK_TodoItems_AuditActors_NotEmpty",
-                table: "TodoItems",
-                sql: "(\"CreatedBy\" IS NULL OR \"CreatedBy\" <> '00000000-0000-0000-0000-000000000000'::uuid) AND (\"LastModifiedBy\" IS NULL OR \"LastModifiedBy\" <> '00000000-0000-0000-0000-000000000000'::uuid)");
 
             migrationBuilder.CreateTable(
                 name: "Tenants",
@@ -352,13 +306,7 @@ namespace CleanArchitecture.Infrastructure.Data.Migrations
                 name: "EmailIndex",
                 table: "AspNetUsers");
 
-            migrationBuilder.DropCheckConstraint(
-                name: "CK_TodoItems_AuditActors_NotEmpty",
-                table: "TodoItems");
 
-            migrationBuilder.DropCheckConstraint(
-                name: "CK_TodoLists_AuditActors_NotEmpty",
-                table: "TodoLists");
 
             migrationBuilder.DropCheckConstraint(
                 name: "CK_AspNetUsers_Id_NotEmpty",
@@ -377,41 +325,9 @@ namespace CleanArchitecture.Infrastructure.Data.Migrations
                 ALTER TABLE "AspNetUserTokens" DROP CONSTRAINT "FK_AspNetUserTokens_AspNetUsers_UserId";
                 """);
 
-            migrationBuilder.AlterColumn<string>(
-                name: "LastModifiedBy",
-                table: "TodoLists",
-                type: "text",
-                nullable: true,
-                oldClrType: typeof(Guid),
-                oldType: "uuid",
-                oldNullable: true);
 
-            migrationBuilder.AlterColumn<string>(
-                name: "CreatedBy",
-                table: "TodoLists",
-                type: "text",
-                nullable: true,
-                oldClrType: typeof(Guid),
-                oldType: "uuid",
-                oldNullable: true);
 
-            migrationBuilder.AlterColumn<string>(
-                name: "LastModifiedBy",
-                table: "TodoItems",
-                type: "text",
-                nullable: true,
-                oldClrType: typeof(Guid),
-                oldType: "uuid",
-                oldNullable: true);
 
-            migrationBuilder.AlterColumn<string>(
-                name: "CreatedBy",
-                table: "TodoItems",
-                type: "text",
-                nullable: true,
-                oldClrType: typeof(Guid),
-                oldType: "uuid",
-                oldNullable: true);
 
             migrationBuilder.AlterColumn<string>(
                 name: "UserId",

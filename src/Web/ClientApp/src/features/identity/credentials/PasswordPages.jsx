@@ -1,80 +1,162 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link as RouterLink } from 'react-router-dom';
+import Alert from '@mui/material/Alert';
+import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
+import Divider from '@mui/material/Divider';
+import Link from '@mui/material/Link';
+import Paper from '@mui/material/Paper';
+import Stack from '@mui/material/Stack';
+import TextField from '@mui/material/TextField';
+import Typography from '@mui/material/Typography';
 import { useIdentity } from '../context/IdentityProvider';
 import { ProblemMessage } from '../ProblemMessage';
 import { useFragmentToken } from '../useFragmentToken';
 import { useSubmit } from '../useSubmit';
 
+/** Required without the asterisk MUI would add, which would rename the field for everything that reads its label. */
+const requiredField = { inputLabel: { required: false } };
+
+/**
+ * Three screens, two frames, because two of these are entrances and one is not.
+ *
+ * `card` is the public entrance treatment: the raised, generously padded card Layout centres on its own in a
+ * `Container maxWidth="xs"` for a visitor who has no session yet and no shell around them. `panel` and `section`
+ * are what a screen inside the application gets instead — the page chooses its own width, and the Paper is one
+ * section of that page rather than the page itself.
+ */
+const card = { p: { xs: 3, sm: 4 } };
+const panel = { maxWidth: 560 };
+const section = { p: { xs: 2, sm: 3 } };
+/** Supporting copy hangs off its title rather than standing as a section of its own. */
+const supporting = { mt: 0.5 };
+
 /**
  * "I forgot my password." The answer is the same whatever address is typed, so this page says the same thing
  * whatever happened — telling a visitor whether an address has an account would make this the enumeration route
  * the rest of the system is careful not to be (IA-REQ-029).
+ *
+ * Having asked is a state of this card, not a second card. What is above the divider changes — the form gives way
+ * to what was sent — and what is below it does not: the way back to signing in is the reason somebody is on this
+ * screen at all, and it has to survive the ask. Somebody who mistyped the address, or who remembers the password
+ * while the mail is still in flight, is otherwise left holding a card with nothing on it but good news.
  */
 export function ForgotPasswordPage() {
   const identity = useIdentity();
   const [email, setEmail] = useState('');
   const { submit, problem, isBusy, result } = useSubmit((address) => identity.client.requestPasswordRecovery(address));
 
-  if (result) {
-    return (
-      <section aria-labelledby="forgot-heading">
-        <h1 id="forgot-heading">Reset your password</h1>
-        <p role="status">If that address can sign in, we have sent it a reset link. Check the inbox.</p>
-      </section>
-    );
-  }
-
   return (
-    <section aria-labelledby="forgot-heading">
-      <h1 id="forgot-heading">Reset your password</h1>
-      <ProblemMessage problem={problem} />
-      <form onSubmit={(event) => { event.preventDefault(); submit(email); }}>
-        <label htmlFor="forgot-email">Email</label>
-        <input id="forgot-email" type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} required />
-        <button type="submit" disabled={isBusy}>Send the link</button>
-      </form>
-      <p>Remembered it? <Link to="/login">Sign in</Link>.</p>
-    </section>
+    <Paper component="section" elevation={3} aria-labelledby="forgot-heading" sx={card}>
+      <Stack spacing={3}>
+        <Typography id="forgot-heading" component="h1" variant="h5">Reset your password</Typography>
+
+        {result ? (
+          <Alert severity="success" role="status">
+            If that address can sign in, we have sent it a reset link. Check the inbox.
+          </Alert>
+        ) : (
+          <>
+            <ProblemMessage problem={problem} />
+            <Stack component="form" spacing={2} onSubmit={(event) => { event.preventDefault(); submit(email); }}>
+              <TextField
+                id="forgot-email"
+                label="Email"
+                type="email"
+                autoComplete="username"
+                required
+                fullWidth
+                slotProps={requiredField}
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+              />
+              {/* Full width and left where it is: on a public entrance card the card *is* the form, and this is
+                  the documented exception to the left-aligned submit the rest of the product uses. */}
+              <Button type="submit" variant="contained" size="large" fullWidth disabled={isBusy}>Send the link</Button>
+            </Stack>
+          </>
+        )}
+
+        <Divider />
+        <Typography variant="body2">
+          Remembered it? <Link component={RouterLink} to="/login">Sign in</Link>.
+        </Typography>
+      </Stack>
+    </Paper>
   );
 }
 
 /**
  * The screen the reset mail opens. The token arrives in the fragment and is erased from the address bar before
  * anything else happens, and the reset issues no session: the person signs in afterwards with what they just chose.
+ *
+ * Which is why the settled state carries a button and not a sentence. Signing in is not a footnote to the reset,
+ * it is the rest of the journey and the only thing left to do here — so it takes the weight the submit had before
+ * it left the tree, and the card still has exactly one thing on it worth pressing.
  */
 export function ResetPasswordPage() {
   const identity = useIdentity();
   const token = useFragmentToken();
   const [password, setPassword] = useState('');
   const { submit, problem, isBusy, result } = useSubmit((secret, next) => identity.client.resetPassword(secret, next));
-
-  if (result !== null && result !== undefined) {
-    return (
-      <section aria-labelledby="reset-heading">
-        <h1 id="reset-heading">Choose a new password</h1>
-        <p role="status">Your password is set. Sign in to continue.</p>
-        <Link to="/login">Sign in</Link>
-      </section>
-    );
-  }
+  const isSet = result !== null && result !== undefined;
 
   return (
-    <section aria-labelledby="reset-heading">
-      <h1 id="reset-heading">Choose a new password</h1>
-      <ProblemMessage problem={problem} />
-      <form onSubmit={(event) => { event.preventDefault(); submit(token ?? '', password); }}>
-        <label htmlFor="reset-password">New password</label>
-        <input id="reset-password" type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} required />
-        <button type="submit" disabled={isBusy || !token}>Set my password</button>
-      </form>
-      {!token && <p>Open the link from the reset email; this page needs the token it carries.</p>}
-    </section>
+    <Paper component="section" elevation={3} aria-labelledby="reset-heading" sx={card}>
+      <Stack spacing={3}>
+        {/* Why the submit is dead sits with the title rather than under the form: it is the condition the whole
+            screen is in, not a footnote to the field. */}
+        <Box>
+          <Typography id="reset-heading" component="h1" variant="h5">Choose a new password</Typography>
+          {!token && (
+            <Typography variant="body2" color="text.secondary" sx={supporting}>
+              Open the link from the reset email; this page needs the token it carries.
+            </Typography>
+          )}
+        </Box>
+
+        {isSet ? (
+          <>
+            <Alert severity="success" role="status">Your password is set. Sign in to continue.</Alert>
+            <Button component={RouterLink} to="/login" variant="contained" size="large" fullWidth>Sign in</Button>
+          </>
+        ) : (
+          <>
+            <ProblemMessage problem={problem} />
+            <Stack
+              component="form"
+              spacing={2}
+              onSubmit={(event) => { event.preventDefault(); submit(token ?? '', password); }}
+            >
+              <TextField
+                id="reset-password"
+                label="New password"
+                type="password"
+                autoComplete="new-password"
+                required
+                fullWidth
+                slotProps={requiredField}
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+              />
+              <Button type="submit" variant="contained" size="large" fullWidth disabled={isBusy || !token}>
+                Set my password
+              </Button>
+            </Stack>
+          </>
+        )}
+      </Stack>
+    </Paper>
   );
 }
 
 /**
  * Changing a password from inside the account. It asks for the current one to buy a server-side proof, then sends
  * the change — the API never receives a `currentPassword` field, and this page keeps neither value.
+ *
+ * This is the one of the three that a session already opened, so it is composed as a page and not as a card: the
+ * title stands on the page, what the server said stands under it, and the two fields are one outlined section of
+ * that page. The raised card belongs to the entrance, where there is nothing around it to belong to.
  */
 export function ChangePasswordPage() {
   const identity = useIdentity();
@@ -100,18 +182,66 @@ export function ChangePasswordPage() {
     }
   };
 
+  /**
+   * A confirmation reports a change that was made, so it stops reporting anything the moment the fields it speaks
+   * for are being filled in again. Clearing it on the first keystroke is what keeps a settled message from standing
+   * over a live form and claiming a second change already happened.
+   */
+  const edit = (set) => (event) => {
+    setDone(false);
+    set(event.target.value);
+  };
+
   return (
-    <section aria-labelledby="change-heading">
-      <h1 id="change-heading">Change your password</h1>
+    <Stack component="section" aria-labelledby="change-heading" spacing={3} sx={panel}>
+      <Box>
+        <Typography id="change-heading" component="h1" variant="h5">Change your password</Typography>
+      </Box>
+
       <ProblemMessage problem={problem} />
-      {done && <p role="status">Your password is changed. Your other devices have been signed out.</p>}
-      <form onSubmit={(event) => { event.preventDefault(); change(); }}>
-        <label htmlFor="change-current">Current password</label>
-        <input id="change-current" type="password" autoComplete="current-password" value={current} onChange={(event) => setCurrent(event.target.value)} required />
-        <label htmlFor="change-next">New password</label>
-        <input id="change-next" type="password" autoComplete="new-password" value={next} onChange={(event) => setNext(event.target.value)} required />
-        <button type="submit" disabled={isBusy}>Change it</button>
-      </form>
-    </section>
+
+      {/* Deliberately role="status" and not the role="alert" MUI gives every severity: a refusal can arrive over a
+          confirmation, and a page that resolves its alert as one element cannot be handed two. */}
+      {done && (
+        <Alert severity="success" role="status">
+          Your password is changed. Your other devices have been signed out.
+        </Alert>
+      )}
+
+      <Paper
+        variant="outlined"
+        component="form"
+        sx={section}
+        onSubmit={(event) => { event.preventDefault(); change(); }}
+      >
+        <Stack spacing={2}>
+          <TextField
+            id="change-current"
+            label="Current password"
+            type="password"
+            autoComplete="current-password"
+            required
+            fullWidth
+            slotProps={requiredField}
+            value={current}
+            onChange={edit(setCurrent)}
+          />
+          <TextField
+            id="change-next"
+            label="New password"
+            type="password"
+            autoComplete="new-password"
+            required
+            fullWidth
+            slotProps={requiredField}
+            value={next}
+            onChange={edit(setNext)}
+          />
+          <Button type="submit" variant="contained" disabled={isBusy} sx={{ alignSelf: 'flex-start' }}>
+            Change it
+          </Button>
+        </Stack>
+      </Paper>
+    </Stack>
   );
 }

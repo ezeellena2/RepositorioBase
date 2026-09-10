@@ -1,4 +1,4 @@
-using CleanArchitecture.Domain.Entities;
+using CleanArchitecture.Domain.IdentityAccess.Tenants;
 using CleanArchitecture.Infrastructure.Data;
 using CleanArchitecture.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
@@ -22,7 +22,7 @@ public sealed class DatabaseInitialisationTests
     }
 
     [Test]
-    public async Task InitialiseAsync_preserves_existing_todos_and_does_not_seed_identity_data()
+    public async Task InitialiseAsync_preserves_existing_data_and_does_not_seed_identity_data()
     {
         using var scope = TestServices.CreateScope();
         var initialiser = scope.ServiceProvider.GetRequiredService<ApplicationDbContextInitialiser>();
@@ -32,14 +32,14 @@ public sealed class DatabaseInitialisationTests
         await initialiser.InitialiseAsync();
         context.ChangeTracker.Clear();
 
-        var sentinel = new TodoList { Title = "restart sentinel" };
-        context.TodoLists.Add(sentinel);
+        var sentinel = Tenant.CreateOrganization(TenantSlug.From($"restart-sentinel-{Guid.NewGuid():N}"));
+        context.Tenants.Add(sentinel);
         await context.SaveChangesAsync();
 
         await initialiser.InitialiseAsync();
         context.ChangeTracker.Clear();
 
-        (await context.TodoLists.AnyAsync(todoList => todoList.Id == sentinel.Id)).ShouldBeTrue();
+        (await context.Tenants.AnyAsync(tenant => tenant.Id == sentinel.Id)).ShouldBeTrue();
         (await userManager.Users.AnyAsync()).ShouldBeFalse();
     }
 }

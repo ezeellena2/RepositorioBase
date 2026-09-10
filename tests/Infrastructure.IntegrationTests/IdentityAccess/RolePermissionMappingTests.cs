@@ -5,7 +5,6 @@ using CleanArchitecture.Domain.IdentityAccess.Tenants;
 using CleanArchitecture.Infrastructure.Data;
 using CleanArchitecture.Infrastructure.Identity;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
@@ -177,18 +176,6 @@ public sealed class RolePermissionMappingTests
                 [new Claim(ClaimTypes.NameIdentifier, identityId.ToString())],
                 "integration-test"))
         };
-        (await evaluator.HasPermissionAsync(identityId, Permissions.TodosRead)).ShouldBeFalse("known application permissions require an explicit persisted grant");
-
-        // The protected session ticket only references the identity and the session. A principal claim is
-        // never an authority source for application permissions; only the persisted user claim grants them.
-        httpContextAccessor.HttpContext.User.AddIdentity(new ClaimsIdentity(
-            [new Claim(Permissions.ApplicationPermissionClaimType, Permissions.TodosRead)],
-            "integration-test"));
-        (await evaluator.HasPermissionAsync(identityId, Permissions.TodosRead)).ShouldBeFalse("principal claims must not grant application permissions");
-
-        context.UserClaims.Add(new IdentityUserClaim<Guid> { UserId = identityId, ClaimType = Permissions.ApplicationPermissionClaimType, ClaimValue = Permissions.TodosRead });
-        await context.SaveChangesAsync();
-        (await evaluator.HasPermissionAsync(identityId, Permissions.TodosRead)).ShouldBeTrue();
         (await evaluator.HasPermissionAsync(identityId, Permissions.IdentityContextRead)).ShouldBeTrue("session self-service capabilities need only the matching validated identity");
         (await evaluator.HasPermissionAsync(Guid.NewGuid(), Permissions.IdentityContextRead)).ShouldBeFalse("a mismatched identity never receives self-service capabilities");
         (await evaluator.HasPermissionAsync(identityId, "future.unregistered.permission")).ShouldBeFalse("unregistered application permission codes must fail closed");

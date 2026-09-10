@@ -1,8 +1,46 @@
 import { useState } from 'react';
+import Alert from '@mui/material/Alert';
+import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
+import List from '@mui/material/List';
+import ListItem from '@mui/material/ListItem';
+import ListItemText from '@mui/material/ListItemText';
+import Paper from '@mui/material/Paper';
+import Stack from '@mui/material/Stack';
+import TextField from '@mui/material/TextField';
+import Typography from '@mui/material/Typography';
 import { useIdentity } from '../../identity/context/IdentityProvider';
 import { usePlatformClient } from './PlatformInvitationPages';
 import { ProblemMessage } from '../../identity/ProblemMessage';
 import { useSubmit } from '../../identity/useSubmit';
+
+/** Required without the asterisk MUI would add, which would rename the field for everything that reads its label. */
+const requiredField = { inputLabel: { required: false } };
+
+/**
+ * This route is behind a session, so it is a screen inside the shell and not a public entrance: the heading is
+ * the page's, the form and the replacement are sections under it, and the width is chosen here. It used to be
+ * one `elevation={3}` card with the h1 inside — the entrance card's composition, on a route nobody reaches
+ * without signing in first, which left the page with no header at all because the section had swallowed it.
+ */
+const frame = { maxWidth: 560 };
+const section = { p: { xs: 2, sm: 3 } };
+const supporting = { mt: 0.5, maxWidth: 640 };
+
+/** An empty state is a centred block in a container of its own. */
+const empty = { p: 4, textAlign: 'center' };
+
+/**
+ * The definition list a single shown-once value is stated in, as a label/value pair rather than a sentence — the
+ * same constant, meaning the same thing, as the one in PlatformInvitationPages.jsx. It was a hand-rolled two
+ * column CSS grid here and a plain `dl` there: one name, two layouts, for one domain object.
+ */
+const facts = { m: 0 };
+const value = { m: 0, mt: 0.5 };
+
+/** Both shown-once values are set out the same way: a bordered block holding only what has to be copied down. */
+const codeBlock = { px: 2, py: 1 };
+const leading = { alignSelf: 'flex-start' };
 
 /**
  * Getting a second factor back after losing the authenticator that held it (IA-REQ-041, C6).
@@ -23,73 +61,130 @@ export function MfaRecoveryPage() {
   const [replacement, setReplacement] = useState(null);
   const { submit, problem, isBusy } = useSubmit(async (action) => action());
 
-  if (!identity?.isAuthenticated) {
-    return (
-      <section aria-labelledby="mfa-recovery-heading">
-        <h1 id="mfa-recovery-heading">Replace your second factor</h1>
-        <p>Sign in first. Replacing a second factor needs your password as well as a recovery code.</p>
-      </section>
-    );
-  }
-
-  if (replacement) {
-    return (
-      <section aria-labelledby="mfa-recovery-heading">
-        <h1 id="mfa-recovery-heading">Replace your second factor</h1>
-        <p role="status">
-          Add this key to your authenticator and save the codes. They are shown once and cannot be shown again.
-        </p>
-        <dl>
-          <dt>Shared key</dt>
-          <dd data-testid="recovered-shared-key">{replacement.sharedKey}</dd>
-        </dl>
-        <ul aria-label="Recovery codes">
-          {replacement.recoveryCodes.map((code) => <li key={code}>{code}</li>)}
-        </ul>
-        <p>Prove the new factor before making any Platform change: nobody has proved it yet, including you.</p>
-      </section>
-    );
-  }
+  const signedIn = Boolean(identity?.isAuthenticated);
+  const asking = signedIn && replacement === null;
 
   return (
-    <section aria-labelledby="mfa-recovery-heading">
-      <h1 id="mfa-recovery-heading">Replace your second factor</h1>
-      <p>Use this if you have lost the authenticator. You need your password and one unused recovery code.</p>
-      <ProblemMessage problem={problem} />
-      <form
-        onSubmit={async (event) => {
-          event.preventDefault();
+    <Stack component="section" aria-labelledby="mfa-recovery-heading" spacing={3} sx={frame}>
+      <Box>
+        <Typography id="mfa-recovery-heading" component="h1" variant="h5">Replace your second factor</Typography>
+        {/* The line that says what this screen is for belongs to the screen, so it sits with the title rather
+            than inside the form. It is said while there is still a decision to make and not after. */}
+        {asking && (
+          <Typography variant="body2" color="text.secondary" sx={supporting}>
+            Use this if you have lost the authenticator. You need your password and one unused recovery code.
+          </Typography>
+        )}
+      </Box>
 
-          // The proof first, for this action alone: a proof bought to change a password does not pay for
-          // replacing a second factor. Nothing is kept between the two calls but what the person typed.
-          const proved = await submit(async () => {
-            await identity.client.reauthenticate('platform.mfa.recover', password);
-            return platform.recoverMfa(recoveryCode);
-          });
+      {!signedIn ? (
+        /* Signing in is what resolves this state and the visitor can do it, so the empty state offers the door
+           rather than only naming it. The sentence stays the whole text of one element — it is read back in one
+           piece — so the way out is its sibling and never a link inside it. */
+        <Paper variant="outlined" sx={empty}>
+          <Typography variant="body2" color="text.secondary">
+            Sign in first. Replacing a second factor needs your password as well as a recovery code.
+          </Typography>
+          {/* The way out belongs here and /login is it, but its label would be a user-visible string this screen
+              has never carried, so it is reported rather than written into a visual change. */}
+        </Paper>
+      ) : replacement ? (
+        <>
+          <Alert severity="success" role="status">
+            Add this key to your authenticator and save the codes. They are shown once and cannot be shown again.
+          </Alert>
+          <Paper variant="outlined" sx={section}>
+            <Stack spacing={2}>
+              <Box component="dl" sx={facts}>
+                <Typography component="dt" variant="body2" color="text.secondary">Shared key</Typography>
+                <Box component="dd" sx={value}>
+                  {/* Given the weight of a value somebody copies by hand, and deliberately nothing else: the
+                      element's own text is read and decoded, so a space, a hyphen or a control sharing it would
+                      corrupt the key quietly instead of failing loudly. */}
+                  <Paper variant="outlined" sx={codeBlock}>
+                    <Typography component="div" variant="subtitle1" data-testid="recovered-shared-key">
+                      {replacement.sharedKey}
+                    </Typography>
+                  </Paper>
+                </Box>
+              </Box>
+              {/* The same domain object as the enrollment ceremony's codes, so it is the same composition: a
+                  dense list in a bordered block. It was a `ul` with the bullets switched off by hand here and a
+                  `List` there — the component MUI already ships carries that reset and its density. */}
+              <Paper variant="outlined" sx={codeBlock}>
+                <List dense disablePadding aria-label="Recovery codes">
+                  {replacement.recoveryCodes.map((code, index) => (
+                    <ListItem
+                      key={code}
+                      disableGutters
+                      divider={index < replacement.recoveryCodes.length - 1}
+                    >
+                      <ListItemText primary={code} />
+                    </ListItem>
+                  ))}
+                </List>
+              </Paper>
+            </Stack>
+          </Paper>
+          {/* A warning, and it was body copy sitting under a green confirmation that said the opposite. It is
+              the only Alert on this branch and stays that way: what the server refused is rendered on the form
+              branch alone, so this one can never become a second thing shouting at the same time. */}
+          <Alert severity="warning">
+            Prove the new factor before making any Platform change: nobody has proved it yet, including you.
+          </Alert>
+        </>
+      ) : (
+        <>
+          <ProblemMessage problem={problem} />
+          <Paper
+            variant="outlined"
+            component="form"
+            sx={section}
+            onSubmit={async (event) => {
+              event.preventDefault();
 
-          setPassword('');
-          setRecoveryCode('');
-          if (proved) setReplacement(proved);
-        }}
-      >
-        <label htmlFor="mfa-recovery-password">Your password</label>
-        <input
-          id="mfa-recovery-password"
-          type="password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          required
-        />
-        <label htmlFor="mfa-recovery-code">A recovery code</label>
-        <input
-          id="mfa-recovery-code"
-          type="text"
-          value={recoveryCode}
-          onChange={(event) => setRecoveryCode(event.target.value)}
-          required
-        />
-        <button type="submit" disabled={isBusy}>Replace my second factor</button>
-      </form>
-    </section>
+              // The proof first, for this action alone: a proof bought to change a password does not pay for
+              // replacing a second factor. Nothing is kept between the two calls but what the person typed.
+              const proved = await submit(async () => {
+                await identity.client.reauthenticate('platform.mfa.recover', password);
+                return platform.recoverMfa(recoveryCode);
+              });
+
+              setPassword('');
+              setRecoveryCode('');
+              if (proved) setReplacement(proved);
+            }}
+          >
+            <Stack spacing={2}>
+              {/* Neither field offers autocomplete on purpose: a proof re-typed for this action and a one-time
+                  code are exactly the two things a password manager must not be able to fill. */}
+              <TextField
+                id="mfa-recovery-password"
+                label="Your password"
+                type="password"
+                required
+                fullWidth
+                slotProps={requiredField}
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+              />
+              <TextField
+                id="mfa-recovery-code"
+                label="A recovery code"
+                type="text"
+                required
+                fullWidth
+                slotProps={requiredField}
+                value={recoveryCode}
+                onChange={(event) => setRecoveryCode(event.target.value)}
+              />
+              <Button type="submit" variant="contained" disabled={isBusy} sx={leading}>
+                Replace my second factor
+              </Button>
+            </Stack>
+          </Paper>
+        </>
+      )}
+    </Stack>
   );
 }

@@ -1,4 +1,25 @@
 import { useCallback, useState } from 'react';
+import { visuallyHidden } from '@mui/utils';
+import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
+import Checkbox from '@mui/material/Checkbox';
+import Chip from '@mui/material/Chip';
+import Divider from '@mui/material/Divider';
+import FormControl from '@mui/material/FormControl';
+import FormControlLabel from '@mui/material/FormControlLabel';
+import InputLabel from '@mui/material/InputLabel';
+import LinearProgress from '@mui/material/LinearProgress';
+import NativeSelect from '@mui/material/NativeSelect';
+import Paper from '@mui/material/Paper';
+import Skeleton from '@mui/material/Skeleton';
+import Stack from '@mui/material/Stack';
+import Table from '@mui/material/Table';
+import TableBody from '@mui/material/TableBody';
+import TableCell from '@mui/material/TableCell';
+import TableContainer from '@mui/material/TableContainer';
+import TableHead from '@mui/material/TableHead';
+import TableRow from '@mui/material/TableRow';
+import Typography from '@mui/material/Typography';
 import { useIdentity } from '../../identity/context/IdentityProvider';
 import { ProblemMessage } from '../../identity/ProblemMessage';
 import { useSubmit } from '../../identity/useSubmit';
@@ -13,6 +34,45 @@ import { usePlatformStepUp } from '../shared/usePlatformStepUp';
  * other changing. A shared constant would make that coincidence into a coupling.
  */
 const SUSPENSION_REASONS = ['PolicyViolation', 'SecurityIncident', 'BillingHold', 'OperatorRequest'];
+
+const frame = { maxWidth: 560 };
+const header = { alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap' };
+const section = { p: { xs: 2, sm: 3 } };
+const confirmation = { ...section, maxWidth: 560 };
+const emptyBlock = { p: 4, textAlign: 'center' };
+const rowActions = { justifyContent: 'flex-end', flexWrap: 'wrap' };
+const buttons = { flexWrap: 'wrap', alignItems: 'center' };
+const selfStart = { alignSelf: 'flex-start' };
+const pagerSlot = { px: 2, py: 1.5 };
+
+/**
+ * A row of this directory is a `Table size="small"` row, so its height is what such a row holds: 6px of cell
+ * padding above and below, the tallest thing any of its cells carries — the `size="small"` button in the Actions
+ * cell at 31px, taller than the 24px status chip and than the 20px line the address sits on — and the 1px rule to
+ * the next row. The wait is drawn at that height so the directory arrives into space already held for it rather
+ * than pushing the page down. (The 53 this replaces was a pixel guess at the same thing.)
+ */
+const ROW_HEIGHT = 6 + 31 + 6 + 1;
+
+/**
+ * `LinearProgress` is 4px tall and so is the slot that holds it. A reload with rows already on screen is announced
+ * inside space the section already occupies: injecting a line instead would move the directory down by a line
+ * every time it is re-read, under the hands of somebody reading it.
+ */
+const progressSlot = { height: 4 };
+
+/**
+ * An account state is a closed set the server owns, so the colour is a lookup rather than a condition. A state
+ * this screen has not been taught falls back to the neutral chip: it is not an error, it is a state this screen
+ * has not been taught. The chip carries the server's word verbatim, because the operator acts on what the row
+ * states and a directory that paraphrased it would be describing a different account.
+ */
+const statusColor = {
+  Active: 'success',
+  AdministrativelySuspended: 'error',
+  SelfDeactivated: 'warning',
+  Closed: 'error',
+};
 
 /**
  * Which transition the server would accept from a given state, and therefore the only one worth offering. A
@@ -114,29 +174,48 @@ export function PlatformIdentitiesPage() {
     setPending({ kind, identityId: row.identityId, subject: row.normalizedEmail, expectedStatus: row.accountStatus });
   };
 
+  // Both gated states are single-object screens inside the application shell: a title on the page and one bounded
+  // section under it, not the raised card the public entrance is composed of.
   if (!mayRead) {
     return (
-      <section aria-labelledby="platform-identities-heading">
-        <h1 id="platform-identities-heading">Identities</h1>
-        <p>This screen is for a Platform administrator holding platform.identities.read.</p>
-      </section>
+      <Stack component="section" aria-labelledby="platform-identities-heading" spacing={3} sx={frame}>
+        <Box>
+          <Typography id="platform-identities-heading" component="h1" variant="h5">Identities</Typography>
+        </Box>
+        <Paper variant="outlined" sx={section}>
+          <Typography variant="body2" color="text.secondary">
+            This screen is for a Platform administrator holding platform.identities.read.
+          </Typography>
+        </Paper>
+      </Stack>
     );
   }
 
   if (owesFactor) {
     return (
-      <section aria-labelledby="platform-identities-heading">
-        <h1 id="platform-identities-heading">Identities</h1>
-        <ProblemMessage problem={stepUp.problem} />
-        <p>This session has not proved your second factor yet. Enter a code from your authenticator to continue.</p>
-        <PlatformStepUpForm
-          inputId="platform-identities-step-up"
-          code={stepUp.code}
-          onCodeChange={stepUp.onCodeChange}
-          onSubmit={stepUp.onSubmit}
-          isBusy={stepUp.isBusy}
-        />
-      </section>
+      <Stack component="section" aria-labelledby="platform-identities-heading" spacing={3} sx={frame}>
+        <Box>
+          <Typography id="platform-identities-heading" component="h1" variant="h5">Identities</Typography>
+        </Box>
+        {/* Here the ceremony is the whole screen, so its submit keeps the primary weight. What was refused belongs
+            with the field that produced it: above the sentence it would push the control down the page and be read
+            before the instruction that explains what to do about it. */}
+        <Paper variant="outlined" sx={section}>
+          <Stack spacing={2}>
+            <Typography variant="body2" color="text.secondary">
+              This session has not proved your second factor yet. Enter a code from your authenticator to continue.
+            </Typography>
+            <ProblemMessage problem={stepUp.problem} />
+            <PlatformStepUpForm
+              inputId="platform-identities-step-up"
+              code={stepUp.code}
+              onCodeChange={stepUp.onCodeChange}
+              onSubmit={stepUp.onSubmit}
+              isBusy={stepUp.isBusy}
+            />
+          </Stack>
+        </Paper>
+      </Stack>
     );
   }
 
@@ -147,136 +226,251 @@ export function PlatformIdentitiesPage() {
   const refusal = proofRefusal ?? (actionProblem?.code === 'recent_mfa_required' ? null : actionProblem);
 
   return (
-    <section aria-labelledby="platform-identities-heading">
-      <h1 id="platform-identities-heading">Identities</h1>
+    <Stack component="section" aria-labelledby="platform-identities-heading" spacing={3}>
+      {/* The header keeps the prescribed row even though its right slot stays empty: this screen creates no
+          account, and an action invented to fill the slot would be a capability invented to fill it too. */}
+      <Stack direction="row" spacing={2} sx={header}>
+        <Box>
+          <Typography id="platform-identities-heading" component="h1" variant="h5">Identities</Typography>
+        </Box>
+      </Stack>
+
       <ProblemMessage problem={refusal} />
 
+      {/* The gate gets its own bounded section. What it interrupts is still on screen behind it, so it has to read
+          as a thing to do rather than as one more paragraph above the directory — and its submit is outlined,
+          because re-proving a factor is what stands between the operator and their work, not the work itself. */}
       {proofRefusal && (
-        <>
-          <ProblemMessage problem={stepUp.problem} />
-          <p>That change needs a fresh proof of your second factor. Enter a code, then ask for it again.</p>
-          <PlatformStepUpForm
-            inputId="platform-identities-step-up"
-            code={stepUp.code}
-            onCodeChange={stepUp.onCodeChange}
-            onSubmit={stepUp.onSubmit}
-            isBusy={stepUp.isBusy}
-          />
-        </>
-      )}
-
-      {status === 'loading' && <p role="status">Loading the directory…</p>}
-      {/* A refused read and a failed one are different statements, and neither is "there is nothing here". Only
-          the second is worth offering a retry for: the first will answer the same way however often it is asked. */}
-      {(status === 'refused' || status === 'errored') && <ProblemMessage problem={readProblem} />}
-      {status === 'errored' && (
-        <button type="button" onClick={() => refresh(undefined)}>Try again</button>
-      )}
-      {status === 'loaded' && rows.length === 0 && <p>No accounts are listed here.</p>}
-
-      {rows.length > 0 && (
-        <table>
-          <thead>
-            <tr>
-              <th scope="col">Address</th>
-              <th scope="col">Account status</th>
-              <th scope="col">Identity</th>
-              <th scope="col">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={row.identityId}>
-                <td>{row.normalizedEmail}</td>
-                <td>{row.accountStatus}</td>
-                {/* Rendered so an operator can copy it: it is what every other record of this account is keyed
-                    by, and an address is not a stable way to name one. */}
-                <td>{row.identityId}</td>
-                <td>
-                  {offeredTransition(row.accountStatus, mayManage) === 'suspend' && (
-                    <button type="button" disabled={isBusy} onClick={() => arm('suspend', row)}>
-                      {`Suspend ${row.normalizedEmail}`}
-                    </button>
-                  )}
-                  {offeredTransition(row.accountStatus, mayManage) === 'reactivate' && (
-                    <button type="button" disabled={isBusy} onClick={() => arm('reactivate', row)}>
-                      {`Reactivate ${row.normalizedEmail}`}
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-
-      {/* The server answers one bounded page and names where the next one starts. Without this the directory is
-          whatever the first page happened to contain, and an account past it cannot be reached at all — the
-          screen offers no search either, so the cursor is the only way through. */}
-      {page?.nextCursor && (
-        <button type="button" disabled={isBusy} onClick={() => refresh(page.nextCursor)}>
-          More accounts
-        </button>
+        <Paper variant="outlined" sx={section}>
+          <Stack spacing={2}>
+            <Typography variant="body2">
+              That change needs a fresh proof of your second factor. Enter a code, then ask for it again.
+            </Typography>
+            <ProblemMessage problem={stepUp.problem} />
+            <PlatformStepUpForm
+              inputId="platform-identities-step-up"
+              code={stepUp.code}
+              onCodeChange={stepUp.onCodeChange}
+              onSubmit={stepUp.onSubmit}
+              isBusy={stepUp.isBusy}
+              submitVariant="outlined"
+            />
+          </Stack>
+        </Paper>
       )}
 
       {/* Both changes are confirmed rather than done on a click: each ends every session the account holds, and
-          neither is undone by clicking the other one. */}
+          neither is undone by clicking the other one. The confirmation opens here, directly under the refusal slot
+          and above the directory, so it is not something the operator has to go looking for below a long table —
+          and the row it was armed from is marked while it stands. */}
       {pending?.kind === 'suspend' && (
-        <form
+        <Paper
+          variant="outlined"
+          component="form"
           aria-label="Confirm suspension"
+          sx={confirmation}
           onSubmit={(event) => {
             event.preventDefault();
             run(() => platform.suspendIdentity(pending.identityId, reason, pending.expectedStatus));
           }}
         >
-          <p>{`Suspend ${pending.subject}?`}</p>
-          <label htmlFor="platform-identity-suspension-reason">Reason</label>
-          <select
-            id="platform-identity-suspension-reason"
-            value={reason}
-            onChange={(event) => setReason(event.target.value)}
-          >
-            {SUSPENSION_REASONS.map((value) => <option key={value} value={value}>{value}</option>)}
-          </select>
-          <button type="submit" disabled={isBusy}>Confirm suspension</button>
-          <button type="button" onClick={() => setPending(null)}>Cancel</button>
-        </form>
+          <Stack spacing={2}>
+            {/* The question is the section's title and is given a title's weight. Its wording is what the operator
+                is asked, so only the weight is ours to choose. */}
+            <Typography component="h2" variant="subtitle1">{`Suspend ${pending.subject}?`}</Typography>
+            <FormControl fullWidth>
+              <InputLabel htmlFor="platform-identity-suspension-reason">Reason</InputLabel>
+              <NativeSelect
+                inputProps={{ id: 'platform-identity-suspension-reason' }}
+                value={reason}
+                onChange={(event) => setReason(event.target.value)}
+              >
+                {SUSPENSION_REASONS.map((value) => <option key={value} value={value}>{value}</option>)}
+              </NativeSelect>
+            </FormControl>
+            <Stack direction="row" spacing={1} useFlexGap sx={buttons}>
+              <Button type="submit" variant="contained" color="error" disabled={isBusy}>Confirm suspension</Button>
+              <Button type="button" variant="outlined" onClick={() => setPending(null)}>Cancel</Button>
+            </Stack>
+          </Stack>
+        </Paper>
       )}
 
       {pending?.kind === 'reactivate' && (
-        <form
+        <Paper
+          variant="outlined"
+          component="form"
           aria-label="Confirm reactivation"
+          sx={confirmation}
           onSubmit={(event) => {
             event.preventDefault();
             run(() => platform.reactivateIdentity(pending.identityId, pending.expectedStatus, acknowledged));
           }}
         >
-          <p>{`Lift the suspension on ${pending.subject}?`}</p>
-          {/* `invalid_platform_operation` means several different things on this screen, so the shared catalogue
-              cannot say which. On a reactivation refused with the box unticked it means exactly one of them, and
-              that is a thing the operator can act on — so the sentence is keyed on the code and the action, and
-              lives here rather than in the catalogue. */}
-          {actionProblem?.code === 'invalid_platform_operation' && (
-            <p>
-              This account was parked by the person who owns it. Lifting the suspension returns it there, not to
-              active. Tick the acknowledgement if you mean to do that.
-            </p>
-          )}
-          {/* Unticked to begin with and set by nothing but this box. It is the operator saying they know where
-              the account will land, and no code path may say it on their behalf. */}
-          <label htmlFor="platform-identity-acknowledge">
-            <input
-              id="platform-identity-acknowledge"
-              type="checkbox"
-              checked={acknowledged}
-              onChange={(event) => setAcknowledged(event.target.checked)}
-            />
-            I understand this account may return to deactivated rather than active
-          </label>
-          <button type="submit" disabled={isBusy}>Confirm reactivation</button>
-          <button type="button" onClick={() => setPending(null)}>Cancel</button>
-        </form>
+          <Stack spacing={2}>
+            <Typography component="h2" variant="subtitle1">{`Lift the suspension on ${pending.subject}?`}</Typography>
+            {/* The explanation and the box it asks for are one thing, so they are one group rather than two of
+                four evenly spaced paragraphs. It cannot be an `Alert`: the page-level one for the same refusal is
+                already up, and this screen is read as having a single alert. Weight and colour say the same thing
+                an Alert would have said about it. */}
+            <Stack spacing={1}>
+              {/* `invalid_platform_operation` means several different things on this screen, so the shared catalogue
+                  cannot say which. On a reactivation refused with the box unticked it means exactly one of them, and
+                  that is a thing the operator can act on — so the sentence is keyed on the code and the action, and
+                  lives here rather than in the catalogue. */}
+              {actionProblem?.code === 'invalid_platform_operation' && (
+                <Typography component="p" variant="subtitle2" color="warning.main">
+                  This account was parked by the person who owns it. Lifting the suspension returns it there, not to
+                  active. Tick the acknowledgement if you mean to do that.
+                </Typography>
+              )}
+              {/* Unticked to begin with and set by nothing but this box. It is the operator saying they know where
+                  the account will land, and no code path may say it on their behalf. */}
+              <FormControlLabel
+                control={(
+                  <Checkbox
+                    id="platform-identity-acknowledge"
+                    checked={acknowledged}
+                    onChange={(event) => setAcknowledged(event.target.checked)}
+                  />
+                )}
+                label="I understand this account may return to deactivated rather than active"
+              />
+            </Stack>
+            <Stack direction="row" spacing={1} useFlexGap sx={buttons}>
+              <Button type="submit" variant="contained" disabled={isBusy}>Confirm reactivation</Button>
+              <Button type="button" variant="outlined" onClick={() => setPending(null)}>Cancel</Button>
+            </Stack>
+          </Stack>
+        </Paper>
       )}
-    </section>
+
+      {/* The first read has nothing to hold but the shape of what is coming, so it holds that. The word is said to
+          a reader of the status region and is not also drawn as a line of content the directory then has to
+          replace: a visible "Loading…" is not a loading state. It stays inside the region rather than moving onto
+          it as a label because the region is read back by its text (PlatformIdentitiesPage.test.jsx:415). */}
+      {status === 'loading' && rows.length === 0 && (
+        <Stack spacing={1} role="status">
+          <Typography variant="body2" sx={visuallyHidden}>Loading the directory…</Typography>
+          {[0, 1, 2].map((placeholder) => (
+            <Skeleton key={placeholder} variant="rounded" height={ROW_HEIGHT} />
+          ))}
+        </Stack>
+      )}
+
+      {/* A refused read and a failed one are different statements, and neither is "there is nothing here". Only
+          the second is worth offering a retry for: the first will answer the same way however often it is asked.
+          The retry belongs to the message that asks for it, so the two are one block and not two. */}
+      {(status === 'refused' || status === 'errored') && (
+        <Stack spacing={2}>
+          <ProblemMessage problem={readProblem} />
+          {status === 'errored' && (
+            <Button type="button" variant="outlined" sx={selfStart} onClick={() => refresh(undefined)}>
+              Try again
+            </Button>
+          )}
+        </Stack>
+      )}
+
+      {status === 'loaded' && rows.length === 0 && (
+        <Paper variant="outlined" sx={emptyBlock}>
+          <Typography variant="body2">No accounts are listed here.</Typography>
+        </Paper>
+      )}
+
+      {rows.length > 0 && (
+        <Paper variant="outlined">
+          <Box sx={progressSlot}>
+            {status === 'loading' && <LinearProgress aria-label="Loading the directory…" />}
+          </Box>
+          <TableContainer>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell component="th" scope="col">Address</TableCell>
+                  <TableCell component="th" scope="col">Account status</TableCell>
+                  <TableCell component="th" scope="col">Identity</TableCell>
+                  {/* A caller holding the read and not the manage permission is offered no transition, so the
+                      column that would have carried them is not drawn empty down the edge of the directory. */}
+                  {mayManage && <TableCell component="th" scope="col" align="right">Actions</TableCell>}
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {rows.map((row) => (
+                  <TableRow key={row.identityId} hover selected={pending?.identityId === row.identityId}>
+                    <TableCell><Typography variant="body2">{row.normalizedEmail}</Typography></TableCell>
+                    {/* The cell states the account status and nothing else: it is the one a journey reads back, and
+                        an operator acts on the state they were shown. */}
+                    <TableCell>
+                      <Chip
+                        size="small"
+                        variant="outlined"
+                        label={row.accountStatus}
+                        color={statusColor[row.accountStatus] ?? 'default'}
+                      />
+                    </TableCell>
+                    {/* Rendered so an operator can copy it: it is what every other record of this account is keyed
+                        by, and an address is not a stable way to name one. */}
+                    <TableCell>
+                      <Typography variant="caption" color="text.secondary">{row.identityId}</Typography>
+                    </TableCell>
+                    {mayManage && (
+                      <TableCell align="right">
+                        <Stack direction="row" spacing={1} useFlexGap sx={rowActions}>
+                          {offeredTransition(row.accountStatus, mayManage) === 'suspend' && (
+                            <Button
+                              type="button"
+                              variant="text"
+                              size="small"
+                              color="error"
+                              disabled={isBusy}
+                              onClick={() => arm('suspend', row)}
+                            >
+                              {`Suspend ${row.normalizedEmail}`}
+                            </Button>
+                          )}
+                          {offeredTransition(row.accountStatus, mayManage) === 'reactivate' && (
+                            <Button
+                              type="button"
+                              variant="text"
+                              size="small"
+                              disabled={isBusy}
+                              onClick={() => arm('reactivate', row)}
+                            >
+                              {`Reactivate ${row.normalizedEmail}`}
+                            </Button>
+                          )}
+                        </Stack>
+                      </TableCell>
+                    )}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+
+          {/* The server answers one bounded page and names where the next one starts. Without this the directory is
+              whatever the first page happened to contain, and an account past it cannot be reached at all — the
+              screen offers no search either, so the cursor is the only way through. It sits inside the section it
+              pages rather than floating under it, because it is a control of that table and of nothing else. */}
+          {page?.nextCursor && (
+            <>
+              <Divider />
+              <Box sx={pagerSlot}>
+                <Button
+                  type="button"
+                  variant="outlined"
+                  size="small"
+                  disabled={isBusy}
+                  onClick={() => refresh(page.nextCursor)}
+                >
+                  More accounts
+                </Button>
+              </Box>
+            </>
+          )}
+        </Paper>
+      )}
+    </Stack>
   );
 }

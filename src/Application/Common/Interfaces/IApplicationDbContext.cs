@@ -1,5 +1,3 @@
-using CleanArchitecture.Domain.Entities;
-
 using CleanArchitecture.Domain.IdentityAccess.Auditing;
 using CleanArchitecture.Domain.IdentityAccess.Invitations;
 using CleanArchitecture.Domain.IdentityAccess.Memberships;
@@ -14,10 +12,6 @@ namespace CleanArchitecture.Application.Common.Interfaces;
 
 public interface IApplicationDbContext
 {
-    DbSet<TodoList> TodoLists { get; }
-
-    DbSet<TodoItem> TodoItems { get; }
-
     DbSet<Tenant> Tenants { get; }
 
     DbSet<OrganizationProfile> OrganizationProfiles { get; }

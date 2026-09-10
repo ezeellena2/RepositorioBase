@@ -13,7 +13,6 @@ public static class ApiProblemMetadata
     public static readonly ApiProblemContract InvalidConfirmation = new(StatusCodes.Status400BadRequest, "invalid_confirmation");
     public static readonly ApiProblemContract RouteBodyIdMismatch = new(StatusCodes.Status400BadRequest, "route_body_id_mismatch");
     public static readonly ApiProblemContract NotFound = new(StatusCodes.Status404NotFound, "not_found");
-    public static readonly ApiProblemContract TodoItemConcurrencyConflict = new(StatusCodes.Status409Conflict, "todo_item_concurrency_conflict");
     public static readonly ApiProblemContract RegistrationConflict = new(StatusCodes.Status409Conflict, "registration_conflict");
     public static readonly ApiProblemContract SessionConcurrencyConflict = new(StatusCodes.Status409Conflict, "session_concurrency_conflict");
     public static readonly ApiProblemContract InvalidInvitation = new(StatusCodes.Status400BadRequest, "invalid_invitation");

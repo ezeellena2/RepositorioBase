@@ -1,9 +1,8 @@
 using System.Net;
 using CleanArchitecture.Application.Common.Interfaces;
 using CleanArchitecture.Application.Common.Exceptions;
+using CleanArchitecture.Application.IdentityAccess.Context.GetIdentityContext;
 using CleanArchitecture.Application.IdentityAccess.Invitations.InviteMember;
-using CleanArchitecture.Application.TodoLists.Commands.CreateTodoList;
-using CleanArchitecture.Domain.Entities;
 using CleanArchitecture.Domain.IdentityAccess.Auditing;
 using CleanArchitecture.Domain.IdentityAccess.Tenants;
 using CleanArchitecture.Infrastructure.Data;
@@ -18,13 +17,13 @@ public sealed class PermissionMatrixTests : TestBase
     public async Task Anonymous_authorized_request_is_rejected_before_its_handler()
     {
         await Should.ThrowAsync<UnauthorizedAccessException>(() =>
-            TestApp.SendAsync(new CreateTodoListCommand { Title = "must not be created" }));
+            TestApp.SendAsync(new GetIdentityContextQuery()));
     }
 
     [Test]
     public async Task Anonymous_endpoint_response_is_a_problem_details_401()
     {
-        var response = await FunctionalTestSetup.HttpClient.GetAsync("/api/TodoLists");
+        var response = await FunctionalTestSetup.HttpClient.GetAsync("/api/identity/context");
 
         response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
         response.Content.Headers.ContentType!.MediaType.ShouldBe("application/problem+json");
@@ -46,13 +45,13 @@ public sealed class PermissionMatrixTests : TestBase
         var actorId = await TestApp.RunAsDefaultUserAsync();
         TestApp.SetApplicationPermissionGranted(false);
 
-        await Should.ThrowAsync<ForbiddenAccessException>(() => TestApp.SendAsync(new CreateTodoListCommand { Title = "must not be created" }));
+        await Should.ThrowAsync<ForbiddenAccessException>(() => TestApp.SendAsync(new GetIdentityContextQuery()));
 
         var audit = (await TestApp.ListAsync<AuditEvent>()).Single(item => item.EventType == "authorization.denied");
         audit.TenantId.ShouldBeNull();
         audit.ActorId.ShouldBe(actorId);
         audit.SessionId.ShouldBeNull("the application behavior has no session adapter before IA-007");
-        audit.Metadata.ShouldBe(new Dictionary<string, string> { ["code"] = "todos.write", ["outcome"] = "permission_denied" });
+        audit.Metadata.ShouldBe(new Dictionary<string, string> { ["code"] = "identity.context.read", ["outcome"] = "permission_denied" });
     }
 
     [Test]
@@ -62,7 +61,7 @@ public sealed class PermissionMatrixTests : TestBase
         var sessionId = TestApp.GetSessionId();
         TestApp.SetHttpAuthorizationGranted(false);
 
-        var response = await FunctionalTestSetup.HttpClient.GetAsync("/api/TodoLists");
+        var response = await FunctionalTestSetup.HttpClient.GetAsync("/api/identity/context");
 
         response.StatusCode.ShouldBe(System.Net.HttpStatusCode.Forbidden);
         var audit = (await TestApp.ListAsync<AuditEvent>()).Single(item => item.EventType == "authorization.denied");
@@ -131,16 +130,17 @@ public sealed class PermissionMatrixTests : TestBase
         using var scope = FunctionalTestSetup.ScopeFactory.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var writer = scope.ServiceProvider.GetRequiredService<ISecurityDenialAuditWriter>();
+        var rolledBackTenant = Tenant.CreateOrganization(TenantSlug.From($"rolled-back-{Guid.NewGuid():N}"));
         await context.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
         {
             await using var transaction = await context.Database.BeginTransactionAsync();
-            context.TodoLists.Add(new TodoList { Title = "rolled-back mutation" });
+            context.Tenants.Add(rolledBackTenant);
             await context.SaveChangesAsync();
             await writer.WriteDeniedAsync(new SecurityDenialAudit("denial-correlation", null, tenant.Id, "tenant.read", "permission_denied"));
             await transaction.RollbackAsync();
         });
 
-        (await TestApp.ListAsync<TodoList>()).ShouldBeEmpty();
+        (await TestApp.ListAsync<Tenant>()).ShouldNotContain(candidate => candidate.Id == rolledBackTenant.Id);
         var events = await TestApp.ListAsync<AuditEvent>();
         var audit = events.Single(item => item.EventType == "authorization.denied");
         audit.CorrelationId.ShouldBe("denial-correlation");
@@ -155,9 +155,9 @@ public sealed class PermissionMatrixTests : TestBase
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
 
-        await writer.WriteDeniedAsync(new SecurityDenialAudit("server-owned-cancellation", null, null, "todos.read", "permission_denied"), cancellation.Token);
+        await writer.WriteDeniedAsync(new SecurityDenialAudit("server-owned-cancellation", null, null, "identity.context.read", "permission_denied"), cancellation.Token);
 
         var audit = (await TestApp.ListAsync<AuditEvent>()).Single(item => item.CorrelationId == "server-owned-cancellation");
-        audit.Metadata.ShouldBe(new Dictionary<string, string> { ["code"] = "todos.read", ["outcome"] = "permission_denied" });
+        audit.Metadata.ShouldBe(new Dictionary<string, string> { ["code"] = "identity.context.read", ["outcome"] = "permission_denied" });
     }
 }

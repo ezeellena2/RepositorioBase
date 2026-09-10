@@ -1,4 +1,19 @@
 import { useCallback, useState } from 'react';
+import Alert from '@mui/material/Alert';
+import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
+import Chip from '@mui/material/Chip';
+import Paper from '@mui/material/Paper';
+import Skeleton from '@mui/material/Skeleton';
+import Stack from '@mui/material/Stack';
+import Table from '@mui/material/Table';
+import TableBody from '@mui/material/TableBody';
+import TableCell from '@mui/material/TableCell';
+import TableContainer from '@mui/material/TableContainer';
+import TableHead from '@mui/material/TableHead';
+import TableRow from '@mui/material/TableRow';
+import TextField from '@mui/material/TextField';
+import Typography from '@mui/material/Typography';
 import { useIdentity } from '../../identity/context/IdentityProvider';
 import { ProblemMessage } from '../../identity/ProblemMessage';
 import { useSubmit } from '../../identity/useSubmit';
@@ -6,6 +21,53 @@ import { usePlatformClient } from '../invitations/PlatformInvitationPages';
 import { PlatformStepUpForm } from '../shared/PlatformStepUpForm';
 import { usePlatformRead } from '../shared/usePlatformRead';
 import { usePlatformStepUp } from '../shared/usePlatformStepUp';
+
+/** Required without the asterisk MUI would add, which would rename the field for everything that reads its label. */
+const requiredField = { inputLabel: { required: false } };
+
+/**
+ * Two widths, and both are chosen rather than inherited. The policy itself is a table and takes the container it
+ * is given; everything else on the page — a refusal, the wait, the step-up gate, both manage sections — is prose
+ * or a form and is held to the standard's single 560 column. Stating the column once and building the padded
+ * variants out of it is what keeps them the same width: the page used to step 1200 → 560 → 1200 → 560, so a
+ * one-sentence refusal was set to the width of a five-column table and read as a banner rather than an answer.
+ */
+const column = { maxWidth: 560 };
+const section = { p: { xs: 2, sm: 3 } };
+const narrowSection = { ...section, ...column };
+const notice = { p: 4, textAlign: 'center' };
+const narrowNotice = { ...notice, ...column };
+const leading = { alignSelf: 'flex-start' };
+const confirmActions = { alignSelf: 'flex-start', flexWrap: 'wrap' };
+/** A sentence keeps a reading measure even where the block around it spans the container. */
+const supporting = { maxWidth: 640 };
+
+/**
+ * A `Table size="small"` row is as tall as its tallest cell — a `Chip size="small"` at 24px — plus the 6px that
+ * `TableCell` puts above and below it and the 1px divider underneath. The wait is drawn at that height so the
+ * categories arrive into space already held for them.
+ */
+const ROW_HEIGHT = 24 + 6 + 6 + 1;
+
+/** The definition list the policy facts are stated in, as label/value pairs rather than a table of two rows. */
+const facts = { m: 0, flexWrap: 'wrap' };
+const fact = { m: 0, mt: 0.5 };
+
+/**
+ * The personal-data mode is a closed set the deployment declares, so the colour is a lookup rather than a
+ * condition. Real data is the mode that carries consequences; a mode this screen has not been taught stays
+ * neutral instead of being guessed at.
+ */
+const personalDataColor = { Real: 'warning', Synthetic: 'default' };
+
+/**
+ * What the policy does to a category once its period runs out is a closed set the server owns too, so it is
+ * stated the same way its neighbours are: a chip whose colour is a lookup rather than a condition. Erasure is the
+ * outcome nobody can undo, so it is the one named here; an action this screen has not been taught stays neutral
+ * instead of being guessed at. The trigger beside it is a classification and not a severity, so it carries no
+ * colour at all — it is a chip because it is a closed set, not because it is a warning.
+ */
+const actionColor = { Erase: 'warning' };
 
 /**
  * The shape the server accepts for both a reason code and a reference, mirrored so a value it would refuse never
@@ -100,10 +162,14 @@ export function PlatformRetentionPage() {
 
   if (!mayRead) {
     return (
-      <section aria-labelledby="platform-retention-heading">
-        <h1 id="platform-retention-heading">Retention</h1>
-        <p>This screen needs the platform.retention.read permission. Ask a Platform owner to grant it.</p>
-      </section>
+      <Stack component="section" aria-labelledby="platform-retention-heading" spacing={3}>
+        <Typography id="platform-retention-heading" component="h1" variant="h5">Retention</Typography>
+        <Paper variant="outlined" sx={narrowNotice}>
+          <Typography variant="body2" color="text.secondary">
+            This screen needs the platform.retention.read permission. Ask a Platform owner to grant it.
+          </Typography>
+        </Paper>
+      </Stack>
     );
   }
 
@@ -111,18 +177,26 @@ export function PlatformRetentionPage() {
   // proof instead of asking for a policy it would only be refused. It renders in place of the data, not beside it.
   if (owesFactor) {
     return (
-      <section aria-labelledby="platform-retention-heading">
-        <h1 id="platform-retention-heading">Retention</h1>
-        <ProblemMessage problem={stepUp.problem} />
-        <p>This session has not proved your second factor yet. Enter a code from your authenticator to read the retention policy.</p>
-        <PlatformStepUpForm
-          inputId="platform-retention-step-up"
-          code={stepUp.code}
-          onCodeChange={stepUp.onCodeChange}
-          isBusy={stepUp.isBusy}
-          onSubmit={stepUp.onSubmit}
-        />
-      </section>
+      <Stack component="section" aria-labelledby="platform-retention-heading" spacing={3}>
+        <Typography id="platform-retention-heading" component="h1" variant="h5">Retention</Typography>
+        {stepUp.problem && <Box sx={column}><ProblemMessage problem={stepUp.problem} /></Box>}
+        <Paper variant="outlined" sx={narrowSection}>
+          <Stack spacing={2}>
+            <Typography variant="body2" color="text.secondary">
+              This session has not proved your second factor yet. Enter a code from your authenticator to read the retention policy.
+            </Typography>
+            {/* Deliberately left at the filled default. Here the ceremony IS the screen — nothing else is on it and
+                nothing else can be done — so the step-up is this screen's primary action and carries its weight. */}
+            <PlatformStepUpForm
+              inputId="platform-retention-step-up"
+              code={stepUp.code}
+              onCodeChange={stepUp.onCodeChange}
+              isBusy={stepUp.isBusy}
+              onSubmit={stepUp.onSubmit}
+            />
+          </Stack>
+        </Paper>
+      </Stack>
     );
   }
 
@@ -133,149 +207,290 @@ export function PlatformRetentionPage() {
   // The mutation gate. The session HAS proved the factor — that is what tells this apart from the entry gate — so
   // what is missing is a recent proof, and everything already read stays where it is.
   const changeNeedsRecentProof = actionProblem?.code === 'recent_mfa_required';
+  const refusal = stepUp.problem ?? actionProblem;
+  const rules = page?.categories ?? [];
 
   return (
-    <section aria-labelledby="platform-retention-heading">
-      <h1 id="platform-retention-heading">Retention</h1>
+    <Stack component="section" aria-labelledby="platform-retention-heading" spacing={3}>
+      <Typography id="platform-retention-heading" component="h1" variant="h5">Retention</Typography>
 
       {/* One refusal at a time, most recent first: a rejected step-up is what just happened, a value this screen
           would not send is what happened before it, and the server's refusal of the change is the oldest of the
           three. Two alerts saying different things is how somebody answers the wrong one. */}
-      {shapeRefusal
-        ? <p role="alert">{shapeRefusal}</p>
-        : <ProblemMessage problem={stepUp.problem ?? actionProblem} />}
-
-      {changeNeedsRecentProof && (
-        <>
-          <p>That change needs a recent proof of your second factor. Confirm it, then make the change again.</p>
-          <PlatformStepUpForm
-            inputId="platform-retention-step-up"
-            code={stepUp.code}
-            onCodeChange={stepUp.onCodeChange}
-            isBusy={stepUp.isBusy}
-            onSubmit={stepUp.onSubmit}
-          />
-        </>
+      {(shapeRefusal || refusal) && (
+        <Box sx={column}>
+          {shapeRefusal
+            ? <Alert severity="error" role="alert">{shapeRefusal}</Alert>
+            : <ProblemMessage problem={refusal} />}
+        </Box>
       )}
 
-      {policy.status === 'loading' && page === null && <p role="status">Reading the retention policy.</p>}
+      {changeNeedsRecentProof && (
+        <Paper variant="outlined" sx={narrowSection}>
+          <Stack spacing={2}>
+            <Typography variant="body2">
+              That change needs a recent proof of your second factor. Confirm it, then make the change again.
+            </Typography>
+            {/* This gate interrupts a policy the operator is already reading and a change they already made, so it
+                is not what the screen is for — the filled submit belongs to "Place hold" below it. A second filled
+                button here would claim an emphasis an interruption does not have. */}
+            <PlatformStepUpForm
+              inputId="platform-retention-step-up"
+              code={stepUp.code}
+              onCodeChange={stepUp.onCodeChange}
+              isBusy={stepUp.isBusy}
+              onSubmit={stepUp.onSubmit}
+              submitVariant="outlined"
+            />
+          </Stack>
+        </Paper>
+      )}
+
+      {/* The wait holds the shape of the policy that is coming, so the rules do not arrive by pushing the rest of
+          the screen down. It is deliberately NOT capped at the form column: what replaces it — the facts panel and
+          the categories table — spans the container, so a 560px wait would hold the wrong shape and the policy
+          would arrive by jumping sideways. The sentence stays because it is what a reader of the region is told,
+          and it keeps the reading measure the rest of the page's prose has. The bars are drawn at the height of a
+          `size="small"` row: a 24px cell plus the 6px above and below it and the 1px divider. */}
+      {policy.status === 'loading' && page === null && (
+        <Stack spacing={1} role="status">
+          <Typography variant="body2" color="text.secondary" sx={supporting}>Reading the retention policy.</Typography>
+          {[0, 1, 2].map((placeholder) => <Skeleton key={placeholder} variant="rounded" height={ROW_HEIGHT} />)}
+        </Stack>
+      )}
 
       {page !== null && (
         <>
-          <dl>
-            <dt>Personal data</dt>
-            <dd data-testid="retention-personal-data-mode">{page.personalDataMode}</dd>
-            <dt>Active holds</dt>
-            <dd data-testid="retention-active-holds">{page.activeHoldCount}</dd>
-          </dl>
+          {/* What the deployment declares, and what the policy under it names, are two statements and therefore two
+              sections. They used to share one `Paper` with a `Divider` between them, and the seam showed: the facts
+              carried the section's padding while the table below ran flush to the same border. Two outlined
+              sections at the container's width put both edges on the same line and give each its own frame. */}
+          <Paper variant="outlined" sx={section}>
+            <Stack component="dl" direction="row" spacing={3} useFlexGap sx={facts}>
+              <Box>
+                <Typography component="dt" variant="body2" color="text.secondary">Personal data</Typography>
+                <Box component="dd" sx={fact} data-testid="retention-personal-data-mode">
+                  <Chip
+                    size="small"
+                    variant="outlined"
+                    label={page.personalDataMode}
+                    color={personalDataColor[page.personalDataMode] ?? 'default'}
+                  />
+                </Box>
+              </Box>
+              <Box>
+                <Typography component="dt" variant="body2" color="text.secondary">Active holds</Typography>
+                <Box component="dd" sx={fact} data-testid="retention-active-holds">
+                  <Chip size="small" label={page.activeHoldCount} />
+                </Box>
+              </Box>
+            </Stack>
+          </Paper>
 
           {hasNoPolicy ? (
-            <p>No retention policy is configured for this deployment, so nothing will be erased.</p>
+            <Paper variant="outlined" sx={notice}>
+              <Typography variant="body2" color="text.secondary">
+                No retention policy is configured for this deployment, so nothing will be erased.
+              </Typography>
+            </Paper>
           ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th scope="col">Category</th>
-                  <th scope="col">Retention period</th>
-                  <th scope="col">Trigger</th>
-                  <th scope="col">Action</th>
-                  <th scope="col">Evidence required</th>
-                </tr>
-              </thead>
-              <tbody>
-                {page.categories.map((rule) => (
-                  <tr key={rule.category}>
-                    <td>{rule.category}</td>
-                    <td>{rule.retentionPeriod}</td>
-                    <td>{rule.trigger}</td>
-                    <td>{rule.action}</td>
-                    <td>{rule.evidenceRequired ? 'Yes' : 'No'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <TableContainer component={Paper} variant="outlined">
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell component="th" scope="col">Category</TableCell>
+                    <TableCell component="th" scope="col">Retention period</TableCell>
+                    <TableCell component="th" scope="col">Trigger</TableCell>
+                    <TableCell component="th" scope="col">Action</TableCell>
+                    <TableCell component="th" scope="col">Evidence required</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {rules.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={5} align="center">
+                        <Typography variant="body2" color="text.secondary">
+                          This policy names no categories of its own.
+                        </Typography>
+                      </TableCell>
+                    </TableRow>
+                  ) : rules.map((rule) => (
+                    <TableRow key={rule.category} hover>
+                      {/* The category names the row and the period is a value, so both are read as text. The three
+                          columns after them are closed sets the server owns, and all three are stated the same
+                          way — a chip. Two of them being bare words next to a chipped third was the table
+                          disagreeing with itself about which of its own answers count as domain state. */}
+                      <TableCell>{rule.category}</TableCell>
+                      <TableCell>{rule.retentionPeriod}</TableCell>
+                      <TableCell>
+                        <Chip size="small" variant="outlined" label={rule.trigger} />
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          size="small"
+                          variant="outlined"
+                          label={rule.action}
+                          color={actionColor[rule.action] ?? 'default'}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          size="small"
+                          variant="outlined"
+                          label={rule.evidenceRequired ? 'Yes' : 'No'}
+                          color={rule.evidenceRequired ? 'warning' : 'default'}
+                        />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
           )}
         </>
       )}
 
-      {policy.status === 'refused' && <ProblemMessage problem={policy.problem} />}
+      {policy.status === 'refused' && <Box sx={column}><ProblemMessage problem={policy.problem} /></Box>}
 
       {/* A refusal the server put into words is answered by reading it, not by asking again. Something that went
           wrong without any such words is the other screen, and that one is worth retrying. */}
       {policy.status === 'errored' && (
         <>
-          <ProblemMessage problem={policy.problem} />
-          <button type="button" onClick={() => policy.refresh(undefined)}>Try again</button>
+          <Box sx={column}><ProblemMessage problem={policy.problem} /></Box>
+          <Button
+            type="button"
+            variant="outlined"
+            onClick={() => policy.refresh(undefined)}
+            sx={leading}
+          >
+            Try again
+          </Button>
         </>
       )}
 
       {mayManage && (
         <>
-          <h2>Place a hold</h2>
-          <form aria-label="Place a hold" onSubmit={(event) => { event.preventDefault(); placeHold(); }}>
-            <label htmlFor="retention-subject">Subject identity</label>
-            <input id="retention-subject" type="text" value={subjectIdentityId} onChange={(event) => setSubjectIdentityId(event.target.value)} required />
+          <Paper variant="outlined" sx={narrowSection}>
+            <Stack spacing={2}>
+              <Typography component="h2" variant="subtitle1">Place a hold</Typography>
+              <Stack
+                component="form"
+                spacing={2}
+                aria-label="Place a hold"
+                onSubmit={(event) => { event.preventDefault(); placeHold(); }}
+              >
+                <TextField
+                  id="retention-subject"
+                  label="Subject identity"
+                  type="text"
+                  required
+                  fullWidth
+                  slotProps={requiredField}
+                  value={subjectIdentityId}
+                  onChange={(event) => setSubjectIdentityId(event.target.value)}
+                />
 
-            <label htmlFor="retention-reason-code">Reason code</label>
-            <input
-              id="retention-reason-code"
-              type="text"
-              aria-describedby="retention-reference-shape"
-              value={reasonCode}
-              onChange={(event) => setReasonCode(event.target.value)}
-              required
-            />
+                <TextField
+                  id="retention-reason-code"
+                  label="Reason code"
+                  type="text"
+                  required
+                  fullWidth
+                  slotProps={requiredField}
+                  helperText={REFERENCE_SHAPE}
+                  value={reasonCode}
+                  onChange={(event) => setReasonCode(event.target.value)}
+                />
 
-            <label htmlFor="retention-reference">Reference</label>
-            <input
-              id="retention-reference"
-              type="text"
-              aria-describedby="retention-reference-shape"
-              value={reference}
-              onChange={(event) => setReference(event.target.value)}
-              required
-            />
+                <TextField
+                  id="retention-reference"
+                  label="Reference"
+                  type="text"
+                  required
+                  fullWidth
+                  slotProps={requiredField}
+                  helperText={REFERENCE_SHAPE}
+                  value={reference}
+                  onChange={(event) => setReference(event.target.value)}
+                />
 
-            <p id="retention-reference-shape">{REFERENCE_SHAPE}</p>
-            <button type="submit" disabled={isBusy}>Place hold</button>
-          </form>
+                <Button type="submit" variant="contained" disabled={isBusy} sx={leading}>
+                  Place hold
+                </Button>
+              </Stack>
 
-          {/* The only time a hold id is ever shown. No route lists holds, so an operator who does not keep this
-              has no way to name the hold again. */}
-          {receipt && (
-            <p role="status">
-              {`Hold ${receipt.holdId} is placed for ${receipt.reasonCode} under reference ${receipt.reference}, at ${receipt.placedAt}. Keep that hold id: nothing lists holds, so this is the only time it is shown.`}
-            </p>
-          )}
+              {/* The only time a hold id is ever shown. No route lists holds, so an operator who does not keep this
+                  has no way to name the hold again. */}
+              {receipt && (
+                <Alert severity="success" role="status">
+                  {`Hold ${receipt.holdId} is placed for ${receipt.reasonCode} under reference ${receipt.reference}, at ${receipt.placedAt}. Keep that hold id: nothing lists holds, so this is the only time it is shown.`}
+                </Alert>
+              )}
+            </Stack>
+          </Paper>
 
-          <h2>Release a hold</h2>
-          <form aria-label="Release a hold" onSubmit={(event) => { event.preventDefault(); setPendingRelease(holdId); }}>
-            <label htmlFor="retention-hold-id">Hold id</label>
-            <input id="retention-hold-id" type="text" value={holdId} onChange={(event) => setHoldId(event.target.value)} required />
-            <button type="submit" disabled={isBusy}>Release</button>
-          </form>
+          <Paper variant="outlined" sx={narrowSection}>
+            <Stack spacing={2}>
+              <Typography component="h2" variant="subtitle1">Release a hold</Typography>
+              <Stack
+                component="form"
+                spacing={2}
+                aria-label="Release a hold"
+                onSubmit={(event) => { event.preventDefault(); setPendingRelease(holdId); }}
+              >
+                <TextField
+                  id="retention-hold-id"
+                  label="Hold id"
+                  type="text"
+                  required
+                  fullWidth
+                  slotProps={requiredField}
+                  value={holdId}
+                  onChange={(event) => setHoldId(event.target.value)}
+                />
+                {/* The section's own submit carries the section's weight. It used to be the quiet one while the
+                    irreversible confirmation below it was the only filled button in this card — the loudest
+                    control on the page was the one nobody should press by accident. */}
+                <Button type="submit" variant="contained" disabled={isBusy} sx={leading}>
+                  Release
+                </Button>
+              </Stack>
 
-          {/* Confirmed rather than done on one click: releasing a hold is what lets the maintenance worker erase
-              the rows it was protecting, and clicking again does not put them back. */}
-          {pendingRelease && (
-            <form aria-label="Confirm release" onSubmit={(event) => { event.preventDefault(); releaseHold(); }}>
-              <p>Release this hold? Nothing about it is read back first — the route answers the same way whether it stands, was already released, or never existed.</p>
-              <button type="submit" disabled={isBusy}>Confirm release</button>
-              <button type="button" onClick={() => setPendingRelease(null)}>Cancel</button>
-            </form>
-          )}
+              {/* Confirmed rather than done on one click: releasing a hold is what lets the maintenance worker erase
+                  the rows it was protecting, and clicking again does not put them back. */}
+              {pendingRelease && (
+                <Stack
+                  component="form"
+                  spacing={2}
+                  aria-label="Confirm release"
+                  onSubmit={(event) => { event.preventDefault(); releaseHold(); }}
+                >
+                  <Typography variant="body2">
+                    Release this hold? Nothing about it is read back first — the route answers the same way whether it stands, was already released, or never existed.
+                  </Typography>
+                  {/* Answering the confirmation is the destructive half, so it is drawn in the error colour and
+                      NOT filled: an irreversible act does not get the page's heaviest weight, and the way out of
+                      it beside it is quieter still rather than its equal. */}
+                  <Stack direction="row" spacing={1} useFlexGap sx={confirmActions}>
+                    <Button type="submit" variant="outlined" color="error" disabled={isBusy}>Confirm release</Button>
+                    <Button type="button" variant="text" onClick={() => setPendingRelease(null)}>Cancel</Button>
+                  </Stack>
+                </Stack>
+              )}
 
-          {/* A statement about the resulting state, because that is the only thing the 204 said. Claiming this
-              request released it, or that the hold existed, would be the screen answering a question the route
-              deliberately does not answer. */}
-          {releaseNotice && (
-            <p role="status">
-              This hold is released. A hold that was already released and one that never existed answer exactly the
-              same way, so this says what is true now — not that this request changed anything.
-            </p>
-          )}
+              {/* A statement about the resulting state, because that is the only thing the 204 said. Claiming this
+                  request released it, or that the hold existed, would be the screen answering a question the route
+                  deliberately does not answer. */}
+              {releaseNotice && (
+                <Alert severity="success" role="status">
+                  This hold is released. A hold that was already released and one that never existed answer exactly the
+                  same way, so this says what is true now — not that this request changed anything.
+                </Alert>
+              )}
+            </Stack>
+          </Paper>
         </>
       )}
-    </section>
+    </Stack>
   );
 }

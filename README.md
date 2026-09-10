@@ -75,7 +75,6 @@ To learn more, see the [Getting started](https://cleanarchitecture.jasontaylor.d
 * [Entity Framework Core 10](https://docs.microsoft.com/en-us/ef/core/)
 * [Angular 21](https://angular.dev/) or [React 19](https://react.dev/)
 * [MediatR](https://github.com/jbogard/MediatR)
-* [AutoMapper](https://automapper.org/)
 * [FluentValidation](https://fluentvalidation.net/)
 * [NUnit](https://nunit.org/), [Shouldly](https://docs.shouldly.org/), [Moq](https://github.com/devlooped/moq) & [Respawn](https://github.com/jbogard/Respawn)
 * [Scalar](https://scalar.com/)

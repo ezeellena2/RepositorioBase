@@ -1,8 +1,18 @@
-import { Link } from 'react-router-dom';
+import { Link as RouterLink } from 'react-router-dom';
+import Alert from '@mui/material/Alert';
+import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
+import Paper from '@mui/material/Paper';
+import Stack from '@mui/material/Stack';
+import Typography from '@mui/material/Typography';
 import { useIdentity } from '../context/IdentityProvider';
 import { ProblemMessage } from '../ProblemMessage';
 import { useFragmentToken } from '../useFragmentToken';
 import { useSubmit } from '../useSubmit';
+
+const card = { p: { xs: 3, sm: 4 } };
+/** Supporting copy hangs off its title rather than standing as a section of its own. */
+const supporting = { mt: 0.5 };
 
 /**
  * The screen the confirmation mail opens (IA-REQ-005).
@@ -21,20 +31,43 @@ export function ConfirmEmailPage() {
   const { submit, problem, isBusy, result } = useSubmit((secret) => identity.client.confirmEmail(secret));
 
   return (
-    <section aria-labelledby="confirm-email-heading">
-      <h1 id="confirm-email-heading">Confirm your email</h1>
-      <ProblemMessage problem={problem} />
-      {result ? (
-        <>
-          <p role="status">Your address is confirmed. Sign in to continue.</p>
-          <Link to="/login">Sign in</Link>
-        </>
-      ) : (
-        <button type="button" disabled={isBusy || !token} onClick={() => submit(token ?? '')}>
-          Confirm my address
-        </button>
-      )}
-      {!token && <p>Open the link from the confirmation email; this page needs the token it carries.</p>}
-    </section>
+    <Paper component="section" elevation={3} aria-labelledby="confirm-email-heading" sx={card}>
+      <Stack spacing={3}>
+        {/* A link opened without its token is a broken link, so the screen says so where it says what it is,
+            rather than under the button the missing token disabled. */}
+        <Box>
+          <Typography id="confirm-email-heading" component="h1" variant="h5">Confirm your email</Typography>
+          {!token && (
+            <Typography variant="body2" color="text.secondary" sx={supporting}>
+              Open the link from the confirmation email; this page needs the token it carries.
+            </Typography>
+          )}
+        </Box>
+        <ProblemMessage problem={problem} />
+        {/* Confirming is the whole of this screen, so once it has happened the only thing left is the step the
+            acknowledgement names. It is the action of this state rather than a footnote under it — the confirm
+            button is out of the tree by then, so `contained` is still spent exactly once — and the two sit a
+            related-item gap apart instead of the section gap the rest of the card is built on. */}
+        {result ? (
+          <Stack spacing={1}>
+            <Alert severity="success" role="status">Your address is confirmed. Sign in to continue.</Alert>
+            <Button component={RouterLink} to="/login" variant="contained" size="large" fullWidth>
+              Sign in
+            </Button>
+          </Stack>
+        ) : (
+          <Button
+            type="button"
+            variant="contained"
+            size="large"
+            fullWidth
+            disabled={isBusy || !token}
+            onClick={() => submit(token ?? '')}
+          >
+            Confirm my address
+          </Button>
+        )}
+      </Stack>
+    </Paper>
   );
 }

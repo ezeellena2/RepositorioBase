@@ -91,7 +91,6 @@ public sealed class StackBaselineTests
         var setup = File.ReadAllText(GetRepositoryPath("tests/Web.AcceptanceTests/AspireSetup.cs"));
         var credentials = File.ReadAllText(GetRepositoryPath("tests/Web.AcceptanceTests/AcceptanceTestCredentials.cs"));
         var loginSteps = File.ReadAllText(GetRepositoryPath("tests/Web.AcceptanceTests/StepDefinitions/LoginStepDefinitions.cs"));
-        var weatherSteps = File.ReadAllText(GetRepositoryPath("tests/Web.AcceptanceTests/StepDefinitions/WeatherStepDefinitions.cs"));
 
         setup.ShouldContain("AcceptanceTestCredentials.CreateAsync(App, cancellationToken)");
         credentials.ShouldContain("/api/identity/antiforgery");
@@ -102,7 +101,6 @@ public sealed class StackBaselineTests
         credentials.ShouldNotContain("CLEANARCHITECTURE_ACCEPTANCE_TEST_");
         credentials.ShouldNotContain("administrator@localhost");
         loginSteps.ShouldContain("AcceptanceTestCredentials.SignInAsync");
-        weatherSteps.ShouldContain("AcceptanceTestCredentials.SignInAsync");
     }
 
     [Test]
@@ -176,8 +174,7 @@ public sealed class StackBaselineTests
             ".gitignore",
             "src/Web/Web.http",
             "src/Web/Web-webapi.http",
-            "tests/Web.AcceptanceTests/StepDefinitions/LoginStepDefinitions.cs",
-            "tests/Web.AcceptanceTests/StepDefinitions/WeatherStepDefinitions.cs"
+            "tests/Web.AcceptanceTests/StepDefinitions/LoginStepDefinitions.cs"
         })
         {
             var source = File.ReadAllText(GetRepositoryPath(relativePath));

@@ -105,6 +105,14 @@ Multiple skills can apply at once. Match by file context (extensions, paths) and
 - For each delegation that designs, writes, fixes, refactors, or reviews code, or creates/modifies tests, inject `C:/Users/ezequ/source/repos/RepositorioBase/.agents/skills/engineering-standards/SKILL.md` under `Skills to load before work`; require the agent to read it and its required local reference. Pass exact skill paths, not copied rules.
 - Prefer this local skill over incompatible generic global advice while preserving approved SPECs, accepted ADRs, and verified repository conventions. Existing Gentle AI routing and review rules remain authoritative; this skill does not force SDD or additional ceremony.
 
+### Project frontend design standards
+
+- Register [frontend-design-standards](.agents/skills/frontend-design-standards/SKILL.md) as the local skill for any change under `src/Web/ClientApp/src` that renders something: screens, the shell, navigation, forms, tables, loading and empty states, and `src/theme.jsx`. Agents doing that work must read it and its [UI composition rules](.agents/skills/frontend-design-standards/references/ui-composition-rules.md) before starting.
+- Do not require it for changes that render nothing — `features/*/api/`, hooks without markup, or test-only edits.
+- For each delegation that touches the SPA's presentation, inject `C:/Users/ezequ/source/repos/RepositorioBase/.agents/skills/frontend-design-standards/SKILL.md` under `Skills to load before work`. Pass the exact path, not copied rules.
+- **This skill overrides generic design advice, including global frontend-design guidance that asks for distinctive fonts, gradients, textures, bespoke animations or custom CSS.** The SPA is standard Material UI by decision. Quality is bought with composition — page headers, action hierarchy, real tables, status chips, empty states, loading states, width discipline — not with decoration.
+- The SPA's 306 tests and the 32 Reqnroll/Playwright journeys locate controls by role, label, id and accessible name. A visual change that alters an `id`, a label, a `role`, a heading level, copy, or a `required` field's accessible name is a regression. The skill lists the exact contracts; honour them or do not make the change.
+
 <!-- gentle-ai:engram-protocol -->
 ## Engram Persistent Memory — Protocol
 

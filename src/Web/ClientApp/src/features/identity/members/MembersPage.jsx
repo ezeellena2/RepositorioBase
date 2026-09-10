@@ -1,7 +1,68 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Link as RouterLink } from 'react-router-dom';
+import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
+import Checkbox from '@mui/material/Checkbox';
+import Chip from '@mui/material/Chip';
+import Divider from '@mui/material/Divider';
+import FormControl from '@mui/material/FormControl';
+import FormControlLabel from '@mui/material/FormControlLabel';
+import FormGroup from '@mui/material/FormGroup';
+import FormLabel from '@mui/material/FormLabel';
+import List from '@mui/material/List';
+import ListItem from '@mui/material/ListItem';
+import Paper from '@mui/material/Paper';
+import Skeleton from '@mui/material/Skeleton';
+import Stack from '@mui/material/Stack';
+import TextField from '@mui/material/TextField';
+import Typography from '@mui/material/Typography';
 import { useIdentity } from '../context/IdentityProvider';
 import { ProblemMessage } from '../ProblemMessage';
 import { useIdentityProof } from '../useIdentityProof';
+
+const frame = { maxWidth: 560 };
+const panel = { p: { xs: 2, sm: 3 }, maxWidth: 560 };
+const empty = { p: 4, textAlign: 'center' };
+const supporting = { mt: 0.5, maxWidth: 640 };
+const selfStart = { alignSelf: 'flex-start' };
+const rowActions = { flexWrap: 'wrap', justifyContent: { xs: 'flex-start', sm: 'flex-end' } };
+const row = { flexWrap: 'wrap', alignItems: 'center' };
+
+/**
+ * A member row is a block rather than a table row, so its height is the sum of what it holds: the list's own
+ * 16px above and below, the name at 22px, the address at 20px under it, the 12px the row's inner `Stack` puts
+ * between that block and the line of actions, a `size="small"` button at 31px, and the 1px rule to the next
+ * member. The wait is drawn at that height so the roster arrives into space already held for it rather than
+ * pushing the page down. (The 57 this replaces was a table row's height, from before the roster was a list.)
+ */
+const ROW_HEIGHT = 16 + 22 + 20 + 12 + 31 + 16 + 1;
+
+/**
+ * An absence is not a value, so it is not drawn as one — but it stands where the values stand. A `Chip
+ * size="small"` is 24px tall and this caption's own line box is 20, so 2px above and below puts "no roles" on
+ * exactly the line the chips beside it sit on instead of floating between them.
+ */
+const absence = { py: 0.25 };
+
+/**
+ * A member is one row, laid out as a block rather than as the flex line `ListItem` ships: the identity, what the
+ * organization has granted it, what may be done to it, and the role editor it opens all belong to the same person
+ * and therefore to the same element. Keeping them inside one `li` is also what lets a caller scope a query to a
+ * member and find everything about them — a table would put the editor in a sibling row instead.
+ */
+const memberRow = { display: 'block', py: 2 };
+const memberHead = { alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap' };
+const nameBlock = { minWidth: 0 };
+const nameLine = { alignItems: 'baseline', flexWrap: 'wrap' };
+const badges = { alignItems: 'center', flexWrap: 'wrap' };
+const editor = { pt: 1 };
+
+/**
+ * A membership state is a closed set the server owns, so the colour is a lookup rather than a condition. An
+ * unknown state falls back to the neutral chip instead of guessing: a state this screen has not been taught is
+ * not an error, it is a state this screen has not been taught.
+ */
+const statusColor = { Active: 'success', Suspended: 'warning', Revoked: 'error' };
 
 /**
  * The people in the organization the session is operating in, and what may be done to them (IA-REQ-053).
@@ -155,119 +216,224 @@ export function MembersPage() {
       : [...current.roleIds, roleId],
   }));
 
+  /**
+   * A session in no organization is a dead end, so it is composed as one screen with one thing on it: the same
+   * heading, the sentence explaining the state, and the way out of it. The raised card this used to be is the
+   * public entrance's treatment and this route is behind a session, so the frame is the single-object frame the
+   * standard gives a form. It never renders beside the roster — the screen is this or that — which is why the
+   * one `h1`, its id and its word are the same in both.
+   */
   if (tenantId === null) {
     return (
-      <section aria-labelledby="members-heading">
-        <h1 id="members-heading">Members</h1>
-        <p>Choose an organization first. Members belong to one organization, and this session is not in one.</p>
-      </section>
+      <Stack component="section" aria-labelledby="members-heading" spacing={3} sx={frame}>
+        <Box>
+          <Typography id="members-heading" component="h1" variant="h5">Members</Typography>
+          <Typography variant="body2" color="text.secondary" sx={supporting}>
+            Choose an organization first. Members belong to one organization, and this session is not in one.
+          </Typography>
+        </Box>
+        {/* This branch is a dead end: it names the missing thing and offers nothing that resolves it. The control
+            belongs here and the destination exists, but its label would be a user-visible string this screen has
+            never carried, so it is reported rather than written. */}
+      </Stack>
     );
   }
 
   const nameOf = (roleId) => roles?.find((role) => role.roleId === roleId)?.name ?? roleId;
 
   return (
-    <section aria-labelledby="members-heading">
-      <h1 id="members-heading">Members</h1>
-      <ProblemMessage problem={problem} />
-      <p>
-        You can only give somebody a role you could have built yourself, and the organization always keeps at least
-        one administrator. The owner cannot be suspended or removed &mdash; transfer the organization first.
-      </p>
+    <Stack component="section" aria-labelledby="members-heading" spacing={3}>
+      <Box>
+        <Typography id="members-heading" component="h1" variant="h5">Members</Typography>
+        <Typography variant="body2" color="text.secondary" sx={supporting}>
+          You can only give somebody a role you could have built yourself, and the organization always keeps at least
+          one administrator. The owner cannot be suspended or removed &mdash; transfer the organization first.
+        </Typography>
+      </Box>
 
+      <ProblemMessage problem={problem} />
+
+      {/* A control with no container is a stray field. The password is not part of any one member's form — it is
+          what every sensitive action on this screen is bought with — so it gets a section of its own, at the
+          width the standard gives a form rather than a width given to the field. */}
       {proof.hasPassword ? (
-        <>
-          <label htmlFor="members-password">Password</label>
-          <input
+        <Paper variant="outlined" sx={panel}>
+          <TextField
             id="members-password"
+            label="Password"
             type="password"
             autoComplete="current-password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
+            fullWidth
           />
-        </>
+        </Paper>
       ) : proof.provider !== null && (
-        <p>You have no password here. Changing roles or handing the organization over asks {proof.provider} to confirm it is you.</p>
+        <Typography variant="body2" color="text.secondary">
+          You have no password here. Changing roles or handing the organization over asks {proof.provider} to confirm it is you.
+        </Typography>
       )}
 
-      {members === null || !proof.isReady ? <p role="status">Loading&hellip;</p> : (
-        <ul>
-          {members.map((member) => (
-            <li key={member.membershipId}>
-              <span>{member.displayName}</span>
-              <span> &middot; {member.normalizedEmail}</span>
-              <span> &middot; {member.status}</span>
-              {member.isOwner && <span> &mdash; owner</span>}
-              <span> &middot; {member.roleIds.length === 0 ? 'no roles' : member.roleIds.map(nameOf).join(', ')}</span>
+      {/* The wait keeps the shape of what is coming, so the roster does not arrive by pushing the page down. The
+          word is what a reader of the status region is told, so it is said to them and not also drawn as a line
+          of content the roster then has to replace: a visible "Loading…" is not a loading state. */}
+      {members === null || !proof.isReady ? (
+        <Stack spacing={1} role="status" aria-label="Loading…">
+          {[0, 1, 2].map((placeholder) => <Skeleton key={placeholder} variant="rounded" height={ROW_HEIGHT} />)}
+        </Stack>
+      ) : members.length === 0 ? (
+        <Paper variant="outlined" sx={empty}>
+          {/* The standard asks an empty state to offer the action that creates the first item, and this screen has
+              one at /members/invite. Its label is a string this screen has never rendered, so it is reported
+              rather than written into a visual change. */}
+          <Typography variant="body2" color="text.secondary">Nobody belongs to this organization yet.</Typography>
+        </Paper>
+      ) : (
+        <Paper variant="outlined">
+          <List disablePadding>
+            {members.map((member, index) => (
+              <ListItem key={member.membershipId} divider={index < members.length - 1} sx={memberRow}>
+                <Stack spacing={1.5}>
+                  <Stack direction="row" spacing={2} useFlexGap sx={memberHead}>
+                    <Box sx={nameBlock}>
+                      <Stack direction="row" spacing={1} useFlexGap sx={nameLine}>
+                        {/* `component` is not optional here: MUI maps `subtitle2` to an `h6` by default, so a
+                            roster of a hundred people would put a hundred headings into the document outline
+                            under this page's single `h1`. The weight is the point, the heading is not. */}
+                        <Typography component="span" variant="subtitle2">{member.displayName}</Typography>
+                        {/* Deliberately one element holding exactly this text, and deliberately not a chip: the
+                            owner marker is read back by its whole text content. */}
+                        {member.isOwner && (
+                          <Typography component="span" variant="caption" color="text.secondary">&mdash; owner</Typography>
+                        )}
+                      </Stack>
+                      <Typography component="div" variant="caption" color="text.secondary">{member.normalizedEmail}</Typography>
+                    </Box>
 
-              <button
-                type="button"
-                disabled={isBusy}
-                onClick={() => setEditing({ membershipId: member.membershipId, roleIds: [...member.roleIds] })}
-              >
-                Edit roles of {member.displayName}
-              </button>
+                    {/* What the organization has granted this person, in the order it is asked about: the state
+                        first, because it decides whether the roles beside it are in force at all. */}
+                    <Stack direction="row" spacing={0.5} useFlexGap sx={badges}>
+                      <Chip
+                        size="small"
+                        variant="outlined"
+                        label={member.status}
+                        color={statusColor[member.status] ?? 'default'}
+                      />
+                      {member.roleIds.length === 0 ? (
+                        <Typography variant="caption" color="text.disabled" sx={absence}>no roles</Typography>
+                      ) : (
+                        member.roleIds.map((roleId) => <Chip key={roleId} size="small" label={nameOf(roleId)} />)
+                      )}
+                    </Stack>
+                  </Stack>
 
-              {!member.isOwner && member.status === 'Active' && (
-                <button type="button" disabled={isBusy} onClick={() => changeStatus(member, 'suspend')}>
-                  Suspend {member.displayName}
-                </button>
-              )}
-              {!member.isOwner && member.status === 'Suspended' && (
-                <button type="button" disabled={isBusy} onClick={() => changeStatus(member, 'reactivate')}>
-                  Reactivate {member.displayName}
-                </button>
-              )}
-              {!member.isOwner && member.status !== 'Revoked' && (
-                <button type="button" disabled={isBusy} onClick={() => changeStatus(member, 'revoke')}>
-                  Remove {member.displayName}
-                </button>
-              )}
+                  <Stack direction="row" spacing={1} useFlexGap sx={rowActions}>
+                    <Button
+                      type="button"
+                      size="small"
+                      disabled={isBusy}
+                      onClick={() => setEditing({ membershipId: member.membershipId, roleIds: [...member.roleIds] })}
+                    >
+                      Edit roles of {member.displayName}
+                    </Button>
 
-              {/* Handing the organization over is the one change nobody can undo alone, so it is asked for
-                  explicitly rather than offered as one more button among the rest. */}
-              {!member.isOwner && member.status === 'Active' && proof.canProve && (
-                <button
-                  type="button"
-                  disabled={isBusy || !proof.canBegin(password)}
-                  onClick={() => {
-                    if (window.confirm(`Give this organization to ${member.displayName}? You will stop being its owner.`)) transfer(member);
-                  }}
-                >
-                  Transfer ownership to {member.displayName}
-                </button>
-              )}
+                    {!member.isOwner && member.status === 'Active' && (
+                      <Button type="button" size="small" disabled={isBusy} onClick={() => changeStatus(member, 'suspend')}>
+                        Suspend {member.displayName}
+                      </Button>
+                    )}
+                    {!member.isOwner && member.status === 'Suspended' && (
+                      <Button type="button" size="small" disabled={isBusy} onClick={() => changeStatus(member, 'reactivate')}>
+                        Reactivate {member.displayName}
+                      </Button>
+                    )}
+                    {!member.isOwner && member.status !== 'Revoked' && (
+                      <Button type="button" size="small" color="error" disabled={isBusy} onClick={() => changeStatus(member, 'revoke')}>
+                        Remove {member.displayName}
+                      </Button>
+                    )}
+                  </Stack>
 
-              {editing?.membershipId === member.membershipId && (
-                <form onSubmit={(event) => { event.preventDefault(); saveRoles(member); }}>
-                  <fieldset>
-                    <legend>Roles for {member.displayName}</legend>
-                    {roles === null && <p>You cannot see this organization&rsquo;s roles, so there are none to give here.</p>}
-                    {roles?.length === 0 && <p>This organization has no roles to give yet.</p>}
-                    {roles?.map((role) => (
-                      <label key={role.roleId} htmlFor={`role-${member.membershipId}-${role.roleId}`}>
-                        <input
-                          id={`role-${member.membershipId}-${role.roleId}`}
-                          type="checkbox"
-                          checked={editing.roleIds.includes(role.roleId)}
-                          onChange={() => toggleRole(role.roleId)}
-                        />
-                        {role.name}
-                      </label>
-                    ))}
-                  </fieldset>
-                  <button type="submit" disabled={isBusy || !proof.canProve || !proof.canBegin(password)}>Save roles</button>
-                  <button type="button" disabled={isBusy} onClick={() => setEditing(null)}>Cancel</button>
-                </form>
-              )}
-            </li>
-          ))}
-        </ul>
+                  {/* Handing the organization over is the one change nobody can undo alone, and it is the second
+                      thing on this row drawn in the error colour. Both words are what a caller reads back, so the
+                      two are told apart by where they sit rather than by what they say: a rule closes the row's
+                      own actions, and the transfer takes the line under it at the opposite end. Nothing here
+                      leaves the member's own `li` — the editor, the actions and the address are one element,
+                      because that is how a caller scopes a query to one person. */}
+                  {!member.isOwner && member.status === 'Active' && proof.canProve && (
+                    <>
+                      <Divider />
+                      <Box>
+                        <Button
+                          type="button"
+                          size="small"
+                          color="error"
+                          disabled={isBusy || !proof.canBegin(password)}
+                          onClick={() => {
+                            if (window.confirm(`Give this organization to ${member.displayName}? You will stop being its owner.`)) transfer(member);
+                          }}
+                        >
+                          Transfer ownership to {member.displayName}
+                        </Button>
+                      </Box>
+                    </>
+                  )}
+
+                  {editing?.membershipId === member.membershipId && (
+                    <Stack
+                      component="form"
+                      spacing={2}
+                      sx={editor}
+                      onSubmit={(event) => { event.preventDefault(); saveRoles(member); }}
+                    >
+                      <Divider />
+                      <FormControl component="fieldset">
+                        <FormLabel component="legend">Roles for {member.displayName}</FormLabel>
+                        {roles === null && (
+                          <Typography variant="body2" color="text.secondary">
+                            You cannot see this organization&rsquo;s roles, so there are none to give here.
+                          </Typography>
+                        )}
+                        {roles?.length === 0 && (
+                          <Typography variant="body2" color="text.secondary">This organization has no roles to give yet.</Typography>
+                        )}
+                        <FormGroup>
+                          {roles?.map((role) => (
+                            <FormControlLabel
+                              key={role.roleId}
+                              htmlFor={`role-${member.membershipId}-${role.roleId}`}
+                              control={(
+                                <Checkbox
+                                  id={`role-${member.membershipId}-${role.roleId}`}
+                                  checked={editing.roleIds.includes(role.roleId)}
+                                  onChange={() => toggleRole(role.roleId)}
+                                />
+                              )}
+                              label={role.name}
+                            />
+                          ))}
+                        </FormGroup>
+                      </FormControl>
+                      <Stack direction="row" spacing={1} useFlexGap sx={row}>
+                        <Button type="submit" variant="contained" disabled={isBusy || !proof.canProve || !proof.canBegin(password)}>
+                          Save roles
+                        </Button>
+                        <Button type="button" variant="outlined" disabled={isBusy} onClick={() => setEditing(null)}>Cancel</Button>
+                      </Stack>
+                    </Stack>
+                  )}
+                </Stack>
+              </ListItem>
+            ))}
+          </List>
+        </Paper>
       )}
 
       {nextCursor !== null && (
-        <button type="button" disabled={isBusy} onClick={showMore}>Show more members</button>
+        <Button type="button" variant="outlined" disabled={isBusy} onClick={showMore} sx={selfStart}>
+          Show more members
+        </Button>
       )}
-    </section>
+    </Stack>
   );
 }

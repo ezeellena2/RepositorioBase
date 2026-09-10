@@ -137,7 +137,7 @@ git commit -m "build: target React and PostgreSQL"
 
 - [x] **Step 1: RED - current destructive behavior**
 
-Using only current types, initialize, insert a `TodoList` sentinel, initialize again, and assert the sentinel remains and no Identity user exists.
+Using only current types, initialize, insert a tenant sentinel, initialize again, and assert the sentinel remains and no Identity user exists.
 
 Run: `dotnet test tests/Infrastructure.IntegrationTests/Infrastructure.IntegrationTests.csproj --filter DatabaseInitialisationTests`  
 Recorded RED: destructive initialization or default identity seeding did not preserve the sentinel/no-user contract.
@@ -160,7 +160,7 @@ dotnet test tests/Infrastructure.IntegrationTests/Infrastructure.IntegrationTest
 dotnet test tests/Application.FunctionalTests/Application.FunctionalTests.csproj
 ```
 
-Expected: PASS; restart preserves the Todo sentinel and creates no user/role.
+Expected: PASS; restart preserves the tenant sentinel and creates no user/role.
 
 - [x] **Step 4: REFACTOR and commit**
 
@@ -247,17 +247,9 @@ Expected: PASS.
 - Modify: `src/Web/Services/CurrentUser.cs`
 - Modify: `src/Domain/Common/BaseAuditableEntity.cs`
 - Modify: `src/Infrastructure/Data/Interceptors/AuditableEntityInterceptor.cs`
-- Modify: `src/Infrastructure/Data/Configurations/TodoItemConfiguration.cs`
-- Modify: `src/Application/TodoItems/Commands/UpdateTodoItemDetail/UpdateTodoItemDetail.cs`
-- Modify: `src/Web/Endpoints/TodoItems.cs`
 - Modify: `tests/Application.FunctionalTests/Infrastructure/TestApp.cs`
 - Modify: `tests/Application.FunctionalTests/Infrastructure/WebApiFactory.cs`
 - Modify: `tests/Application.UnitTests/Common/Behaviours/RequestLoggerTests.cs`
-- Modify: `tests/Application.FunctionalTests/TodoLists/Commands/CreateTodoListTests.cs`
-- Modify: `tests/Application.FunctionalTests/TodoLists/Commands/UpdateTodoListTests.cs`
-- Modify: `tests/Application.FunctionalTests/TodoItems/Commands/CreateTodoItemTests.cs`
-- Modify: `tests/Application.FunctionalTests/TodoItems/Commands/UpdateTodoItemTests.cs`
-- Modify: `tests/Application.FunctionalTests/TodoItems/Commands/UpdateTodoItemDetailTests.cs`
 - Create: `src/Application/Common/Interfaces/IAuditWriter.cs`
 - Create: `src/Infrastructure/Auditing/AuditWriter.cs`
 - Create: `src/Infrastructure/Data/Interceptors/AppendOnlyAuditInterceptor.cs`
@@ -275,14 +267,14 @@ Expected: PASS.
 
 - [x] **Step 1: Metadata RED**
 
-Inspect EF metadata by entity/property name for core entities, unique normalized email/slug/CUIT, membership uniqueness, composite tenant FKs, explicit deletes, concurrency tokens (including `TodoItem`), `Guid?` audit actors, and append-only audit mapping.
+Inspect EF metadata by entity/property name for core entities, unique normalized email/slug/CUIT, membership uniqueness, composite tenant FKs, explicit deletes, concurrency tokens, `Guid?` audit actors, and append-only audit mapping.
 
 Run: `dotnet test tests/Infrastructure.IntegrationTests/Infrastructure.IntegrationTests.csproj --filter "IdentityAccessMappingTests|AuditPersistenceTests"`  
 Expected: FAIL at runtime because entities/constraints are absent and actor IDs are strings.
 
 - [x] **Step 2: GREEN - complete Guid conversion and persistence**
 
-Use `IdentityUser<Guid>`, `IdentityRole<Guid>`, and `IdentityDbContext<ApplicationUser, IdentityRole<Guid>, Guid>`. Change `IUser.Id`, every `IIdentityService` input/result, behavior caller, `CurrentUser`, functional helper/mock, logger test, `BaseAuditableEntity.CreatedBy/LastModifiedBy`, interceptor assignment, and Todo audit assertion to `Guid`/`Guid?`. The Task 2 initializer must already contain no `RoleManager`; no integer-key or non-generic Identity role survives.
+Use `IdentityUser<Guid>`, `IdentityRole<Guid>`, and `IdentityDbContext<ApplicationUser, IdentityRole<Guid>, Guid>`. Change `IUser.Id`, every `IIdentityService` input/result, behavior caller, `CurrentUser`, functional helper/mock, logger test, `BaseAuditableEntity.CreatedBy/LastModifiedBy`, interceptor assignment, and audit assertions to `Guid`/`Guid?`. The Task 2 initializer must already contain no `RoleManager`; no integer-key or non-generic Identity role survives.
 
 Map `OrganizationProfile` with a normalized unique CUIT; expose every core `DbSet` through `IApplicationDbContext`; configure composite tenant FKs and deletes. `AuditWriter` creates correlation-bearing allowlisted rows. The interceptor rejects tracked update/delete; the migration adds a PostgreSQL trigger rejecting raw SQL update/delete.
 
@@ -304,7 +296,7 @@ Review conversion of baseline string Identity/audit actor IDs to UUID using vali
 
 - [x] **Step 4: RED/GREEN migration and audit proof**
 
-`MigrationUpgradeTests` migrates (a) empty -> latest and (b) `BaselinePostgreSql` -> latest after inserting a Todo sentinel and parseable GUID-string Identity row. Assert sentinel preservation, UUID columns, core constraints, no pending migrations, and raw/tracked `AuditEvent` update/delete rejection. `ConcurrencyTests` uses two real PostgreSQL DbContexts reading one `TodoItem`; the first `UpdateTodoItemDetailCommand` write persists and the stale second conditional write fails.
+`MigrationUpgradeTests` migrates (a) empty -> latest and (b) `BaselinePostgreSql` -> latest after inserting a parseable GUID-string Identity row. Assert sentinel preservation, UUID columns, core constraints, no pending migrations, and raw/tracked `AuditEvent` update/delete rejection. Session and invitation concurrency tests use real PostgreSQL contexts to prove stale writes cannot violate lifecycle invariants.
 
 Run: `dotnet test tests/Infrastructure.IntegrationTests/Infrastructure.IntegrationTests.csproj --filter "IdentityAccessMappingTests|AuditPersistenceTests|ConcurrencyTests|MigrationUpgradeTests"`
 Expected initial RED: missing mapping/migration/append-only runtime assertions; after GREEN: both upgrade paths PASS.
@@ -395,15 +387,6 @@ git commit -m "feat: add tenant authorization model"
 - Create: `src/Application/IdentityAccess/Common/IdentityAccessErrors.cs`
 - Modify: `src/Application/Common/Interfaces/IIdentityService.cs`
 - Modify: `src/Application/Common/Behaviours/AuthorizationBehaviour.cs`
-- Modify: `src/Application/TodoLists/Commands/CreateTodoList/CreateTodoList.cs`
-- Modify: `src/Application/TodoLists/Commands/UpdateTodoList/UpdateTodoList.cs`
-- Modify: `src/Application/TodoLists/Commands/DeleteTodoList/DeleteTodoList.cs`
-- Modify: `src/Application/TodoLists/Queries/GetTodos/GetTodos.cs`
-- Modify: `src/Application/TodoItems/Commands/CreateTodoItem/CreateTodoItem.cs`
-- Modify: `src/Application/TodoItems/Commands/UpdateTodoItem/UpdateTodoItem.cs`
-- Modify: `src/Application/TodoItems/Commands/UpdateTodoItemDetail/UpdateTodoItemDetail.cs`
-- Modify: `src/Application/TodoItems/Commands/DeleteTodoItem/DeleteTodoItem.cs`
-- Modify: `src/Application/WeatherForecasts/Queries/GetWeatherForecasts/GetWeatherForecastsQuery.cs`
 - Create: `src/Application/IdentityAccess/Authorization/ICurrentTenant.cs`
 - Create: `src/Application/Common/Interfaces/ISecurityDenialAuditWriter.cs`
 - Modify: `src/Infrastructure/Identity/IdentityService.cs`
@@ -430,19 +413,7 @@ git commit -m "feat: add tenant authorization model"
 
 - [x] **Step 1: Compile-safe shape RED**
 
-Reflect by name for `IPublicRequest`, `AuthorizationMetadataMissingException`, `ApplicationErrorCategory`, `ApplicationError`, generic `Result<T>`, and `AuthorizeAttribute.Permission/RequiresTenant`; check Web contract files by path without importing missing types. `ExistingApplicationRequestAuthorizationTests` asserts this current inventory; every row is `[Authorize]` with `RequiresTenant=false`, because its sole endpoint group calls `RequireAuthorization()` and current Todo entities have no `TenantId`. No existing request is public.
-
-| Existing request | Permission | Tenant |
-|---|---|---|
-| `CreateTodoListCommand` | `todos.write` | no |
-| `UpdateTodoListCommand` | `todos.write` | no |
-| `DeleteTodoListCommand` | `todos.write` | no |
-| `GetTodosQuery` | `todos.read` | no |
-| `CreateTodoItemCommand` | `todos.write` | no |
-| `UpdateTodoItemCommand` | `todos.write` | no |
-| `UpdateTodoItemDetailCommand` | `todos.write` | no |
-| `DeleteTodoItemCommand` | `todos.write` | no |
-| `GetWeatherForecastsQuery` | `weather.read` | no |
+Reflect by name for `IPublicRequest`, `AuthorizationMetadataMissingException`, `ApplicationErrorCategory`, `ApplicationError`, generic `Result<T>`, and `AuthorizeAttribute.Permission/RequiresTenant`; check Web contract files by path without importing missing types. `ExistingApplicationRequestAuthorizationTests` asserts the current inventory and requires every application request to make its authorization classification explicit.
 
 The same future-request guard classifies `RegisterPlatformInvitee`, `ConfirmPlatformInvitee`, and `RecoverPendingPlatformOwnerInvitation` as `IPublicRequest`: each is limited by antiforgery, a bound token where applicable, server-derived recipient/state, and no membership/elevation. Only valid opaque business states receive the neutral response: antiforgery rejects as `400 antiforgery_validation_failed`, and rate-limit rejection is `429 rate_limit_exceeded` plus `Retry-After`. Registration accepts a PasswordOptions-valid password only for a missing matching identity; an existing identity ignores it and receives generic flow behavior. `BeginPlatformMfaEnrollment`, `VerifyPlatformMfaEnrollment`, and `AcknowledgePlatformRecoveryCodes` are `[Authorize]` with `RequiresTenant=false` because they require the authenticated confirmed matching identity and invitation token before Platform activation. All Platform operations after activation require `[Authorize]`, active Platform tenant, and their explicit `platform.*` permission.
 
@@ -479,7 +450,7 @@ Expected: runtime assertions fail on shell Result behavior, authorization fall-t
 
 - [x] **Step 4: Behavioral RED - runtime and OpenAPI**
 
-`ProblemDetailsContractTests`, through `FunctionalTestSetup.HttpClient`, cover semantic `200` DTO, existing `201` plus `Location`, empty `204`, and runtime `400/401/403/404/409/500`. Map the Task 4 stale `UpdateTodoItemDetailCommand` write to typed `Conflict` code `todo_item_concurrency_conflict`; its endpoint is RFC 9457 `409` with that stable code and opaque `traceId`. Every failure must be `application/problem+json` with matching status, stable `code`, opaque `traceId`, safe optional `detail`, validation-only field-indexed `errors`, and no stack, exception, provider, PII, or secret data. The generic `500` comes only from an unexpected exception. Assert neither internal Result fields nor universal `success/data/error` fields appear.
+`ProblemDetailsContractTests`, through `FunctionalTestSetup.HttpClient`, cover the identity and invitation success shapes plus runtime `400/401/403/409/429/500` responses. Every failure must be `application/problem+json` with matching status, stable `code`, opaque `traceId`, safe optional `detail`, validation-only field-indexed `errors`, and no stack, exception, provider, PII, or secret data. The generic `500` comes only from an unexpected exception. Assert neither internal Result fields nor universal `success/data/error` fields appear.
 
 `OpenApiContractTests` rejects missing/mismatched success schemas, statuses, required headers, supported error statuses, Problem Details schema, or endpoint error codes. IA-006 later adds neutral `202`; IA-007 adds normalized `429` plus `Retry-After`; IA-008 adds identity `201 Location`/`200` evidence to these same suites.
 

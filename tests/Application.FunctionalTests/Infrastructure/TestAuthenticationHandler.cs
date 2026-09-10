@@ -1,6 +1,5 @@
 using System.Security.Claims;
 using System.Text.Encodings.Web;
-using CleanArchitecture.Application.IdentityAccess.Authorization;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
@@ -35,13 +34,6 @@ public sealed class TestAuthenticationHandler(
         {
             claims.Add(new Claim(PermissionClaim, PermissionValue));
         }
-        if (TestApp.IsApplicationPermissionGranted())
-        {
-            claims.Add(new Claim(Permissions.ApplicationPermissionClaimType, Permissions.TodosRead));
-            claims.Add(new Claim(Permissions.ApplicationPermissionClaimType, Permissions.TodosWrite));
-            claims.Add(new Claim(Permissions.ApplicationPermissionClaimType, Permissions.WeatherRead));
-        }
-
         var identity = new ClaimsIdentity(claims, SchemeName);
         var ticket = new AuthenticationTicket(new ClaimsPrincipal(identity), SchemeName);
         return Task.FromResult(AuthenticateResult.Success(ticket));

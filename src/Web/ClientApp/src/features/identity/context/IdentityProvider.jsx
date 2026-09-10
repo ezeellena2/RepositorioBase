@@ -38,11 +38,18 @@ export function IdentityProvider({ children, client }) {
       // Anything other than "you are not signed in" is still not a reason to keep a stale context on screen:
       // acting on one is worse than showing none. Why it failed is kept, so the sign-in page can say something
       // truer than "sign in" when the real answer was that a session expired or the contract drifted.
+      //
+      // `authentication_required` is the one code that is not a failure at all: it is what this endpoint answers
+      // every visitor who has no session yet, which is everyone who opens /login. Recording it put a red refusal
+      // — "Sign in to continue." — at the top of the sign-in card before anybody had asked for anything. It is
+      // dropped, and only that one: `invalid_session` still lands here, because a session that expired is
+      // precisely the thing the paragraph above wants the sign-in page to be able to say.
+      const problem = failure instanceof IdentityProblem
+        ? failure.problem
+        : { code: 'context_unreadable', status: 0, detail: String(failure.message ?? failure) };
       if (mounted.current) {
         setContext(null);
-        setContextProblem(failure instanceof IdentityProblem
-          ? failure.problem
-          : { code: 'context_unreadable', status: 0, detail: String(failure.message ?? failure) });
+        setContextProblem(problem.code === 'authentication_required' ? null : problem);
       }
       return null;
     }

@@ -1,7 +1,57 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
+import Checkbox from '@mui/material/Checkbox';
+import Chip from '@mui/material/Chip';
+import FormControl from '@mui/material/FormControl';
+import FormControlLabel from '@mui/material/FormControlLabel';
+import FormGroup from '@mui/material/FormGroup';
+import FormLabel from '@mui/material/FormLabel';
+import Paper from '@mui/material/Paper';
+import Skeleton from '@mui/material/Skeleton';
+import Stack from '@mui/material/Stack';
+import Table from '@mui/material/Table';
+import TableBody from '@mui/material/TableBody';
+import TableCell from '@mui/material/TableCell';
+import TableContainer from '@mui/material/TableContainer';
+import TableHead from '@mui/material/TableHead';
+import TableRow from '@mui/material/TableRow';
+import TextField from '@mui/material/TextField';
+import Typography from '@mui/material/Typography';
 import { useIdentity } from '../context/IdentityProvider';
 import { ProblemMessage } from '../ProblemMessage';
 import { useIdentityProof } from '../useIdentityProof';
+
+/** Required without the asterisk MUI would add, which would rename the field for everything that reads its label. */
+const requiredField = { inputLabel: { required: false } };
+
+/** A section inside the shell: the outlined treatment, and the standard cap for anything that is one object. */
+const section = { p: { xs: 2, sm: 3 }, maxWidth: 560 };
+const frame = { maxWidth: 560 };
+const supporting = { mt: 0.5, maxWidth: 640 };
+const empty = { p: 4, textAlign: 'center' };
+const chips = { flexWrap: 'wrap' };
+
+/**
+ * A role can hold two codes or thirty. Left alone the chips decide the width of the Permissions column and the
+ * height of every row that has them, so the cell is bounded here instead: the chips wrap inside a box three chip
+ * rows tall — 24px each plus the two 4px gaps between them — and that box scrolls once a role outgrows it. This
+ * is layout only. Every code stays in the DOM, in the cell, in reading order; nothing moves behind a control.
+ */
+const permissionChips = { flexWrap: 'wrap', maxWidth: 360, maxHeight: 24 * 3 + 4 * 2, overflowY: 'auto' };
+
+const rowActions = { flexWrap: 'wrap', justifyContent: 'flex-end' };
+const row = { flexWrap: 'wrap', alignItems: 'center' };
+const start = { alignSelf: 'flex-start' };
+/** Clears the legend the same way the checkbox rows it stands in for do. */
+const catalogWait = { mt: 1 };
+
+/**
+ * A `Table size="small"` row is as tall as its tallest cell — a `Chip size="small"` at 24px — plus the 6px that
+ * `TableCell` puts above and below it and the 1px divider underneath. The wait is drawn at that height so the
+ * table arrives into the space already held for it rather than pushing the page down.
+ */
+const ROW_HEIGHT = 24 + 6 + 6 + 1;
 
 const EMPTY_DRAFT = { roleId: null, name: '', permissions: [], version: null };
 
@@ -29,7 +79,10 @@ export function RolesPage() {
   const tenantId = identity.context?.activeTenant?.id ?? null;
   const [roles, setRoles] = useState(null);
   const [nextCursor, setNextCursor] = useState(null);
-  const [catalog, setCatalog] = useState([]);
+  // `undefined` is "not asked yet" and `[]` is the server's answer. Seeding this as `[]` made the editor state a
+  // refusal the server had not made — "You hold no permissions that can be put into a role." on every first paint,
+  // above an empty group that then filled in and pushed the submit down.
+  const [catalog, setCatalog] = useState(undefined);
   const [draft, setDraft] = useState(EMPTY_DRAFT);
   const [password, setPassword] = useState('');
   const [problem, setProblem] = useState(null);
@@ -159,102 +212,222 @@ export function RolesPage() {
       : [...current.permissions, code],
   }));
 
+  // The table and the editor are one component, so every keystroke in the name field asks React to redraw both.
+  // The table is by far the expensive half — a hundred roles is four hundred cells and two hundred controls — and
+  // not one cell of it is about the draft being typed, so it is rebuilt only when something it actually shows has
+  // moved. Nothing here changes what is drawn; it changes how often it is drawn again.
+  const canProve = proof.canProve;
+  const canRetire = proof.canBegin(password);
+  const roleRows = useMemo(() => roles?.map((role) => (
+    <TableRow key={role.roleId} hover>
+      {/* The name is the cell. `TableCell` already sets `body2`, so wrapping one string in a `Typography` that
+          asks for the size it is already being drawn at is a node per role and nothing else. */}
+      <TableCell>{role.name}</TableCell>
+      <TableCell>
+        {role.permissions.length === 0 ? (
+          <Typography variant="caption" color="text.secondary">no permissions</Typography>
+        ) : (
+          <Stack direction="row" spacing={0.5} useFlexGap sx={permissionChips}>
+            {role.permissions.map((code) => <Chip key={code} size="small" label={code} />)}
+          </Stack>
+        )}
+      </TableCell>
+      <TableCell>
+        {/* A built-in role is the organization's own scaffolding and a retired one is spent: both are states the
+            server owns, so each is shown as what it is rather than argued for in a sentence. A role can be both,
+            and a role that is neither says nothing here rather than holding an empty row open. */}
+        {(role.isSystem || role.isRetired) && (
+          <Stack direction="row" spacing={0.5} useFlexGap sx={chips}>
+            {role.isSystem && <Chip size="small" variant="outlined" label="built in" />}
+            {role.isRetired && <Chip size="small" variant="outlined" color="error" label="retired" />}
+          </Stack>
+        )}
+      </TableCell>
+      <TableCell align="right">
+        {!role.isSystem && !role.isRetired && (
+          <Stack direction="row" spacing={1} useFlexGap sx={rowActions}>
+            <Button
+              type="button"
+              size="small"
+              disabled={isBusy}
+              onClick={() => setDraft({ roleId: role.roleId, name: role.name, permissions: [...role.permissions], version: role.version })}
+            >
+              Edit {role.name}
+            </Button>
+            {canProve && (
+              <Button
+                type="button"
+                size="small"
+                color="error"
+                disabled={isBusy || !canRetire}
+                onClick={() => retire(role)}
+              >
+                Retire {role.name}
+              </Button>
+            )}
+          </Stack>
+        )}
+      </TableCell>
+    </TableRow>
+  )),
+  // `retire` is a new closure on every render, but it captures exactly what is listed here, so listing these
+  // lists it. The password is listed by value and not as the boolean above it, because a retirement spends the
+  // password that was in the field at the moment it was pressed.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [roles, isBusy, canProve, canRetire, password, identity, tenantId]);
+
   if (tenantId === null) {
+    // Reached inside the shell, so it is composed as a screen and not as the raised card the public entrance
+    // uses. The heading is the same heading: this is the roles screen in the one state where it has no roles to
+    // be about.
     return (
-      <section aria-labelledby="roles-heading">
-        <h1 id="roles-heading">Roles</h1>
-        <p>Choose an organization first. Roles belong to one organization, and this session is not in one.</p>
-      </section>
+      <Stack component="section" aria-labelledby="roles-heading" spacing={3} sx={frame}>
+        <Box>
+          <Typography id="roles-heading" component="h1" variant="h5">Roles</Typography>
+          <Typography variant="body2" color="text.secondary" sx={supporting}>
+            Choose an organization first. Roles belong to one organization, and this session is not in one.
+          </Typography>
+        </Box>
+        {/* A dead end with exactly one way out, and no control offering it: the label would be a user-visible
+            string this screen has never carried, so it is reported rather than written. */}
+      </Stack>
     );
   }
 
-  const grantable = catalog.filter((entry) => entry.grantable);
+  const grantable = (catalog ?? []).filter((entry) => entry.grantable);
 
   return (
-    <section aria-labelledby="roles-heading">
-      <h1 id="roles-heading">Roles</h1>
-      <ProblemMessage problem={problem} />
-      <p>
-        A role is a label with permissions behind it. You can only put permissions into a role that you hold
-        yourself, and the organization always keeps at least one administrator.
-      </p>
+    <Stack component="section" aria-labelledby="roles-heading" spacing={3}>
+      <Box>
+        <Typography id="roles-heading" component="h1" variant="h5">Roles</Typography>
+        <Typography variant="body2" color="text.secondary" sx={supporting}>
+          A role is a label with permissions behind it. You can only put permissions into a role that you hold
+          yourself, and the organization always keeps at least one administrator.
+        </Typography>
+      </Box>
 
-      {proof.hasPassword ? (
-        <>
-          <label htmlFor="roles-password">Password</label>
-          <input
-            id="roles-password"
-            type="password"
-            autoComplete="current-password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-          />
-        </>
-      ) : proof.provider !== null && (
-        <p>You have no password here. Every change asks {proof.provider} to confirm it is you.</p>
+      <ProblemMessage problem={problem} />
+
+      {/* What every change on this screen is bought with, in a section of its own. The field used to float on the
+          page background between the refusal and the table while silently gating both the Retire buttons and the
+          submit; framing it says that it belongs to all of them rather than to whatever it happens to sit above. */}
+      {(proof.hasPassword || proof.provider !== null) && (
+        <Paper variant="outlined" sx={section}>
+          {proof.hasPassword ? (
+            <TextField
+              id="roles-password"
+              label="Password"
+              type="password"
+              autoComplete="current-password"
+              fullWidth
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+            />
+          ) : (
+            <Typography variant="body2" color="text.secondary">
+              You have no password here. Every change asks {proof.provider} to confirm it is you.
+            </Typography>
+          )}
+        </Paper>
       )}
 
-      {roles === null || !proof.isReady ? <p role="status">Loading…</p> : (
-        <ul>
-          {roles.map((role) => (
-            <li key={role.roleId}>
-              <span>{role.name}</span>
-              {role.isSystem && <span> — built in</span>}
-              {role.isRetired && <span> — retired</span>}
-              <span> · {role.permissions.length === 0 ? 'no permissions' : role.permissions.join(', ')}</span>
-              {!role.isSystem && !role.isRetired && (
-                <>
-                  <button
-                    type="button"
-                    disabled={isBusy}
-                    onClick={() => setDraft({ roleId: role.roleId, name: role.name, permissions: [...role.permissions], version: role.version })}
-                  >
-                    Edit {role.name}
-                  </button>
-                  {proof.canProve && (
-                    <button type="button" disabled={isBusy || !proof.canBegin(password)} onClick={() => retire(role)}>
-                      Retire {role.name}
-                    </button>
-                  )}
-                </>
-              )}
-            </li>
-          ))}
-        </ul>
+      {/* The wait keeps the shape of what is coming, so the table does not arrive by pushing the editor down. The
+          word stays, and stays visible: it is what a reader of the status region is told, and a live region whose
+          only content is three skeletons announces nothing when it changes. */}
+      {roles === null || !proof.isReady ? (
+        <Stack spacing={1} role="status">
+          <Typography variant="body2" color="text.secondary">Loading&hellip;</Typography>
+          {[0, 1, 2].map((placeholder) => <Skeleton key={placeholder} variant="rounded" height={ROW_HEIGHT} />)}
+        </Stack>
+      ) : roles.length === 0 ? (
+        <Paper variant="outlined" sx={empty}>
+          <Typography variant="body2" color="text.secondary">
+            No roles have been made for this organization yet. The first one is composed below.
+          </Typography>
+        </Paper>
+      ) : (
+        <TableContainer component={Paper} variant="outlined">
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell component="th" scope="col">Role</TableCell>
+                <TableCell component="th" scope="col">Permissions</TableCell>
+                <TableCell component="th" scope="col">State</TableCell>
+                <TableCell component="th" scope="col" align="right">Actions</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>{roleRows}</TableBody>
+          </Table>
+        </TableContainer>
       )}
 
       {nextCursor !== null && (
-        <button type="button" disabled={isBusy} onClick={showMore}>Show more roles</button>
+        <Button type="button" variant="outlined" disabled={isBusy} onClick={showMore} sx={start}>
+          Show more roles
+        </Button>
       )}
 
-      <h2>{draft.roleId === null ? 'New role' : `Editing ${draft.name}`}</h2>
-      <form onSubmit={(event) => { event.preventDefault(); save(); }}>
-        <label htmlFor="role-name">Name</label>
-        <input id="role-name" value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} required />
+      <Paper
+        variant="outlined"
+        component="form"
+        onSubmit={(event) => { event.preventDefault(); save(); }}
+        sx={section}
+      >
+        <Stack spacing={2}>
+          {/* A section under an h5 page title, so the weight of a section heading. The level is the level it
+              already was: it is still the second heading of this document, whatever size it is drawn at. */}
+          <Typography component="h2" variant="subtitle1">{draft.roleId === null ? 'New role' : `Editing ${draft.name}`}</Typography>
 
-        <fieldset>
-          <legend>Permissions you can grant</legend>
-          {grantable.length === 0 && <p>You hold no permissions that can be put into a role.</p>}
-          {grantable.map((entry) => (
-            <label key={entry.code} htmlFor={`permission-${entry.code}`}>
-              <input
-                id={`permission-${entry.code}`}
-                type="checkbox"
-                checked={draft.permissions.includes(entry.code)}
-                onChange={() => toggle(entry.code)}
-              />
-              {entry.code}
-            </label>
-          ))}
-        </fieldset>
+          <TextField
+            id="role-name"
+            label="Name"
+            required
+            fullWidth
+            slotProps={requiredField}
+            value={draft.name}
+            onChange={(event) => setDraft({ ...draft, name: event.target.value })}
+          />
 
-        <button type="submit" disabled={isBusy || !proof.canProve || !proof.canBegin(password)}>
-          {draft.roleId === null ? 'Create role' : 'Save role'}
-        </button>
-        {draft.roleId !== null && (
-          <button type="button" disabled={isBusy} onClick={() => setDraft(EMPTY_DRAFT)}>Cancel</button>
-        )}
-      </form>
-    </section>
+          <FormControl component="fieldset">
+            <FormLabel component="legend">Permissions you can grant</FormLabel>
+            {/* The wait holds two checkbox rows so the group does not arrive by pushing the submit down, and the
+                sentence waits for the server to have actually said it. A catalogue still in flight and a
+                catalogue that came back empty are different facts and must not read alike. */}
+            {catalog === undefined ? (
+              <Stack spacing={1} sx={catalogWait}>
+                {[0, 1].map((placeholder) => <Skeleton key={placeholder} variant="rounded" height={38} />)}
+              </Stack>
+            ) : grantable.length === 0 && (
+              <Typography variant="body2" color="text.secondary">You hold no permissions that can be put into a role.</Typography>
+            )}
+            <FormGroup>
+              {grantable.map((entry) => (
+                <FormControlLabel
+                  key={entry.code}
+                  htmlFor={`permission-${entry.code}`}
+                  control={(
+                    <Checkbox
+                      id={`permission-${entry.code}`}
+                      checked={draft.permissions.includes(entry.code)}
+                      onChange={() => toggle(entry.code)}
+                    />
+                  )}
+                  label={entry.code}
+                />
+              ))}
+            </FormGroup>
+          </FormControl>
+
+          <Stack direction="row" spacing={1} useFlexGap sx={row}>
+            <Button type="submit" variant="contained" disabled={isBusy || !proof.canProve || !proof.canBegin(password)}>
+              {draft.roleId === null ? 'Create role' : 'Save role'}
+            </Button>
+            {draft.roleId !== null && (
+              <Button type="button" variant="outlined" disabled={isBusy} onClick={() => setDraft(EMPTY_DRAFT)}>Cancel</Button>
+            )}
+          </Stack>
+        </Stack>
+      </Paper>
+    </Stack>
   );
 }

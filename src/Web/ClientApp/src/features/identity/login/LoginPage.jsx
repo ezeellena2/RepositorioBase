@@ -1,5 +1,13 @@
 import { useState } from 'react';
-import { Link, Navigate, useLocation, useSearchParams } from 'react-router-dom';
+import { Link as RouterLink, Navigate, useLocation, useSearchParams } from 'react-router-dom';
+import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
+import Divider from '@mui/material/Divider';
+import Link from '@mui/material/Link';
+import Paper from '@mui/material/Paper';
+import Stack from '@mui/material/Stack';
+import TextField from '@mui/material/TextField';
+import Typography from '@mui/material/Typography';
 import { useIdentity } from '../context/IdentityProvider';
 import { ProblemMessage } from '../ProblemMessage';
 import { useSubmit } from '../useSubmit';
@@ -26,6 +34,15 @@ export function safeReturnUrl(candidate) {
   }
 }
 
+/**
+ * The required inputs carry the attribute without the label decoration MUI would add for it. The asterisk is a
+ * change of accessible name — `Email` becomes `Email *` — and the label is what every caller, person and test
+ * alike, identifies the field by.
+ */
+const requiredField = { inputLabel: { required: false } };
+
+const card = { p: { xs: 3, sm: 4 } };
+
 export function LoginPage() {
   const identity = useIdentity();
   const location = useLocation();
@@ -51,21 +68,63 @@ export function LoginPage() {
   };
 
   return (
-    <section aria-labelledby="login-heading">
-      <h1 id="login-heading">Sign in</h1>
-      <p data-testid="return-url" hidden>{returnUrl}</p>
-      <p data-testid="context-problem" hidden>{identity?.contextProblem?.code ?? ''}</p>
-      <ProblemMessage problem={problem ?? providerProblem ?? identity?.contextProblem} />
-      <form onSubmit={(event) => { event.preventDefault(); submit(email, password); }}>
-        <label htmlFor="login-email">Email</label>
-        <input id="login-email" type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} required />
-        <label htmlFor="login-password">Password</label>
-        <input id="login-password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required />
-        <button type="submit" disabled={isBusy}>Sign in</button>
-      </form>
-      <button type="button" onClick={continueWithGoogle}>Continue with Google</button>
-      <p><Link to="/credentials/forgot">Forgot your password?</Link></p>
-      <p><Link to="/account/reactivation-request">Reactivate your account</Link></p>
-    </section>
+    <Paper component="section" elevation={3} aria-labelledby="login-heading" sx={card}>
+      <Stack spacing={3}>
+        {/* The two probes are the return URL this card resolved and whatever the context read refused with. They
+            are read back by their test ids, so they stay in the markup and out of the reading order. */}
+        <Box>
+          <Typography id="login-heading" component="h1" variant="h5">Sign in</Typography>
+          <p data-testid="return-url" hidden>{returnUrl}</p>
+          <p data-testid="context-problem" hidden>{identity?.contextProblem?.code ?? ''}</p>
+        </Box>
+
+        <ProblemMessage problem={problem ?? providerProblem ?? identity?.contextProblem} />
+
+        {/* Two ways in, in the order they are chosen: the provider round trip first, then the credentials this
+            card can take itself. The rule dividing them is what makes them read as alternatives. */}
+        <Button type="button" variant="outlined" size="large" fullWidth onClick={continueWithGoogle}>
+          Continue with Google
+        </Button>
+        <Divider />
+
+        <Stack
+          component="form"
+          spacing={2}
+          onSubmit={(event) => { event.preventDefault(); submit(email, password); }}
+        >
+          <TextField
+            id="login-email"
+            label="Email"
+            type="email"
+            autoComplete="username"
+            required
+            fullWidth
+            slotProps={requiredField}
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+          />
+          <TextField
+            id="login-password"
+            label="Password"
+            type="password"
+            autoComplete="current-password"
+            required
+            fullWidth
+            slotProps={requiredField}
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+          />
+          <Button type="submit" variant="contained" size="large" fullWidth disabled={isBusy}>Sign in</Button>
+        </Stack>
+
+        <Divider />
+
+        {/* Neither of these signs anybody in, so they sit below the rule rather than beside the submit. */}
+        <Stack spacing={1}>
+          <Link component={RouterLink} to="/credentials/forgot" variant="body2">Forgot your password?</Link>
+          <Link component={RouterLink} to="/account/reactivation-request" variant="body2">Reactivate your account</Link>
+        </Stack>
+      </Stack>
+    </Paper>
   );
 }

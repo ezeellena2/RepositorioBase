@@ -25,91 +25,7 @@ namespace CleanArchitecture.Infrastructure.Data.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("CleanArchitecture.Domain.Entities.TodoItem", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
 
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTimeOffset>("Created")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("CreatedBy")
-                        .HasColumnType("uuid");
-
-                    b.Property<bool>("Done")
-                        .HasColumnType("boolean");
-
-                    b.Property<DateTimeOffset>("LastModified")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("LastModifiedBy")
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("ListId")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("Note")
-                        .HasColumnType("text");
-
-                    b.Property<int>("Priority")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("Title")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
-                    b.Property<uint>("Version")
-                        .IsConcurrencyToken()
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("xid")
-                        .HasColumnName("xmin");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ListId");
-
-                    b.ToTable("TodoItems", null, t =>
-                        {
-                            t.HasCheckConstraint("CK_TodoItems_AuditActors_NotEmpty", "(\"CreatedBy\" IS NULL OR \"CreatedBy\" <> '00000000-0000-0000-0000-000000000000'::uuid) AND (\"LastModifiedBy\" IS NULL OR \"LastModifiedBy\" <> '00000000-0000-0000-0000-000000000000'::uuid)");
-                        });
-                });
-
-            modelBuilder.Entity("CleanArchitecture.Domain.Entities.TodoList", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTimeOffset>("Created")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("CreatedBy")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTimeOffset>("LastModified")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("LastModifiedBy")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Title")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("TodoLists", null, t =>
-                        {
-                            t.HasCheckConstraint("CK_TodoLists_AuditActors_NotEmpty", "(\"CreatedBy\" IS NULL OR \"CreatedBy\" <> '00000000-0000-0000-0000-000000000000'::uuid) AND (\"LastModifiedBy\" IS NULL OR \"LastModifiedBy\" <> '00000000-0000-0000-0000-000000000000'::uuid)");
-                        });
-                });
 
             modelBuilder.Entity("CleanArchitecture.Domain.IdentityAccess.Auditing.AuditEvent", b =>
                 {
@@ -942,39 +858,7 @@ namespace CleanArchitecture.Infrastructure.Data.Migrations
                     b.ToTable("AspNetUserTokens", (string)null);
                 });
 
-            modelBuilder.Entity("CleanArchitecture.Domain.Entities.TodoItem", b =>
-                {
-                    b.HasOne("CleanArchitecture.Domain.Entities.TodoList", "List")
-                        .WithMany("Items")
-                        .HasForeignKey("ListId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
 
-                    b.Navigation("List");
-                });
-
-            modelBuilder.Entity("CleanArchitecture.Domain.Entities.TodoList", b =>
-                {
-                    b.OwnsOne("CleanArchitecture.Domain.ValueObjects.Colour", "Colour", b1 =>
-                        {
-                            b1.Property<int>("TodoListId")
-                                .HasColumnType("integer");
-
-                            b1.Property<string>("Code")
-                                .IsRequired()
-                                .HasColumnType("text");
-
-                            b1.HasKey("TodoListId");
-
-                            b1.ToTable("TodoLists");
-
-                            b1.WithOwner()
-                                .HasForeignKey("TodoListId");
-                        });
-
-                    b.Navigation("Colour")
-                        .IsRequired();
-                });
 
             modelBuilder.Entity("CleanArchitecture.Domain.IdentityAccess.Auditing.AuditEvent", b =>
                 {
@@ -1174,10 +1058,6 @@ namespace CleanArchitecture.Infrastructure.Data.Migrations
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("CleanArchitecture.Domain.Entities.TodoList", b =>
-                {
-                    b.Navigation("Items");
-                });
 
             modelBuilder.Entity("CleanArchitecture.Domain.IdentityAccess.Invitations.Invitation", b =>
                 {

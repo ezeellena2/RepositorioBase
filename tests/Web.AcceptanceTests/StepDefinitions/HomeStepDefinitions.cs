@@ -28,6 +28,12 @@ public sealed class HomeStepDefinitions(HomePage homePage)
     [Given("a user visits the home page")]
     public Task GivenAUserVisitsTheHomePage() => homePage.GotoAsync();
 
-    [Then("the heading {string} is visible")]
-    public Task ThenTheHeadingIsVisible(string text) => homePage.AssertHeading(text);
+    [Then("the header offers the link {string}")]
+    public Task ThenTheHeaderOffersTheLink(string text) => homePage.AssertHeaderLink(text);
+
+    [Then("the product navigation is not offered")]
+    public Task ThenTheProductNavigationIsNotOffered() => homePage.AssertNoProductNavigation();
+
+    [Then("the page carries no content")]
+    public Task ThenThePageCarriesNoContent() => homePage.AssertNoPageContent();
 }

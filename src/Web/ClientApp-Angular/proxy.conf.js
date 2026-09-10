@@ -9,9 +9,7 @@ const PROXY_CONFIG = [
     context: [
       "/api",
       "/openapi",
-      "/scalar",
-      "/weatherforecast",
-      "/WeatherForecast"
+      "/scalar"
     ],
     target: target,
     secure: env["NODE_ENV"] !== "development",

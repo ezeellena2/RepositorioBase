@@ -65,9 +65,9 @@ public sealed class PermissionAuthorizationBehaviourTests
         await Should.ThrowAsync<ForbiddenAccessException>(() =>
             behaviour.Handle(new NonTenantRequest(), _ => Task.FromResult(Unit.Value), CancellationToken.None));
 
-        evaluator.Verify(x => x.HasPermissionAsync(userId, "todos.read", It.IsAny<CancellationToken>()), Times.Once);
+        evaluator.Verify(x => x.HasPermissionAsync(userId, "identity.context.read", It.IsAny<CancellationToken>()), Times.Once);
         audit.Verify(x => x.WriteDeniedAsync(It.Is<SecurityDenialAudit>(entry =>
-            entry.TenantId == null && entry.PermissionCode == "todos.read" && entry.Outcome == "permission_denied"), It.IsAny<CancellationToken>()), Times.Once);
+            entry.TenantId == null && entry.PermissionCode == "identity.context.read" && entry.Outcome == "permission_denied"), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
@@ -137,9 +137,9 @@ public sealed class PermissionAuthorizationBehaviourTests
     [Authorize("tenant.read", true)]
     private sealed record TenantRequest : IRequest<Unit>;
 
-    [Authorize("todos.read", false)]
+    [Authorize("identity.context.read", false)]
     private sealed record NonTenantRequest : IRequest<Unit>;
 
-    [Authorize("todos.read", false)]
+    [Authorize("identity.context.read", false)]
     private sealed record DualMarkedRequest : IRequest<Unit>, IPublicRequest;
 }

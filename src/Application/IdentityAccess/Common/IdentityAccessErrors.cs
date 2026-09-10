@@ -14,11 +14,6 @@ public static class IdentityAccessErrors
         ApplicationErrorCategory.Validation,
         "The identity could not be deleted.");
 
-    public static ApplicationError TodoItemConcurrencyConflict() => new(
-        "todo_item_concurrency_conflict",
-        ApplicationErrorCategory.Conflict,
-        "The todo item was changed by another request. Refresh it and try again.");
-
     public static ApplicationError InvalidRegistration() => new("invalid_registration", ApplicationErrorCategory.Validation, "The registration request is invalid.");
     public static ApplicationError InvalidConfirmation() => new("invalid_confirmation", ApplicationErrorCategory.Validation, "The confirmation request is invalid.");
     public static ApplicationError InvalidSession() => new("invalid_session", ApplicationErrorCategory.Authentication, "The supplied session is not valid.");

@@ -6,8 +6,6 @@
     <ul>
       <li><a [routerLink]="['/']" [routerLinkActive]="['pico-active']" [routerLinkActiveOptions]="{ exact: true }">Home</a></li>
       <li><a [routerLink]="['/counter']" [routerLinkActive]="['pico-active']">Counter</a></li>
-      <li><a [routerLink]="['/weather']" [routerLinkActive]="['pico-active']">Weather</a></li>
-      <li><a [routerLink]="['/todo']" [routerLinkActive]="['pico-active']">Tasks</a></li>
     </ul>
     <ul>
       @if (isAuthenticated$ | async) {

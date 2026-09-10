@@ -1,4 +1,3 @@
-using CleanArchitecture.Domain.Entities;
 using CleanArchitecture.Domain.IdentityAccess.Sessions;
 using CleanArchitecture.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -51,20 +50,6 @@ public sealed class TestSaveChangesRaceInterceptor : SaveChangesInterceptor
         }
 
         var context = eventData.Context;
-        var staleItem = context?.ChangeTracker.Entries<TodoItem>()
-            .Select(entry => entry.Entity)
-            .FirstOrDefault(entry => entry.Id > 0 && entry.StateIsModified(context));
-
-        if (staleItem is not null && TestApp.ConsumeForcedTodoItemConcurrencyConflict())
-        {
-            var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-                .UseNpgsql(context!.Database.GetConnectionString())
-                .Options;
-            await using var competingContext = new ApplicationDbContext(options);
-            var competingItem = await competingContext.TodoItems.SingleAsync(item => item.Id == staleItem.Id, cancellationToken);
-            competingItem.Note = "concurrent database update";
-            await competingContext.SaveChangesAsync(cancellationToken);
-        }
 
         // Cookie validation persists activity through an atomic conditional update that never reaches SaveChanges;
         // SessionLivenessRaceInterceptor races that statement. This hook races the explicit state transitions.
@@ -164,10 +149,4 @@ public sealed class TestSaveChangesRaceInterceptor : SaveChangesInterceptor
 
         await competingContext.SaveChangesAsync(cancellationToken);
     }
-}
-
-internal static class TodoItemEntryExtensions
-{
-    internal static bool StateIsModified(this TodoItem entity, DbContext context) =>
-        context.Entry(entity).State == EntityState.Modified;
 }

@@ -45,7 +45,7 @@ public class RequestAuthorizationMetadataTests
         attributeUsage.Inherited.ShouldBeTrue();
         attributeUsage.AllowMultiple.ShouldBeFalse();
 
-        var attribute = new AuthorizeAttribute("todos.read", false);
+        var attribute = new AuthorizeAttribute("identity.context.read", false);
         typeof(AuthorizeAttribute).GetProperty(nameof(AuthorizeAttribute.Roles))!.PropertyType.ShouldBe(typeof(string));
         typeof(AuthorizeAttribute).GetProperty(nameof(AuthorizeAttribute.Roles))!.CanWrite.ShouldBeTrue();
         typeof(AuthorizeAttribute).GetProperty(nameof(AuthorizeAttribute.Policy))!.PropertyType.ShouldBe(typeof(string));
