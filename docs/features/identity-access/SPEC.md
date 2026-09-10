@@ -441,7 +441,7 @@ The remaining open decisions must be resolved before the slice that consumes the
 
 For every feature or slice:
 
-1. **Specify:** create or update a specification with requirements, invariants, contracts, errors, and acceptance examples.
+1. **Specify:** create or update a specification with requirements, invariants, contracts, errors, acceptance examples, and the user-facing copy and messages it introduces.
 2. **Approve:** a person approves scope and decisions affecting business or security. `Proposed` status does not authorize dependent code.
 3. **Plan:** write small tasks with files, a RED test, the GREEN implementation, refactoring, and a verification command.
 4. **Implement:** execute one vertical slice at a time with TDD.
@@ -459,6 +459,7 @@ This protocol is independent from the reference repository's workflow and preser
 - constraints, indexes, delete behavior, and concurrency are explicit;
 - API, Problem Details, and OpenAPI are updated;
 - a React screen is included when behavior is user-visible;
+- copy, messages, error codes, enum values and permissions exist in every supported language;
 - secrets and PII are absent from logs and contracts;
 - audit and outbox behavior are included when applicable;
 - build completes without warnings and relevant suites pass;

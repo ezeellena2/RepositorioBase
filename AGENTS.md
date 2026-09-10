@@ -111,7 +111,13 @@ Multiple skills can apply at once. Match by file context (extensions, paths) and
 - Do not require it for changes that render nothing — `features/*/api/`, hooks without markup, or test-only edits.
 - For each delegation that touches the SPA's presentation, inject `C:/Users/ezequ/source/repos/RepositorioBase/.agents/skills/frontend-design-standards/SKILL.md` under `Skills to load before work`. Pass the exact path, not copied rules.
 - **This skill overrides generic design advice, including global frontend-design guidance that asks for distinctive fonts, gradients, textures, bespoke animations or custom CSS.** The SPA is standard Material UI by decision. Quality is bought with composition — page headers, action hierarchy, real tables, status chips, empty states, loading states, width discipline — not with decoration.
-- The SPA's 306 tests and the 32 Reqnroll/Playwright journeys locate controls by role, label, id and accessible name. A visual change that alters an `id`, a label, a `role`, a heading level, copy, or a `required` field's accessible name is a regression. The skill lists the exact contracts; honour them or do not make the change.
+- The SPA's tests and the Reqnroll/Playwright journeys locate controls by role, label, id and accessible name. A visual change that alters an `id`, a label, a `role`, a heading level, the `en` source value of copy, or a `required` field's accessible name is a regression. Translating another language is not a copy change. The skill lists the exact contracts; honour them or do not make the change.
+
+### Project localization standards
+
+- Register [localization-standards](.agents/skills/localization-standards/SKILL.md) for any change that adds or changes text a person reads in the SPA, email, or bot, or adds an API error code, enum value, permission, or status. Agents performing that work must read it and its [localization rules](.agents/skills/localization-standards/references/localization-rules.md) before starting.
+- For each delegation that performs that work, inject `C:/Users/ezequ/source/repos/RepositorioBase/.agents/skills/localization-standards/SKILL.md` under `Skills to load before work`. Pass the exact canonical path, not copied rules.
+- This standard overrides UI-copy defaults that prescribe English-only artifacts: copy is authored in `en` and delivered in every supported language. Spanish catalog values use neutral professional Spanish.
 
 <!-- gentle-ai:engram-protocol -->
 ## Engram Persistent Memory — Protocol

@@ -24,6 +24,7 @@ Apply this priority order:
 
 - Respect approved SPECs, accepted ADRs, and verified conventions. This local skill overrides incompatible generic global advice.
 - Keep Gentle AI as routing and review authority; this skill neither forces SDD nor enables receipt-driven development.
+- Product-facing system text delivered through the SPA, email, or bot ships with a key in every supported language; new API error codes, enum values, permissions, and statuses ship with their catalog entries. Documentation, logs, and developer diagnostics stay invariant under the linked contract. Follow [localization-standards](../localization-standards/SKILL.md).
 - Read [engineering rules](references/engineering-rules.md) before substantive work. Preserve layer duties, `Result<T>` / `ApplicationError`, and explicit errors and effects.
 - Diagnose with Clean Code, Clean Architecture, DDD, CQRS, and SOLID. Apply KISS, YAGNI, and Rule of Three against speculative abstractions.
 - Stay within the task. Reject arbitrary size limits, mandatory wrappers/interfaces, decorative patterns, redundant layers, and unrelated aesthetic refactors.

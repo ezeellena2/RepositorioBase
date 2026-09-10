@@ -12,4 +12,5 @@ An ADR captures a significant architectural decision: the context that led to it
 | [ADR-004](ADR-004-Adopt-Multitenant-Identity-Access.md) | Adopt Multitenant Identity Access with React and PostgreSQL | 2026-08-31 | Proposed |
 | [ADR-005](ADR-005-Adopt-WhatsApp-Delivery-Channel.md) | Adopt WhatsApp as a Second Delivery Channel | 2026-08-31 | Proposed |
 | [ADR-006](ADR-006-Bot-Capability-Catalog-And-Modules.md) | Bot Capability Catalog and Pluggable Modules | 2026-08-31 | Proposed |
+| [ADR-007](ADR-007-Adopt-Cross-Project-Localization.md) | Adopt a Cross-Project Localization Standard | 2026-09-10 | Accepted |
 

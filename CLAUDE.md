@@ -27,9 +27,10 @@ The decision the standard encodes:
 
 ## Contracts a visual change must never break
 
-The SPA has 306 tests and 32 Reqnroll/Playwright journeys that find controls the way a person does. While
-restyling, never change an `id`, `name`, `data-testid`, `role`, heading level, `type`, `autoComplete`,
-`required`, a `disabled` expression, or any user-visible string. Specifically:
+The SPA's tests and Reqnroll/Playwright journeys find controls the way a person does. While restyling, never
+change an `id`, `name`, `data-testid`, `role`, heading level, `type`, `autoComplete`, `required`, a `disabled`
+expression, or the `en` source value of any user-visible string. Writing another language's value is translation,
+not a copy change; a copy change is a change of its own, made in every supported language. Specifically:
 
 - `TextField` with `required` **must** pass `slotProps={{ inputLabel: { required: false } }}` — MUI otherwise
   appends `" *"` to the label and renames the field.
@@ -37,8 +38,18 @@ restyling, never change an `id`, `name`, `data-testid`, `role`, heading level, `
 - Native `<dialog>` keeps its lifecycle through `src/components/NativeDialog.jsx`; do not swap in MUI `Dialog`.
 - `MuiButton` sets `textTransform: 'none'` in the theme on purpose: a tenant's own name is rendered on a button
   and an unchanged page object reads that text back and compares it ordinally.
-- Never edit a `*.test.jsx`, a page object under `tests/`, `AppRoutes.jsx`, or anything under `features/*/api/`.
-  If a test fails after a redesign, fix the implementation.
+- In a visual change, never edit a `*.test.jsx`, a page object under `tests/`, `AppRoutes.jsx`, or anything under
+  `features/*/api/`; if a test fails after a redesign, fix the implementation. A functional change may edit them
+  where they assert the new behavior, listed file by file in the change — never to make a regression pass.
+
+## Localization: every language, every change
+
+Follow [.agents/skills/localization-standards/SKILL.md](.agents/skills/localization-standards/SKILL.md) and the
+[localization delivery plan](docs/features/localization/PLAN.md). The API returns invariant codes and the client
+translates them; server-delivered text uses the recipient's explicitly resolved culture. English (`en`) is the
+source language, and every supported language must be complete before merge. JSX gets human-readable text from
+`t()` in `src/i18n` and formats dates and numbers through `useFormat()`. Invariant technical data stays English.
+Until extraction is complete, every new or changed human-readable string uses the catalogs from Phase 1 onward.
 
 ## Backend and architecture
 
@@ -59,8 +70,8 @@ For the journeys (needs Docker, and no AppHost already running — the harness s
 dotnet test tests/Web.AcceptanceTests/Web.AcceptanceTests.csproj --disable-build-servers -p:UseSharedCompilation=false -p:OpenApiGenerateDocumentsOnBuild=false
 ```
 
-Expected: 306 SPA tests, lint clean, build succeeds, 32 journeys pass, and `git status` shows **no** changes
-under `tests/`.
+Expected: every SPA test passes, lint clean, build succeeds, every journey passes, and `git status` shows no changes
+under `tests/` beyond those the change declares.
 
 ## Running the app locally
 

@@ -24,7 +24,7 @@ The SPA uses **standard Material UI**. That decision is settled and this skill d
 - `sx` is for composition only: width, max-width, centring, layout, spacing, alignment, ordering.
 - `src/theme.jsx` stays a normal, minimal MUI theme. It carries the brand palette roles, the two fonts, and
   changes to component defaults only where a default actively breaks something — each one commented with what
-  it broke.
+  it broke. It also composes the MUI locale through `themeFor(language)` and keeps the `appTheme` export.
 
 **Quality does not come from decoration here. It comes from composition**: what is on the page, in what order,
 at what weight, and what the screen says when it has nothing to show. A screen that is a bare `Paper` with a
@@ -52,7 +52,7 @@ heading and a form is not "clean" — it is unfinished. The rules below are what
    `role="status"` the tests rely on.
 7. **Forms have discipline.** One column. `maxWidth` on the form, not on each field. Related fields grouped
    under a section heading when a form has more than about five of them. Helper text carries the rule
-   (`helperText="Include the check digit"`), not a paragraph above the form. Submit is left-aligned under the
+   (`helperText={t('people.document.checkDigitHint')}`), not a paragraph above the form. Submit is left-aligned under the
    last field, not stretched across the card.
 8. **Feedback is `Alert`.** Errors `severity="error"`, confirmations `severity="success"`, context
    `severity="info"`. Preserve the existing `role` — `role="alert"` and `role="status"` are read by tests.
@@ -60,16 +60,20 @@ heading and a form is not "clean" — it is unfinished. The rules below are what
    tables and dashboards use the full container. Never let a four-field form stretch to 1200px.
 10. **Vertical rhythm is the theme's spacing scale.** `Stack spacing={3}` between page sections, `spacing={2}`
     within a form, `spacing={1}` between tightly related items. No arbitrary pixel margins.
+11. **Every human-readable string comes from the catalog.** Use `t()` from `src/i18n` for labels, buttons,
+    headings, messages, `aria-label`, `helperText`, `title`, and empty states. Follow
+    [localization-standards](../localization-standards/SKILL.md).
 
 ## Contracts that outrank aesthetics
 
-This application is covered by 306 SPA tests and 32 Reqnroll/Playwright journeys that locate controls the way a
-person does. A redesign that breaks them is a regression, not a redesign.
+This application is covered by the SPA tests and the Reqnroll/Playwright journeys that locate controls the way
+a person does. A redesign that breaks them is a regression, not a redesign.
 
 - Never change an `id`, `name`, `data-testid`, `role`, heading level, `type`, `autoComplete`, `required`, or a
   `disabled` expression while restyling.
-- Never change the text of a label, a button, a heading, or a message. If copy is genuinely wrong, say so and
-  leave it.
+- Never change the `en` source value of a label, button, heading, or message while restyling. Adding or changing
+  another language's value is translation, not a copy change. A genuine copy change updates every supported
+  language in the same change.
 - `TextField` with `required` **must** pass `slotProps={{ inputLabel: { required: false } }}`. MUI otherwise
   appends `" *"` to the label, which renames the field and breaks every label query.
 - Native `<select>` stays native: `FormControl` + `InputLabel htmlFor` + `NativeSelect inputProps={{ id, name }}`.
@@ -77,7 +81,8 @@ person does. A redesign that breaks them is a regression, not a redesign.
   MUI `Dialog`.
 - Button labels do not uppercase. `MuiButton` sets `textTransform: 'none'` in the theme because a tenant's own
   name is rendered on a button and a page object reads that text back.
-- Never edit a `*.test.jsx`, a page object under `tests/`, `AppRoutes.jsx`, or anything under `features/*/api/`.
+- In a visual change, never edit a `*.test.jsx`, a page object under `tests/`, `AppRoutes.jsx`, or anything under
+  `features/*/api/`. Functional changes follow the visual/functional boundary in `CLAUDE.md`.
 
 ## Decision gates
 
@@ -86,7 +91,7 @@ person does. A redesign that breaks them is a regression, not a redesign.
 | Reaching for custom CSS | Stop. Find the MUI component that already solves it. If none exists, the design is wrong, not MUI. |
 | A screen needs a new visual pattern | Compose it from MUI primitives on that screen. Do not extract a shared wrapper until the third occurrence. |
 | A default genuinely breaks a contract | Change it once in `theme.jsx`, with a comment naming what broke. |
-| Copy reads badly | Report it. Do not rewrite product copy inside a visual change. |
+| Copy reads badly | Report it. Make a genuine copy change separately and update every supported language. |
 | A test fails after restyling | Fix the implementation. Never the test. |
 
 ## Execution steps
