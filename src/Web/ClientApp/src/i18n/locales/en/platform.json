@@ -122,5 +122,47 @@
       "code": "A recovery code",
       "submit": "Replace my second factor"
     }
+  },
+  "retention": {
+    "title": "Retention",
+    "accessDenied": "This screen needs the platform.retention.read permission. Ask a Platform owner to grant it.",
+    "entryProof": "This session has not proved your second factor yet. Enter a code from your authenticator to read the retention policy.",
+    "recentProof": "That change needs a recent proof of your second factor. Confirm it, then make the change again.",
+    "reading": "Reading the retention policy.",
+    "personalData": "Personal data",
+    "activeHolds": "Active holds",
+    "noPolicy": "No retention policy is configured for this deployment, so nothing will be erased.",
+    "columns": {
+      "category": "Category",
+      "period": "Retention period",
+      "trigger": "Trigger",
+      "action": "Action",
+      "evidenceRequired": "Evidence required"
+    },
+    "emptyCategories": "This policy names no categories of its own.",
+    "yes": "Yes",
+    "no": "No",
+    "retry": "Try again",
+    "place": {
+      "title": "Place a hold",
+      "formLabel": "Place a hold",
+      "subjectIdentity": "Subject identity",
+      "reasonCode": "Reason code",
+      "reference": "Reference",
+      "referenceShape": "Letters, digits, dot, underscore, colon or hyphen — 1 to 64 characters.",
+      "validation": "A reason code and a reference are each: {{shape}} Nothing was sent.",
+      "submit": "Place hold",
+      "receipt": "Hold {{holdId}} is placed for {{reasonCode}} under reference {{reference}}, at {{placedAt}}. Keep that hold id: nothing lists holds, so this is the only time it is shown."
+    },
+    "release": {
+      "title": "Release a hold",
+      "formLabel": "Release a hold",
+      "holdId": "Hold id",
+      "submit": "Release",
+      "confirmationLabel": "Confirm release",
+      "prompt": "Release this hold? Nothing about it is read back first — the route answers the same way whether it stands, was already released, or never existed.",
+      "confirm": "Confirm release",
+      "notice": "This hold is released. A hold that was already released and one that never existed answer exactly the same way, so this says what is true now — not that this request changed anything."
+    }
   }
 }

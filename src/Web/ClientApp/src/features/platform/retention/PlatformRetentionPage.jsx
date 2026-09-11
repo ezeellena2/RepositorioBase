@@ -21,6 +21,7 @@ import { usePlatformClient } from '../invitations/PlatformInvitationPages';
 import { PlatformStepUpForm } from '../shared/PlatformStepUpForm';
 import { usePlatformRead } from '../shared/usePlatformRead';
 import { usePlatformStepUp } from '../shared/usePlatformStepUp';
+import { useTranslation } from '../../../i18n';
 
 /** Required without the asterisk MUI would add, which would rename the field for everything that reads its label. */
 const requiredField = { inputLabel: { required: false } };
@@ -58,7 +59,9 @@ const fact = { m: 0, mt: 0.5 };
  * condition. Real data is the mode that carries consequences; a mode this screen has not been taught stays
  * neutral instead of being guessed at.
  */
-const personalDataColor = { Real: 'warning', Synthetic: 'default' };
+const neutralChipColor = 'default';
+const warningChipColor = 'warning';
+const personalDataColor = { Real: warningChipColor, Synthetic: neutralChipColor };
 
 /**
  * What the policy does to a category once its period runs out is a closed set the server owns too, so it is
@@ -67,7 +70,7 @@ const personalDataColor = { Real: 'warning', Synthetic: 'default' };
  * instead of being guessed at. The trigger beside it is a classification and not a severity, so it carries no
  * colour at all — it is a chip because it is a closed set, not because it is a warning.
  */
-const actionColor = { Erase: 'warning' };
+const actionColor = { Erase: warningChipColor };
 
 /**
  * The shape the server accepts for both a reason code and a reference, mirrored so a value it would refuse never
@@ -75,7 +78,10 @@ const actionColor = { Erase: 'warning' };
  * can still be refused there.
  */
 const REFERENCE_FORMAT = /^[A-Za-z0-9._:-]{1,64}$/;
-const REFERENCE_SHAPE = 'Letters, digits, dot, underscore, colon or hyphen — 1 to 64 characters.';
+const retentionHeadingId = 'platform-retention-heading';
+const retentionStepUpInputId = 'platform-retention-step-up';
+const outlinedSubmitVariant = 'outlined';
+const policyStatuses = { loading: 'loading', refused: 'refused', errored: 'errored' };
 
 /**
  * Retention: what this deployment's policy says, and the legal holds that stop an erasure (IA-REQ-056, C7).
@@ -91,6 +97,7 @@ const REFERENCE_SHAPE = 'Letters, digits, dot, underscore, colon or hyphen — 1
  * while it proves it again.
  */
 export function PlatformRetentionPage() {
+  const { t } = useTranslation('platform');
   const identity = useIdentity();
   const platform = usePlatformClient();
 
@@ -144,7 +151,7 @@ export function PlatformRetentionPage() {
   const placeHold = async () => {
     setReleaseNotice(false);
     if (!REFERENCE_FORMAT.test(reasonCode) || !REFERENCE_FORMAT.test(reference)) {
-      setShapeRefusal(`A reason code and a reference are each: ${REFERENCE_SHAPE} Nothing was sent.`);
+      setShapeRefusal(t('retention.place.validation', { shape: t('retention.place.referenceShape') }));
       return;
     }
     const placed = await run(() => platform.placeRetentionHold(subjectIdentityId, reasonCode, reference));
@@ -162,11 +169,11 @@ export function PlatformRetentionPage() {
 
   if (!mayRead) {
     return (
-      <Stack component="section" aria-labelledby="platform-retention-heading" spacing={3}>
-        <Typography id="platform-retention-heading" component="h1" variant="h5">Retention</Typography>
+      <Stack component="section" aria-labelledby={retentionHeadingId} spacing={3}>
+        <Typography id={retentionHeadingId} component="h1" variant="h5">{t('retention.title')}</Typography>
         <Paper variant="outlined" sx={narrowNotice}>
           <Typography variant="body2" color="text.secondary">
-            This screen needs the platform.retention.read permission. Ask a Platform owner to grant it.
+            {t('retention.accessDenied')}
           </Typography>
         </Paper>
       </Stack>
@@ -177,18 +184,18 @@ export function PlatformRetentionPage() {
   // proof instead of asking for a policy it would only be refused. It renders in place of the data, not beside it.
   if (owesFactor) {
     return (
-      <Stack component="section" aria-labelledby="platform-retention-heading" spacing={3}>
-        <Typography id="platform-retention-heading" component="h1" variant="h5">Retention</Typography>
+      <Stack component="section" aria-labelledby={retentionHeadingId} spacing={3}>
+        <Typography id={retentionHeadingId} component="h1" variant="h5">{t('retention.title')}</Typography>
         {stepUp.problem && <Box sx={column}><ProblemMessage problem={stepUp.problem} /></Box>}
         <Paper variant="outlined" sx={narrowSection}>
           <Stack spacing={2}>
             <Typography variant="body2" color="text.secondary">
-              This session has not proved your second factor yet. Enter a code from your authenticator to read the retention policy.
+              {t('retention.entryProof')}
             </Typography>
             {/* Deliberately left at the filled default. Here the ceremony IS the screen — nothing else is on it and
                 nothing else can be done — so the step-up is this screen's primary action and carries its weight. */}
             <PlatformStepUpForm
-              inputId="platform-retention-step-up"
+              inputId={retentionStepUpInputId}
               code={stepUp.code}
               onCodeChange={stepUp.onCodeChange}
               isBusy={stepUp.isBusy}
@@ -211,8 +218,8 @@ export function PlatformRetentionPage() {
   const rules = page?.categories ?? [];
 
   return (
-    <Stack component="section" aria-labelledby="platform-retention-heading" spacing={3}>
-      <Typography id="platform-retention-heading" component="h1" variant="h5">Retention</Typography>
+    <Stack component="section" aria-labelledby={retentionHeadingId} spacing={3}>
+      <Typography id={retentionHeadingId} component="h1" variant="h5">{t('retention.title')}</Typography>
 
       {/* One refusal at a time, most recent first: a rejected step-up is what just happened, a value this screen
           would not send is what happened before it, and the server's refusal of the change is the oldest of the
@@ -229,18 +236,18 @@ export function PlatformRetentionPage() {
         <Paper variant="outlined" sx={narrowSection}>
           <Stack spacing={2}>
             <Typography variant="body2">
-              That change needs a recent proof of your second factor. Confirm it, then make the change again.
+              {t('retention.recentProof')}
             </Typography>
             {/* This gate interrupts a policy the operator is already reading and a change they already made, so it
                 is not what the screen is for — the filled submit belongs to "Place hold" below it. A second filled
                 button here would claim an emphasis an interruption does not have. */}
             <PlatformStepUpForm
-              inputId="platform-retention-step-up"
+              inputId={retentionStepUpInputId}
               code={stepUp.code}
               onCodeChange={stepUp.onCodeChange}
               isBusy={stepUp.isBusy}
               onSubmit={stepUp.onSubmit}
-              submitVariant="outlined"
+              submitVariant={outlinedSubmitVariant}
             />
           </Stack>
         </Paper>
@@ -252,9 +259,9 @@ export function PlatformRetentionPage() {
           would arrive by jumping sideways. The sentence stays because it is what a reader of the region is told,
           and it keeps the reading measure the rest of the page's prose has. The bars are drawn at the height of a
           `size="small"` row: a 24px cell plus the 6px above and below it and the 1px divider. */}
-      {policy.status === 'loading' && page === null && (
+      {policy.status === policyStatuses.loading && page === null && (
         <Stack spacing={1} role="status">
-          <Typography variant="body2" color="text.secondary" sx={supporting}>Reading the retention policy.</Typography>
+          <Typography variant="body2" color="text.secondary" sx={supporting}>{t('retention.reading')}</Typography>
           {[0, 1, 2].map((placeholder) => <Skeleton key={placeholder} variant="rounded" height={ROW_HEIGHT} />)}
         </Stack>
       )}
@@ -268,18 +275,18 @@ export function PlatformRetentionPage() {
           <Paper variant="outlined" sx={section}>
             <Stack component="dl" direction="row" spacing={3} useFlexGap sx={facts}>
               <Box>
-                <Typography component="dt" variant="body2" color="text.secondary">Personal data</Typography>
+                <Typography component="dt" variant="body2" color="text.secondary">{t('retention.personalData')}</Typography>
                 <Box component="dd" sx={fact} data-testid="retention-personal-data-mode">
                   <Chip
                     size="small"
                     variant="outlined"
                     label={page.personalDataMode}
-                    color={personalDataColor[page.personalDataMode] ?? 'default'}
+                    color={personalDataColor[page.personalDataMode] ?? neutralChipColor}
                   />
                 </Box>
               </Box>
               <Box>
-                <Typography component="dt" variant="body2" color="text.secondary">Active holds</Typography>
+                <Typography component="dt" variant="body2" color="text.secondary">{t('retention.activeHolds')}</Typography>
                 <Box component="dd" sx={fact} data-testid="retention-active-holds">
                   <Chip size="small" label={page.activeHoldCount} />
                 </Box>
@@ -290,7 +297,7 @@ export function PlatformRetentionPage() {
           {hasNoPolicy ? (
             <Paper variant="outlined" sx={notice}>
               <Typography variant="body2" color="text.secondary">
-                No retention policy is configured for this deployment, so nothing will be erased.
+                {t('retention.noPolicy')}
               </Typography>
             </Paper>
           ) : (
@@ -298,11 +305,11 @@ export function PlatformRetentionPage() {
               <Table size="small">
                 <TableHead>
                   <TableRow>
-                    <TableCell component="th" scope="col">Category</TableCell>
-                    <TableCell component="th" scope="col">Retention period</TableCell>
-                    <TableCell component="th" scope="col">Trigger</TableCell>
-                    <TableCell component="th" scope="col">Action</TableCell>
-                    <TableCell component="th" scope="col">Evidence required</TableCell>
+                    <TableCell component="th" scope="col">{t('retention.columns.category')}</TableCell>
+                    <TableCell component="th" scope="col">{t('retention.columns.period')}</TableCell>
+                    <TableCell component="th" scope="col">{t('retention.columns.trigger')}</TableCell>
+                    <TableCell component="th" scope="col">{t('retention.columns.action')}</TableCell>
+                    <TableCell component="th" scope="col">{t('retention.columns.evidenceRequired')}</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -310,7 +317,7 @@ export function PlatformRetentionPage() {
                     <TableRow>
                       <TableCell colSpan={5} align="center">
                         <Typography variant="body2" color="text.secondary">
-                          This policy names no categories of its own.
+                          {t('retention.emptyCategories')}
                         </Typography>
                       </TableCell>
                     </TableRow>
@@ -330,15 +337,15 @@ export function PlatformRetentionPage() {
                           size="small"
                           variant="outlined"
                           label={rule.action}
-                          color={actionColor[rule.action] ?? 'default'}
+                          color={actionColor[rule.action] ?? neutralChipColor}
                         />
                       </TableCell>
                       <TableCell>
                         <Chip
                           size="small"
                           variant="outlined"
-                          label={rule.evidenceRequired ? 'Yes' : 'No'}
-                          color={rule.evidenceRequired ? 'warning' : 'default'}
+                          label={rule.evidenceRequired ? t('retention.yes') : t('retention.no')}
+                          color={rule.evidenceRequired ? warningChipColor : neutralChipColor}
                         />
                       </TableCell>
                     </TableRow>
@@ -350,11 +357,11 @@ export function PlatformRetentionPage() {
         </>
       )}
 
-      {policy.status === 'refused' && <Box sx={column}><ProblemMessage problem={policy.problem} /></Box>}
+      {policy.status === policyStatuses.refused && <Box sx={column}><ProblemMessage problem={policy.problem} /></Box>}
 
       {/* A refusal the server put into words is answered by reading it, not by asking again. Something that went
           wrong without any such words is the other screen, and that one is worth retrying. */}
-      {policy.status === 'errored' && (
+      {policy.status === policyStatuses.errored && (
         <>
           <Box sx={column}><ProblemMessage problem={policy.problem} /></Box>
           <Button
@@ -363,7 +370,7 @@ export function PlatformRetentionPage() {
             onClick={() => policy.refresh(undefined)}
             sx={leading}
           >
-            Try again
+            {t('retention.retry')}
           </Button>
         </>
       )}
@@ -372,16 +379,16 @@ export function PlatformRetentionPage() {
         <>
           <Paper variant="outlined" sx={narrowSection}>
             <Stack spacing={2}>
-              <Typography component="h2" variant="subtitle1">Place a hold</Typography>
+              <Typography component="h2" variant="subtitle1">{t('retention.place.title')}</Typography>
               <Stack
                 component="form"
                 spacing={2}
-                aria-label="Place a hold"
+                aria-label={t('retention.place.formLabel')}
                 onSubmit={(event) => { event.preventDefault(); placeHold(); }}
               >
                 <TextField
                   id="retention-subject"
-                  label="Subject identity"
+                  label={t('retention.place.subjectIdentity')}
                   type="text"
                   required
                   fullWidth
@@ -392,30 +399,30 @@ export function PlatformRetentionPage() {
 
                 <TextField
                   id="retention-reason-code"
-                  label="Reason code"
+                  label={t('retention.place.reasonCode')}
                   type="text"
                   required
                   fullWidth
                   slotProps={requiredField}
-                  helperText={REFERENCE_SHAPE}
+                  helperText={t('retention.place.referenceShape')}
                   value={reasonCode}
                   onChange={(event) => setReasonCode(event.target.value)}
                 />
 
                 <TextField
                   id="retention-reference"
-                  label="Reference"
+                  label={t('retention.place.reference')}
                   type="text"
                   required
                   fullWidth
                   slotProps={requiredField}
-                  helperText={REFERENCE_SHAPE}
+                  helperText={t('retention.place.referenceShape')}
                   value={reference}
                   onChange={(event) => setReference(event.target.value)}
                 />
 
                 <Button type="submit" variant="contained" disabled={isBusy} sx={leading}>
-                  Place hold
+                  {t('retention.place.submit')}
                 </Button>
               </Stack>
 
@@ -423,7 +430,7 @@ export function PlatformRetentionPage() {
                   has no way to name the hold again. */}
               {receipt && (
                 <Alert severity="success" role="status">
-                  {`Hold ${receipt.holdId} is placed for ${receipt.reasonCode} under reference ${receipt.reference}, at ${receipt.placedAt}. Keep that hold id: nothing lists holds, so this is the only time it is shown.`}
+                  {t('retention.place.receipt', receipt)}
                 </Alert>
               )}
             </Stack>
@@ -431,16 +438,16 @@ export function PlatformRetentionPage() {
 
           <Paper variant="outlined" sx={narrowSection}>
             <Stack spacing={2}>
-              <Typography component="h2" variant="subtitle1">Release a hold</Typography>
+              <Typography component="h2" variant="subtitle1">{t('retention.release.title')}</Typography>
               <Stack
                 component="form"
                 spacing={2}
-                aria-label="Release a hold"
+                aria-label={t('retention.release.formLabel')}
                 onSubmit={(event) => { event.preventDefault(); setPendingRelease(holdId); }}
               >
                 <TextField
                   id="retention-hold-id"
-                  label="Hold id"
+                  label={t('retention.release.holdId')}
                   type="text"
                   required
                   fullWidth
@@ -452,7 +459,7 @@ export function PlatformRetentionPage() {
                     irreversible confirmation below it was the only filled button in this card — the loudest
                     control on the page was the one nobody should press by accident. */}
                 <Button type="submit" variant="contained" disabled={isBusy} sx={leading}>
-                  Release
+                  {t('retention.release.submit')}
                 </Button>
               </Stack>
 
@@ -462,18 +469,18 @@ export function PlatformRetentionPage() {
                 <Stack
                   component="form"
                   spacing={2}
-                  aria-label="Confirm release"
+                  aria-label={t('retention.release.confirmationLabel')}
                   onSubmit={(event) => { event.preventDefault(); releaseHold(); }}
                 >
                   <Typography variant="body2">
-                    Release this hold? Nothing about it is read back first — the route answers the same way whether it stands, was already released, or never existed.
+                    {t('retention.release.prompt')}
                   </Typography>
                   {/* Answering the confirmation is the destructive half, so it is drawn in the error colour and
                       NOT filled: an irreversible act does not get the page's heaviest weight, and the way out of
                       it beside it is quieter still rather than its equal. */}
                   <Stack direction="row" spacing={1} useFlexGap sx={confirmActions}>
-                    <Button type="submit" variant="outlined" color="error" disabled={isBusy}>Confirm release</Button>
-                    <Button type="button" variant="text" onClick={() => setPendingRelease(null)}>Cancel</Button>
+                    <Button type="submit" variant="outlined" color="error" disabled={isBusy}>{t('retention.release.confirm')}</Button>
+                    <Button type="button" variant="text" onClick={() => setPendingRelease(null)}>{t('panel.cancel')}</Button>
                   </Stack>
                 </Stack>
               )}
@@ -483,8 +490,7 @@ export function PlatformRetentionPage() {
                   deliberately does not answer. */}
               {releaseNotice && (
                 <Alert severity="success" role="status">
-                  This hold is released. A hold that was already released and one that never existed answer exactly the
-                  same way, so this says what is true now — not that this request changed anything.
+                  {t('retention.release.notice')}
                 </Alert>
               )}
             </Stack>

@@ -44,6 +44,7 @@ export default [
   },
   {
     files: ['src/components/**/*.{js,jsx}'],
+    ignores: ['**/*.test.{js,jsx}', '**/*.spec.{js,jsx}'],
     rules: {
       'i18next/no-literal-string': ['error', {
         mode: 'jsx-only',
@@ -78,6 +79,7 @@ export default [
   },
   {
     files: ['src/features/identity/login/**/*.{js,jsx}'],
+    ignores: ['**/*.test.{js,jsx}', '**/*.spec.{js,jsx}'],
     rules: {
       'i18next/no-literal-string': ['error', {
         mode: 'jsx-only',
@@ -95,6 +97,7 @@ export default [
   },
   {
     files: ['src/features/identity/register/**/*.{js,jsx}'],
+    ignores: ['**/*.test.{js,jsx}', '**/*.spec.{js,jsx}'],
     rules: {
       'i18next/no-literal-string': ['error', {
         mode: 'jsx-only',
@@ -327,6 +330,78 @@ export default [
   },
   {
     files: ['src/features/platform/invitations/**/*.{js,jsx}'],
+    ignores: ['**/*.test.{js,jsx}', '**/*.spec.{js,jsx}'],
+    rules: {
+      'i18next/no-literal-string': ['error', {
+        mode: 'jsx-only',
+        'jsx-attributes': {
+          exclude: [
+            'className', 'styleName', 'style', 'type', 'key', 'id', 'width', 'height',
+            'component', 'to', 'href', 'sx', 'variant', 'color', 'position', 'edge', 'size', 'severity',
+            'autoComplete', 'maxWidth', 'direction', 'role', 'data-testid', 'aria-labelledby', 'aria-describedby',
+            'aria-controls', 'aria-current', 'aria-haspopup', 'aria-live',
+            ...structuralJsxAttributeExclusions,
+          ],
+        },
+      }],
+    },
+  },
+  {
+    files: ['src/features/platform/retention/**/*.{js,jsx}'],
+    ignores: ['**/*.test.{js,jsx}', '**/*.spec.{js,jsx}'],
+    rules: {
+      'i18next/no-literal-string': ['error', {
+        mode: 'jsx-only',
+        'jsx-attributes': {
+          exclude: [
+            'className', 'styleName', 'style', 'type', 'key', 'id', 'width', 'height',
+            'component', 'to', 'href', 'sx', 'variant', 'color', 'position', 'edge', 'size', 'severity',
+            'autoComplete', 'maxWidth', 'direction', 'role', 'data-testid', 'aria-labelledby', 'aria-describedby',
+            'aria-controls', 'aria-current', 'aria-haspopup', 'aria-live',
+            ...structuralJsxAttributeExclusions,
+          ],
+        },
+      }],
+    },
+  },
+  {
+    files: ['src/features/identity/api/**/*.{js,jsx}'],
+    ignores: ['**/*.test.{js,jsx}', '**/*.spec.{js,jsx}'],
+    rules: {
+      'i18next/no-literal-string': ['error', {
+        mode: 'jsx-only',
+        'jsx-attributes': {
+          exclude: [
+            'className', 'styleName', 'style', 'type', 'key', 'id', 'width', 'height',
+            'component', 'to', 'href', 'sx', 'variant', 'color', 'position', 'edge', 'size', 'severity',
+            'autoComplete', 'maxWidth', 'direction', 'role', 'data-testid', 'aria-labelledby', 'aria-describedby',
+            'aria-controls', 'aria-current', 'aria-haspopup', 'aria-live',
+            ...structuralJsxAttributeExclusions,
+          ],
+        },
+      }],
+    },
+  },
+  {
+    files: ['src/features/identity/{useSubmit,useIdentityProof,useFragmentToken,externalNavigation}.{js,jsx}'],
+    ignores: ['**/*.test.{js,jsx}', '**/*.spec.{js,jsx}'],
+    rules: {
+      'i18next/no-literal-string': ['error', {
+        mode: 'jsx-only',
+        'jsx-attributes': {
+          exclude: [
+            'className', 'styleName', 'style', 'type', 'key', 'id', 'width', 'height',
+            'component', 'to', 'href', 'sx', 'variant', 'color', 'position', 'edge', 'size', 'severity',
+            'autoComplete', 'maxWidth', 'direction', 'role', 'data-testid', 'aria-labelledby', 'aria-describedby',
+            'aria-controls', 'aria-current', 'aria-haspopup', 'aria-live',
+            ...structuralJsxAttributeExclusions,
+          ],
+        },
+      }],
+    },
+  },
+  {
+    files: ['src/features/platform/api/**/*.{js,jsx}'],
     ignores: ['**/*.test.{js,jsx}', '**/*.spec.{js,jsx}'],
     rules: {
       'i18next/no-literal-string': ['error', {
