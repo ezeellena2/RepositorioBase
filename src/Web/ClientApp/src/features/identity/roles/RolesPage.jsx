@@ -18,6 +18,7 @@ import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
+import { useTranslation } from '../../../i18n';
 import { useIdentity } from '../context/IdentityProvider';
 import { ProblemMessage } from '../ProblemMessage';
 import { useIdentityProof } from '../useIdentityProof';
@@ -74,6 +75,7 @@ const EMPTY_DRAFT = { roleId: null, name: '', permissions: [], version: null };
 const RolesPath = '/roles';
 
 export function RolesPage() {
+  const { t } = useTranslation('identity');
   const identity = useIdentity();
   const proof = useIdentityProof();
   const tenantId = identity.context?.activeTenant?.id ?? null;
@@ -225,7 +227,7 @@ export function RolesPage() {
       <TableCell>{role.name}</TableCell>
       <TableCell>
         {role.permissions.length === 0 ? (
-          <Typography variant="caption" color="text.secondary">no permissions</Typography>
+          <Typography variant="caption" color="text.secondary">{t('roles.noPermissions')}</Typography>
         ) : (
           <Stack direction="row" spacing={0.5} useFlexGap sx={permissionChips}>
             {role.permissions.map((code) => <Chip key={code} size="small" label={code} />)}
@@ -238,8 +240,8 @@ export function RolesPage() {
             and a role that is neither says nothing here rather than holding an empty row open. */}
         {(role.isSystem || role.isRetired) && (
           <Stack direction="row" spacing={0.5} useFlexGap sx={chips}>
-            {role.isSystem && <Chip size="small" variant="outlined" label="built in" />}
-            {role.isRetired && <Chip size="small" variant="outlined" color="error" label="retired" />}
+            {role.isSystem && <Chip size="small" variant="outlined" label={t('roles.builtIn')} />}
+            {role.isRetired && <Chip size="small" variant="outlined" color="error" label={t('roles.retired')} />}
           </Stack>
         )}
       </TableCell>
@@ -252,7 +254,7 @@ export function RolesPage() {
               disabled={isBusy}
               onClick={() => setDraft({ roleId: role.roleId, name: role.name, permissions: [...role.permissions], version: role.version })}
             >
-              Edit {role.name}
+              {t('roles.edit', { name: role.name })}
             </Button>
             {canProve && (
               <Button
@@ -262,7 +264,7 @@ export function RolesPage() {
                 disabled={isBusy || !canRetire}
                 onClick={() => retire(role)}
               >
-                Retire {role.name}
+                {t('roles.retire', { name: role.name })}
               </Button>
             )}
           </Stack>
@@ -274,7 +276,7 @@ export function RolesPage() {
   // lists it. The password is listed by value and not as the boolean above it, because a retirement spends the
   // password that was in the field at the moment it was pressed.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  [roles, isBusy, canProve, canRetire, password, identity, tenantId]);
+  [roles, isBusy, canProve, canRetire, password, identity, tenantId, t]);
 
   if (tenantId === null) {
     // Reached inside the shell, so it is composed as a screen and not as the raised card the public entrance
@@ -283,9 +285,9 @@ export function RolesPage() {
     return (
       <Stack component="section" aria-labelledby="roles-heading" spacing={3} sx={frame}>
         <Box>
-          <Typography id="roles-heading" component="h1" variant="h5">Roles</Typography>
+          <Typography id="roles-heading" component="h1" variant="h5">{t('common:navigation.roles')}</Typography>
           <Typography variant="body2" color="text.secondary" sx={supporting}>
-            Choose an organization first. Roles belong to one organization, and this session is not in one.
+            {t('roles.noOrganization')}
           </Typography>
         </Box>
         {/* A dead end with exactly one way out, and no control offering it: the label would be a user-visible
@@ -299,10 +301,9 @@ export function RolesPage() {
   return (
     <Stack component="section" aria-labelledby="roles-heading" spacing={3}>
       <Box>
-        <Typography id="roles-heading" component="h1" variant="h5">Roles</Typography>
+        <Typography id="roles-heading" component="h1" variant="h5">{t('common:navigation.roles')}</Typography>
         <Typography variant="body2" color="text.secondary" sx={supporting}>
-          A role is a label with permissions behind it. You can only put permissions into a role that you hold
-          yourself, and the organization always keeps at least one administrator.
+          {t('roles.description')}
         </Typography>
       </Box>
 
@@ -316,7 +317,7 @@ export function RolesPage() {
           {proof.hasPassword ? (
             <TextField
               id="roles-password"
-              label="Password"
+              label={t('login.password')}
               type="password"
               autoComplete="current-password"
               fullWidth
@@ -325,7 +326,7 @@ export function RolesPage() {
             />
           ) : (
             <Typography variant="body2" color="text.secondary">
-              You have no password here. Every change asks {proof.provider} to confirm it is you.
+              {t('roles.providerProof', { provider: proof.provider })}
             </Typography>
           )}
         </Paper>
@@ -336,13 +337,13 @@ export function RolesPage() {
           only content is three skeletons announces nothing when it changes. */}
       {roles === null || !proof.isReady ? (
         <Stack spacing={1} role="status">
-          <Typography variant="body2" color="text.secondary">Loading&hellip;</Typography>
+          <Typography variant="body2" color="text.secondary">{t('roles.loading')}</Typography>
           {[0, 1, 2].map((placeholder) => <Skeleton key={placeholder} variant="rounded" height={ROW_HEIGHT} />)}
         </Stack>
       ) : roles.length === 0 ? (
         <Paper variant="outlined" sx={empty}>
           <Typography variant="body2" color="text.secondary">
-            No roles have been made for this organization yet. The first one is composed below.
+            {t('roles.empty')}
           </Typography>
         </Paper>
       ) : (
@@ -350,10 +351,10 @@ export function RolesPage() {
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell component="th" scope="col">Role</TableCell>
-                <TableCell component="th" scope="col">Permissions</TableCell>
-                <TableCell component="th" scope="col">State</TableCell>
-                <TableCell component="th" scope="col" align="right">Actions</TableCell>
+                <TableCell component="th" scope="col">{t('roles.columns.role')}</TableCell>
+                <TableCell component="th" scope="col">{t('roles.columns.permissions')}</TableCell>
+                <TableCell component="th" scope="col">{t('roles.columns.state')}</TableCell>
+                <TableCell component="th" scope="col" align="right">{t('roles.columns.actions')}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>{roleRows}</TableBody>
@@ -363,7 +364,7 @@ export function RolesPage() {
 
       {nextCursor !== null && (
         <Button type="button" variant="outlined" disabled={isBusy} onClick={showMore} sx={start}>
-          Show more roles
+          {t('roles.showMore')}
         </Button>
       )}
 
@@ -376,11 +377,13 @@ export function RolesPage() {
         <Stack spacing={2}>
           {/* A section under an h5 page title, so the weight of a section heading. The level is the level it
               already was: it is still the second heading of this document, whatever size it is drawn at. */}
-          <Typography component="h2" variant="subtitle1">{draft.roleId === null ? 'New role' : `Editing ${draft.name}`}</Typography>
+          <Typography component="h2" variant="subtitle1">
+            {draft.roleId === null ? t('roles.new') : t('roles.editing', { name: draft.name })}
+          </Typography>
 
           <TextField
             id="role-name"
-            label="Name"
+            label={t('roles.name')}
             required
             fullWidth
             slotProps={requiredField}
@@ -389,7 +392,7 @@ export function RolesPage() {
           />
 
           <FormControl component="fieldset">
-            <FormLabel component="legend">Permissions you can grant</FormLabel>
+            <FormLabel component="legend">{t('roles.permissionsToGrant')}</FormLabel>
             {/* The wait holds two checkbox rows so the group does not arrive by pushing the submit down, and the
                 sentence waits for the server to have actually said it. A catalogue still in flight and a
                 catalogue that came back empty are different facts and must not read alike. */}
@@ -398,7 +401,7 @@ export function RolesPage() {
                 {[0, 1].map((placeholder) => <Skeleton key={placeholder} variant="rounded" height={38} />)}
               </Stack>
             ) : grantable.length === 0 && (
-              <Typography variant="body2" color="text.secondary">You hold no permissions that can be put into a role.</Typography>
+              <Typography variant="body2" color="text.secondary">{t('roles.noneGrantable')}</Typography>
             )}
             <FormGroup>
               {grantable.map((entry) => (
@@ -420,10 +423,10 @@ export function RolesPage() {
 
           <Stack direction="row" spacing={1} useFlexGap sx={row}>
             <Button type="submit" variant="contained" disabled={isBusy || !proof.canProve || !proof.canBegin(password)}>
-              {draft.roleId === null ? 'Create role' : 'Save role'}
+              {draft.roleId === null ? t('roles.create') : t('roles.save')}
             </Button>
             {draft.roleId !== null && (
-              <Button type="button" variant="outlined" disabled={isBusy} onClick={() => setDraft(EMPTY_DRAFT)}>Cancel</Button>
+              <Button type="button" variant="outlined" disabled={isBusy} onClick={() => setDraft(EMPTY_DRAFT)}>{t('roles.cancel')}</Button>
             )}
           </Stack>
         </Stack>

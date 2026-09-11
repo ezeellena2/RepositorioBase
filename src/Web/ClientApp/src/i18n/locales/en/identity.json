@@ -194,5 +194,32 @@
     "profile": {
       "save": "Save"
     }
+  },
+  "roles": {
+    "noPermissions": "no permissions",
+    "builtIn": "built in",
+    "retired": "retired",
+    "edit": "Edit {{name}}",
+    "retire": "Retire {{name}}",
+    "noOrganization": "Choose an organization first. Roles belong to one organization, and this session is not in one.",
+    "description": "A role is a label with permissions behind it. You can only put permissions into a role that you hold yourself, and the organization always keeps at least one administrator.",
+    "providerProof": "You have no password here. Every change asks {{provider}} to confirm it is you.",
+    "loading": "Loading…",
+    "empty": "No roles have been made for this organization yet. The first one is composed below.",
+    "columns": {
+      "role": "Role",
+      "permissions": "Permissions",
+      "state": "State",
+      "actions": "Actions"
+    },
+    "showMore": "Show more roles",
+    "new": "New role",
+    "editing": "Editing {{name}}",
+    "name": "Name",
+    "permissionsToGrant": "Permissions you can grant",
+    "noneGrantable": "You hold no permissions that can be put into a role.",
+    "create": "Create role",
+    "save": "Save role",
+    "cancel": "Cancel"
   }
 }
