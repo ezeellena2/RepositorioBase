@@ -4,6 +4,10 @@
     "stepUpDescription": "This session has not proved your second factor yet. Enter a code from your authenticator to continue.",
     "cancel": "Cancel"
   },
+  "stepUp": {
+    "label": "Step up",
+    "authenticatorCode": "Authenticator code"
+  },
   "organizations": {
     "title": "Organizations",
     "empty": "No organizations are listed here.",

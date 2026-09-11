@@ -1,8 +1,10 @@
 import Button from '@mui/material/Button';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
+import { useTranslation } from '../../../i18n';
 
 const form = { maxWidth: 360 };
+const stepUpFieldSlots = { inputLabel: { required: false }, htmlInput: { inputMode: 'numeric' } };
 
 /**
  * The one form every Platform screen asks the second factor with. It is fully controlled and owns no state: the
@@ -17,25 +19,27 @@ const form = { maxWidth: 360 };
  * primary action is elsewhere, and a second filled button would claim an emphasis this form does not have.
  */
 export function PlatformStepUpForm({ inputId, code, onCodeChange, onSubmit, isBusy, submitVariant = 'contained' }) {
+  const { t } = useTranslation('platform');
+
   return (
     <Stack
       component="form"
       spacing={2}
-      aria-label="Step up"
+      aria-label={t('stepUp.label')}
       sx={form}
       onSubmit={(event) => { event.preventDefault(); onSubmit(); }}
     >
       <TextField
         id={inputId}
-        label="Authenticator code"
+        label={t('stepUp.authenticatorCode')}
         type="text"
         required
         fullWidth
-        slotProps={{ inputLabel: { required: false }, htmlInput: { inputMode: 'numeric' } }}
+        slotProps={stepUpFieldSlots}
         value={code}
         onChange={(event) => onCodeChange(event.target.value)}
       />
-      <Button type="submit" variant={submitVariant} disabled={isBusy} sx={{ alignSelf: 'flex-start' }}>Step up</Button>
+      <Button type="submit" variant={submitVariant} disabled={isBusy} sx={{ alignSelf: 'flex-start' }}>{t('stepUp.label')}</Button>
     </Stack>
   );
 }
