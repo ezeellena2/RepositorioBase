@@ -18,6 +18,7 @@ import Stack from '@mui/material/Stack';
 import Toolbar from '@mui/material/Toolbar';
 import Typography from '@mui/material/Typography';
 import { useIdentity } from '../features/identity/context/IdentityProvider';
+import { useTranslation } from '../i18n';
 
 export const drawerWidth = 264;
 
@@ -38,6 +39,7 @@ const hideAtWide = (theme) => ({ [theme.breakpoints.up('md')]: { display: 'none'
  */
 const switcherTrigger = { maxWidth: drawerWidth };
 const switcherLabel = { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' };
+const navigationTextSlotProps = { primary: { variant: 'body2', component: 'span' } };
 
 const brand = { color: 'inherit', textDecoration: 'none', whiteSpace: 'nowrap' };
 
@@ -59,7 +61,7 @@ function NavItem({ to, children }) {
         selected={current}
         aria-current={current ? 'page' : undefined}
       >
-        <ListItemText primary={children} slotProps={{ primary: { variant: 'body2', component: 'span' } }} />
+        <ListItemText primary={children} slotProps={navigationTextSlotProps} />
       </ListItemButton>
     </ListItem>
   );
@@ -84,6 +86,7 @@ function Section({ title, children }) {
 function NavContents({ onNavigate }) {
   const identity = useIdentity();
   const navigate = useNavigate();
+  const { t } = useTranslation('common');
 
   const handleSignOut = async (event) => {
     event.preventDefault();
@@ -98,21 +101,21 @@ function NavContents({ onNavigate }) {
 
   return (
     <Box onClick={onNavigate}>
-      <Section title="Your account">
-        <NavItem to="/identity">Your access</NavItem>
-        <NavItem to="/identity/profile">Your profile</NavItem>
-        <NavItem to="/identity/account">Your account</NavItem>
-        <NavItem to="/identity/sessions">Your devices</NavItem>
-        <NavItem to="/identity/password">Your password</NavItem>
-        <NavItem to="/identity/external">Sign-in providers</NavItem>
+      <Section title={t('navigation.accountSection')}>
+        <NavItem to="/identity">{t('navigation.yourAccess')}</NavItem>
+        <NavItem to="/identity/profile">{t('navigation.yourProfile')}</NavItem>
+        <NavItem to="/identity/account">{t('navigation.yourAccount')}</NavItem>
+        <NavItem to="/identity/sessions">{t('navigation.yourDevices')}</NavItem>
+        <NavItem to="/identity/password">{t('navigation.yourPassword')}</NavItem>
+        <NavItem to="/identity/external">{t('navigation.signInProviders')}</NavItem>
       </Section>
 
       <Divider />
-      <Section title="Organizations">
-        <NavItem to="/organizations/select">Organizations</NavItem>
-        {permissions.includes('roles.read') && <NavItem to="/roles">Roles</NavItem>}
-        {permissions.includes('members.read') && <NavItem to="/members">Members</NavItem>}
-        {permissions.includes('members.invite') && <NavItem to="/members/invite">Invite a member</NavItem>}
+      <Section title={t('navigation.organizationsSection')}>
+        <NavItem to="/organizations/select">{t('navigation.organizations')}</NavItem>
+        {permissions.includes('roles.read') && <NavItem to="/roles">{t('navigation.roles')}</NavItem>}
+        {permissions.includes('members.read') && <NavItem to="/members">{t('navigation.members')}</NavItem>}
+        {permissions.includes('members.invite') && <NavItem to="/members/invite">{t('navigation.inviteMember')}</NavItem>}
       </Section>
 
       {/* Offered only to a session already operating as Platform. It is a convenience, not a control: the
@@ -120,25 +123,25 @@ function NavContents({ onNavigate }) {
       {platform && (
         <>
           <Divider />
-          <Section title="Platform">
-            {permissions.includes('platform.organizations.read') && <NavItem to="/platform">Platform</NavItem>}
-            {permissions.includes('platform.identities.read') && <NavItem to="/platform/identities">Platform identities</NavItem>}
-            {permissions.includes('platform.retention.read') && <NavItem to="/platform/retention">Retention</NavItem>}
+          <Section title={t('navigation.platformSection')}>
+            {permissions.includes('platform.organizations.read') && <NavItem to="/platform">{t('navigation.platform')}</NavItem>}
+            {permissions.includes('platform.identities.read') && <NavItem to="/platform/identities">{t('navigation.platformIdentities')}</NavItem>}
+            {permissions.includes('platform.retention.read') && <NavItem to="/platform/retention">{t('navigation.retention')}</NavItem>}
           </Section>
         </>
       )}
 
       <Divider />
-      <Section title="Examples">
-        <NavItem to="/">Home</NavItem>
-        <NavItem to="/counter">Counter</NavItem>
+      <Section title={t('navigation.examplesSection')}>
+        <NavItem to="/">{t('navigation.home')}</NavItem>
+        <NavItem to="/counter">{t('navigation.counter')}</NavItem>
       </Section>
 
       <Divider />
       <List dense>
         <ListItem disablePadding>
           <ListItemButton component="a" href="/login" onClick={handleSignOut}>
-            <ListItemText primary="Log out" slotProps={{ primary: { variant: 'body2', component: 'span' } }} />
+            <ListItemText primary={t('navigation.logOut')} slotProps={navigationTextSlotProps} />
           </ListItemButton>
         </ListItem>
       </List>
@@ -158,6 +161,7 @@ function NavContents({ onNavigate }) {
 function ContextSwitcher() {
   const identity = useIdentity();
   const [anchor, setAnchor] = useState(null);
+  const { t } = useTranslation('common');
 
   const available = identity?.context?.availableTenants ?? [];
   const active = identity?.context?.activeTenant ?? null;
@@ -176,14 +180,14 @@ function ContextSwitcher() {
       <Button
         variant="outlined"
         color="inherit"
-        aria-label="Change organization"
+        aria-label={t('navigation.changeOrganization')}
         aria-haspopup="menu"
         onClick={(event) => setAnchor(event.currentTarget)}
         endIcon={<ChevronDown size={18} strokeWidth={2} />}
         sx={switcherTrigger}
       >
         <Box component="span" sx={switcherLabel}>
-          {active ? active.name : 'No organization selected'}
+          {active ? active.name : t('navigation.noOrganizationSelected')}
         </Box>
       </Button>
       <Menu anchorEl={anchor} open={anchor !== null} onClose={() => setAnchor(null)}>
@@ -191,7 +195,7 @@ function ContextSwitcher() {
           <MenuItem key={tenant.id} selected={tenant.id === active?.id} onClick={() => choose(tenant.id)}>
             <ListItemText
               primary={tenant.name}
-              secondary={tenant.type === 'Personal' ? 'Personal account' : 'Organization'}
+              secondary={tenant.type === 'Personal' ? t('navigation.personalAccount') : t('navigation.organization')}
             />
           </MenuItem>
         ))}
@@ -209,10 +213,12 @@ function ContextSwitcher() {
  * filled button in the theme's own primary would disappear into the bar it sits on.
  */
 function VisitorActions() {
+  const { t } = useTranslation('common');
+
   return (
-    <Stack component="nav" aria-label="Account entry" direction="row" spacing={1}>
-      <Button component={RouterLink} to="/login" color="inherit">Log in</Button>
-      <Button component={RouterLink} to="/register" color="inherit" variant="outlined">Register</Button>
+    <Stack component="nav" aria-label={t('navigation.accountEntry')} direction="row" spacing={1}>
+      <Button component={RouterLink} to="/login" color="inherit">{t('navigation.logIn')}</Button>
+      <Button component={RouterLink} to="/register" color="inherit" variant="outlined">{t('navigation.register')}</Button>
     </Stack>
   );
 }
@@ -227,6 +233,7 @@ function VisitorActions() {
 export function NavMenu() {
   const identity = useIdentity();
   const [open, setOpen] = useState(false);
+  const { t } = useTranslation('common');
 
   const loading = identity?.isLoading !== false;
   const signedIn = identity?.isAuthenticated === true;
@@ -248,7 +255,7 @@ export function NavMenu() {
             <IconButton
               color="inherit"
               edge="start"
-              aria-label="Open navigation"
+              aria-label={t('navigation.openNavigation')}
               onClick={() => setOpen(true)}
               sx={hideAtWide}
             >
@@ -257,7 +264,7 @@ export function NavMenu() {
           )}
           {signedIn
             ? <ContextSwitcher />
-            : <Typography component={RouterLink} to="/" variant="h6" sx={brand}>Clean Architecture</Typography>}
+            : <Typography component={RouterLink} to="/" variant="h6" sx={brand}>{t('navigation.brand')}</Typography>}
           <Box sx={{ flexGrow: 1 }} />
           {signedIn && displayName !== null && (
             <Typography variant="body2" sx={{ display: { xs: 'none', sm: 'block' } }}>{displayName}</Typography>
@@ -273,7 +280,7 @@ export function NavMenu() {
           <Drawer
             variant="permanent"
             component="nav"
-            aria-label="Primary navigation"
+            aria-label={t('navigation.primaryNavigation')}
             sx={(theme) => ({
               width: drawerWidth,
               flexShrink: 0,
