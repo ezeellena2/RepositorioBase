@@ -61,11 +61,13 @@ public sealed class InvitationConfiguration : IEntityTypeConfiguration<Invitatio
         {
             table.HasCheckConstraint("CK_Invitations_Ids_NotEmpty", "\"Id\" <> '00000000-0000-0000-0000-000000000000'::uuid AND \"TenantId\" <> '00000000-0000-0000-0000-000000000000'::uuid AND (\"AcceptedByIdentityId\" IS NULL OR \"AcceptedByIdentityId\" <> '00000000-0000-0000-0000-000000000000'::uuid)");
             table.HasCheckConstraint("CK_Invitations_Lifecycle", LifecycleConstraint);
+            table.HasCheckConstraint("CK_Invitations_Language", "\"Language\" IS NULL OR \"Language\" IN ('en', 'es')");
         });
         builder.HasKey(invitation => invitation.Id);
         builder.Property(invitation => invitation.Id).HasConversion(id => id.Value, value => InvitationId.From(value)).ValueGeneratedNever();
         builder.Property(invitation => invitation.TenantId).HasConversion(id => id.Value, value => TenantId.From(value)).IsRequired();
         builder.Property(invitation => invitation.NormalizedEmail).HasMaxLength(256).IsRequired();
+        builder.Property(invitation => invitation.Language).HasMaxLength(16);
         builder.Property(invitation => invitation.TokenHash)
             .HasConversion(hash => hash.Value, value => VersionedTokenHash.FromPersistedValue(value))
             .HasMaxLength(256)

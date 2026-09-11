@@ -1,5 +1,5 @@
 using CleanArchitecture.Web.Infrastructure.Identity;
-using CleanArchitecture.Web.Localization;
+using CleanArchitecture.Application.Common.Localization;
 using Microsoft.AspNetCore.Localization;
 using Microsoft.Extensions.Options;
 using Scalar.AspNetCore;

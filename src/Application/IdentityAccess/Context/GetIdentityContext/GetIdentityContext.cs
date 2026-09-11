@@ -11,6 +11,7 @@ public sealed record IdentityContext(
     Guid IdentityId,
     string DisplayName,
     bool EmailConfirmed,
+    string? PreferredLanguage,
     TenantContext? ActiveTenant,
     IReadOnlyList<TenantContext> AvailableTenants,
     IReadOnlyList<string> Permissions,

@@ -40,7 +40,10 @@ internal static class PlatformScenario
     /// A pending Platform invitation whose token the test chose. The row stores only the hash, produced by the
     /// same type the application uses rather than by a copy of its rule that could drift from it.
     /// </summary>
-    internal static async Task<(string Email, string Token)> PendingInvitationAsync(bool isOwner = true, string? email = null)
+    internal static async Task<(string Email, string Token)> PendingInvitationAsync(
+        bool isOwner = true,
+        string? email = null,
+        string language = "en")
     {
         var platform = await ActivePlatformAsync();
         var recipient = email ?? $"platform-{Guid.NewGuid():N}@example.test";
@@ -54,6 +57,7 @@ internal static class PlatformScenario
             recipient,
             VersionedTokenHash.Of(token),
             isOwner,
+            language,
             now.AddMinutes(-1),
             now.AddDays(7)));
         await context.SaveChangesAsync();

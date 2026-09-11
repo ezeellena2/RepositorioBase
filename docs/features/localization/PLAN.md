@@ -2,10 +2,10 @@
 
 | | |
 |---|---|
-| Status | **Phases 0–3 and the separate Phase 3 copy-review correction are complete and delivered by the commit containing this entry. General tenant-type copy now says Context/contexto, reviewed Spanish enum terms are corrected, and English multiword enum labels are readable. Phase 4 has not started.** |
+| Status | **Phases 0–3 and the separate Phase 3 copy-review correction (`a271c97`) are complete and delivered to `main`. Phase 4 and A7/IA-REQ-059 are complete and fully verified in the working tree; the Phase 4 commit and push to `main` remain pending.** |
 | Last updated | 2026-09-11 |
 | Scope | Backend (.NET), React SPA (`src/Web/ClientApp`), outbox-delivered messages, tests, CI, and the repository's working rules |
-| Next action | Record the approved Phase 4 decisions P4.1–P4.6 and execute §11.6. |
+| Next action | Commit the fully verified Phase 4 candidate and push it directly to `origin/main`; then record the push-triggered Build result. |
 
 This document is self-contained: a new session that reads only this file must be able to continue. It is also the
 source of truth — agent memories (Claude auto-memory, Engram) are not shared by every tool.
@@ -55,15 +55,34 @@ source of truth — agent memories (Claude auto-memory, Engram) are not shared b
 - P3.1–P3.7 are accepted and Phase 3 was delivered at `c9ecbea`. Both catalogs still contain the same 462 leaves;
   `es` is supported; and that delivery's complete local verification passed 343 SPA tests, 1,335 .NET tests and 33
   isolated journeys.
-- A separate post-delivery Phase 3 copy-review correction is complete and delivered by the commit containing this
-  entry. The six broad-context keys
+- A separate post-delivery Phase 3 copy-review correction is delivered at `a271c97`. The six broad-context keys
   `common:navigation.changeOrganization`, `common:navigation.noOrganizationSelected`,
   `identity:context.activeOrganization`, `identity:context.noneInThisOrganization`, `identity:tenants.title` and
   `identity:tenants.empty` now say Context/contexto in both supported languages because their consumers admit
   Personal and Platform as well as Organization tenants. Three reviewed Spanish enum terms are corrected, and 24
   English multiword enum entries now use readable display labels. Catalog keys, enum codes and wire values remain
   invariant; the 20 already-readable one-word enum values plus permission and system-role labels are unchanged. Its
-  complete verification passed 343 SPA tests, 1,335 .NET tests and all 33 isolated journeys. Phase 4 has not started.
+  complete verification passed 343 SPA tests, 1,335 .NET tests and all 33 isolated journeys.
+- P4.1–P4.6 are accepted as recommended. The exact `a271c97` starting tree is the Phase 4 baseline: its fresh
+  correction closure passed Vitest 343/343 in 32 files, ESLint with 0 errors/4 existing warnings, Vite with 2,557
+  modules, .NET 1,335/1,335 (Domain 186, Application Unit 187, Infrastructure 302, Functional 627, Acceptance 33),
+  isolated journeys 33/33, and `git diff --check`. A7 is written and approved as IA-REQ-059 in the identity-access
+  SPEC.
+- The Phase 4 application candidate now implements steps 2–7 plus its bounded post-review correction: nullable
+  account preference and four immutable request-language snapshots; migration
+  `20260911161740_IdentityLanguagePreferences`; the shared Application language registry and Web request-language
+  port; an authenticated, same-origin, antiforgery-protected preference endpoint; 32 parity-checked email resource
+  entries per language covering every §6.3 delivery variant; retry-stable outbox language metadata; and the signed-in
+  persistence/read-only account-display SPA behavior. Lifecycle notices now use three stable message types with an
+  identifier-only payload, with safe migration of legacy pending/attempted rows; only the narrow malformed-payload
+  exception is terminalized as `payload_invalid`. The PostgreSQL delivery gate executes all 17 variants in `en` and
+  `es`, checks all 16 DI registrations and proves account → snapshot → configured-default fallback by family.
+  Authenticated language writes are serialized, reconcile to the last acknowledged server value after a later
+  refusal, preserve newer language across stale tenant/reload responses, and use the central session-loss transition.
+  The final closure is green: Vitest 362/362; ESLint with no errors; Vite build; Domain 190/190; Application Unit
+  188/188; Infrastructure Integration 315/315; Application Functional 640/640; Web Acceptance and isolated journeys
+  33/33; and `git diff --check`. Three independent re-reviews report no remaining candidate-causal finding. The
+  conventional Phase 4 commit and direct push remain pending.
 
 ### 0.2 How to work with the user
 
@@ -207,11 +226,15 @@ cookie → `Accept-Language` → configured default.
 ### 4.4 Persistence (Phase 4; an identity-access SPEC amendment, A7)
 
 - `PreferredLanguage` on the identity account — the `Users` row the outbox handlers already read for the recipient's
-  address. Nullable: empty means "never chose" (P4.2). Registration stores the request's UI language.
-- A `Language` snapshot on everything addressed to somebody who has no account yet: organization and platform
-  invitations, registration and personal intents — captured from the request that created it (D5: the inviter's
-  current language).
-- Outbox handlers resolve the recipient's culture at delivery: account preference, else snapshot, else default.
+  address. Nullable with no back-fill: empty means "never chose" (P4.2). Only first account creation initializes it
+  from the supported request UI language; a flow that finds an existing account never overwrites it.
+- A `Language` snapshot on every organization and platform invitation and every organization-registration and
+  personal-registration intent, whether or not the recipient already has an account. It is captured from the trusted
+  request UI language when that record is created, is not a request DTO field and never changes (D5: the inviter's
+  current language for invitations).
+- On first delivery preparation, outbox handlers resolve the recipient's culture from account preference, else the
+  snapshot, else the configured default. Retries keep that first prepared language even if the preference or default
+  later changes.
 - After sign-in the SPA applies the account's `PreferredLanguage` from the identity context and writes the cookie, so
   a new device converges on the person's choice.
 
@@ -311,9 +334,11 @@ database catalog (runtime editing is not a requirement).
   language and message type.
 - **Nothing returned to the SPA.** `ApplicationError.Detail` is not shown to people, and `Title` stays the invariant
   HTTP reason phrase.
-- **Request language** is used for one thing: snapshotting it where the model needs it (registration →
-  `PreferredLanguage`; invitation and intents → `Language`). Application reads it through a narrow port implemented in
-  Web over `IRequestCultureFeature` (UI culture).
+- **Request language** reaches the model only through a narrow Application port implemented in Web over
+  `IRequestCultureFeature` (UI culture). It initializes `PreferredLanguage` only when the request first creates the
+  account and never when a flow finds an existing account; it also creates the immutable `Language` snapshot on every
+  organization or platform invitation and organization-registration or personal-registration intent. None of those
+  business request DTOs accepts a language field.
 - **Validation messages travel as codes (D3).** Validators declare codes (`WithErrorCode("too_long")`) instead of
   sentences; field errors travel as `{ code, params }` (P5.2); the SPA renders the field's own translated label beside
   the translated rule. Rejected: FluentValidation's built-in translations chosen by the request culture — they keep the
@@ -323,7 +348,7 @@ database catalog (runtime editing is not a requirement).
 
 | File | `new IdentityEmail(` sites | Notes |
 |---|---|---|
-| `AccountLifecycleDeliveryHandlers.cs` | 2 | Account reactivation; lifecycle notice with three outcomes (`self_deactivated`, `administratively_suspended`, `reactivated`) |
+| `AccountLifecycleDeliveryHandlers.cs` | 2 | Account reactivation; three fixed lifecycle notice handlers with distinct stable message types and one identifier-only envelope |
 | `EmailConfirmationDeliveryHandler.cs` | 1 | Also sent by `InvitedConfirmationDeliveryHandler.cs`, which inherits it |
 | `InvitationEmailDeliveryHandler.cs` | 1 | Organization invitation |
 | `SignInNoticeDeliveryHandler.cs` | 1 | |
@@ -398,7 +423,7 @@ that safe:
 | A4 | `AGENTS.md:56`, `AGENTS.md:239` | UI labels and copy "are in English" unless another language is requested | UI copy is **authored** in `en` and **delivered** in every supported language through the catalogs. Spanish values are neutral, professional Spanish, as `AGENTS.md:60` already requires | The rule chose the language an agent writes in; it never meant the product speaks one language | 0 |
 | A5 | `frontend-design-standards/SKILL.md:25-27` | `theme.jsx` overrides component defaults only where one breaks something | It also composes MUI's locale for the active language (`themeFor`), and keeps exporting `appTheme` | Otherwise MUI's own strings stay in English | 0 |
 | A6 | `frontend-design-standards/SKILL.md:55`; `references/ui-composition-rules.md` (lines 113, 130, 134 and every other literal in its examples) | Examples write copy inline (`helperText="Include the check digit."`) | Examples call `t()` | Agents copy the reference's markup; inline copy in the examples would reintroduce literals | 0 |
-| A7 | `docs/features/identity-access/SPEC.md`: IA-REQ-038 and §7 "React context contract" | Field errors carry sentences; the identity context carries no language | Field errors carry `{ code, params }` (D3, P5.2); the identity context carries `preferredLanguage`; a preference endpoint exists | Rule 1 of this standard; the SPA needs the account's choice after sign-in | 4 and 5 |
+| A7 | `docs/features/identity-access/SPEC.md`: IA-REQ-059 now; IA-REQ-038 in Phase 5 | The identity context carries no language; field errors carry sentences | IA-REQ-059 is written and approved for Phase 4: the identity context carries `preferredLanguage`, an own-account preference endpoint exists, and delivery uses the account preference and immutable snapshots. IA-REQ-038's field-error `{ code, params }` amendment remains Phase 5 work (D3, P5.2) | Rule 1 of this standard; the SPA needs the account's choice after sign-in without prematurely changing validation | 4 and 5 |
 
 A4 is written as an explicit override in the project-owned part of `AGENTS.md` — next to the existing project
 standards, the way `frontend-design-standards` already overrides generic advice (`AGENTS.md:113`) — and **not** by
@@ -590,8 +615,9 @@ requirements of §7; a traceability table (requirement → gate → phase → ev
 | 0 | Delivered directly to `main` at exact commit `afe6c92` after fast-forward and remote-ref verification — 2026-09-10 |
 | 1 | Implemented, fully verified locally, committed at `ef19d44`, and fast-forward pushed to `origin/main` after the separate baseline journey repair at `f21103d`. The [first Build run](https://github.com/ezeellena2/RepositorioBase/actions/runs/34557253186) passed `spa`; its build compiled and passed Domain 186, Application Unit 187, Infrastructure Integration 302, and Application Functional 626, but Web Acceptance failed 3/32 because auxiliary `HttpClient` calls rejected the Ubuntu ASP.NET development certificate with `AuthenticationException UntrustedRoot`. The [rerun](https://github.com/ezeellena2/RepositorioBase/actions/runs/34558083319) passed `spa` but build failed in `Trust development HTTPS certificate` with exit 4 because OpenSSL lacked `SSL_CERT_DIR` wiring. Revised [Build run 34559082676](https://github.com/ezeellena2/RepositorioBase/actions/runs/34559082676) passed both `spa` and `build`, including HTTPS trust and Test solution. Test Templates run [34557253244](https://github.com/ezeellena2/RepositorioBase/actions/runs/34557253244) failed for unrelated template drift and is manual-only; CodeQL is deferred. Phase 2 decisions continue without awaiting CI. |
 | 2 | **Complete and delivered by the commit containing this entry — 2026-09-11.** Decisions P2.1–P2.4 were applied. Baseline passed; work units were delivered one folder/commit/push at a time through platform invitations `4553b74`, with retention in this final commit. Final closure passed: Vitest 320/320 in 29 files; ESLint 0 errors/4 expected test warnings; Vite 2,493 modules; .NET 1,334/1,334 (Domain 186, Application Unit 187, Infrastructure 302, Functional 627, Acceptance 32); isolated journeys 32/32. All 39 production component/identity/platform files enforce lint severity 2; existing tests stay at severity 1 and were not edited; the new error-catalog contract passes; every Spanish catalog remains empty. |
-| 3 | **Complete and delivered at `c9ecbea`, with the separate copy-review correction delivered by the commit containing this entry — 2026-09-11.** P3.1–P3.7 were applied. Both languages contain 462 catalog leaves (common 38, errors 56, enums 75, identity 175, platform 118); `es` is promoted to `supported`; permissions retain readable names plus visible codes; only system roles are translated; and timestamps use explicit-locale `Intl` formatting in the browser time zone. The original closure passed Vitest 343/343 in 32 files, ESLint with 0 errors/4 expected test warnings, Vite with 2,557 modules, .NET 1,335/1,335, and isolated journeys 33/33. The follow-up correction intentionally changes six English source values from organization to context, keeps the corresponding Spanish values on contexto, corrects three reviewed Spanish enum terms, and makes 24 English multiword enum display entries readable while preserving every catalog key and invariant code. Its fresh closure repeated Vitest 343/343, ESLint 0 errors/4 expected test warnings, Vite 2,557 modules, .NET 1,335/1,335, isolated journeys 33/33, and `git diff --check`; specification and quality reviews found no remaining issue. Phase 4 has not started. |
-| 4–6 | Pending |
+| 3 | **Complete and delivered at `c9ecbea`, with the separate copy-review correction delivered at `a271c97` — 2026-09-11.** P3.1–P3.7 were applied. Both languages contain 462 catalog leaves (common 38, errors 56, enums 75, identity 175, platform 118); `es` is promoted to `supported`; permissions retain readable names plus visible codes; only system roles are translated; and timestamps use explicit-locale `Intl` formatting in the browser time zone. The original closure passed Vitest 343/343 in 32 files, ESLint with 0 errors/4 expected test warnings, Vite with 2,557 modules, .NET 1,335/1,335, and isolated journeys 33/33. The follow-up correction intentionally changes six English source values from organization to context, keeps the corresponding Spanish values on contexto, corrects three reviewed Spanish enum terms, and makes 24 English multiword enum display entries readable while preserving every catalog key and invariant code. Its fresh closure repeated Vitest 343/343, ESLint 0 errors/4 expected test warnings, Vite 2,557 modules, .NET 1,335/1,335, isolated journeys 33/33, and `git diff --check`; specification and quality reviews found no remaining issue. |
+| 4 | **Complete and fully verified in the working tree; commit and push pending — 2026-09-11.** P4.1–P4.6 and A7/IA-REQ-059 are applied. The candidate adds the nullable account preference, immutable invitation/intent snapshots, migration `20260911161740_IdentityLanguagePreferences`, shared registry/request-language port, protected own-account endpoint, explicit-culture `en`/`es` email resources, retry-stable outbox delivery language, and authenticated SPA persistence/display behavior. The bounded review correction gives lifecycle notices three stable identifier-only message contracts and migrates legacy rows without changing ids/fingerprints or back-filling language; narrows permanent payload classification; restores the invited-confirmation snapshot; removes the endpoint's fallible post-write projection; adds invariant validator messages; and closes tenant/reload/write/session-loss races plus refusal focus. The real delivery matrix renders 17 variants × two languages, covers all 16 DI message types and proves account → snapshot → configured-default/legacy-null resolution by family. Final closure passed Vitest 362/362 in 33 files; ESLint with 0 errors/10 test-only warnings; Vite with 2,557 modules; Domain 190/190; Application Unit 188/188; Infrastructure Integration 315/315; Application Functional 640/640; Web Acceptance and isolated journeys 33/33; and `git diff --check`. Three independent re-reviews found no remaining candidate-causal issue. |
+| 5–6 | Pending |
 
 ## 11. Phases — decisions, steps and exit criteria
 
@@ -743,12 +769,12 @@ the wording awaiting product-owner review and explains how to inspect the Spanis
 
 ### 11.6 Phase 4 — Spanish outside the SPA
 
-**Decisions (pending)**
+**Decisions (accepted 2026-09-11)**
 
-| # | Question | Recommendation | Why |
+| # | Question | Answer | Why |
 |---|---|---|---|
 | P4.1 | Where `PreferredLanguage` lives | On the identity account | The outbox already reads that row for the recipient's address |
-| P4.2 | Existing accounts | Nullable, no back-fill: empty means "never chose" and resolves to the default at delivery | Keeps chosen and inferred apart, and follows the default if it ever changes |
+| P4.2 | Existing accounts | Nullable, no back-fill: empty means "never chose" and delivery falls through to a usable snapshot, then the default | Keeps chosen and inferred apart, preserves the captured request language where one exists, and follows the default if it ever changes |
 | P4.3 | Where a signed-in person changes it | The shell selector saves it to the account; the account screen shows it | One control, and the choice follows the person to other devices |
 | P4.4 | Email format | Keep plain text; localize it as it is | HTML is a separate change (§6.2) |
 | P4.5 | A language control on the invite form | Not now (D5) | The inviter's language covers it; add it on request |
@@ -756,21 +782,46 @@ the wording awaiting product-owner review and explains how to inspect the Spanis
 
 **Steps**
 
-1. Present P4.1–P4.6; write the SPEC amendment (A7) and get it approved.
-2. Migration: nullable `PreferredLanguage` on the account; `Language` on organization and platform invitations and
-   on registration and personal intents.
-3. The request-language port (Application) and its Web implementation (§6.2); capture on registration, invitations
-   and intents.
-4. `Emails.resx` and `Emails.es.resx` covering every site in §6.3; each handler resolves the culture (§4.4) and reads
-   resources with it explicitly.
-5. A preference endpoint (authenticated and antiforgery-protected, in the style of the identity-access HTTP contract)
-   and `preferredLanguage` in the identity context response.
-6. SPA: apply the preference after sign-in; the selector saves it when signed in (P4.3). A declared functional change
-   under `features/identity/api/` (A2).
-7. Tests: email completeness per language; functional tests (registration captures the language, invitation
-   snapshots it, delivery uses preference → snapshot → default); the migration against real PostgreSQL.
+1. **Completed 2026-09-11:** P4.1–P4.6 were accepted and A7 was written and approved as IA-REQ-059. The
+   IA-REQ-038 field-error `{ code, params }` amendment remains Phase 5 work.
+2. **Implemented locally:** migration `20260911161740_IdentityLanguagePreferences` adds nullable
+   `PreferredLanguage`, four nullable immutable `Language` snapshots, and nullable outbox `DeliveryLanguage`, with
+   supported-canonical-language checks and no fabricated back-fill. It also maps legacy lifecycle rows from the old
+   type-plus-`Outcome` envelope to three stable message types with identifier-only payloads, preserving message ids,
+   delivery state and fingerprints; downgrade restores the predecessor contract.
+3. **Implemented locally:** the Application request-language port and Web adapter capture the negotiated request UI
+   language on new accounts, invitations and intents; interactive request culture remains cookie →
+   `Accept-Language` → configured default and never reads the account per request.
+4. **Implemented locally:** `Emails.resx` and `Emails.es.resx` contain the same 32 subject/body entries and cover all
+   17 §6.3 delivery variants. Rendering receives an explicit culture after resolving bound retry language, account
+   preference, snapshot and configured default in that order; payloads remain identifiers only. Invited confirmation
+   consumes its optional invitation id and snapshot, and only the typed malformed-payload exception is permanently
+   classified as `payload_invalid`; missing resources, EF failures and programmer failures remain retryable worker
+   failures. The executable PostgreSQL matrix invokes the real registered handlers for 17 variants × `en`,`es`, checks
+   all 16 DI message types, placeholders, recipient and bound language, and exercises account → snapshot → default plus
+   legacy-null fallback for every snapshot family.
+5. **Implemented locally:** `preferredLanguage` is returned by identity context and the authenticated
+   `PUT /api/identity/context/language` endpoint enforces exact origin, antiforgery and supported canonical input,
+   updates only the caller's preference, and returns the updated context without rotating security/session state. Its
+   response projection is resolved before mutation, so a projection failure cannot report failure after a durable
+   preference write; validation uses explicit invariant-English messages without echoing input.
+6. **Implemented locally:** the shell keeps the native `English`/`Español` selector as the only editor, persists an
+   authenticated choice before switching the local catalog, keeps anonymous choice local, presents failures, rejects
+   stale language/session responses, serializes server writes in choice order, continues after a rejected write,
+   cancels queued-but-unsent writes on session transition, preserves a newer language across a delayed successful
+   tenant selection or failed reload, reconciles to the last acknowledged server language if the latest queued write
+   fails, routes authentication loss through the central transition, focuses the visible refusal alert, and shows the
+   preference read-only on the account screen.
+7. **Complete verification green:** Domain 190/190; Application Unit 188/188; Infrastructure Integration 315/315;
+   Application Functional 640/640; Web Acceptance and isolated journeys 33/33; full Vitest 362/362 in 33 files;
+   ESLint 0 errors/10 expected test-only warnings; Vite 2,557 modules; and final `git diff --check`. The direct
+   project-local Vitest command was used because the machine's global `npm` shim could not find `npm-cli.js`; it ran
+   the complete suite successfully. Three independent final reviews found no remaining candidate-causal issue.
 
 **Exit criteria**: every email renders in every supported language; the new and existing tests green.
+
+**Current state:** implementation and every local exit criterion are satisfied in the working tree. Only the
+conventional Phase 4 commit and direct push remain.
 
 ### 11.7 Phase 5 — Validation codes
 
@@ -975,4 +1026,17 @@ Recorded 2026-09-09, verify before relying on them:
 | 2026-09-11 | Phase 3 baseline passed before application changes: Vitest 320/320 in 29 files; ESLint 0 errors/4 expected test warnings; Vite 2,493 modules; .NET 1,334/1,334 (Domain 186, Application Unit 187, Infrastructure 302, Functional 627, Acceptance 32); isolated journeys 32/32; `git diff --check` green. The first sandboxed SPA invocation could not read the user-level npm CLI, and the first sandboxed .NET invocations could not read the user NuGet configuration; unchanged elevated reruns passed without installing or changing the machine. |
 | 2026-09-11 | Phase 3 implemented with discriminating RED evidence: the first Spanish runtime tests failed three times before the selector/live language behavior existed; review corrections failed four presentation cases before broad Contexto terminology and readable denied-state permissions were added; accessibility/date tests failed twice before localized checkbox descriptions and unavailable-date handling; and the strengthened 375 px journey exposed a real clipped toolbar before responsive MUI composition fixed it. The Spanish smoke then passed real sign-in, HTTP 204, `/identity`, full-page cookie persistence, `html[lang="es"]`, localized context, raw-key absence and complete mobile control bounds. |
 | 2026-09-11 | Phase 3 final closure passed on the reviewed candidate: strict catalogs contain 462 matching leaves per language (common 38, errors 56, enums 75, identity 175, platform 118), with placeholder and rich-tag parity and all 383 prior English leaves unchanged. Vitest passed 343/343 in 32 files; ESLint passed with 0 errors and the same four test warnings; Vite built 2,557 modules; .NET passed 1,335/1,335 (Domain 186, Application Unit 187, Infrastructure 302, Functional 627, Acceptance 33); isolated journeys passed 33/33; `git diff --check` passed. Independent specification and code-quality reviews found no remaining issue. `es` is promoted to `supported`; Phase 4 decisions are next. |
-| 2026-09-11 | A separate Phase 3 copy-review correction is complete and delivered by the commit containing this entry; Phase 4 remains unstarted. Six broad-context keys now present Context/contexto because the shared context summary, shell switcher and chooser admit Personal and Platform as well as Organization tenants. Spanish review changed `OutboxSecrets` to “Secretos de mensajes salientes”, `PlatformMfaMaterial` to “Datos del segundo factor de la Plataforma”, and `SelfDeactivated` to “Desactivada por su titular”; the glossary adds account holder → Titular. Exactly 24 English multiword enum entries now have readable display labels, while every key/code, raw fixture/API/domain/database value, the 20 one-word enum values, and permission/system-role labels remain invariant. Copy assertions changed only in `AppRoutes.test.jsx` (chooser heading), `i18n/presentation.test.jsx` (six source/context values, three reviewed Spanish terms and the 24-label English map), `PlatformRetentionPage.test.jsx` (visible Audit events/Session records), `IdentityAccessPages.cs` (chooser region accessible name), and `PlatformOperationsStepDefinitions.cs` (visible administrative-status label). The elevated focused SPA RED failed exactly 9/63 copy expectations with 54 passing; after the catalogs changed, the unchanged command passed 63/63. The catalog contract passed 12/12, the Organization-plus-Personal chooser journey passed 1/1, and the focused PlatformOperations acceptance feature passed 7/7. Fresh complete closure passed Vitest 343/343 in 32 files, ESLint with 0 errors/4 expected test warnings, Vite with 2,557 modules, .NET 1,335/1,335, isolated journeys 33/33, and `git diff --check`; independent specification and quality reviews found no remaining issue. |
+| 2026-09-11 | A separate Phase 3 copy-review correction is complete and delivered at exact commit `a271c97`; Phase 4 remains unstarted. Six broad-context keys now present Context/contexto because the shared context summary, shell switcher and chooser admit Personal and Platform as well as Organization tenants. Spanish review changed `OutboxSecrets` to “Secretos de mensajes salientes”, `PlatformMfaMaterial` to “Datos del segundo factor de la Plataforma”, and `SelfDeactivated` to “Desactivada por su titular”; the glossary adds account holder → Titular. Exactly 24 English multiword enum entries now have readable display labels, while every key/code, raw fixture/API/domain/database value, the 20 one-word enum values, and permission/system-role labels remain invariant. Copy assertions changed only in `AppRoutes.test.jsx` (chooser heading), `i18n/presentation.test.jsx` (six source/context values, three reviewed Spanish terms and the 24-label English map), `PlatformRetentionPage.test.jsx` (visible Audit events/Session records), `IdentityAccessPages.cs` (chooser region accessible name), and `PlatformOperationsStepDefinitions.cs` (visible administrative-status label). The elevated focused SPA RED failed exactly 9/63 copy expectations with 54 passing; after the catalogs changed, the unchanged command passed 63/63. The catalog contract passed 12/12, the Organization-plus-Personal chooser journey passed 1/1, and the focused PlatformOperations acceptance feature passed 7/7. Fresh complete closure passed Vitest 343/343 in 32 files, ESLint with 0 errors/4 expected test warnings, Vite with 2,557 modules, .NET 1,335/1,335, isolated journeys 33/33, and `git diff --check`; independent specification and quality reviews found no remaining issue. |
+| 2026-09-11 | P4.1–P4.6 accepted as recommended: nullable `PreferredLanguage` on the identity account with no back-fill; the signed-in shell selector persists it and the account screen shows it; emails stay plain text; invitations keep the inviter's current-language snapshot without a new invite-form control; and A7 is approved as a dedicated identity-access SPEC requirement block before implementation. |
+| 2026-09-11 | Phase 4 baseline on the exact `a271c97` starting tree is green from the fresh correction closure: Vitest 343/343 in 32 files; ESLint 0 errors/4 existing warnings; Vite 2,557 modules; .NET 1,335/1,335 (Domain 186, Application Unit 187, Infrastructure 302, Functional 627, Acceptance 33); isolated journeys 33/33; `git diff --check` green. |
+| 2026-09-11 | A7 is written and approved as the dedicated IA-REQ-059 identity-access requirement. It specifies Phase 4 account preference, request-language snapshots, explicit delivery-culture resolution, stable retry language, identifier-only outbox payloads, invariant technical surfaces and enumeration-neutral behavior. IA-REQ-038's `{ code, params }` validation amendment remains Phase 5; Phase 4 application implementation is next and has not started. |
+| 2026-09-11 | Phase 4 application implementation is complete in the working tree. `LocalizationRegistry` and its validated default setting now live in Application so Web and Infrastructure share one architectural source; Web still negotiates each interactive request strictly from culture cookie → `Accept-Language` → default. Migration `20260911161740_IdentityLanguagePreferences` adds six nullable columns with canonical-language checks and no back-fill: account `PreferredLanguage`, four invitation/intent `Language` snapshots, and outbox `DeliveryLanguage`. Only first account creation initializes a preference; every invitation/intent captures an immutable request-language snapshot, including reissue preservation and safe legacy-null fallback. The own-account `PUT /api/identity/context/language` route is authenticated, exact-origin and antiforgery protected, returns the updated identity context, and changes no session, security stamp or token. |
+| 2026-09-11 | Every registered §6.3 identity-email path now renders plain-text English or formal-`usted` Spanish from 32 parity-checked resources per language, using an explicit culture. First preparation resolves account preference → invitation/intent snapshot → configured default and binds the selected language beside the fingerprint before sending; retries keep that language and the outbox message id, while legacy already-attempted rows bind historical English so their existing fingerprint remains valid. Outbox payloads gained only required identifiers and still contain no rendered prose, template arguments or personal data. The SPA persists a signed-in choice before changing its catalog/cookie, keeps anonymous choices local, visibly presents failures, merges the updated preference into context, rejects stale reload/tenant/session responses, serializes authenticated writes in choice order and cancels queued writes after a session transition, and exposes the account preference read-only outside the shell selector. |
+| 2026-09-11 | Phase 4 focused verification is green: Domain 186/186; Application Unit 188/188; Infrastructure localization/model/migration/outbox slice 50/50 against real PostgreSQL; preference HTTP/functional cases 10/10, including exact-origin refusal; Phase 4 SPA slice 33/33 before the final concurrency review; post-review provider/shell slice 20/20; current full Vitest 353/353 in 32 files; ESLint 0 errors/10 expected test-only warnings; Vite 2,557 modules; Web build 0 warnings/errors. RED evidence was limited and intentional: the new Application command first failed the authorization inventory 1/187 and the new domain property first failed the shape contract 1/186; both existing assertions were updated to the declared contract. The first SPA focus passed 23/25 before the MUI test transition and ambiguous selector assertion were corrected; the first SPA audit found stale full-context and sign-out races, whose three regressions pass; a second audit found that concurrent PUT completion order could diverge from local intent, so authenticated writes now run serially, recover after a refusal and skip queued work from a superseded session. The two outbox tests that simulate legacy/follow-up state now update only their own invitation/account rows and pass 2/2. Existing tests changed only where Phase 4 deliberately changes contracts or wiring: identity authorization inventory; domain shape/snapshot preservation; password-lifecycle account-service wrapper; outbox constructor wiring and delivery/admission behavior; SPA context, selector, account display and Spanish behavior. New tests cover resources, persistence, endpoint security, account/snapshot initialization, precedence and retry stability, including a legacy attempted message. Final complete .NET/acceptance/journey closure remains pending. |
+| 2026-09-11 | Three pre-existing findings stay outside Phase 4: `identity.ownership.transferred.notice.requested` has no registered handler and its producer promises two recipients although one message prepares one email, so it requires a separate delivery design; the context switcher's non-`Personal` type-label fallback still labels every other tenant type as Organization; and `GET /api/identity/context` omits `permission_denied`/403 from its OpenAPI metadata even though its Application authorization can emit that refusal. None of those paths was changed. |
+| 2026-09-11 | The bounded Phase 4 review correction is implemented. Lifecycle delivery no longer persists the `Outcome` template selector: self-deactivation, administrative suspension and reactivation use distinct stable message types with `{IdentityId}` only, and the IA-REQ-054 outbox inventory is aligned to those contracts; the Phase 4 migration upgrades and reverses representative legacy pending/attempted rows without changing ids, fingerprints or fabricating language. Payload errors now cross a narrow typed boundary; a structurally invalid JSON envelope or missing identifier becomes permanent `payload_invalid`, while resource/EF/programmer failures escape to retry-safe worker handling. Invited confirmation reads its optional invitation snapshot. The PostgreSQL gate resolves the production DI registry and renders all 17 §6.3 variants in both supported languages, additionally proving account → snapshot → configured default and legacy-null behavior for the four snapshot families plus account-only delivery. |
+| 2026-09-11 | The same correction removes the preference endpoint's fallible post-write context read and pins an unchanged preference when the pre-write projection fails; validator prose is explicit invariant English. SPA races are covered deterministically: a tenant response begun before a language choice may update tenant/permissions without reverting language, a stale reload failure cannot clear the newer context, an acknowledged earlier write becomes the reconciliation point if the latest queued write fails, and protected `authentication_required`/`invalid_session` responses use the central session-loss transition and cancel queued work. The visible language-refusal alert receives focus. |
+| 2026-09-11 | Correction-focused closure is green: Domain 190/190; Application Unit 188/188; Application Functional lifecycle/preference 42/42; PostgreSQL outbox, 17×2 delivery matrix and migration round trip 39/39 plus resource/admission contracts 12/12; full Vitest 361/361 in 33 files; ESLint 0 errors/10 test-only warnings; Vite 2,557 modules; Web build 0 warnings/errors; final `git diff --check` green. The ordinary `npm test` launcher could not start because the machine's global npm shim lacks `npm-cli.js`; the project-local Vitest binary executed the complete suite successfully. Full Application Functional, Infrastructure, Web Acceptance and isolated journeys still remain for final Phase 4 delivery closure. |
+| 2026-09-11 | The final bounded Phase 4 correction invalidates the cached session-bound antiforgery token on every recognized `401 authentication_required`/`invalid_session`, while keeping only the context endpoint's duplicate-notification suppression; the next mutation bootstraps a fresh pair and no failed mutation is replayed. Language writes now retain one queue tail across session transitions, so an old in-flight write settles before a new-session choice while queued stale work still self-cancels by session revision. The two regressions produced a discriminating Vitest RED (4 failed, 20 passed) and then GREEN 24/24. IA-REQ-059 proof now covers two simultaneous live HTTP sessions plus a later sign-in, valid-CSRF unauthenticated refusal with zero mutation, every missing personal/invited/Platform/external/bootstrap capture and existing-account non-overwrite path, Platform reissue/recovery snapshot preservation, and unchanged session/credential/security state; the focused Application Functional selection passed 117/117. The real PostgreSQL 17×2 delivery matrix now runs under conflicting `fr-FR` current culture and `ja-JP` UI culture, proves both remain unchanged, and passed 1/1. Two envelope comments now state that no token or invitation details are exposed and, alongside the recipient `IdentityId`, only the invitation's `InvitationId` is retained for snapshot-language resolution; `git diff --check` passed. |
+| 2026-09-11 | The fresh complete .NET gate exposed one final host-composition omission and one stale A7 assertion: Infrastructure passed 313/315 because the generic outbox-worker host had no `IRequestLanguage` for five Application handlers, while Application Functional passed 639/640 because the context response-shape test still expected six properties instead of the approved seventh `preferredLanguage`; Domain remained 190/190 and Application Unit 188/188. A focused RED reproduced both worker failures. Infrastructure now supplies a scoped non-HTTP request-language adapter that returns the validated `Localization:DefaultLanguage`; Web's later scoped registration remains the interactive request-culture override. The actual worker host pins and resolves configured Spanish, and the response-shape assertion now includes `preferredLanguage`. Focused GREEN passed the two worker tests 2/2, the context-shape plus real HTTP `Accept-Language` override tests 2/2, and the localization architecture contracts 4/4; `git diff --check` passed. |
+| 2026-09-11 | Phase 4 final closure is green on the corrected and independently re-reviewed candidate. The complete SPA gate passed Vitest 362/362 in 33 files, ESLint with 0 errors and 10 expected test-only literal warnings, and Vite with 2,557 modules; the complete .NET gate passed 1,333/1,333 non-acceptance tests — Domain 190, Application Unit 188, Infrastructure Integration 315 and Application Functional 640 — and Web Acceptance/isolated Reqnroll-Playwright journeys passed 33/33. `git diff --check` passed. Infrastructure and Functional emitted only the existing non-blocking `ASPIRE010`; Vite emitted only the existing chunk-size warning. The ordinary npm shim remains broken on this machine, so the already-installed project-local Vitest, ESLint and Vite binaries supplied the valid SPA evidence. Contract, SPA/copy and outbox/migration re-reviews all passed with no candidate-causal finding. |

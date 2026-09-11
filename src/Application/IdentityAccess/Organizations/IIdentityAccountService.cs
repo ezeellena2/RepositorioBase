@@ -7,7 +7,7 @@ namespace CleanArchitecture.Application.IdentityAccess.Organizations;
 /// stored beside the state, so there is exactly one answer to "may this account act" and it is the state
 /// (IA-REQ-054).
 /// </summary>
-public sealed record IdentityAccount(Guid Id, string Email, IdentityAccountStatus Status)
+public sealed record IdentityAccount(Guid Id, string Email, IdentityAccountStatus Status, string? PreferredLanguage = null)
 {
     public bool IsActive => Status == IdentityAccountStatus.Active;
 }
@@ -33,7 +33,11 @@ public interface IIdentityAccountService
     /// </summary>
     Task<IdentityAccountValidationResult> ValidatePasswordAsync(string password, CancellationToken cancellationToken);
 
-    Task<IdentityAccountCreationResult> CreatePendingAsync(string normalizedEmail, string password, CancellationToken cancellationToken);
+    Task<IdentityAccountCreationResult> CreatePendingAsync(
+        string normalizedEmail,
+        string password,
+        string preferredLanguage,
+        CancellationToken cancellationToken);
 
     /// <summary>
     /// The irreversible hash the configured hasher produces for this password, computed without reading any state.
@@ -50,9 +54,19 @@ public interface IIdentityAccountService
     /// when that hash was computed, so it is not re-applied here; what is still enforced is the uniqueness of the
     /// normalized address, which is why this can fail.
     /// </summary>
-    Task<IdentityAccountCreationResult> CreatePendingFromHashAsync(string normalizedEmail, string passwordHash, CancellationToken cancellationToken);
+    Task<IdentityAccountCreationResult> CreatePendingFromHashAsync(
+        string normalizedEmail,
+        string passwordHash,
+        string preferredLanguage,
+        CancellationToken cancellationToken);
 
     Task ActivateAsync(Guid identityId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Changes only the caller-owned language preference. It deliberately bypasses UserManager so a presentation
+    /// preference cannot rotate a security stamp, cookie or session (IA-REQ-059).
+    /// </summary>
+    Task<bool> SetPreferredLanguageAsync(Guid identityId, string language, CancellationToken cancellationToken);
 
     /// <summary>
     /// Whether this password still opens this identity, asked about an identity that is not allowed to sign in.

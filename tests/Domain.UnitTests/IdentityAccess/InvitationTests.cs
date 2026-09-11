@@ -24,6 +24,7 @@ public sealed class InvitationTests
         invitation.Id.IsEmpty.ShouldBeFalse();
         invitation.TenantId.ShouldBe(tenant.Id);
         invitation.NormalizedEmail.ShouldBe("ana@example.test");
+        invitation.Language.ShouldBe("en");
         invitation.TokenHash.ShouldBe(Hash);
         invitation.Status.ShouldBe(InvitationStatus.Pending);
         invitation.CreatedAt.ShouldBe(Now);
@@ -319,13 +320,22 @@ public sealed class InvitationTests
     [Test]
     public void Reissue_rotates_the_token_hash_and_the_expiry_atomically()
     {
-        var invitation = Pending(out var tenant);
+        var tenant = Organization();
+        var invitation = Invitation.Issue(
+            tenant,
+            "ana@example.test",
+            [Role.Create(tenant, "member")],
+            Hash,
+            "es",
+            Now,
+            Now.AddDays(7));
 
         invitation.Reissue(tenant, RotatedHash, Now.AddDays(1), Now.AddDays(8));
 
         invitation.TokenHash.ShouldBe(RotatedHash, "the previous token no longer resolves to this invitation");
         invitation.ExpiresAt.ShouldBe(Now.AddDays(8));
         invitation.Status.ShouldBe(InvitationStatus.Pending);
+        invitation.Language.ShouldBe("es", "reissue preserves the request-language snapshot");
         invitation.IsPendingAt(Now.AddDays(7)).ShouldBeTrue("the reissued window replaces the lapsed one");
     }
 

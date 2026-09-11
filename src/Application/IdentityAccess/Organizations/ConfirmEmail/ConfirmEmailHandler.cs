@@ -1,5 +1,6 @@
 using System.Text.Json;
 using CleanArchitecture.Application.Common.Interfaces;
+using CleanArchitecture.Application.Common.Localization;
 using CleanArchitecture.Application.Common.Models;
 using CleanArchitecture.Application.IdentityAccess.Common;
 using CleanArchitecture.Application.IdentityAccess.Organizations;
@@ -28,6 +29,7 @@ public sealed class ConfirmEmailCommandHandler(
     CleanArchitecture.Application.IdentityAccess.Security.ISharedAttemptBudget attemptBudget,
     IRegistrationIdempotencyStore idempotencyStore,
     IRegistrationInitialRoleProvisioner initialRoles,
+    LocalizationSettings localization,
     TimeProvider timeProvider) : IRequestHandler<ConfirmEmailCommand, Result>
 {
     private const string ConfirmationMessageType = "identity.confirmation.requested";
@@ -153,7 +155,11 @@ public sealed class ConfirmEmailCommandHandler(
             return await SettleConflictAsync(intent, secret, correlation, "identity_exists", null, now, cancellationToken);
         }
 
-        var creation = await identities.CreatePendingFromHashAsync(intent.NormalizedEmail, intent.PasswordHash, cancellationToken);
+        var creation = await identities.CreatePendingFromHashAsync(
+            intent.NormalizedEmail,
+            intent.PasswordHash,
+            intent.Language ?? localization.DefaultLanguage,
+            cancellationToken);
         if (creation.IsValidationFailure || creation.Account is null)
         {
             return await SettleConflictAsync(intent, secret, correlation, "identity_exists", null, now, cancellationToken);
@@ -238,7 +244,11 @@ public sealed class ConfirmEmailCommandHandler(
             return await SettlePersonalConflictAsync(intent, secret, null, now, cancellationToken);
         }
 
-        var creation = await identities.CreatePendingFromHashAsync(intent.NormalizedEmail, intent.PasswordHash, cancellationToken);
+        var creation = await identities.CreatePendingFromHashAsync(
+            intent.NormalizedEmail,
+            intent.PasswordHash,
+            intent.Language ?? localization.DefaultLanguage,
+            cancellationToken);
         if (creation.IsValidationFailure || creation.Account is null)
         {
             return await SettlePersonalConflictAsync(intent, secret, null, now, cancellationToken);

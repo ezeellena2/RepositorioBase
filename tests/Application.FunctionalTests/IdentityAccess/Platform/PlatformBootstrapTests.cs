@@ -31,6 +31,7 @@ public sealed class PlatformBootstrapTests : TestBase
         invitation.IsOwner.ShouldBeTrue();
         invitation.Status.ShouldBe(PlatformAdminInvitationStatus.Pending);
         invitation.NormalizedEmail.ShouldBe(OwnerEmail);
+        invitation.Language.ShouldBe("en", "bootstrap captures the configured default language");
         invitation.BoundIdentityId.ShouldBeNull("nobody has answered it yet.");
 
         (await TestApp.CountAsync<OutboxMessage>()).ShouldBe(1);

@@ -24,13 +24,13 @@ public sealed class IdentityAccountService(
     public async Task<IdentityAccount?> FindByEmailAsync(string normalizedEmail, CancellationToken cancellationToken)
     {
         var user = await userManager.FindByEmailAsync(normalizedEmail);
-        return user is null ? null : new IdentityAccount(user.Id, user.Email!, user.Status);
+        return user is null ? null : new IdentityAccount(user.Id, user.Email!, user.Status, user.PreferredLanguage);
     }
 
     public async Task<IdentityAccount?> FindByIdAsync(Guid identityId, CancellationToken cancellationToken)
     {
         var user = await userManager.FindByIdAsync(identityId.ToString());
-        return user is null ? null : new IdentityAccount(user.Id, user.Email!, user.Status);
+        return user is null ? null : new IdentityAccount(user.Id, user.Email!, user.Status, user.PreferredLanguage);
     }
 
     public async Task<IdentityAccount?> ValidateCredentialsAsync(string normalizedEmail, string password, CancellationToken cancellationToken)
@@ -58,7 +58,7 @@ public sealed class IdentityAccountService(
             await userManager.ResetAccessFailedCountAsync(user);
         }
 
-        return new IdentityAccount(user.Id, user.Email!, user.Status);
+        return new IdentityAccount(user.Id, user.Email!, user.Status, user.PreferredLanguage);
     }
 
     /// <inheritdoc />
@@ -173,20 +173,28 @@ public sealed class IdentityAccountService(
         return new IdentityAccountValidationResult(true);
     }
 
-    public async Task<IdentityAccountCreationResult> CreatePendingAsync(string normalizedEmail, string password, CancellationToken cancellationToken)
+    public async Task<IdentityAccountCreationResult> CreatePendingAsync(
+        string normalizedEmail,
+        string password,
+        string preferredLanguage,
+        CancellationToken cancellationToken)
     {
-        var user = NewPendingUser(normalizedEmail);
+        var user = NewPendingUser(normalizedEmail, preferredLanguage);
         var result = await userManager.CreateAsync(user, password);
         return result.Succeeded
-            ? new IdentityAccountCreationResult(new IdentityAccount(user.Id, user.Email!, user.Status), false)
+            ? new IdentityAccountCreationResult(new IdentityAccount(user.Id, user.Email!, user.Status, user.PreferredLanguage), false)
             : new IdentityAccountCreationResult(null, true);
     }
 
     public string HashPassword(string password) => passwordHasher.HashPassword(DecoyUser, password);
 
-    public async Task<IdentityAccountCreationResult> CreatePendingFromHashAsync(string normalizedEmail, string passwordHash, CancellationToken cancellationToken)
+    public async Task<IdentityAccountCreationResult> CreatePendingFromHashAsync(
+        string normalizedEmail,
+        string passwordHash,
+        string preferredLanguage,
+        CancellationToken cancellationToken)
     {
-        var user = NewPendingUser(normalizedEmail);
+        var user = NewPendingUser(normalizedEmail, preferredLanguage);
         user.PasswordHash = passwordHash;
 
         // The overload without a password skips password validation — the policy was applied when the hash was
@@ -194,7 +202,7 @@ public sealed class IdentityAccountService(
         // initiation fails here rather than creating a second identity for it.
         var result = await userManager.CreateAsync(user);
         return result.Succeeded
-            ? new IdentityAccountCreationResult(new IdentityAccount(user.Id, user.Email!, user.Status), false)
+            ? new IdentityAccountCreationResult(new IdentityAccount(user.Id, user.Email!, user.Status, user.PreferredLanguage), false)
             : new IdentityAccountCreationResult(null, true);
     }
 
@@ -209,6 +217,28 @@ public sealed class IdentityAccountService(
         if (user.Status == IdentityAccountStatus.PendingConfirmation) user.Status = IdentityAccountStatus.Active;
         var result = await userManager.UpdateAsync(user);
         if (!result.Succeeded) throw new InvalidOperationException("identity_activation_failed");
+    }
+
+    public async Task<bool> SetPreferredLanguageAsync(
+        Guid identityId,
+        string language,
+        CancellationToken cancellationToken)
+    {
+        var updated = await context.Users
+            .Where(candidate => candidate.Id == identityId)
+            .ExecuteUpdateAsync(
+                setters => setters.SetProperty(candidate => candidate.PreferredLanguage, language),
+                cancellationToken);
+
+        if (updated == 0) return false;
+
+        if (context.ChangeTracker.Entries<ApplicationUser>()
+                .FirstOrDefault(entry => entry.Entity.Id == identityId) is { } tracked)
+        {
+            await tracked.ReloadAsync(cancellationToken);
+        }
+
+        return true;
     }
 
     /// <summary>
@@ -259,6 +289,13 @@ public sealed class IdentityAccountService(
     private static bool IsLockedOut(ApplicationUser user, DateTimeOffset now) =>
         user.LockoutEnabled && user.LockoutEnd is { } lockoutEnd && lockoutEnd > now;
 
-    private static ApplicationUser NewPendingUser(string normalizedEmail) =>
-        new() { UserName = normalizedEmail, Email = normalizedEmail, EmailConfirmed = false, Status = IdentityAccountStatus.PendingConfirmation };
+    private static ApplicationUser NewPendingUser(string normalizedEmail, string? preferredLanguage = null) =>
+        new()
+        {
+            UserName = normalizedEmail,
+            Email = normalizedEmail,
+            EmailConfirmed = false,
+            Status = IdentityAccountStatus.PendingConfirmation,
+            PreferredLanguage = preferredLanguage
+        };
 }

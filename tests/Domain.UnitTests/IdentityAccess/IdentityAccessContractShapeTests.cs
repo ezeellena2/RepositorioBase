@@ -89,7 +89,7 @@ public class IdentityAccessContractShapeTests
     /// </para>
     /// </summary>
     [Test]
-    public void InvitationExposesNoTextualOrBinaryMemberBeyondItsRecipient()
+    public void InvitationExposesNoTextualOrBinaryMemberBeyondItsRecipientAndLanguageTag()
     {
         var invitation = DomainAssembly.GetType("CleanArchitecture.Domain.IdentityAccess.Invitations.Invitation");
 
@@ -97,7 +97,9 @@ public class IdentityAccessContractShapeTests
         invitation!.GetProperties()
             .Where(property => property.PropertyType == typeof(string) || property.PropertyType == typeof(byte[]))
             .Select(property => property.Name)
-            .ShouldBe(["NormalizedEmail"], "the recipient is the only free text an invitation holds.");
+            .ShouldBe(
+                ["NormalizedEmail", "Language"],
+                "the recipient and the canonical language tag are the only text an invitation holds.");
     }
 
     /// <summary>

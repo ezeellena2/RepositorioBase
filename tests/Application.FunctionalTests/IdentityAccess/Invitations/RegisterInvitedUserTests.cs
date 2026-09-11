@@ -33,7 +33,9 @@ public sealed class RegisterInvitedUserTests : TestBase
     [Test]
     public async Task Registering_from_an_invitation_creates_the_confirmable_identity_and_never_a_membership()
     {
+        TestApp.SetRequestLanguage("es");
         var (email, token) = await IssuedInvitationAsync();
+        (await InvitationScenario.SingleInvitationAsync()).Language.ShouldBe("es");
         ResetToAnonymous();
 
         var result = await TestApp.SendAsync(new RegisterInvitedUserCommand(token, ValidPassword));
@@ -41,6 +43,7 @@ public sealed class RegisterInvitedUserTests : TestBase
         result.IsSuccess.ShouldBeTrue();
         var identity = (await TestApp.ListAsync<ApplicationUser>()).Single(user => user.Email == email);
         identity.EmailConfirmed.ShouldBeFalse("registration issues confirmation; it does not grant it");
+        identity.PreferredLanguage.ShouldBe("es", "first account creation inherits the invitation snapshot");
         (await TestApp.CountAsync<TenantMembership>()).ShouldBe(1, "only the inviter's membership exists — registration creates none");
         (await InvitationScenario.SingleInvitationAsync()).Status.ShouldBe(InvitationStatus.Pending, "registration never accepts the invitation");
     }
@@ -52,8 +55,10 @@ public sealed class RegisterInvitedUserTests : TestBase
     [Test]
     public async Task Registering_when_the_identity_already_exists_ignores_the_password_and_leaves_the_credential_alone()
     {
+        TestApp.SetRequestLanguage("es");
         var (email, token) = await IssuedInvitationAsync();
-        await InvitationScenario.SeedConfirmedRecipientAsync(email);
+        (await InvitationScenario.SingleInvitationAsync()).Language.ShouldBe("es");
+        await IdentityHttpHarness.SeedConfirmedUserAsync(email, ValidPassword, "en");
         var before = (await TestApp.ListAsync<ApplicationUser>()).Single(user => user.Email == email);
         var storedHash = before.PasswordHash;
         var identityCount = await TestApp.CountAsync<ApplicationUser>();
@@ -65,6 +70,7 @@ public sealed class RegisterInvitedUserTests : TestBase
         (await TestApp.CountAsync<ApplicationUser>()).ShouldBe(identityCount, "an existing address is never registered twice");
         var after = (await TestApp.ListAsync<ApplicationUser>()).Single(user => user.Email == email);
         after.PasswordHash.ShouldBe(storedHash, "submitted credentials must not overwrite an account the caller may not own");
+        after.PreferredLanguage.ShouldBe("en", "the neutral existing-account branch cannot overwrite a preference");
         after.EmailConfirmed.ShouldBeTrue("an already-confirmed identity is not un-confirmed by an invitation");
         (await InvitationScenario.SingleInvitationAsync()).Status.ShouldBe(InvitationStatus.Pending);
     }

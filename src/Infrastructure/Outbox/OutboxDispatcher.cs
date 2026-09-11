@@ -1,4 +1,5 @@
 using CleanArchitecture.Application.Common.Interfaces;
+using CleanArchitecture.Application.Common.Localization;
 using CleanArchitecture.Application.IdentityAccess.Lifecycle;
 using CleanArchitecture.Domain.IdentityAccess.Outbox;
 using CleanArchitecture.Infrastructure.Data;
@@ -112,9 +113,13 @@ public sealed class OutboxDispatcher(
             if (token is null) return await FailAsync(claim, message, "envelope_unreadable", false, cancellationToken);
         }
 
+        // Rows attempted before Phase 4 were rendered in English. Binding that historical fact on their next
+        // preparation preserves the existing fingerprint instead of re-rendering them from a newer preference.
+        var preparedLanguage = message.DeliveryLanguage ??
+            (message.RequestFingerprint is null ? null : LocalizationRegistry.SourceLanguage);
         IdentityEmail? email;
-        try { email = await handler.PrepareAsync(message.Payload, token, cancellationToken); }
-        catch (Exception exception) when (exception is System.Text.Json.JsonException or ArgumentException or InvalidOperationException)
+        try { email = await handler.PrepareAsync(message.Payload, token, preparedLanguage, cancellationToken); }
+        catch (InvalidOutboxPayloadException)
         { return await FailAsync(claim, message, "payload_invalid", true, cancellationToken); }
         if (email is null) return await FailAsync(claim, message, "recipient_missing", true, cancellationToken);
         var fingerprint = sender.GetRequestFingerprint(email.Recipient, email.Subject, email.Body);
@@ -130,6 +135,7 @@ public sealed class OutboxDispatcher(
             ready = ready.Where(_ => context.OutboxSecrets.Any(item => item.OutboxMessageId == claim.Id && item.Status == OutboxSecretStatus.Pending && item.ExpiresAt > now));
         var renewed = await ready.ExecuteUpdateAsync(setters => setters
             .SetProperty(item => item.RequestFingerprint, fingerprint)
+            .SetProperty(item => item.DeliveryLanguage, email.Language)
             .SetProperty(item => item.LeaseExpiresAt, now.Add(LeaseDuration)), cancellationToken);
         if (renewed == 0) return false;
 
@@ -199,5 +205,9 @@ public interface IOutboxDeliveryHandler
 {
     string MessageType { get; }
     bool RequiresSecret => true;
-    Task<IdentityEmail?> PrepareAsync(string payload, string? token, CancellationToken cancellationToken);
+    Task<IdentityEmail?> PrepareAsync(
+        string payload,
+        string? token,
+        string? deliveryLanguage,
+        CancellationToken cancellationToken);
 }

@@ -1,4 +1,5 @@
 using CleanArchitecture.Application.Common.Interfaces;
+using CleanArchitecture.Application.Common.Localization;
 using CleanArchitecture.Application.IdentityAccess.Organizations.RegisterOrganization;
 using CleanArchitecture.Domain.IdentityAccess.Auditing;
 using CleanArchitecture.Domain.IdentityAccess.Platform;
@@ -49,6 +50,7 @@ public sealed class BootstrapPlatformOwner(
     ISecureTokenGenerator tokens,
     ITokenHasher tokenHasher,
     IOutboxSecretWriter secretWriter,
+    LocalizationSettings localization,
     TimeProvider timeProvider)
 {
     internal static readonly TimeSpan InvitationWindow = TimeSpan.FromDays(7);
@@ -88,7 +90,14 @@ public sealed class BootstrapPlatformOwner(
                 await roles.ProvisionAsync(platform, ct);
 
                 var minted = PlatformInvitationDelivery.Mint(tokens, tokenHasher);
-                var invitation = PlatformAdminInvitation.Issue(platform, recipient, minted.Hash, true, now, now.Add(InvitationWindow));
+                var invitation = PlatformAdminInvitation.Issue(
+                    platform,
+                    recipient,
+                    minted.Hash,
+                    true,
+                    localization.DefaultLanguage,
+                    now,
+                    now.Add(InvitationWindow));
                 context.PlatformAdminInvitations.Add(invitation);
                 PlatformInvitationDelivery.Deliver(context, secretWriter, invitation, minted, now, now.Add(InvitationWindow));
 

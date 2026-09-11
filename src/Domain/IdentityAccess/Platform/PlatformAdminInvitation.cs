@@ -26,6 +26,9 @@ public sealed class PlatformAdminInvitation : BaseEntity<PlatformAdminInvitation
 
     public string NormalizedEmail { get; private set; } = string.Empty;
 
+    /// <summary>The issuing request's supported language, captured once and preserved across reissue.</summary>
+    public string? Language { get; private set; }
+
     public VersionedTokenHash TokenHash { get; private set; }
 
     public PlatformAdminInvitationStatus Status { get; private set; }
@@ -63,9 +66,20 @@ public sealed class PlatformAdminInvitation : BaseEntity<PlatformAdminInvitation
         VersionedTokenHash tokenHash,
         bool isOwner,
         DateTimeOffset now,
+        DateTimeOffset expiresAt) =>
+        Issue(tenant, email, tokenHash, isOwner, "en", now, expiresAt);
+
+    public static PlatformAdminInvitation Issue(
+        Tenant tenant,
+        string email,
+        VersionedTokenHash tokenHash,
+        bool isOwner,
+        string language,
+        DateTimeOffset now,
         DateTimeOffset expiresAt)
     {
         ArgumentNullException.ThrowIfNull(tenant);
+        ArgumentException.ThrowIfNullOrWhiteSpace(language);
         if (tenant.Type != TenantType.Platform)
         {
             throw new InvalidOperationException("Only the Platform tenant can invite administrators.");
@@ -86,6 +100,7 @@ public sealed class PlatformAdminInvitation : BaseEntity<PlatformAdminInvitation
             Id = PlatformAdminInvitationId.New(),
             TenantId = tenant.Id,
             NormalizedEmail = Canonicalize(email),
+            Language = language,
             TokenHash = tokenHash,
             Status = PlatformAdminInvitationStatus.Pending,
             Delivery = PlatformAdminInvitationDelivery.Pending,

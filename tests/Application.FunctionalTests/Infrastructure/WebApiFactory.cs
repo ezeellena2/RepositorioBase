@@ -125,6 +125,8 @@ public class WebApiFactory(
                 services.AddSingleton<CleanArchitecture.Application.IdentityAccess.Platform.Bootstrap.IPlatformBootstrapOptions, TestPlatformBootstrapOptions>();
                 services.RemoveAll<IValidatedOptionalSession>();
                 services.AddScoped<IValidatedOptionalSession>(_ => TestApp.GetValidatedOptionalSession());
+                services.RemoveAll<IRequestLanguage>();
+                services.AddScoped<IRequestLanguage, TestRequestLanguage>();
                 services.RemoveAll<ISecureTokenGenerator>();
                 services.AddSingleton<ISecureTokenGenerator, TestRegistrationTokenGenerator>();
                 services.RemoveAll<ITokenHasher>();
@@ -231,6 +233,11 @@ public class WebApiFactory(
         public Guid? IdentityId => TestApp.GetUserId();
 
         public bool IsInvalid => TestApp.GetUserId() is null || TestApp.GetSessionId() is null;
+    }
+
+    private sealed class TestRequestLanguage : IRequestLanguage
+    {
+        public string Language => TestApp.GetRequestLanguage();
     }
 
     private sealed class TestPermissionEvaluator : IPermissionEvaluator

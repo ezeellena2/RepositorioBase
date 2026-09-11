@@ -14,6 +14,11 @@ public sealed class OutboxMessage : BaseEntity<Guid>
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset? FirstAttemptAt { get; private set; }
     public string? RequestFingerprint { get; private set; }
+    /// <summary>
+    /// The supported language bound when delivery is first prepared. It is delivery metadata rather than payload
+    /// content, and keeps retries stable when an account preference changes after the first attempt (IA-REQ-059).
+    /// </summary>
+    public string? DeliveryLanguage { get; private set; }
 
     public OutboxMessageStatus Status { get; private set; }
 
@@ -76,6 +81,19 @@ public sealed class OutboxMessage : BaseEntity<Guid>
     {
         LeaseOwner = null;
         LeaseExpiresAt = null;
+    }
+
+    public void BindDeliveryLanguage(string language)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(language);
+        EnsurePending();
+
+        if (DeliveryLanguage is not null && !string.Equals(DeliveryLanguage, language, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("A prepared delivery cannot change language.");
+        }
+
+        DeliveryLanguage = language;
     }
 
     /// <summary>

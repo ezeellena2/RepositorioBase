@@ -45,11 +45,13 @@ public sealed class PlatformAdminInvitationConfiguration : IEntityTypeConfigurat
                 "CK_PlatformAdminInvitations_Ids_NotEmpty",
                 "\"Id\" <> '00000000-0000-0000-0000-000000000000'::uuid AND \"TenantId\" <> '00000000-0000-0000-0000-000000000000'::uuid AND (\"BoundIdentityId\" IS NULL OR \"BoundIdentityId\" <> '00000000-0000-0000-0000-000000000000'::uuid)");
             table.HasCheckConstraint("CK_PlatformAdminInvitations_Lifecycle", LifecycleConstraint);
+            table.HasCheckConstraint("CK_PlatformAdminInvitations_Language", "\"Language\" IS NULL OR \"Language\" IN ('en', 'es')");
         });
         builder.HasKey(invitation => invitation.Id);
         builder.Property(invitation => invitation.Id).HasConversion(id => id.Value, value => PlatformAdminInvitationId.From(value)).ValueGeneratedNever();
         builder.Property(invitation => invitation.TenantId).HasConversion(id => id.Value, value => TenantId.From(value)).IsRequired();
         builder.Property(invitation => invitation.NormalizedEmail).HasMaxLength(256).IsRequired();
+        builder.Property(invitation => invitation.Language).HasMaxLength(16);
         builder.Property(invitation => invitation.TokenHash)
             .HasConversion(hash => hash.Value, value => VersionedTokenHash.FromPersistedValue(value))
             .HasMaxLength(256)

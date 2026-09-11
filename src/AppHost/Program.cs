@@ -33,6 +33,7 @@ var web = builder.AddProject<Projects.Web>(Services.WebApi)
     .WithEnvironment(context => context.EnvironmentVariables["IdentityAccess__Platform__BootstrapOwnerEmail"] =
         builder.Configuration["IdentityAccess:Platform:BootstrapOwnerEmail"] ?? string.Empty)
     .WithEnvironment(ForwardEmailSettings)
+    .WithEnvironment(ForwardLocalizationSettings)
     // Only the web application records documents, so only it needs the fingerprint keys. Forwarding them to the
     // worker as well would spread key material to a process that has no use for it.
     .WithEnvironment(ForwardDocumentProtectionSettings)
@@ -56,7 +57,8 @@ if (!builder.ExecutionContext.IsRunMode ||
         .WithReference(databaseServer)
         .WaitFor(databaseServer)
         .WithAspNetCoreEnvironment()
-        .WithEnvironment(ForwardEmailSettings);
+        .WithEnvironment(ForwardEmailSettings)
+        .WithEnvironment(ForwardLocalizationSettings);
 }
 
 // The email and key-protection settings live in one place and reach both processes from it.
@@ -82,6 +84,16 @@ void ForwardEmailSettings(EnvironmentCallbackContext context)
         {
             context.EnvironmentVariables[$"IdentityAccess__DataProtection__{key}"] = value;
         }
+    }
+}
+
+// Web request negotiation and background delivery must share one deployment fallback. Forwarding the same value
+// prevents a customized host default from silently reverting to English in the worker.
+void ForwardLocalizationSettings(EnvironmentCallbackContext context)
+{
+    if (builder.Configuration["Localization:DefaultLanguage"] is { Length: > 0 } language)
+    {
+        context.EnvironmentVariables["Localization__DefaultLanguage"] = language;
     }
 }
 

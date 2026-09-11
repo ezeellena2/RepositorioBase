@@ -25,6 +25,9 @@ public sealed class PendingRegistrationIntent : BaseEntity<Guid>
 
     public string NormalizedEmail { get; private set; } = string.Empty;
 
+    /// <summary>The anonymous request's supported language, captured before any account exists.</summary>
+    public string? Language { get; private set; }
+
     public string LegalName { get; private set; } = string.Empty;
 
     public NormalizedCuit Cuit { get; private set; }
@@ -51,10 +54,21 @@ public sealed class PendingRegistrationIntent : BaseEntity<Guid>
         NormalizedCuit cuit,
         string passwordHash,
         DateTimeOffset now,
+        DateTimeOffset expiresAt) =>
+        Open(submissionId, normalizedEmail, legalName, cuit, passwordHash, "en", now, expiresAt);
+
+    public static PendingRegistrationIntent Open(
+        Guid submissionId,
+        string normalizedEmail,
+        string legalName,
+        NormalizedCuit cuit,
+        string passwordHash,
+        string language,
+        DateTimeOffset now,
         DateTimeOffset expiresAt)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(passwordHash);
-        var intent = Create(submissionId, normalizedEmail, legalName, cuit, now, expiresAt);
+        var intent = Create(submissionId, normalizedEmail, legalName, cuit, language, now, expiresAt);
         intent.PasswordHash = passwordHash;
         return intent;
     }
@@ -70,9 +84,19 @@ public sealed class PendingRegistrationIntent : BaseEntity<Guid>
         string legalName,
         NormalizedCuit cuit,
         DateTimeOffset now,
+        DateTimeOffset expiresAt) =>
+        Notify(submissionId, normalizedEmail, legalName, cuit, "en", now, expiresAt);
+
+    public static PendingRegistrationIntent Notify(
+        Guid submissionId,
+        string normalizedEmail,
+        string legalName,
+        NormalizedCuit cuit,
+        string language,
+        DateTimeOffset now,
         DateTimeOffset expiresAt)
     {
-        var intent = Create(submissionId, normalizedEmail, legalName, cuit, now, expiresAt);
+        var intent = Create(submissionId, normalizedEmail, legalName, cuit, language, now, expiresAt);
         intent.Outcome = PendingRegistrationIntentOutcome.Notified;
         intent.CompletedAt = now;
         return intent;
@@ -97,12 +121,14 @@ public sealed class PendingRegistrationIntent : BaseEntity<Guid>
         string normalizedEmail,
         string legalName,
         NormalizedCuit cuit,
+        string language,
         DateTimeOffset now,
         DateTimeOffset expiresAt)
     {
         if (submissionId == Guid.Empty) throw new ArgumentException("A registration intent belongs to a submission.", nameof(submissionId));
         ArgumentException.ThrowIfNullOrWhiteSpace(normalizedEmail);
         ArgumentException.ThrowIfNullOrWhiteSpace(legalName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(language);
         if (expiresAt <= now) throw new ArgumentOutOfRangeException(nameof(expiresAt));
 
         return new PendingRegistrationIntent
@@ -110,6 +136,7 @@ public sealed class PendingRegistrationIntent : BaseEntity<Guid>
             Id = Guid.NewGuid(),
             SubmissionId = submissionId,
             NormalizedEmail = normalizedEmail,
+            Language = language,
             LegalName = legalName,
             Cuit = cuit,
             CreatedAt = now,

@@ -145,7 +145,7 @@ public sealed class GoogleOidcTests : TestBase
     public async Task A_verified_provider_account_nobody_has_claimed_becomes_an_identity_with_a_session_and_no_tenant()
     {
         using var scenario = Scenario();
-        var browser = scenario.Browser();
+        var browser = scenario.Browser("es");
 
         var completed = await browser.SignInWithProviderAsync("google-subject-1", "newcomer@provider.test");
 
@@ -154,6 +154,7 @@ public sealed class GoogleOidcTests : TestBase
         identity.Email.ShouldBe("newcomer@provider.test");
         identity.EmailConfirmed.ShouldBeTrue("the provider asserted the address, which is the only reason it counts as confirmed");
         identity.PasswordHash.ShouldBeNull("nobody chose a password, so none was invented");
+        identity.PreferredLanguage.ShouldBe("es", "first external-login account creation uses the negotiated request language");
         (await TestApp.CountAsync<TenantMembership>()).ShouldBe(0, "arriving through a provider joins nothing; onboarding stays an explicit choice");
         (await TestApp.ListAsync<UserSession>()).Count(session => session.RevokedAt is null).ShouldBe(1);
     }
@@ -191,12 +192,17 @@ public sealed class GoogleOidcTests : TestBase
     public async Task Coming_back_with_the_same_provider_account_signs_the_same_identity_in_again()
     {
         using var scenario = Scenario();
+        var first = scenario.Browser("es");
+        var returning = scenario.Browser("en");
 
-        (await scenario.Browser().SignInWithProviderAsync("google-subject-4", "returning@provider.test")).StatusCode.ShouldBe(HttpStatusCode.NoContent);
-        (await scenario.Browser().SignInWithProviderAsync("google-subject-4", "returning@provider.test")).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        (await first.SignInWithProviderAsync("google-subject-4", "returning@provider.test")).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        (await TestApp.ListAsync<CleanArchitecture.Infrastructure.Identity.ApplicationUser>()).Single().PreferredLanguage.ShouldBe("es");
+        (await returning.SignInWithProviderAsync("google-subject-4", "returning@provider.test")).StatusCode.ShouldBe(HttpStatusCode.NoContent);
 
-        (await TestApp.CountAsync<CleanArchitecture.Infrastructure.Identity.ApplicationUser>())
-            .ShouldBe(1, "the second visit recognized the subject rather than creating a second identity");
+        var identities = await TestApp.ListAsync<CleanArchitecture.Infrastructure.Identity.ApplicationUser>();
+        identities.Count.ShouldBe(1, "the second visit recognized the subject rather than creating a second identity");
+        var identity = identities.Single();
+        identity.PreferredLanguage.ShouldBe("es", "an existing external identity is never overwritten by a later request language");
         (await TestApp.ListAsync<UserSession>()).Count(session => session.RevokedAt is null).ShouldBe(2);
     }
 
@@ -718,15 +724,17 @@ public sealed class GoogleOidcTests : TestBase
                     options => options.BackchannelHttpHandler = provider.CreateHandler()));
         }
 
-        internal ProviderBrowser Browser()
+        internal ProviderBrowser Browser(string? language = null)
         {
             var host = $"https://oidc-{Guid.NewGuid():N}.localhost";
-            return new ProviderBrowser(_harness.Factory.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions
+            var client = _harness.Factory.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions
             {
                 HandleCookies = true,
                 AllowAutoRedirect = false,
                 BaseAddress = new Uri(host)
-            }), host, Provider);
+            });
+            if (language is not null) client.DefaultRequestHeaders.AcceptLanguage.ParseAdd(language);
+            return new ProviderBrowser(client, host, Provider);
         }
 
         public void Dispose()

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using CleanArchitecture.Application.Common.Interfaces;
+using CleanArchitecture.Application.Common.Localization;
 using CleanArchitecture.Application.Common.Models;
 using CleanArchitecture.Application.IdentityAccess.Common;
 using CleanArchitecture.Application.IdentityAccess.Organizations;
@@ -26,6 +27,7 @@ public sealed class RegisterInvitedUserCommandHandler(
     ISecureTokenGenerator tokens,
     ITokenHasher tokenHasher,
     IOutboxSecretWriter secretWriter,
+    LocalizationSettings localization,
     TimeProvider timeProvider) : IRequestHandler<RegisterInvitedUserCommand, Result>
 {
     /// <summary>
@@ -37,9 +39,10 @@ public sealed class RegisterInvitedUserCommandHandler(
 
     /// <summary>
     /// The generic notice an address that already has an account receives (IA-REQ-016). It is a distinct purpose
-    /// carrying no token and no invitation: whoever submitted the token is not proven to own that account, so the
-    /// notice tells the real owner how to sign in and nothing else. Writing it is also what makes the existing
-    /// branch cost the same work as the missing one.
+    /// carrying no token or invitation details. Alongside the recipient identity identifier, its envelope retains
+    /// only the InvitationId from the invitation so delivery can resolve the immutable language snapshot; whoever
+    /// submitted the token is not proven to own that account, so the notice tells the real owner how to sign in and
+    /// nothing else. Writing it is also what makes the existing branch cost the same work as the missing one.
     /// </summary>
     internal const string ExistingIdentityNoticeMessageType = "identity.invitation.signin.notice.requested";
     private static readonly TimeSpan ConfirmationWindow = TimeSpan.FromHours(24);
@@ -73,13 +76,17 @@ public sealed class RegisterInvitedUserCommandHandler(
                     // someone tried to register with it and that they can simply sign in.
                     context.OutboxMessages.Add(OutboxMessage.Create(
                         ExistingIdentityNoticeMessageType,
-                        JsonSerializer.Serialize(new IdentityConfirmationEnvelope(existing.Id)),
+                        JsonSerializer.Serialize(new IdentityConfirmationEnvelope(existing.Id, invitation.Id.Value)),
                         now));
                     await context.SaveChangesAsync(ct);
                     return Result.Success();
                 }
 
-                var creation = await identities.CreatePendingAsync(invitation.NormalizedEmail, request.Password, ct);
+                var creation = await identities.CreatePendingAsync(
+                    invitation.NormalizedEmail,
+                    request.Password,
+                    invitation.Language ?? localization.DefaultLanguage,
+                    ct);
                 if (creation.Account is null)
                 {
                     // The address is one the aggregate accepts and ASP.NET Identity does not — a Unicode local part it
@@ -92,7 +99,7 @@ public sealed class RegisterInvitedUserCommandHandler(
                 var rawToken = tokens.Generate();
                 var outbox = OutboxMessage.Create(
                     InvitedConfirmationMessageType,
-                    JsonSerializer.Serialize(new IdentityConfirmationEnvelope(creation.Account.Id)),
+                    JsonSerializer.Serialize(new IdentityConfirmationEnvelope(creation.Account.Id, invitation.Id.Value)),
                     now);
                 context.OutboxMessages.Add(outbox);
                 context.OutboxSecrets.Add(OutboxSecret.Create(outbox.Id, tokenHasher.Hash(rawToken), secretWriter.Encrypt(rawToken), now.Add(ConfirmationWindow)));
@@ -118,5 +125,5 @@ public sealed class RegisterInvitedUserCommandHandler(
     /// and no membership: an invited registration must not create either, so a shape that could name them would
     /// invite a later change to start doing so (IA-REQ-016).
     /// </summary>
-    internal sealed record IdentityConfirmationEnvelope(Guid IdentityId);
+    internal sealed record IdentityConfirmationEnvelope(Guid IdentityId, Guid? InvitationId = null);
 }

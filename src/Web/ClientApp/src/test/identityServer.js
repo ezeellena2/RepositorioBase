@@ -5,6 +5,7 @@ export const ANTIFORGERY_TOKEN = 'request-token-1';
 /** The signed-in context the API answers with, shaped exactly as SPEC section 7 declares it. */
 export const signedInContext = (overrides = {}) => ({
   user: { id: 'user-1', displayName: 'Ana', emailConfirmed: true },
+  preferredLanguage: null,
   activeTenant: { id: 'tenant-1', type: 'Organization', name: 'Acme' },
   availableTenants: [
     { id: 'tenant-1', type: 'Organization', name: 'Acme' },

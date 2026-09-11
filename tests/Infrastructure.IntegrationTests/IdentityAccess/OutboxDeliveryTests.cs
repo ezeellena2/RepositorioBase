@@ -1,4 +1,5 @@
 using CleanArchitecture.Application.Common.Interfaces;
+using CleanArchitecture.Application.Common.Localization;
 using CleanArchitecture.Application.IdentityAccess.Organizations.RegisterOrganization;
 using System.Text.Json;
 using CleanArchitecture.Domain.IdentityAccess.Authorization;
@@ -11,6 +12,7 @@ using CleanArchitecture.Infrastructure.IntegrationTests.Infrastructure;
 using CleanArchitecture.Infrastructure.IntegrationTests.TestDoubles;
 using CleanArchitecture.Infrastructure.Outbox;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace CleanArchitecture.Infrastructure.IntegrationTests.IdentityAccess;
@@ -76,6 +78,229 @@ public sealed class OutboxDeliveryTests
 
         sink.Sent.Count.ShouldBe(1);
         sink.Sent[0].IdempotencyKey.ShouldBe(message.Id.ToString(), "the outbox message id is the send idempotency key");
+    }
+
+    [Test]
+    public async Task Delivery_prefers_the_accounts_language_over_the_invitation_snapshot()
+    {
+        using var scope = TestServices.CreateScope();
+        var sink = new TestEmailSink();
+        var message = await SeedAsync(
+            scope,
+            InvitationType,
+            Origin,
+            invitationLanguage: "en",
+            accountLanguage: "es");
+
+        (await DispatcherFor(scope, new ControlledTimeProvider(Origin), sink)
+            .DispatchDueAsync(CancellationToken.None)).ShouldBe(1);
+
+        sink.Sent.Single().Subject.ShouldBe("Tiene una invitación");
+        (await ReloadAsync(scope, message.Id)).DeliveryLanguage.ShouldBe("es");
+    }
+
+    [Test]
+    public async Task Delivery_uses_the_invitation_snapshot_when_the_account_has_no_preference()
+    {
+        using var scope = TestServices.CreateScope();
+        var sink = new TestEmailSink();
+        var message = await SeedAsync(
+            scope,
+            InvitationType,
+            Origin,
+            invitationLanguage: "es");
+
+        (await DispatcherFor(scope, new ControlledTimeProvider(Origin), sink)
+            .DispatchDueAsync(CancellationToken.None)).ShouldBe(1);
+
+        sink.Sent.Single().Subject.ShouldBe("Tiene una invitación");
+        (await ReloadAsync(scope, message.Id)).DeliveryLanguage.ShouldBe("es");
+    }
+
+    [Test]
+    public async Task Legacy_delivery_without_a_preference_or_snapshot_uses_the_configured_default()
+    {
+        using var scope = TestServices.CreateScope();
+        var sink = new TestEmailSink();
+        var message = await SeedAsync(scope, InvitationType, Origin);
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var invitationId = InvitationId.From(JsonDocument.Parse(message.Payload).RootElement.GetProperty("InvitationId").GetGuid());
+        await context.Invitations
+            .Where(invitation => invitation.Id == invitationId)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(invitation => invitation.Language, (string?)null));
+
+        (await DispatcherFor(scope, new ControlledTimeProvider(Origin), sink)
+            .DispatchDueAsync(CancellationToken.None)).ShouldBe(1);
+
+        sink.Sent.Single().Subject.ShouldBe("You have been invited");
+        (await ReloadAsync(scope, message.Id)).DeliveryLanguage.ShouldBe("en");
+    }
+
+    [Test]
+    public async Task A_retry_reuses_its_first_prepared_language_after_the_account_preference_changes()
+    {
+        using var scope = TestServices.CreateScope();
+        var clock = new ControlledTimeProvider(Origin);
+        var sink = new TestEmailSink { Respond = _ => new EmailDeliveryReceipt(false, null, false) };
+        var message = await SeedAsync(
+            scope,
+            InvitationType,
+            Origin,
+            invitationLanguage: "es",
+            accountLanguage: "es");
+
+        (await DispatcherFor(scope, clock, sink).DispatchDueAsync(CancellationToken.None)).ShouldBe(0);
+        var firstAttempt = await ReloadAsync(scope, message.Id);
+        firstAttempt.DeliveryLanguage.ShouldBe("es");
+        firstAttempt.RequestFingerprint.ShouldNotBeNullOrWhiteSpace();
+
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var identityId = _identityIds.Single();
+        var invitationId = InvitationId.From(JsonDocument.Parse(message.Payload).RootElement.GetProperty("InvitationId").GetGuid());
+        await context.Users
+            .Where(user => user.Id == identityId)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(user => user.PreferredLanguage, "en"));
+        await context.Invitations
+            .Where(invitation => invitation.Id == invitationId)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(invitation => invitation.Language, "en"));
+        clock.Advance(firstAttempt.NextAttemptAt - clock.GetUtcNow());
+        sink.Respond = null;
+
+        (await DispatcherFor(scope, clock, sink).DispatchDueAsync(CancellationToken.None)).ShouldBe(1);
+
+        sink.Sent.Count.ShouldBe(2);
+        sink.Sent.ShouldAllBe(sent => sent.Subject == "Tiene una invitación");
+        sink.Sent.Select(sent => sent.IdempotencyKey).Distinct().ShouldBe([message.Id.ToString()]);
+        var delivered = await ReloadAsync(scope, message.Id);
+        delivered.DeliveryLanguage.ShouldBe("es");
+        delivered.RequestFingerprint.ShouldBe(firstAttempt.RequestFingerprint);
+        delivered.Status.ShouldBe(OutboxMessageStatus.Delivered);
+    }
+
+    [Test]
+    public async Task Invited_confirmation_uses_the_invitation_snapshot_when_the_account_has_no_preference()
+    {
+        using var scope = TestServices.CreateScope();
+        var sink = new TestEmailSink();
+        var message = await SeedAsync(
+            scope,
+            "identity.invitation.confirmation.requested",
+            Origin,
+            invitationLanguage: "es",
+            accountExists: true);
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var identityId = _identityIds.Single();
+        var invitationId = JsonDocument.Parse(message.Payload).RootElement.GetProperty("InvitationId").GetGuid();
+        await context.OutboxMessages.Where(item => item.Id == message.Id).ExecuteUpdateAsync(setters => setters
+            .SetProperty(item => item.Payload, JsonSerializer.Serialize(new { IdentityId = identityId, InvitationId = invitationId })));
+
+        var dispatcher = new OutboxDispatcher(
+            context,
+            new OutboxSecretReader(context, scope.ServiceProvider.GetRequiredService<Microsoft.AspNetCore.DataProtection.IDataProtectionProvider>()),
+            [new InvitedConfirmationDeliveryHandler(context, EmailOptions, LocalizerFor(context, scope))],
+            new ControlledTimeProvider(Origin),
+            sink,
+            NotRecovering,
+            TestMetrics.Instance);
+
+        (await dispatcher.DispatchDueAsync(CancellationToken.None)).ShouldBe(1);
+
+        sink.Sent.Single().Subject.ShouldBe("Confirme su correo electrónico");
+        (await ReloadAsync(scope, message.Id)).DeliveryLanguage.ShouldBe("es");
+    }
+
+    [TestCase("{}")]
+    [TestCase("[]")]
+    public async Task A_malformed_or_identifierless_payload_is_terminalized_as_invalid(string payload)
+    {
+        using var scope = TestServices.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var message = OutboxMessage.Create(
+            "identity.lifecycle.self.deactivated.notice.requested",
+            payload,
+            Origin);
+        _messageIds.Add(message.Id);
+        context.OutboxMessages.Add(message);
+        await context.SaveChangesAsync();
+
+        var dispatcher = new OutboxDispatcher(
+            context,
+            scope.ServiceProvider.GetRequiredService<IOutboxSecretReader>(),
+            [new AccountSelfDeactivatedNoticeDeliveryHandler(context, EmailOptions, LocalizerFor(context, scope))],
+            new ControlledTimeProvider(Origin),
+            new TestEmailSink(),
+            NotRecovering,
+            TestMetrics.Instance);
+
+        (await dispatcher.DispatchDueAsync(CancellationToken.None)).ShouldBe(0);
+
+        var abandoned = await ReloadAsync(scope, message.Id);
+        abandoned.Status.ShouldBe(OutboxMessageStatus.Abandoned);
+        abandoned.FailureCode.ShouldBe("payload_invalid");
+    }
+
+    [Test]
+    public async Task A_handler_programmer_failure_remains_retryable_worker_failure()
+    {
+        using var scope = TestServices.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var message = OutboxMessage.Create(ThrowingHandler.Type, "{}", Origin);
+        _messageIds.Add(message.Id);
+        context.OutboxMessages.Add(message);
+        await context.SaveChangesAsync();
+        var dispatcher = new OutboxDispatcher(
+            context,
+            scope.ServiceProvider.GetRequiredService<IOutboxSecretReader>(),
+            [new ThrowingHandler()],
+            new ControlledTimeProvider(Origin),
+            new TestEmailSink(),
+            NotRecovering,
+            TestMetrics.Instance);
+
+        await Should.ThrowAsync<InvalidOperationException>(() => dispatcher.DispatchDueAsync(CancellationToken.None));
+
+        var pending = await ReloadAsync(scope, message.Id);
+        pending.Status.ShouldBe(OutboxMessageStatus.Pending);
+        pending.FailureCode.ShouldBeNull();
+    }
+
+    [Test]
+    public async Task A_legacy_attempt_without_a_bound_language_reuses_its_historical_english_rendering()
+    {
+        using var scope = TestServices.CreateScope();
+        var sink = new TestEmailSink();
+        var message = await SeedAsync(
+            scope,
+            InvitationType,
+            Origin,
+            invitationLanguage: "es",
+            accountLanguage: "es");
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var invitationId = InvitationId.From(JsonDocument.Parse(message.Payload).RootElement.GetProperty("InvitationId").GetGuid());
+        var recipient = await context.Invitations
+            .Where(invitation => invitation.Id == invitationId)
+            .Select(invitation => invitation.NormalizedEmail)
+            .SingleAsync();
+        const string subject = "You have been invited";
+        var body = $"Open this link to accept: https://app.example.test/invitations/accept#token={Uri.EscapeDataString(KnownToken)}";
+        var fingerprint = ((IIdentityEmailSender)sink).GetRequestFingerprint(recipient, subject, body);
+        await context.OutboxMessages.Where(item => item.Id == message.Id).ExecuteUpdateAsync(setters => setters
+            .SetProperty(item => item.RequestFingerprint, fingerprint)
+            .SetProperty(item => item.FirstAttemptAt, Origin.AddMinutes(-1))
+            .SetProperty(item => item.AttemptCount, 1)
+            .SetProperty(item => item.DeliveryLanguage, (string?)null));
+
+        (await DispatcherFor(scope, new ControlledTimeProvider(Origin), sink)
+            .DispatchDueAsync(CancellationToken.None)).ShouldBe(1);
+
+        var sent = sink.Sent.Single();
+        sent.Subject.ShouldBe(subject);
+        sent.Body.ShouldBe(body);
+        sent.IdempotencyKey.ShouldBe(message.Id.ToString());
+        var delivered = await ReloadAsync(scope, message.Id);
+        delivered.DeliveryLanguage.ShouldBe("en");
+        delivered.RequestFingerprint.ShouldBe(fingerprint);
+        delivered.Status.ShouldBe(OutboxMessageStatus.Delivered);
     }
 
     /// <summary>
@@ -385,7 +610,7 @@ public sealed class OutboxDeliveryTests
         await using (var failing = new ApplicationDbContext(failingOptions))
         {
             var first = new OutboxDispatcher(failing, new OutboxSecretReader(failing, protector),
-                [new InvitationEmailDeliveryHandler(failing, EmailOptions)], clock, sender, NotRecovering, TestMetrics.Instance);
+                [new InvitationEmailDeliveryHandler(failing, EmailOptions, LocalizerFor(failing, scope))], clock, sender, NotRecovering, TestMetrics.Instance);
             await Should.ThrowAsync<InvalidOperationException>(() => first.DispatchDueAsync(CancellationToken.None));
         }
         transport.AcceptedCount.ShouldBe(1);
@@ -394,18 +619,23 @@ public sealed class OutboxDeliveryTests
         pending.FirstAttemptAt.ShouldBe(Origin);
         pending.AttemptCount.ShouldBe(1);
         pending.RequestFingerprint.ShouldNotBeNullOrWhiteSpace();
+        pending.DeliveryLanguage.ShouldBe("en");
+        var preparedFingerprint = pending.RequestFingerprint;
         (await SecretOfAsync(scope, message.Id)).Ciphertext.ShouldNotBeNull();
 
         clock.Advance(TimeSpan.FromMinutes(minutes));
         if (rotateKey) emailOptions.Value.ApiKey = "rotated-isolated-test-key";
         var retry = new OutboxDispatcher(context, new OutboxSecretReader(context, protector),
-            [new InvitationEmailDeliveryHandler(context, EmailOptions)], clock, sender, NotRecovering, TestMetrics.Instance);
+            [new InvitationEmailDeliveryHandler(context, EmailOptions, LocalizerFor(context, scope, "es"))], clock, sender, NotRecovering, TestMetrics.Instance);
         await retry.DispatchDueAsync(CancellationToken.None);
         await retry.DispatchDueAsync(CancellationToken.None);
         transport.AcceptedCount.ShouldBe(1, "the transport accepts one logical message even after a process restart");
         transport.RequestCount.ShouldBe(canReconcile ? 2 : 1);
         var settled = await ReloadAsync(scope, message.Id);
         settled.Status.ShouldBe(canReconcile ? OutboxMessageStatus.Delivered : OutboxMessageStatus.Abandoned);
+        settled.DeliveryLanguage.ShouldBe("en");
+        settled.RequestFingerprint.ShouldBe(preparedFingerprint);
+        transport.AcceptedKeys.ShouldBe([message.Id.ToString()]);
         var secret = await SecretOfAsync(scope, message.Id);
         secret.Ciphertext.ShouldBeNull();
         if (canReconcile) secret.ProviderReceipt.ShouldBe(transport.Receipt);
@@ -429,6 +659,7 @@ public sealed class OutboxDeliveryTests
         private readonly Dictionary<string, string> _accepted = [];
         public string Receipt { get; } = Guid.NewGuid().ToString();
         public int AcceptedCount => _accepted.Count;
+        public string[] AcceptedKeys => _accepted.Keys.Order().ToArray();
         public int RequestCount { get; private set; }
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
@@ -525,7 +756,10 @@ public sealed class OutboxDeliveryTests
         return new OutboxDispatcher(
             context,
             new OutboxSecretReader(context, scope.ServiceProvider.GetRequiredService<Microsoft.AspNetCore.DataProtection.IDataProtectionProvider>()),
-            [new InvitationEmailDeliveryHandler(context, EmailOptions), new EmailConfirmationDeliveryHandler(context, EmailOptions)],
+            [
+                new InvitationEmailDeliveryHandler(context, EmailOptions, LocalizerFor(context, scope)),
+                new EmailConfirmationDeliveryHandler(context, EmailOptions, LocalizerFor(context, scope))
+            ],
             clock, sink, NotRecovering, TestMetrics.Instance);
     }
 
@@ -578,7 +812,7 @@ public sealed class OutboxDeliveryTests
         var dispatcher = new OutboxDispatcher(
             context,
             new OutboxSecretReader(context, scope.ServiceProvider.GetRequiredService<Microsoft.AspNetCore.DataProtection.IDataProtectionProvider>()),
-            [new PasswordRecoveryDeliveryHandler(context, EmailOptions)],
+            [new PasswordRecoveryDeliveryHandler(context, EmailOptions, LocalizerFor(context, scope))],
             clock,
             sink,
             NotRecovering, TestMetrics.Instance);
@@ -607,6 +841,17 @@ public sealed class OutboxDeliveryTests
     private static readonly Microsoft.Extensions.Options.IOptions<CleanArchitecture.Infrastructure.Email.IdentityEmailOptions> EmailOptions =
         Microsoft.Extensions.Options.Options.Create(new CleanArchitecture.Infrastructure.Email.IdentityEmailOptions { PublicOrigin = "https://app.example.test" });
 
+    private static CleanArchitecture.Infrastructure.Localization.IdentityEmailLocalizer LocalizerFor(
+        ApplicationDbContext context,
+        IServiceScope scope,
+        string? defaultLanguage = null) =>
+        new(
+            context,
+            scope.ServiceProvider.GetRequiredService<ILookupNormalizer>(),
+            defaultLanguage is null
+                ? scope.ServiceProvider.GetRequiredService<LocalizationSettings>()
+                : new LocalizationSettings(defaultLanguage));
+
     /// <summary>
     /// A real invitation behind the message, because the handler resolves the recipient from it rather than from
     /// the payload — an address is PII and IA-REQ-029 keeps PII out of an outbox payload exactly as it keeps
@@ -617,7 +862,10 @@ public sealed class OutboxDeliveryTests
         string type,
         DateTimeOffset dueAt,
         DateTimeOffset? envelopeExpiresAt = null,
-        string rawToken = KnownToken)
+        string rawToken = KnownToken,
+        string invitationLanguage = "en",
+        string? accountLanguage = null,
+        bool accountExists = false)
     {
         var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var writer = scope.ServiceProvider.GetRequiredService<IOutboxSecretWriter>();
@@ -625,14 +873,33 @@ public sealed class OutboxDeliveryTests
         var tenant = Tenant.CreateOrganization(TenantSlug.From($"outbox-{Guid.NewGuid():N}"));
         tenant.Activate();
         var role = Role.Create(tenant, $"member-{Guid.NewGuid():N}");
+        var recipient = $"invitee-{Guid.NewGuid():N}@example.test";
         var invitation = Invitation.Issue(
             tenant,
-            $"invitee-{Guid.NewGuid():N}@example.test",
+            recipient,
             [role],
             VersionedTokenHash.Of($"{rawToken}|{Guid.NewGuid():N}"),
+            invitationLanguage,
             dueAt.AddMinutes(-1),
             dueAt.AddDays(7));
         context.AddRange(tenant, role, invitation);
+
+        if (accountLanguage is not null || accountExists)
+        {
+            var identity = new CleanArchitecture.Infrastructure.Identity.ApplicationUser
+            {
+                Id = Guid.NewGuid(),
+                UserName = recipient,
+                NormalizedUserName = recipient.ToUpperInvariant(),
+                Email = recipient,
+                NormalizedEmail = recipient.ToUpperInvariant(),
+                EmailConfirmed = true,
+                PreferredLanguage = accountLanguage,
+                SecurityStamp = Guid.NewGuid().ToString("N")
+            };
+            context.Users.Add(identity);
+            _identityIds.Add(identity.Id);
+        }
 
         var message = OutboxMessage.Create(type, JsonSerializer.Serialize(new { InvitationId = invitation.Id.Value, TenantId = tenant.Id.Value }), dueAt);
         _messageIds.Add(message.Id);
@@ -644,6 +911,20 @@ public sealed class OutboxDeliveryTests
             envelopeExpiresAt ?? dueAt.AddHours(24)));
         await context.SaveChangesAsync();
         return message;
+    }
+
+    private sealed class ThrowingHandler : IOutboxDeliveryHandler
+    {
+        internal const string Type = "test.programmer.failure";
+        public string MessageType => Type;
+        public bool RequiresSecret => false;
+
+        public Task<IdentityEmail?> PrepareAsync(
+            string payload,
+            string? token,
+            string? deliveryLanguage,
+            CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("A resource or programmer failure must reach the worker boundary.");
     }
 
     private static async Task<OutboxMessage> ReloadAsync(IServiceScope scope, Guid id)

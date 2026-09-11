@@ -68,14 +68,19 @@ public sealed class PlatformAdministrationTests : TestBase
     public async Task Re_inviting_the_same_address_rotates_its_offer_instead_of_creating_a_second()
     {
         await PlatformScenario.ActiveOwnerAsync();
+        TestApp.SetRequestLanguage("es");
         await TestApp.SendAsync(new InvitePlatformAdministratorCommand("second-admin@example.test"));
-        var first = (await TestApp.ListAsync<PlatformAdminInvitation>()).Single(offer => !offer.IsOwner).TokenHash;
+        var firstOffer = (await TestApp.ListAsync<PlatformAdminInvitation>()).Single(offer => !offer.IsOwner);
+        var first = firstOffer.TokenHash;
+        firstOffer.Language.ShouldBe("es");
 
+        TestApp.SetRequestLanguage("en");
         await TestApp.SendAsync(new InvitePlatformAdministratorCommand("second-admin@example.test"));
 
         var offers = (await TestApp.ListAsync<PlatformAdminInvitation>()).Where(offer => !offer.IsOwner).ToArray();
         offers.Length.ShouldBe(1);
         offers[0].TokenHash.ShouldNotBe(first, "reissuing rotates the token.");
+        offers[0].Language.ShouldBe("es", "reissuing preserves the immutable request-language snapshot");
     }
 
     /// <summary>
@@ -130,8 +135,10 @@ public sealed class PlatformAdministrationTests : TestBase
     public async Task A_second_administrator_gains_nothing_until_the_same_gates_complete()
     {
         await PlatformScenario.ActiveOwnerAsync();
+        TestApp.SetRequestLanguage("es");
         await TestApp.SendAsync(new InvitePlatformAdministratorCommand("second-admin@example.test"));
         var offer = (await TestApp.ListAsync<PlatformAdminInvitation>()).Single(item => !item.IsOwner);
+        offer.Language.ShouldBe("es");
         var token = await PlatformScenario.SealedTokenAsync(offer.DeliveryMessageId!.Value);
 
         PlatformScenario.RunAnonymously();
@@ -145,6 +152,7 @@ public sealed class PlatformAdministrationTests : TestBase
 
         var newcomer = (await TestApp.ListAsync<CleanArchitecture.Infrastructure.Identity.ApplicationUser>())
             .Single(user => user.NormalizedEmail == "SECOND-ADMIN@EXAMPLE.TEST");
+        newcomer.PreferredLanguage.ShouldBe("es", "first account creation inherits the Platform invitation snapshot");
         PlatformScenario.RunAs(newcomer.Id);
         var enrollment = await TestApp.SendAsync(new BeginPlatformMfaEnrollmentCommand(token));
         (await TestApp.CountAsync<TenantMembership>()).ShouldBe(1, "enrolling grants nothing either.");

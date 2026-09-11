@@ -172,6 +172,7 @@ public sealed class CompleteExternalLoginCommandHandler(
     IIdentityAccountService identities,
     IExternalSubjectLock subjectLock,
     ISessionIssuer issuer,
+    IRequestLanguage requestLanguage,
     TimeProvider timeProvider) : IRequestHandler<CompleteExternalLoginCommand, Result<CompletedExternalLogin>>
 {
     public async Task<Result<CompletedExternalLogin>> Handle(CompleteExternalLoginCommand request, CancellationToken cancellationToken)
@@ -212,7 +213,7 @@ public sealed class CompleteExternalLoginCommandHandler(
                     return Result<CompletedExternalLogin>.Failure(IdentityAccessErrors.ExternalLoginConflict());
                 }
 
-                var created = await external.CreateFromProviderAsync(email, ct);
+                var created = await external.CreateFromProviderAsync(email, requestLanguage.Language, ct);
                 if (created is null)
                 {
                     handoff.Fail(now);

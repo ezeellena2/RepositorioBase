@@ -38,6 +38,7 @@ public sealed class InvitePlatformAdministratorCommandHandler(
     IApplicationDbContext context,
     ICurrentTenant currentTenant,
     IRecentMfaVerifier recentMfa,
+    IRequestLanguage requestLanguage,
     ISecureTokenGenerator tokens,
     ITokenHasher tokenHasher,
     IOutboxSecretWriter secretWriter,
@@ -82,7 +83,14 @@ public sealed class InvitePlatformAdministratorCommandHandler(
             }
             else
             {
-                invitation = PlatformAdminInvitation.Issue(platform, recipient, minted.Hash, false, now, now.Add(BootstrapWindow));
+                invitation = PlatformAdminInvitation.Issue(
+                    platform,
+                    recipient,
+                    minted.Hash,
+                    false,
+                    requestLanguage.Language,
+                    now,
+                    now.Add(BootstrapWindow));
                 context.PlatformAdminInvitations.Add(invitation);
             }
 

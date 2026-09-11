@@ -100,7 +100,7 @@ public sealed class PlatformAdminInvitationTests
     [Test]
     public void Reissuing_rotates_the_token_extends_the_window_and_puts_delivery_back_in_flight()
     {
-        var invitation = PlatformAdminInvitation.Issue(Platform(), "owner@example.test", Hash, true, Now, Now.AddDays(7));
+        var invitation = PlatformAdminInvitation.Issue(Platform(), "owner@example.test", Hash, true, "es", Now, Now.AddDays(7));
         invitation.RecordDelivery(PlatformAdminInvitationDelivery.PermanentlyFailed, Guid.NewGuid(), Now);
 
         invitation.Reissue(RotatedHash, Now.AddDays(8), Now.AddDays(15));
@@ -109,6 +109,7 @@ public sealed class PlatformAdminInvitationTests
         invitation.ExpiresAt.ShouldBe(Now.AddDays(15));
         invitation.Delivery.ShouldBe(PlatformAdminInvitationDelivery.Pending);
         invitation.DeliveryMessageId.ShouldBeNull();
+        invitation.Language.ShouldBe("es");
         invitation.IsRecoverableAt(Now.AddDays(8)).ShouldBeFalse("the replacement has not been sent yet.");
     }
 

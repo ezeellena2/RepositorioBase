@@ -28,6 +28,9 @@ public sealed class ApplicationUserConfiguration : IEntityTypeConfiguration<Appl
                 "CK_AspNetUsers_StatusBeforeSuspension",
                 "(\"StatusBeforeSuspension\" IS NULL) = (\"Status\" <> 'AdministrativelySuspended') AND " +
                 "(\"StatusBeforeSuspension\" IS NULL OR \"StatusBeforeSuspension\" IN ('PendingConfirmation', 'Active', 'SelfDeactivated'))");
+            table.HasCheckConstraint(
+                "CK_AspNetUsers_PreferredLanguage",
+                "\"PreferredLanguage\" IS NULL OR \"PreferredLanguage\" IN ('en', 'es')");
         });
         builder.HasIndex(user => user.NormalizedEmail).IsUnique().HasDatabaseName("EmailIndex");
 
@@ -44,6 +47,7 @@ public sealed class ApplicationUserConfiguration : IEntityTypeConfiguration<Appl
             .IsRequired();
 
         builder.Property(user => user.StatusBeforeSuspension).HasConversion<string>().HasMaxLength(32);
+        builder.Property(user => user.PreferredLanguage).HasMaxLength(16);
     }
 }
 

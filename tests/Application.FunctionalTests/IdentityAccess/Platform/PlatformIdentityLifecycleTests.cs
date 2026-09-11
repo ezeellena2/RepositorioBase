@@ -1,3 +1,4 @@
+using System.Text.Json;
 using CleanArchitecture.Application.FunctionalTests.IdentityAccess.Organizations;
 using CleanArchitecture.Application.FunctionalTests.Infrastructure;
 using CleanArchitecture.Application.IdentityAccess.Authorization;
@@ -8,6 +9,7 @@ using CleanArchitecture.Application.IdentityAccess.Roles;
 using CleanArchitecture.Application.IdentityAccess.Sessions.CreateSession;
 using CleanArchitecture.Domain.IdentityAccess.Auditing;
 using CleanArchitecture.Domain.IdentityAccess.Identities;
+using CleanArchitecture.Domain.IdentityAccess.Outbox;
 using CleanArchitecture.Domain.IdentityAccess.Tenants;
 using CleanArchitecture.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -38,6 +40,10 @@ public sealed class PlatformIdentityLifecycleTests : TestBase
         var suspended = await TestApp.SendAsync(new SuspendIdentityCommand(identityId, IdentitySuspensionReason.PolicyViolation, IdentityAccountStatus.Active));
 
         suspended.IsSuccess.ShouldBeTrue(suspended.Error?.Code);
+        AssertIdentityOnlyPayload(
+            (await TestApp.ListAsync<OutboxMessage>()).Single(message =>
+                message.Type == "identity.lifecycle.administratively.suspended.notice.requested"),
+            identityId);
         (await StatusAsync(identityId)).ShouldBe(IdentityAccountStatus.AdministrativelySuspended);
         (await LiveSessionCountAsync(identityId)).ShouldBe(0, "stopping an account reaches the sessions it already had");
 
@@ -87,6 +93,10 @@ public sealed class PlatformIdentityLifecycleTests : TestBase
         var lifted = await TestApp.SendAsync(new ReactivateIdentityCommand(identityId, IdentityAccountStatus.AdministrativelySuspended, AcknowledgeSelfDeactivation: true));
 
         lifted.IsSuccess.ShouldBeTrue(lifted.Error?.Code);
+        AssertIdentityOnlyPayload(
+            (await TestApp.ListAsync<OutboxMessage>()).Single(message =>
+                message.Type == "identity.lifecycle.reactivated.notice.requested"),
+            identityId);
         (await StatusAsync(identityId)).ShouldBe(IdentityAccountStatus.SelfDeactivated);
         PlatformScenario.RunAnonymously();
         (await TestApp.SendAsync(new CreateSessionCommand(email, Password))).IsFailure
@@ -299,6 +309,14 @@ public sealed class PlatformIdentityLifecycleTests : TestBase
             TestApp.SetCurrentTenant(TenantId);
             TestApp.SetApplicationPermissionGranted(true);
         }
+    }
+
+    private static void AssertIdentityOnlyPayload(OutboxMessage message, Guid identityId)
+    {
+        using var document = JsonDocument.Parse(message.Payload);
+        var properties = document.RootElement.EnumerateObject().ToArray();
+        properties.Select(property => property.Name).ShouldBe(["IdentityId"]);
+        properties[0].Value.GetGuid().ShouldBe(identityId);
     }
 
     private static async Task<(Guid IdentityId, string Email)> SignedInSubjectAsync()

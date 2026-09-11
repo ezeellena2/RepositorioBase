@@ -92,7 +92,10 @@ public sealed class ExternalIdentityService(UserManager<ApplicationUser> userMan
         return password + logins.Count;
     }
 
-    public async Task<Guid?> CreateFromProviderAsync(string normalizedEmail, CancellationToken cancellationToken)
+    public async Task<Guid?> CreateFromProviderAsync(
+        string normalizedEmail,
+        string preferredLanguage,
+        CancellationToken cancellationToken)
     {
         // Confirmed on creation, and only because the provider asserted a verified address; the caller refuses
         // the assertion otherwise. That is the same fact the state records, so it is set here rather than left to
@@ -104,7 +107,8 @@ public sealed class ExternalIdentityService(UserManager<ApplicationUser> userMan
             UserName = normalizedEmail,
             Email = normalizedEmail,
             EmailConfirmed = true,
-            Status = IdentityAccountStatus.Active
+            Status = IdentityAccountStatus.Active,
+            PreferredLanguage = preferredLanguage
         };
         var created = await userManager.CreateAsync(user);
         return created.Succeeded ? user.Id : null;

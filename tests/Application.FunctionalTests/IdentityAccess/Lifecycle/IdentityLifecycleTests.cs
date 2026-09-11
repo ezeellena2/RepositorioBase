@@ -35,22 +35,25 @@ public sealed class IdentityLifecycleTests : TestBase
 
     private static string Host() => $"https://lifecycle-{Guid.NewGuid():N}.localhost";
 
-    [TestCase("administratively_suspended")]
-    [TestCase("reactivated")]
-    public async Task Registering_the_shared_notice_handler_also_delivers_existing_administrative_outcomes(string outcome)
+    [TestCase("identity.lifecycle.self.deactivated.notice.requested", "/account/reactivation-request")]
+    [TestCase("identity.lifecycle.administratively.suspended.notice.requested", "/login")]
+    [TestCase("identity.lifecycle.reactivated.notice.requested", "/login")]
+    public async Task Each_lifecycle_notice_type_delivers_its_fixed_template(string messageType, string path)
     {
         var email = $"notice-{Guid.NewGuid():N}@example.test";
         var identityId = await IdentityHttpHarness.SeedConfirmedUserAsync(email, Password);
         using var scope = FunctionalTestSetup.ScopeFactory.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        var message = OutboxMessage.Create("identity.lifecycle.notice.requested",
-            JsonSerializer.Serialize(new Application.IdentityAccess.Lifecycle.DeactivateAccountCommandHandler.NoticeEnvelope(identityId, outcome)), DateTimeOffset.UtcNow);
+        var message = OutboxMessage.Create(
+            messageType,
+            JsonSerializer.Serialize(new { IdentityId = identityId }),
+            DateTimeOffset.UtcNow);
         context.OutboxMessages.Add(message);
         await context.SaveChangesAsync();
         var sink = await DispatchMailAsync(scope);
         var delivered = sink.Messages.SingleOrDefault(item => item.Key == message.Id.ToString());
         delivered.Recipient.ShouldBe(email);
-        delivered.Body.ShouldEndWith("/login");
+        delivered.Body.ShouldEndWith(path);
         delivered.Body.ShouldNotContain("#token=");
         await context.Entry(message).ReloadAsync();
         message.Status.ShouldBe(OutboxMessageStatus.Delivered);
@@ -64,7 +67,7 @@ public sealed class IdentityLifecycleTests : TestBase
     public async Task Delivery_does_not_mail_a_ticket_that_is_no_longer_usable(string reason)
     {
         var email = $"undeliverable-{Guid.NewGuid():N}@example.test";
-        await IdentityHttpHarness.SeedConfirmedUserAsync(email, Password);
+        var identityId = await IdentityHttpHarness.SeedConfirmedUserAsync(email, Password);
         using var harness = IdentityHttpHarness.CreateProductionHarness();
         using var client = WithoutCookieJar(harness);
         var host = Host();
@@ -101,7 +104,7 @@ public sealed class IdentityLifecycleTests : TestBase
     public async Task Parking_an_account_shuts_every_door_it_had_open()
     {
         var email = $"park-{Guid.NewGuid():N}@example.test";
-        await IdentityHttpHarness.SeedConfirmedUserAsync(email, Password);
+        var identityId = await IdentityHttpHarness.SeedConfirmedUserAsync(email, Password);
         using var harness = IdentityHttpHarness.CreateProductionHarness();
         using var client = WithoutCookieJar(harness);
         var host = Host();
@@ -112,6 +115,7 @@ public sealed class IdentityLifecycleTests : TestBase
 
         using var parked = await DeactivateAsync(client, host, laptop);
         parked.StatusCode.ShouldBe(HttpStatusCode.NoContent, await parked.Content.ReadAsStringAsync());
+        await AssertIdentityOnlyNoticeAsync("identity.lifecycle.self.deactivated.notice.requested", identityId);
 
         // The cookie that asked, and the one that was never told.
         (await ContextAsync(client, host, laptop)).StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
@@ -393,6 +397,20 @@ public sealed class IdentityLifecycleTests : TestBase
         var pair = response.Headers.GetValues("Set-Cookie")
             .Single(value => value.StartsWith("__Host-XSRF-TOKEN=", StringComparison.Ordinal)).Split(';')[0];
         return new Antiforgery(pair, token);
+    }
+
+    private static async Task AssertIdentityOnlyNoticeAsync(string messageType, Guid identityId)
+    {
+        using var scope = FunctionalTestSetup.ScopeFactory.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var message = await context.OutboxMessages.AsNoTracking()
+            .Where(candidate => candidate.Type == messageType)
+            .OrderByDescending(candidate => candidate.CreatedAt)
+            .FirstAsync();
+        using var payload = JsonDocument.Parse(message.Payload);
+        var properties = payload.RootElement.EnumerateObject().ToArray();
+        properties.Select(property => property.Name).ShouldBe(["IdentityId"]);
+        properties[0].Value.GetGuid().ShouldBe(identityId);
     }
 
     private static async Task<List<OutboxMessage>> ReturnMessagesAsync()

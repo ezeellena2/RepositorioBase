@@ -28,11 +28,15 @@ public sealed class PendingRegistrationIntentConfiguration : IEntityTypeConfigur
             table.HasCheckConstraint(
                 "CK_pending_registration_intents_Settlement",
                 "(\"Outcome\" IS NULL) = (\"CompletedAt\" IS NULL) AND \"ExpiresAt\" > \"CreatedAt\"");
+            table.HasCheckConstraint(
+                "CK_pending_registration_intents_Language",
+                "\"Language\" IS NULL OR \"Language\" IN ('en', 'es')");
         });
 
         builder.HasKey(intent => intent.Id);
         builder.Property(intent => intent.SubmissionId).IsRequired();
         builder.Property(intent => intent.NormalizedEmail).HasMaxLength(256).IsRequired();
+        builder.Property(intent => intent.Language).HasMaxLength(16);
         builder.Property(intent => intent.LegalName).HasMaxLength(256).IsRequired();
         builder.Property(intent => intent.Cuit)
             .HasConversion(cuit => cuit.Value, value => NormalizedCuit.From(value))

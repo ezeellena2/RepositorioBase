@@ -58,6 +58,7 @@ export function AccountPage() {
   const [problem, setProblem] = useState(null);
   // Identity-wide self-service permissions are authorized by the API, not projected as tenant permissions.
   const allowed = identity.isAuthenticated;
+  const preferredLanguage = identity.context?.preferredLanguage ?? null;
 
   const deactivate = useCallback(async () => {
     await identity.deactivateAccount(() => navigate(ReactivationRequestPath, { replace: true, state: { deactivated: true } }));
@@ -98,6 +99,18 @@ export function AccountPage() {
         </Stack>
       </Box>
       <ProblemMessage problem={problem} />
+      <Paper variant="outlined" sx={section}>
+        <Box component="dl" sx={{ m: 0 }}>
+          <Typography component="dt" variant="subtitle2" color="text.secondary">
+            {t('identity:lifecycle.account.preferredLanguage')}
+          </Typography>
+          <Typography component="dd" variant="body1" sx={{ m: 0, mt: 0.5 }}>
+            {preferredLanguage
+              ? t(`common:language.${preferredLanguage}`)
+              : t('identity:lifecycle.account.preferredLanguageNotSet')}
+          </Typography>
+        </Box>
+      </Paper>
       {!allowed ? (
         // The refusal stands where the form would have stood, at the weight of a statement rather than of a
         // footnote. It is deliberately not an `Alert`: this screen's one alert belongs to `ProblemMessage`.

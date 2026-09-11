@@ -123,6 +123,8 @@
   "lifecycle": {
     "account": {
       "title": "Your account",
+      "preferredLanguage": "Preferred language",
+      "preferredLanguageNotSet": "Not set",
       "description": "Deactivating ends all your sessions and prevents sign-in. Your memberships stay recorded. To return, request an email link and enter your current password.",
       "lastAdministrator": "If you are the last administrator or Platform owner, give someone else that responsibility first.",
       "notAllowed": "You do not have permission to deactivate this account.",

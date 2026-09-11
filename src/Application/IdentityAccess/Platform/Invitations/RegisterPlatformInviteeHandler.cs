@@ -1,5 +1,6 @@
 using System.Text.Json;
 using CleanArchitecture.Application.Common.Interfaces;
+using CleanArchitecture.Application.Common.Localization;
 using CleanArchitecture.Application.Common.Models;
 using CleanArchitecture.Application.IdentityAccess.Common;
 using CleanArchitecture.Application.IdentityAccess.Organizations;
@@ -32,6 +33,7 @@ public sealed class RegisterPlatformInviteeCommandHandler(
     ISecureTokenGenerator tokens,
     ITokenHasher tokenHasher,
     IOutboxSecretWriter secretWriter,
+    LocalizationSettings localization,
     TimeProvider timeProvider) : IRequestHandler<RegisterPlatformInviteeCommand, Result>
 {
     private static readonly TimeSpan ConfirmationWindow = TimeSpan.FromHours(24);
@@ -92,7 +94,11 @@ public sealed class RegisterPlatformInviteeCommandHandler(
                     return Result.Success();
                 }
 
-                var creation = await identities.CreatePendingAsync(invitation.NormalizedEmail, request.Password, ct);
+                var creation = await identities.CreatePendingAsync(
+                    invitation.NormalizedEmail,
+                    request.Password,
+                    invitation.Language ?? localization.DefaultLanguage,
+                    ct);
                 if (creation.Account is null)
                 {
                     // An address the aggregate accepts and ASP.NET Identity does not, or a competing request that

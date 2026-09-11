@@ -18,6 +18,7 @@ public static class DependencyInjection
         builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 
         builder.Services.AddScoped<IUser, CurrentUser>();
+        builder.Services.AddScoped<IRequestLanguage, RequestLanguage>();
 
         builder.Services.AddHttpContextAccessor();
 

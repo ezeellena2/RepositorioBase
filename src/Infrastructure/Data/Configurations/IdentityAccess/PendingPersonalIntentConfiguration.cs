@@ -24,11 +24,15 @@ public sealed class PendingPersonalIntentConfiguration : IEntityTypeConfiguratio
             table.HasCheckConstraint(
                 "CK_pending_personal_intents_Settlement",
                 "(\"Outcome\" IS NULL) = (\"CompletedAt\" IS NULL) AND \"ExpiresAt\" > \"CreatedAt\"");
+            table.HasCheckConstraint(
+                "CK_pending_personal_intents_Language",
+                "\"Language\" IS NULL OR \"Language\" IN ('en', 'es')");
         });
 
         builder.HasKey(intent => intent.Id);
         builder.Property(intent => intent.SubmissionId).IsRequired();
         builder.Property(intent => intent.NormalizedEmail).HasMaxLength(256).IsRequired();
+        builder.Property(intent => intent.Language).HasMaxLength(16);
         builder.Property(intent => intent.FullName).HasMaxLength(200).IsRequired();
         builder.Property(intent => intent.DisplayName).HasMaxLength(60).IsRequired();
         builder.Property(intent => intent.DocumentCiphertext).HasColumnType("text").IsRequired();

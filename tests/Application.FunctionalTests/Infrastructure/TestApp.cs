@@ -39,6 +39,7 @@ public static class TestApp
     private static Guid? _optionalSessionIdentityId;
     private static string? _optionalSessionEmail;
     private static bool _optionalSessionIsInvalid;
+    private static string _requestLanguage = "en";
     private const string RegistrationRawToken = "MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI=";
     private static int _confirmationTokenHashInvocationCount;
     private static int _mintedTokenCount;
@@ -155,6 +156,10 @@ public static class TestApp
 
     public static IValidatedOptionalSession GetValidatedOptionalSession() =>
         new TestValidatedOptionalSession(_optionalSessionIdentityId, _optionalSessionEmail, _optionalSessionIsInvalid);
+
+    public static string GetRequestLanguage() => _requestLanguage;
+
+    public static void SetRequestLanguage(string language) => _requestLanguage = language;
 
     public static string GetRegistrationRawToken() => RegistrationRawToken;
 
@@ -448,6 +453,7 @@ public static class TestApp
         _optionalSessionIdentityId = null;
         _optionalSessionEmail = null;
         _optionalSessionIsInvalid = false;
+        _requestLanguage = "en";
         _platformBootstrapEmail = null;
         // The recovery budget is process state rather than database state, so Respawn does not clear it.
         _attemptBudgetUnavailable = false;

@@ -61,6 +61,7 @@ public sealed class GetIdentityContextQueryHandler(
             identity.Id,
             displayName,
             identity.IsActive,
+            identity.PreferredLanguage,
             activeTenant,
             tenants,
             effectivePermissions,

@@ -459,7 +459,7 @@ public sealed class SessionTests : TestBase
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
         var session = await GetOnlySessionAsync();
         var body = await ReadJsonAsync(response);
-        body.EnumerateObject().Select(property => property.Name).Order().ShouldBe(new[] { "activeTenant", "availableTenants", "permissions", "personalData", "session", "user" });
+        body.EnumerateObject().Select(property => property.Name).Order().ShouldBe(new[] { "activeTenant", "availableTenants", "permissions", "personalData", "preferredLanguage", "session", "user" });
         body.GetProperty("user").GetProperty("id").GetString().ShouldBe(identityId.ToString("N"));
         body.GetProperty("user").GetProperty("displayName").GetString().ShouldBe("context@example.test");
         body.GetProperty("user").GetProperty("emailConfirmed").GetBoolean().ShouldBeTrue();

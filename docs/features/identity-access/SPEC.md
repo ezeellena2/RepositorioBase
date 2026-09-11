@@ -94,6 +94,8 @@ Three outcomes are deliberately kept apart, and reaching one never authorizes th
 | Outbox | Transactional intent to perform an external effect |
 | Platform | Reserved singleton tenant used only for explicit operational permissions |
 | Platform MFA | TOTP enrollment, recovery-code acknowledgement, and recent step-up proof for a Platform administrator |
+| Preferred language | Nullable supported-language tag stored on the identity account; null means the account has no recorded choice |
+| Language snapshot | Immutable supported-language tag captured when an invitation or registration intent is created |
 
 `TenantId` is used for tenancy. `ClientId` remains reserved for OAuth/OIDC. B2C and B2B describe operating contexts, not user types.
 
@@ -194,6 +196,18 @@ Three outcomes are deliberately kept apart, and reaching one never authorizes th
 
 - **IA-REQ-038:** expected Domain/Application business failures use typed `Result`/`Result<T>` values with a stable code and category; unexpected infrastructure or programmer failures remain exceptions. Web maps both paths to the external HTTP contract and never serializes the internal Result or a universal `{ success, data, error }` envelope. Body-bearing success returns an endpoint-specific DTO with semantic status and headers (`200`; `201` with `Location`; the documented neutral `202`; or bodyless `204`). Every non-success is RFC 9457 `application/problem+json` with matching status, stable `code`, opaque `traceId`, optional safe `detail`, and field-indexed `errors` only for validation; a generic safe `500` exposes no internal diagnostics. Generated `401`, `403`, and `429` use the same Problem Details writer, and `429` includes `Retry-After`. OpenAPI declares each endpoint's success schema/status/required headers and supported error statuses/shapes/codes; contract tests reject drift across runtime, OpenAPI, and React. React consumes one typed API boundary, knows nothing of internal Result, and adds no pagination envelope to identity endpoints.
 
+### Account language and localized identity delivery
+
+> **Accepted 2026-09-11 for Phase 4.** IA-REQ-059 is approved for implementation. This amendment does not
+> change IA-REQ-038's validation-error representation; field errors as `{ code, params }` remain Phase 5 work.
+
+- **IA-REQ-059:** an identity's language preference and every identity-access message delivered outside the SPA obey one explicit supported-language contract.
+  - **Account preference.** `ApplicationUser.PreferredLanguage` is nullable and may contain only a canonical tag from the supported-language registry. The migration does not backfill existing accounts: null means "no account choice recorded" and is not replaced merely because a cookie, browser language, request culture or configured default resolves. A person's explicit choice persists on that account and therefore follows the person across devices.
+  - **Own-account mutation and context.** `GET /api/identity/context` returns nullable `preferredLanguage`. `PUT /api/identity/context/language` is an authenticated, exact-origin, antiforgery-protected own-account mutation with no caller-supplied identity or tenant; it accepts only `{ language }` naming a canonical supported tag and returns the updated identity-context DTO. Blank, unknown and `inProgress` tags are refused with the existing `400` `validation_failed` contract. The signed-in shell selector writes through this endpoint, and the account screen presents the same current choice. Changing the preference changes no credential or security version, revokes or rotates no session, authentication cookie or antiforgery pair, and leaves active-tenant and authorization state unchanged.
+  - **Creation and snapshots.** The first operation that creates an account initializes `PreferredLanguage` from that account-creation request's supported UI language, using the originating intent's immutable request-language snapshot when account creation completes an earlier intent. A flow that finds an existing account never overwrites its preference. Every Organization invitation, Platform invitation, organization-registration intent and personal-registration intent captures its supported request UI language once; that snapshot is immutable. Language is not accepted on any of those request DTOs, including the invitation form: the Application boundary receives it from the trusted request-language port rather than from caller-supplied business data.
+  - **Delivery and retry.** Phase 4 keeps every existing email plain text. On the first preparation of a delivery, the handler loads the recipient and intent data, skips any value no longer supported, and resolves account preference, then the invitation or intent snapshot, then the configured default. It passes the resolved culture explicitly to resource lookup, interpolation and rendering and never reads or mutates ambient worker, request or machine culture. That first prepared language is bound to the logical message: every retry reuses it and the same message identifier even if the account preference or configured default later changes, so an in-flight message is neither silently mutated nor abandoned for a replacement.
+  - **Invariant and neutral surfaces.** Outbox payloads remain identifiers only, with no rendered prose, culture-dependent value, template argument or personal data. API and OpenAPI contracts, Problem Details and validation text, error and permission codes, routes, logs, audits, telemetry, developer exceptions, identifiers and URLs remain invariant English or machine data. Capturing or resolving language changes no status, body or timing distinction in registration, invitation, sign-in, recovery, reactivation or other enumeration-neutral public flows, and never reveals whether an account exists or has a preference.
+
 ### Platform operations and MFA
 
 - **IA-REQ-039:** exactly one reserved `TenantType.Platform` tenant may exist. A Platform owner is a normal global `ApplicationUser` with an active Platform `TenantMembership`; every Platform request resolves that active tenant and explicit `platform.*` permission through the normal evaluator. The system MUST NOT use `IsSuperAdmin`, a global claim/role, or a context bypass.
@@ -249,6 +263,7 @@ Routes are contractual drafts; generated OpenAPI becomes the implementation sour
 | `POST /api/identity/sessions` | Public + antiforgery | bodyless `204` + cookie; every refusal a stranger can provoke stays the neutral `204`; `401` `credential_superseded` only when the credential this request validated was replaced before the session could be issued, which requires the correct password and a change only that identity could make |
 | `DELETE /api/identity/sessions/current` | Authenticated + antiforgery | bodyless `204`; a session already revoked by a parallel request is `401` `invalid_session` and still deletes the cookie; a lost update that never settles is `409` `session_concurrency_conflict` |
 | `GET /api/identity/context` | Authenticated | `200` identity-context DTO |
+| `PUT /api/identity/context/language` | Authenticated + exact origin + antiforgery; own account only, with no identity or tenant supplied by the caller | `200` updated identity-context DTO for `{ language }` naming a canonical supported tag; `400` `validation_failed` for blank, unknown or `inProgress` tags; no credential, session, authentication-cookie or antiforgery rotation |
 | `POST /api/identity/credentials/password/recovery`; `POST /api/identity/credentials/password/reset` | Public + antiforgery; recovery rate-limited | neutral bodyless `202` whatever the address and whatever the account state; bodyless `204`, `400` `invalid_credential_token` for unknown, expired, consumed, superseded or wrong-purpose, `400` `validation_failed` for a password the policy refuses |
 | `POST /api/identity/credentials/reauthenticate`; `PUT /api/identity/credentials/password` | Authenticated + antiforgery + `identity.credentials.manage`, `RequiresTenant=false`; the change additionally needs a live proof | bodyless `204`; `400` `invalid_credential_proof`; `401` `recent_proof_required`; the change answers `204` with a rotated session cookie and antiforgery pair |
 | `GET /api/identity/credentials` | Authenticated + `identity.credentials.manage`, `RequiresTenant=false`; no subject parameter | `200` `{ hasPassword, passwordUpdatedAt }` and nothing else — never a hash, an address or a provider name, and never about anybody but the caller |
@@ -287,6 +302,7 @@ An authentication cookie whose session is rejected is deleted in the same respon
 ```json
 {
   "user": { "id": "opaque", "displayName": "Ana", "emailConfirmed": true },
+  "preferredLanguage": "es",
   "activeTenant": { "id": "uuid", "type": "Organization", "name": "Acme" },
   "availableTenants": [
     { "id": "uuid", "type": "Organization", "name": "Acme" }
@@ -296,6 +312,10 @@ An authentication cookie whose session is rejected is deleted in the same respon
   "personalData": { "mode": "Synthetic" }
 }
 ```
+
+`preferredLanguage` is a canonical supported-language tag or null. After sign-in, the SPA applies a non-null value
+and writes the standard culture cookie; the server still resolves subsequent interactive requests from that cookie
+and never reads the account for request culture. A null value means the account has no recorded choice (IA-REQ-059).
 
 `displayName` prefers the person's own `PersonProfile.DisplayName` and falls back to the email only for an identity
 that has not told us a name. The email stays the identifier; it is not a name, and showing it where a name belongs
@@ -423,6 +443,73 @@ Scenario: Platform directories are bounded operational projections
   When the administrator requests `/api/platform/admins` with an opaque cursor and bounded limit
   Then the typed directory returns only its declared allowlisted fields and `nextCursor`
   And no `/api/identity/*` contract, private profile field, credential, token, CUIT, or audit payload is exposed
+
+Scenario: A language choice follows the account without changing authentication
+  Given Ana is signed in through two live sessions and her preferredLanguage is null
+  When Ana sends an antiforgery-protected own-account language request for `es`
+  Then the updated identity context returns preferredLanguage `es`
+  And both sessions and every credential remain valid and unchanged
+  And a later sign-in on another device returns preferredLanguage `es`
+
+Scenario: Account language is initialized from the originating request once
+  Given an organization-registration intent captured the supported request UI language `es`
+  When spending its proof creates the account for the first time
+  Then the account PreferredLanguage is `es`
+
+Scenario Outline: Recipient-bearing records keep one immutable request-language snapshot
+  Given the supported request UI language is `es`
+  When a <record> is created
+  Then its Language snapshot is `es`
+  And Language was not supplied in the business request DTO
+  When the request UI language later changes to `en`
+  Then that record's Language snapshot remains `es`
+
+  Examples:
+    | record                           |
+    | Organization invitation          |
+    | Platform invitation              |
+    | organization-registration intent |
+    | personal-registration intent     |
+
+Scenario: An existing account's language does not weaken a neutral flow
+  Given an existing account has PreferredLanguage `es`
+  When a neutral registration or invitation flow finds that account under request language `en`
+  Then PreferredLanguage remains `es`
+  And the public status and body are the same as when no account exists
+
+Scenario: An unsupported language cannot become an account preference
+  Given Ana's current PreferredLanguage is `en`
+  When Ana sends an antiforgery-protected own-account language request for an unsupported tag
+  Then the API returns `400` Problem Details with code `validation_failed`
+  And PreferredLanguage remains `en`
+  And Ana's sessions and credentials remain valid
+
+Scenario Outline: First delivery preparation resolves the recipient language in order
+  Given the supported account preference is <preference>
+  And the immutable supported snapshot is <snapshot>
+  And the configured default is `en`
+  When an identity-access message is prepared for the first time
+  Then the renderer receives explicit culture <language>
+
+  Examples:
+    | preference | snapshot | language |
+    | `en`       | `es`     | `en`     |
+    | null       | `es`     | `es`     |
+    | null       | null     | `en`     |
+
+Scenario: An in-flight delivery keeps its first prepared language
+  Given a logical message was first prepared in `es`
+  And its first adapter attempt was not acknowledged
+  When the recipient changes their account preference to `en` before retry
+  Then the retry uses `es` and the same message identifier
+  And it neither mutates the in-flight message nor abandons it for a replacement
+
+Scenario: Localization changes presentation only
+  Given the same identity-access message type is prepared in `en` and `es`
+  When the outbox, API, OpenAPI, Problem Details, logs, audits and delivery telemetry are inspected
+  Then only the delivered system-owned message text differs
+  And outbox payloads contain identifiers only
+  And technical text, codes, routes, identifiers and URLs remain invariant
 ```
 
 ## 11. Deployment decisions and remaining open decisions
@@ -1085,7 +1172,9 @@ with no way back, which is what a tombstone means.
   `proof_stale`), `retention.executed` (`purged`, `skipped_no_policy`, `skipped_legal_hold`, never for an idle pass)
   and `recovery.admission.evaluated` (`closed`, `quarantined`, `open`, `evidence_missing`, `evidence_stale`,
   `evidence_invalid`), identity-scoped ones needing a null-tenant factory. Outbox `identity.reactivation.requested`
-  (token-bearing, sealed), `identity.lifecycle.notice.requested`, `platform.mfa.recovered.notice.requested`.
+  (token-bearing, sealed), `identity.lifecycle.self.deactivated.notice.requested`,
+  `identity.lifecycle.administratively.suspended.notice.requested`,
+  `identity.lifecycle.reactivated.notice.requested`, and `platform.mfa.recovered.notice.requested`.
 - **Amends.** IA-REQ-054 makes IA-REQ-020's "active identity" precise against a finite set whose added states are all
   non-`Active`, renames `IdentityAccountStatus.Suspended` (safe only while that enum has no persisted column and no
   reader), extends IA-REQ-042's last-owner rule to self-deactivation and administrative suspension under a new

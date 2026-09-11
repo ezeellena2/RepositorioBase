@@ -1,4 +1,10 @@
-using CleanArchitecture.Web.Localization;
+using CleanArchitecture.Application.Common.Localization;
+using CleanArchitecture.Domain.IdentityAccess.Invitations;
+using CleanArchitecture.Domain.IdentityAccess.Organizations;
+using CleanArchitecture.Domain.IdentityAccess.Outbox;
+using CleanArchitecture.Domain.IdentityAccess.People;
+using CleanArchitecture.Domain.IdentityAccess.Platform;
+using CleanArchitecture.Infrastructure.Identity;
 using System.Text.Json;
 using System.Xml.Linq;
 
@@ -6,6 +12,17 @@ namespace CleanArchitecture.Infrastructure.IntegrationTests.Architecture;
 
 public sealed class LocalizationContractTests
 {
+    [Test]
+    public void Phase_four_models_own_their_language_state()
+    {
+        typeof(ApplicationUser).GetProperty("PreferredLanguage").ShouldNotBeNull();
+        typeof(Invitation).GetProperty("Language").ShouldNotBeNull();
+        typeof(PlatformAdminInvitation).GetProperty("Language").ShouldNotBeNull();
+        typeof(PendingRegistrationIntent).GetProperty("Language").ShouldNotBeNull();
+        typeof(PendingPersonalIntent).GetProperty("Language").ShouldNotBeNull();
+        typeof(OutboxMessage).GetProperty("DeliveryLanguage").ShouldNotBeNull();
+    }
+
     [Test]
     public void Backend_registry_matches_the_spa_language_registry_and_shipped_default()
     {
@@ -44,6 +61,31 @@ public sealed class LocalizationContractTests
                 }
             }
         }
+    }
+
+    [Test]
+    public void Identity_email_catalog_covers_every_phase_four_delivery_variant()
+    {
+        var entries = ReadEntries(GetRepositoryPath("src/Infrastructure/Localization/Emails.resx"));
+        entries.Keys.ShouldBe(
+        [
+            "AccountReactivationBody", "AccountReactivationSubject",
+            "AccountAdministrativelySuspendedBody", "AccountAdministrativelySuspendedSubject",
+            "ConfirmationBody", "ConfirmationSubject",
+            "InvitationBody", "InvitationSubject",
+            "OrganizationRegistrationConfirmationBody", "OrganizationRegistrationConfirmationSubject",
+            "OrganizationRegistrationSignInBody", "OrganizationRegistrationSignInSubject",
+            "PasswordRecoveryBody", "PasswordRecoverySubject",
+            "PersonalRegistrationConfirmationBody", "PersonalRegistrationConfirmationSubject",
+            "PersonalRegistrationSignInBody", "PersonalRegistrationSignInSubject",
+            "PlatformAdministratorInvitationBody", "PlatformAdministratorInvitationSubject",
+            "PlatformConfirmationBody", "PlatformConfirmationSubject",
+            "PlatformOwnerInvitationBody", "PlatformOwnerInvitationSubject",
+            "PlatformSignInBody", "PlatformSignInSubject",
+            "AccountReactivatedBody", "AccountReactivatedSubject",
+            "AccountSelfDeactivatedBody", "AccountSelfDeactivatedSubject",
+            "SignInNoticeBody", "SignInNoticeSubject"
+        ], ignoreOrder: true);
     }
 
     private static Dictionary<string, string> ReadEntries(string path) =>

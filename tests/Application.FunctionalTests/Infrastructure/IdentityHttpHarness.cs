@@ -86,7 +86,10 @@ internal static class IdentityHttpHarness
         return document.RootElement.Clone();
     }
 
-    internal static async Task<Guid> SeedConfirmedUserAsync(string email, string password)
+    internal static async Task<Guid> SeedConfirmedUserAsync(
+        string email,
+        string password,
+        string? preferredLanguage = null)
     {
         using var scope = FunctionalTestSetup.ScopeFactory.CreateScope();
         var users = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
@@ -97,6 +100,7 @@ internal static class IdentityHttpHarness
             UserName = email,
             Email = email,
             EmailConfirmed = true,
+            PreferredLanguage = preferredLanguage,
             Status = CleanArchitecture.Domain.IdentityAccess.Identities.IdentityAccountStatus.Active
         };
         (await users.CreateAsync(user, password)).Succeeded.ShouldBeTrue();

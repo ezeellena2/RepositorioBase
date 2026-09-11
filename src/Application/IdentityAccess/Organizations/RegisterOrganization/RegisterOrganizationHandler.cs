@@ -26,6 +26,7 @@ public sealed class RegisterOrganizationCommandHandler(
     ITokenHasher tokenHasher,
     IOutboxSecretWriter secretWriter,
     IRegistrationInitialRoleProvisioner initialRoles,
+    IRequestLanguage requestLanguage,
     TimeProvider timeProvider) : IRequestHandler<RegisterOrganizationCommand, Result>
 {
     /// <summary>Carries the intent's confirmation token to the address that must prove it owns itself.</summary>
@@ -132,7 +133,15 @@ public sealed class RegisterOrganizationCommandHandler(
         OutboxMessage outbox;
         if (existing is null)
         {
-            pending = PendingRegistrationIntent.Open(submission.Id, intent.Email, intent.LegalName, intent.Cuit, passwordHash, now, expiresAt);
+            pending = PendingRegistrationIntent.Open(
+                submission.Id,
+                intent.Email,
+                intent.LegalName,
+                intent.Cuit,
+                passwordHash,
+                requestLanguage.Language,
+                now,
+                expiresAt);
             outbox = OutboxMessage.Create(IntentConfirmationMessageType, JsonSerializer.Serialize(new IntentEnvelope(pending.Id)), now);
             var rawToken = tokens.Generate();
             context.OutboxSecrets.Add(OutboxSecret.Create(outbox.Id, tokenHasher.Hash(rawToken), secretWriter.Encrypt(rawToken), expiresAt));
@@ -141,7 +150,14 @@ public sealed class RegisterOrganizationCommandHandler(
         {
             // The address owner is told they can sign in. The notice carries no token, so holding this link grants
             // nothing and the submitted password is never applied to an account the caller may not own.
-            pending = PendingRegistrationIntent.Notify(submission.Id, intent.Email, intent.LegalName, intent.Cuit, now, expiresAt);
+            pending = PendingRegistrationIntent.Notify(
+                submission.Id,
+                intent.Email,
+                intent.LegalName,
+                intent.Cuit,
+                requestLanguage.Language,
+                now,
+                expiresAt);
             outbox = OutboxMessage.Create(IntentSignInNoticeMessageType, JsonSerializer.Serialize(new IntentEnvelope(pending.Id)), now);
         }
 

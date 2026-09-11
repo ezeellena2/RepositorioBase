@@ -41,11 +41,6 @@ public sealed class DeactivateAccountCommandHandler(
     ICurrentSession currentSession,
     TimeProvider timeProvider) : IRequestHandler<DeactivateAccountCommand, Result>
 {
-    /// <summary>The notice a person gets when their account is parked. It carries no token and no address.</summary>
-    public const string NoticeMessageType = "identity.lifecycle.notice.requested";
-
-    public sealed record NoticeEnvelope(Guid IdentityId, string Outcome);
-
     public async Task<Result> Handle(DeactivateAccountCommand request, CancellationToken cancellationToken)
     {
         if (currentSession.IsInvalid || currentSession.IdentityId is null || currentSession.SessionId is null)
@@ -86,7 +81,9 @@ public sealed class DeactivateAccountCommandHandler(
             context.AuditEvents.Add(AuditEvent.CreateSessionEvent(
                 identityId, actingSession.Value, "identity.lifecycle.changed", AuditCorrelation.Current(), "self_deactivated"));
             context.OutboxMessages.Add(OutboxMessage.Create(
-                NoticeMessageType, JsonSerializer.Serialize(new NoticeEnvelope(identityId, "self_deactivated")), now));
+                IdentityLifecycleNotice.SelfDeactivatedMessageType,
+                JsonSerializer.Serialize(new IdentityLifecycleNotice.Envelope(identityId)),
+                now));
 
             await context.SaveChangesAsync(ct);
             return Result.Success();

@@ -1,4 +1,5 @@
 using CleanArchitecture.Application.Common.Interfaces;
+using CleanArchitecture.Application.Common.Localization;
 using CleanArchitecture.Application.IdentityAccess.Authorization;
 using CleanArchitecture.Infrastructure.Data;
 using CleanArchitecture.Infrastructure.Data.Interceptors;
@@ -8,6 +9,7 @@ using CleanArchitecture.Infrastructure.IdentityAccess;
 using CleanArchitecture.Application.IdentityAccess.Invitations;
 using CleanArchitecture.Infrastructure.Email;
 using CleanArchitecture.Infrastructure.Outbox;
+using CleanArchitecture.Infrastructure.Localization;
 using CleanArchitecture.Application.IdentityAccess.Organizations;
 using CleanArchitecture.Application.IdentityAccess.Organizations.RegisterOrganization;
 using CleanArchitecture.Application.IdentityAccess.Organizations.ConfirmEmail;
@@ -25,6 +27,11 @@ public static class DependencyInjection
 {
     public static void AddInfrastructureServices(this IHostApplicationBuilder builder)
     {
+        var defaultLanguage = LocalizationRegistry.RequireSupportedDefault(
+            builder.Configuration["Localization:DefaultLanguage"]);
+        builder.Services.AddSingleton(new LocalizationSettings(defaultLanguage));
+        builder.Services.AddScoped<IRequestLanguage, ConfiguredRequestLanguage>();
+
         builder.Services.AddSingleton<IHostedService>(provider => new EmailReadiness(provider, builder.Environment));
         builder.AddIdentityDataProtection();
         var connectionString = builder.Configuration.GetConnectionString(Services.Database);
@@ -129,6 +136,7 @@ public static class DependencyInjection
         // that repeats a pass belongs to the worker process; registering it here would start a poller inside
         // the web application and inside every functional test that boots it.
         builder.Services.AddScoped<IOutboxSecretReader, OutboxSecretReader>();
+        builder.Services.AddScoped<IdentityEmailLocalizer>();
         builder.Services.AddScoped<IOutboxDeliveryHandler, InvitationEmailDeliveryHandler>();
         builder.Services.AddScoped<IOutboxDeliveryHandler, EmailConfirmationDeliveryHandler>();
         builder.Services.AddScoped<IOutboxDeliveryHandler, InvitedConfirmationDeliveryHandler>();
@@ -139,7 +147,9 @@ public static class DependencyInjection
         builder.Services.AddScoped<IOutboxDeliveryHandler, PersonalIntentSignInNoticeDeliveryHandler>();
         builder.Services.AddScoped<IOutboxDeliveryHandler, PasswordRecoveryDeliveryHandler>();
         builder.Services.AddScoped<IOutboxDeliveryHandler, AccountReactivationDeliveryHandler>();
-        builder.Services.AddScoped<IOutboxDeliveryHandler, AccountLifecycleNoticeDeliveryHandler>();
+        builder.Services.AddScoped<IOutboxDeliveryHandler, AccountSelfDeactivatedNoticeDeliveryHandler>();
+        builder.Services.AddScoped<IOutboxDeliveryHandler, AccountAdministrativelySuspendedNoticeDeliveryHandler>();
+        builder.Services.AddScoped<IOutboxDeliveryHandler, AccountReactivatedNoticeDeliveryHandler>();
         builder.Services.AddScoped<IOutboxDeliveryHandler, PlatformInvitationDeliveryHandler>();
         builder.Services.AddScoped<IOutboxDeliveryHandler, PlatformConfirmationDeliveryHandler>();
         builder.Services.AddScoped<IOutboxDeliveryHandler, PlatformSignInNoticeDeliveryHandler>();

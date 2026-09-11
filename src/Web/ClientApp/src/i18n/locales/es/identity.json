@@ -123,6 +123,8 @@
   "lifecycle": {
     "account": {
       "title": "Su cuenta",
+      "preferredLanguage": "Idioma preferido",
+      "preferredLanguageNotSet": "Sin establecer",
       "description": "La desactivación finaliza todas sus sesiones e impide iniciar sesión. Sus membresías quedan registradas. Para volver, solicite un enlace por correo electrónico e introduzca su contraseña actual.",
       "lastAdministrator": "Si es el último administrador o propietario de la Plataforma, asigne esa responsabilidad a otra persona primero.",
       "notAllowed": "No tiene permiso para desactivar esta cuenta.",

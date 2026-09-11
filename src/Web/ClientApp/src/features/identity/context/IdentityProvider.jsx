@@ -1,5 +1,6 @@
 import { createContext, startTransition, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { createIdentityClient, IdentityProblem } from '../api/identityClient';
+import { setLanguage } from '../../../i18n';
 
 const IdentityContext = createContext(null);
 
@@ -22,17 +23,54 @@ export function IdentityProvider({ children, client }) {
   const [context, setContext] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [contextProblem, setContextProblem] = useState(null);
+  const [pendingLanguage, setPendingLanguage] = useState(null);
+  const [languageProblem, setLanguageProblem] = useState(null);
+  const languageRequestRevision = useRef(0);
+  const languageMutationPending = useRef(false);
+  const languageMutationQueue = useRef(Promise.resolve());
+  const acknowledgedLanguage = useRef(null);
+  const contextRequestRevision = useRef(0);
+  const sessionRevision = useRef(0);
   const mounted = useRef(true);
 
   useEffect(() => () => { mounted.current = false; }, []);
 
+  const cancelLanguageChange = useCallback(() => {
+    languageRequestRevision.current += 1;
+    languageMutationPending.current = false;
+    acknowledgedLanguage.current = null;
+    setPendingLanguage(null);
+    setLanguageProblem(null);
+  }, []);
+
+  const commitContext = useCallback((loaded, requestRevision, languageRevision, session) => {
+    if (!mounted.current
+      || requestRevision !== contextRequestRevision.current
+      || session !== sessionRevision.current) return;
+
+    const languageIsCurrent = !languageMutationPending.current
+      && languageRevision === languageRequestRevision.current;
+    if (languageIsCurrent) {
+      setContext(loaded);
+      if (loaded?.preferredLanguage) setLanguage(loaded.preferredLanguage);
+    } else {
+      // A full context response still owns its tenant/session projections, but not a language choice that was
+      // made after that read began. Merging only that field prevents a delayed reload or tenant response from
+      // reverting the catalog and cookie after the preference write has succeeded.
+      setContext((current) => current === null
+        ? loaded
+        : { ...loaded, preferredLanguage: current.preferredLanguage });
+    }
+    setContextProblem(null);
+  }, []);
+
   const loadContext = useCallback(async ({ suppressAuthenticationRequired = true } = {}) => {
+    const requestRevision = ++contextRequestRevision.current;
+    const languageRevision = languageRequestRevision.current;
+    const session = sessionRevision.current;
     try {
       const loaded = await identityClient.getContext();
-      if (mounted.current) {
-        setContext(loaded);
-        setContextProblem(null);
-      }
+      commitContext(loaded, requestRevision, languageRevision, session);
       return loaded;
     } catch (failure) {
       // Anything other than "you are not signed in" is still not a reason to keep a stale context on screen:
@@ -48,14 +86,30 @@ export function IdentityProvider({ children, client }) {
         ? failure.problem
         : { code: 'context_unreadable', status: 0, detail: String(failure.message ?? failure) };
       const authenticationRequired = problem.code === 'authentication_required';
-      if (mounted.current) {
+      if (mounted.current
+        && requestRevision === contextRequestRevision.current
+        && session === sessionRevision.current
+        && !languageMutationPending.current
+        && languageRevision === languageRequestRevision.current) {
+        cancelLanguageChange();
         setContext(null);
         setContextProblem(suppressAuthenticationRequired && authenticationRequired ? null : problem);
       }
       if (!suppressAuthenticationRequired && authenticationRequired) throw failure;
       return null;
     }
-  }, [identityClient]);
+  }, [identityClient, commitContext, cancelLanguageChange]);
+
+  useEffect(function subscribeToSessionLoss() {
+    return identityClient.transport?.onSessionLost?.((problem) => {
+      if (!mounted.current) return;
+      sessionRevision.current += 1;
+      contextRequestRevision.current += 1;
+      cancelLanguageChange();
+      setContext(null);
+      setContextProblem(problem);
+    });
+  }, [identityClient, cancelLanguageChange]);
 
   useEffect(() => {
     let cancelled = false;
@@ -69,33 +123,117 @@ export function IdentityProvider({ children, client }) {
   }, [identityClient, loadContext]);
 
   const signIn = useCallback(async (email, password) => {
+    sessionRevision.current += 1;
+    contextRequestRevision.current += 1;
+    cancelLanguageChange();
     await identityClient.signIn(email, password);
     await identityClient.bootstrapAntiforgery();
     return loadContext({ suppressAuthenticationRequired: false });
-  }, [identityClient, loadContext]);
+  }, [identityClient, loadContext, cancelLanguageChange]);
 
   const signOut = useCallback(async () => {
+    const session = ++sessionRevision.current;
+    contextRequestRevision.current += 1;
+    cancelLanguageChange();
     try {
       await identityClient.signOut();
     } finally {
-      if (mounted.current) setContext(null);
+      if (mounted.current && session === sessionRevision.current) {
+        setContext(null);
+        setContextProblem(null);
+      }
       await identityClient.bootstrapAntiforgery().catch(() => undefined);
     }
-  }, [identityClient]);
+  }, [identityClient, cancelLanguageChange]);
 
   const selectTenant = useCallback(async (tenantId) => {
     // Tenant selection does not change the authentication state, so the server keeps the pair and so does this.
+    const requestRevision = ++contextRequestRevision.current;
+    const languageRevision = languageRequestRevision.current;
+    const session = sessionRevision.current;
     const selected = await identityClient.selectTenant(tenantId);
-    if (mounted.current) setContext(selected);
+    commitContext(selected, requestRevision, languageRevision, session);
     return selected;
-  }, [identityClient]);
+  }, [identityClient, commitContext]);
+
+  const changeLanguage = useCallback(async (language) => {
+    if (isLoading) return null;
+
+    const revision = ++languageRequestRevision.current;
+    const session = sessionRevision.current;
+    setLanguageProblem(null);
+
+    if (context === null) {
+      languageMutationPending.current = false;
+      setPendingLanguage(null);
+      setLanguage(language);
+      return null;
+    }
+
+    if (!languageMutationPending.current) acknowledgedLanguage.current = null;
+    languageMutationPending.current = true;
+    setPendingLanguage(language);
+    try {
+      // The revision guard below owns what the browser applies, but it cannot order writes that have already
+      // reached the server. Keep one queue across session transitions so an in-flight write from the old session
+      // cannot finish after a new-session choice. A rejected write does not poison the queue, and the captured
+      // session revision makes queued work from a superseded session stop before it is sent.
+      const update = languageMutationQueue.current
+        .catch(() => undefined)
+        .then(() => {
+          if (!mounted.current || session !== sessionRevision.current) return null;
+          return identityClient.updatePreferredLanguage(language);
+        });
+      languageMutationQueue.current = update;
+      const updated = await update;
+      if (updated === null) return null;
+      if (mounted.current && session === sessionRevision.current) {
+        acknowledgedLanguage.current = updated.preferredLanguage;
+      }
+      if (mounted.current
+        && revision === languageRequestRevision.current
+        && session === sessionRevision.current) {
+        languageRequestRevision.current += 1;
+        languageMutationPending.current = false;
+        setContext((current) => current === null
+          ? current
+          : { ...current, preferredLanguage: updated.preferredLanguage });
+        setLanguage(updated.preferredLanguage);
+        setPendingLanguage(null);
+        setLanguageProblem(null);
+        acknowledgedLanguage.current = null;
+      }
+      return updated;
+    } catch (failure) {
+      if (mounted.current
+        && revision === languageRequestRevision.current
+        && session === sessionRevision.current) {
+        const acknowledged = acknowledgedLanguage.current;
+        acknowledgedLanguage.current = null;
+        languageRequestRevision.current += 1;
+        languageMutationPending.current = false;
+        if (acknowledged) {
+          setContext((current) => current === null
+            ? current
+            : { ...current, preferredLanguage: acknowledged });
+          setLanguage(acknowledged);
+        }
+        setPendingLanguage(null);
+        setLanguageProblem(failure?.problem ?? { code: 'unknown', status: 0 });
+      }
+      throw failure;
+    }
+  }, [context, identityClient, isLoading]);
 
   const deactivateAccount = useCallback(async (onDeactivated) => {
     await identityClient.deactivateAccount();
+    const session = ++sessionRevision.current;
+    contextRequestRevision.current += 1;
+    cancelLanguageChange();
     // Only a successful deactivation ends this session. The endpoint also deleted the antiforgery cookie.
     // Finish the pair and let the caller leave its protected route before clearing context unmounts it.
     await identityClient.bootstrapAntiforgery().catch(() => undefined);
-    if (mounted.current) {
+    if (mounted.current && session === sessionRevision.current) {
       // Router navigation is a transition too; commit the destination and sign-out together.
       startTransition(() => {
         onDeactivated();
@@ -103,7 +241,7 @@ export function IdentityProvider({ children, client }) {
         setContextProblem(null);
       });
     }
-  }, [identityClient]);
+  }, [identityClient, cancelLanguageChange]);
 
   const value = useMemo(() => ({
     client: identityClient,
@@ -114,9 +252,12 @@ export function IdentityProvider({ children, client }) {
     signIn,
     signOut,
     selectTenant,
+    changeLanguage,
+    pendingLanguage,
+    languageProblem,
     deactivateAccount,
     reload: loadContext,
-  }), [identityClient, context, contextProblem, isLoading, signIn, signOut, selectTenant, deactivateAccount, loadContext]);
+  }), [identityClient, context, contextProblem, isLoading, signIn, signOut, selectTenant, changeLanguage, pendingLanguage, languageProblem, deactivateAccount, loadContext]);
 
   return <IdentityContext.Provider value={value}>{children}</IdentityContext.Provider>;
 }

@@ -25,6 +25,9 @@ public sealed class PendingPersonalIntent : BaseEntity<Guid>
 
     public string NormalizedEmail { get; private set; } = string.Empty;
 
+    /// <summary>The anonymous request's supported language, captured before any account exists.</summary>
+    public string? Language { get; private set; }
+
     public string FullName { get; private set; } = string.Empty;
 
     public string DisplayName { get; private set; } = string.Empty;
@@ -51,11 +54,23 @@ public sealed class PendingPersonalIntent : BaseEntity<Guid>
         string documentCiphertext,
         string passwordHash,
         DateTimeOffset now,
+        DateTimeOffset expiresAt) =>
+        Open(submissionId, normalizedEmail, fullName, displayName, documentCiphertext, passwordHash, "en", now, expiresAt);
+
+    public static PendingPersonalIntent Open(
+        Guid submissionId,
+        string normalizedEmail,
+        string fullName,
+        string displayName,
+        string documentCiphertext,
+        string passwordHash,
+        string language,
+        DateTimeOffset now,
         DateTimeOffset expiresAt)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(documentCiphertext);
         ArgumentException.ThrowIfNullOrWhiteSpace(passwordHash);
-        var intent = Create(submissionId, normalizedEmail, fullName, displayName, now, expiresAt);
+        var intent = Create(submissionId, normalizedEmail, fullName, displayName, language, now, expiresAt);
         intent.DocumentCiphertext = documentCiphertext;
         intent.PasswordHash = passwordHash;
         return intent;
@@ -71,9 +86,19 @@ public sealed class PendingPersonalIntent : BaseEntity<Guid>
         string fullName,
         string displayName,
         DateTimeOffset now,
+        DateTimeOffset expiresAt) =>
+        Notify(submissionId, normalizedEmail, fullName, displayName, "en", now, expiresAt);
+
+    public static PendingPersonalIntent Notify(
+        Guid submissionId,
+        string normalizedEmail,
+        string fullName,
+        string displayName,
+        string language,
+        DateTimeOffset now,
         DateTimeOffset expiresAt)
     {
-        var intent = Create(submissionId, normalizedEmail, fullName, displayName, now, expiresAt);
+        var intent = Create(submissionId, normalizedEmail, fullName, displayName, language, now, expiresAt);
         intent.Outcome = PendingRegistrationIntentOutcome.Notified;
         intent.CompletedAt = now;
         return intent;
@@ -94,6 +119,7 @@ public sealed class PendingPersonalIntent : BaseEntity<Guid>
         string normalizedEmail,
         string fullName,
         string displayName,
+        string language,
         DateTimeOffset now,
         DateTimeOffset expiresAt)
     {
@@ -101,6 +127,7 @@ public sealed class PendingPersonalIntent : BaseEntity<Guid>
         ArgumentException.ThrowIfNullOrWhiteSpace(normalizedEmail);
         ArgumentException.ThrowIfNullOrWhiteSpace(fullName);
         ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(language);
         if (expiresAt <= now) throw new ArgumentOutOfRangeException(nameof(expiresAt));
 
         return new PendingPersonalIntent
@@ -108,6 +135,7 @@ public sealed class PendingPersonalIntent : BaseEntity<Guid>
             Id = Guid.NewGuid(),
             SubmissionId = submissionId,
             NormalizedEmail = normalizedEmail,
+            Language = language,
             FullName = fullName,
             DisplayName = displayName,
             CreatedAt = now,

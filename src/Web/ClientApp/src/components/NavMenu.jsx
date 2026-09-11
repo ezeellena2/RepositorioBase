@@ -21,7 +21,8 @@ import Stack from '@mui/material/Stack';
 import Toolbar from '@mui/material/Toolbar';
 import Typography from '@mui/material/Typography';
 import { useIdentity } from '../features/identity/context/IdentityProvider';
-import { setLanguage, supportedLanguages, useTranslation } from '../i18n';
+import { ProblemMessage } from '../features/identity/ProblemMessage';
+import { supportedLanguages, useTranslation } from '../i18n';
 
 export const drawerWidth = 264;
 /** Two rows keep localized controls visible on phones; every fixed-bar spacer uses the same height. */
@@ -50,20 +51,35 @@ const languageInputProps = { id: 'shell-language', name: 'language' };
 const languageControlSize = 'small';
 
 function LanguageSelector() {
+  const identity = useIdentity();
   const { t, i18n } = useTranslation('common');
+  const displayedLanguage = identity.pendingLanguage ?? i18n.resolvedLanguage;
   return (
-    <FormControl size={languageControlSize} sx={{ minWidth: 96, flexShrink: 0 }}>
-      <InputLabel htmlFor={languageInputProps.id}>{t('language.label')}</InputLabel>
-      <NativeSelect
-        inputProps={languageInputProps}
-        value={i18n.resolvedLanguage}
-        onChange={(event) => setLanguage(event.target.value)}
-      >
-        {supportedLanguages.map((language) => (
-          <option key={language} value={language}>{t(`language.${language}`)}</option>
-        ))}
-      </NativeSelect>
-    </FormControl>
+    <>
+      <FormControl size={languageControlSize} sx={{ minWidth: 96, flexShrink: 0 }}>
+        <InputLabel htmlFor={languageInputProps.id}>{t('language.label')}</InputLabel>
+        <NativeSelect
+          inputProps={{
+            ...languageInputProps,
+            'aria-busy': identity.pendingLanguage !== null ? true : undefined,
+          }}
+          value={displayedLanguage}
+          disabled={identity.isLoading}
+          onChange={(event) => {
+            void identity.changeLanguage(event.target.value).catch(() => undefined);
+          }}
+        >
+          {supportedLanguages.map((language) => (
+            <option key={language} value={language}>{t(`language.${language}`)}</option>
+          ))}
+        </NativeSelect>
+      </FormControl>
+      {identity.languageProblem !== null && (
+        <Box sx={{ position: 'fixed', left: '50%', bottom: 24, zIndex: 'snackbar', transform: 'translateX(-50%)' }}>
+          <ProblemMessage problem={identity.languageProblem} autoFocus />
+        </Box>
+      )}
+    </>
   );
 }
 

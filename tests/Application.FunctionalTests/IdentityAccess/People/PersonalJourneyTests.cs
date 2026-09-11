@@ -28,7 +28,8 @@ public sealed class PersonalJourneyTests : TestBase
     [Test]
     public async Task An_anonymous_signup_reserves_nothing_and_leaves_the_same_world_for_a_known_and_an_unknown_address()
     {
-        var known = await PersonalScenario.SeedConfirmedIdentityAsync("known@example.test");
+        var known = await IdentityHttpHarness.SeedConfirmedUserAsync("known@example.test", Password, "en");
+        TestApp.SetRequestLanguage("es");
 
         var unknownResult = await TestApp.SendAsync(new RegisterPersonalCommand("nobody@example.test", Password, "Jane Doe", "Jane", "12345678"));
         var knownResult = await TestApp.SendAsync(new RegisterPersonalCommand("known@example.test", Password, "Jane Doe", "Jane", "23456789"));
@@ -36,9 +37,12 @@ public sealed class PersonalJourneyTests : TestBase
         unknownResult.IsSuccess.ShouldBeTrue();
         knownResult.IsSuccess.ShouldBeTrue("a neutral answer is the same answer either way");
 
-        (await TestApp.CountAsync<PendingPersonalIntent>()).ShouldBe(2);
+        var intents = await TestApp.ListAsync<PendingPersonalIntent>();
+        intents.Count.ShouldBe(2);
+        intents.ShouldAllBe(intent => intent.Language == "es", "the trusted request language is captured in both neutral branches");
         (await TestApp.CountAsync<OutboxMessage>()).ShouldBe(2);
         (await TestApp.CountAsync<ApplicationUser>()).ShouldBe(1, "only the identity seeded before the probes exists");
+        (await TestApp.FindAsync<ApplicationUser>(known))!.PreferredLanguage.ShouldBe("en", "a neutral existing-account branch never overwrites its preference");
         (await TestApp.CountAsync<Tenant>()).ShouldBe(0);
         (await TestApp.CountAsync<PersonProfile>()).ShouldBe(0);
         (await TestApp.CountAsync<IdentityDocument>()).ShouldBe(0);
@@ -49,13 +53,16 @@ public sealed class PersonalJourneyTests : TestBase
     [Test]
     public async Task A_delivered_confirmation_creates_the_whole_personal_context_once()
     {
+        TestApp.SetRequestLanguage("es");
         (await TestApp.SendAsync(new RegisterPersonalCommand("jane@example.test", Password, " Jane Doe ", " Jane ", "12.345.678"))).IsSuccess.ShouldBeTrue();
+        (await TestApp.ListAsync<PendingPersonalIntent>()).Single().Language.ShouldBe("es");
 
         var confirmed = await TestApp.SendAsync(new ConfirmEmailCommand(TestApp.GetRegistrationRawToken()));
 
         confirmed.IsSuccess.ShouldBeTrue();
         var identity = (await TestApp.ListAsync<ApplicationUser>()).Single();
         identity.EmailConfirmed.ShouldBeTrue();
+        identity.PreferredLanguage.ShouldBe("es", "first account creation inherits the immutable personal-intent snapshot");
         var tenant = (await TestApp.ListAsync<Tenant>()).Single();
         tenant.Type.ShouldBe(TenantType.Personal);
         tenant.Status.ShouldBe(TenantStatus.Active);

@@ -30,6 +30,7 @@ public sealed class InviteMemberCommandHandler(
     IIdentityAccountService identities,
     IOfferableRoleReader offerableRoles,
     IRoleAuthorityLock authorityLock,
+    IRequestLanguage requestLanguage,
     ISecureTokenGenerator tokens,
     ITokenHasher tokenHasher,
     IOutboxSecretWriter secretWriter,
@@ -138,7 +139,16 @@ public sealed class InviteMemberCommandHandler(
         // the hash afterwards would hand the retire step the NEW value and leave the previous envelope pending —
         // a token that no longer resolves but is still queued for delivery.
         var supersededHash = standing?.TokenHash;
-        var invitation = Supersede(standing, tenant, recipient, offer.Roles, minted.Hash, now, expiresAt, requestedRoleIds);
+        var invitation = Supersede(
+            standing,
+            tenant,
+            recipient,
+            offer.Roles,
+            minted.Hash,
+            requestLanguage.Language,
+            now,
+            expiresAt,
+            requestedRoleIds);
         if (standing is null || !ReferenceEquals(standing, invitation))
         {
             context.Invitations.Add(invitation);
@@ -195,13 +205,14 @@ public sealed class InviteMemberCommandHandler(
         string recipient,
         IReadOnlyCollection<Role> roles,
         VersionedTokenHash tokenHash,
+        string language,
         DateTimeOffset now,
         DateTimeOffset expiresAt,
         Guid[] requestedRoleIds)
     {
         if (standing is null)
         {
-            return Invitation.Issue(tenant, recipient, roles, tokenHash, now, expiresAt);
+            return Invitation.Issue(tenant, recipient, roles, tokenHash, language, now, expiresAt);
         }
 
         if (OffersExactly(standing, requestedRoleIds))
@@ -211,7 +222,7 @@ public sealed class InviteMemberCommandHandler(
         }
 
         standing.Cancel(tenant, now);
-        return Invitation.Issue(tenant, recipient, roles, tokenHash, now, expiresAt);
+        return Invitation.Issue(tenant, recipient, roles, tokenHash, language, now, expiresAt);
     }
 
     private static bool OffersExactly(Invitation invitation, Guid[] requestedRoleIds) =>

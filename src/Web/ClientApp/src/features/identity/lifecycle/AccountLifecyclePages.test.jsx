@@ -14,6 +14,19 @@ const credentials = () => server.use(
 );
 
 describe('self-account lifecycle', () => {
+  it.each([
+    ['en', 'English'],
+    [null, 'Not set'],
+  ])('shows the account preference %s without adding another editor', async (preferredLanguage, expected) => {
+    server.use(antiforgery(), contextIs(signedInContext({ preferredLanguage })));
+    credentials();
+    open('/identity/account');
+
+    expect(await screen.findByText('Preferred language')).toBeInTheDocument();
+    expect(screen.getByText(expected, { selector: 'dd' })).toBeInTheDocument();
+    expect(screen.getAllByRole('combobox', { name: 'Language' })).toHaveLength(1);
+  });
+
   it('reaches deactivation from navigation, proves before the empty command, and refreshes antiforgery for the public request', async () => {
     const calls = [];
     let bootstraps = 0;

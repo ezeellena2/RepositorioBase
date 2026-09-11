@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="InvitationSubject" xml:space="preserve"><value>Tiene una invitación</value></data>
+  <data name="InvitationBody" xml:space="preserve"><value>Abra este enlace para aceptar la invitación: {0}#token={1}</value></data>
+  <data name="ConfirmationSubject" xml:space="preserve"><value>Confirme su correo electrónico</value></data>
+  <data name="ConfirmationBody" xml:space="preserve"><value>Abra este enlace para confirmar su correo electrónico: {0}#token={1}</value></data>
+  <data name="SignInNoticeSubject" xml:space="preserve"><value>Inicie sesión en su cuenta</value></data>
+  <data name="SignInNoticeBody" xml:space="preserve"><value>Se solicitó un registro con su correo electrónico. Puede iniciar sesión en {0}.</value></data>
+  <data name="OrganizationRegistrationConfirmationSubject" xml:space="preserve"><value>Confirme su correo electrónico</value></data>
+  <data name="OrganizationRegistrationConfirmationBody" xml:space="preserve"><value>Abra este enlace para terminar de registrar su organización: {0}#token={1}</value></data>
+  <data name="OrganizationRegistrationSignInSubject" xml:space="preserve"><value>Inicie sesión en su cuenta</value></data>
+  <data name="OrganizationRegistrationSignInBody" xml:space="preserve"><value>Alguien intentó registrar una organización con su correo electrónico. Su cuenta ya existe; inicie sesión en {0} y registre la organización desde allí.</value></data>
+  <data name="PersonalRegistrationConfirmationSubject" xml:space="preserve"><value>Confirme su correo electrónico</value></data>
+  <data name="PersonalRegistrationConfirmationBody" xml:space="preserve"><value>Abra este enlace para terminar de configurar su cuenta personal: {0}#token={1}</value></data>
+  <data name="PersonalRegistrationSignInSubject" xml:space="preserve"><value>Inicie sesión en su cuenta</value></data>
+  <data name="PersonalRegistrationSignInBody" xml:space="preserve"><value>Alguien intentó configurar una cuenta personal con su correo electrónico. Su cuenta ya existe; inicie sesión en {0} y agréguela desde allí.</value></data>
+  <data name="PasswordRecoverySubject" xml:space="preserve"><value>Restablezca su contraseña</value></data>
+  <data name="PasswordRecoveryBody" xml:space="preserve"><value>Abra este enlace para elegir una contraseña nueva: {0}#token={1}</value></data>
+  <data name="AccountReactivationSubject" xml:space="preserve"><value>Reactive su cuenta</value></data>
+  <data name="AccountReactivationBody" xml:space="preserve"><value>Abra este enlace e ingrese su contraseña actual para reactivar su cuenta: {0}#token={1}</value></data>
+  <data name="AccountSelfDeactivatedSubject" xml:space="preserve"><value>Su cuenta fue desactivada</value></data>
+  <data name="AccountSelfDeactivatedBody" xml:space="preserve"><value>Su cuenta fue desactivada y sus sesiones finalizaron. Para solicitar la reactivación, visite {0}</value></data>
+  <data name="AccountAdministrativelySuspendedSubject" xml:space="preserve"><value>El estado de su cuenta cambió</value></data>
+  <data name="AccountAdministrativelySuspendedBody" xml:space="preserve"><value>Un administrador suspendió su cuenta. Este mensaje no restablece el acceso. Para comprobar su acceso, visite {0}</value></data>
+  <data name="AccountReactivatedSubject" xml:space="preserve"><value>El estado de su cuenta cambió</value></data>
+  <data name="AccountReactivatedBody" xml:space="preserve"><value>Un administrador levantó la suspensión de su cuenta. Para comprobar su acceso actual, visite {0}</value></data>
+  <data name="PlatformOwnerInvitationSubject" xml:space="preserve"><value>Tiene una invitación a la Plataforma</value></data>
+  <data name="PlatformOwnerInvitationBody" xml:space="preserve"><value>Recibió una invitación para asumir el rol de propietario de la Plataforma. Abra este enlace para configurar su cuenta: {0}#token={1}</value></data>
+  <data name="PlatformAdministratorInvitationSubject" xml:space="preserve"><value>Tiene una invitación a la Plataforma</value></data>
+  <data name="PlatformAdministratorInvitationBody" xml:space="preserve"><value>Recibió una invitación para asumir el rol de administrador de la Plataforma. Abra este enlace para configurar su cuenta: {0}#token={1}</value></data>
+  <data name="PlatformConfirmationSubject" xml:space="preserve"><value>Confirme su dirección de la Plataforma</value></data>
+  <data name="PlatformConfirmationBody" xml:space="preserve"><value>Abra este enlace para confirmar su dirección: {0}#token={1}</value></data>
+  <data name="PlatformSignInSubject" xml:space="preserve"><value>Inicie sesión en su cuenta</value></data>
+  <data name="PlatformSignInBody" xml:space="preserve"><value>Alguien intentó registrarse con su correo electrónico. Su cuenta ya existe; puede iniciar sesión en {0}.</value></data>
+</root>

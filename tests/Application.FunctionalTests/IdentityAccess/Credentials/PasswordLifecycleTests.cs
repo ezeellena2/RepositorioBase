@@ -547,10 +547,11 @@ public sealed class PasswordLifecycleTests : TestBase
         public Task<IdentityAccount?> FindByIdAsync(Guid id, CancellationToken cancellationToken) => inner.FindByIdAsync(id, cancellationToken);
         public Task<IdentityAccountValidationResult> ValidatePendingRegistrationAsync(string email, string password, CancellationToken cancellationToken) => inner.ValidatePendingRegistrationAsync(email, password, cancellationToken);
         public Task<IdentityAccountValidationResult> ValidatePasswordAsync(string password, CancellationToken cancellationToken) => inner.ValidatePasswordAsync(password, cancellationToken);
-        public Task<IdentityAccountCreationResult> CreatePendingAsync(string email, string password, CancellationToken cancellationToken) => inner.CreatePendingAsync(email, password, cancellationToken);
+        public Task<IdentityAccountCreationResult> CreatePendingAsync(string email, string password, string preferredLanguage, CancellationToken cancellationToken) => inner.CreatePendingAsync(email, password, preferredLanguage, cancellationToken);
         public string HashPassword(string password) => inner.HashPassword(password);
-        public Task<IdentityAccountCreationResult> CreatePendingFromHashAsync(string email, string hash, CancellationToken cancellationToken) => inner.CreatePendingFromHashAsync(email, hash, cancellationToken);
+        public Task<IdentityAccountCreationResult> CreatePendingFromHashAsync(string email, string hash, string preferredLanguage, CancellationToken cancellationToken) => inner.CreatePendingFromHashAsync(email, hash, preferredLanguage, cancellationToken);
         public Task ActivateAsync(Guid id, CancellationToken cancellationToken) => inner.ActivateAsync(id, cancellationToken);
+        public Task<bool> SetPreferredLanguageAsync(Guid id, string language, CancellationToken cancellationToken) => inner.SetPreferredLanguageAsync(id, language, cancellationToken);
         public Task<bool> VerifyPasswordAsync(Guid id, string password, CancellationToken cancellationToken) => inner.VerifyPasswordAsync(id, password, cancellationToken);
         public Task<bool> TryTransitionAsync(Guid id, CleanArchitecture.Domain.IdentityAccess.Identities.IdentityAccountStatus expected, CleanArchitecture.Domain.IdentityAccess.Identities.IdentityAccountStatus next, CancellationToken cancellationToken) =>
             inner.TryTransitionAsync(id, expected, next, cancellationToken);

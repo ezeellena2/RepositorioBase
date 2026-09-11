@@ -2,6 +2,7 @@ using CleanArchitecture.Application.IdentityAccess.Authorization;
 using CleanArchitecture.Infrastructure.Data;
 using CleanArchitecture.Infrastructure.Identity;
 using CleanArchitecture.Domain.IdentityAccess.Auditing;
+using CleanArchitecture.Domain.IdentityAccess.Security;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -25,6 +26,47 @@ public sealed class MigrationUpgradeTests
     private const string PlatformMfaPredecessor = "20260905143153_PlatformAdminInvitation";
     private const string PersonalIdentityPredecessor = "20260906054156_DeferredRegistrationReservation";
     private const string SharedBudgetPredecessor = "20260906145245_PersonalIdentity";
+    private const string IdentityLanguagePreferencesPredecessor = "20260907200400_DocumentDisputes";
+
+    [Test]
+    public async Task Identity_language_preferences_round_trip_preserves_legacy_rows_and_identifier_only_lifecycle_payloads()
+    {
+        var databaseName = $"identity_language_round_trip_{Guid.NewGuid():N}";
+        string? connectionString = null;
+        try
+        {
+            using (var scope = TestServices.CreateScope())
+            {
+                var source = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>().Database.GetConnectionString()!;
+                connectionString = new NpgsqlConnectionStringBuilder(source) { Database = databaseName }.ConnectionString;
+                await CreateDatabase(databaseName, source);
+            }
+
+            var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseNpgsql(connectionString).Options;
+            await using var context = new ApplicationDbContext(options);
+            var migrator = context.Database.GetService<IMigrator>();
+            await migrator.MigrateAsync(IdentityLanguagePreferencesPredecessor);
+            var seed = await SeedIdentityLanguagePredecessorRows(connectionString!);
+
+            await migrator.MigrateAsync();
+            await AssertIdentityLanguageSchemaAsync(connectionString!, seed, expected: true);
+            await AssertLifecyclePayloadUpgradeAsync(connectionString!, seed, upgraded: true);
+            await AssertIdentityLanguageConstraintsAsync(connectionString!, seed);
+
+            await migrator.MigrateAsync(IdentityLanguagePreferencesPredecessor);
+            await AssertIdentityLanguageSchemaAsync(connectionString!, seed, expected: false);
+            await AssertLifecyclePayloadUpgradeAsync(connectionString!, seed, upgraded: false);
+
+            await migrator.MigrateAsync();
+            await AssertIdentityLanguageSchemaAsync(connectionString!, seed, expected: true);
+            await AssertLifecyclePayloadUpgradeAsync(connectionString!, seed, upgraded: true);
+            (await context.Database.GetPendingMigrationsAsync()).ShouldBeEmpty();
+        }
+        finally
+        {
+            if (connectionString is not null) await DropDatabase(databaseName, connectionString);
+        }
+    }
 
     [Test]
     public async Task Outbox_safety_upgrade_preserves_history_and_bounds_preexisting_attempts_conservatively()
@@ -994,6 +1036,226 @@ public sealed class MigrationUpgradeTests
 
         (await Scalar<string>(connection, "SELECT data_type FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'AspNetUsers' AND column_name = 'Id';")).ShouldBe("text");
     }
+
+    private static async Task<IdentityLanguageSeed> SeedIdentityLanguagePredecessorRows(string connectionString)
+    {
+        var seed = new IdentityLanguageSeed(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            new Dictionary<string, Guid>
+            {
+                ["self_deactivated"] = Guid.NewGuid(),
+                ["administratively_suspended"] = Guid.NewGuid(),
+                ["reactivated"] = Guid.NewGuid()
+            });
+        var invitationHash = VersionedTokenHash.Of($"language-invitation-{Guid.NewGuid():N}").Value;
+        var platformHash = VersionedTokenHash.Of($"language-platform-{Guid.NewGuid():N}").Value;
+        var fingerprint = new string('a', 64);
+
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await Execute(connection, $$"""
+            INSERT INTO "AspNetUsers"
+                ("Id", "UserName", "NormalizedUserName", "Email", "NormalizedEmail",
+                 "EmailConfirmed", "PhoneNumberConfirmed", "TwoFactorEnabled", "LockoutEnabled", "AccessFailedCount")
+            VALUES
+                ('{{seed.UserId}}', 'language-user@example.test', 'LANGUAGE-USER@EXAMPLE.TEST',
+                 'language-user@example.test', 'LANGUAGE-USER@EXAMPLE.TEST', TRUE, FALSE, FALSE, FALSE, 0);
+
+            INSERT INTO "Tenants"
+                ("Id", "Slug", "Type", "Status", "AuthorizationVersion", "CreatedAt", "UpdatedAt")
+            VALUES
+                ('{{seed.OrganizationTenantId}}', 'language-org-{{Guid.NewGuid():N}}', 'Organization', 'Active', 1, NOW(), NOW()),
+                ('{{seed.PlatformTenantId}}', 'platform', 'Platform', 'Active', 1, NOW(), NOW());
+
+            INSERT INTO registration_submissions ("Id", "CanonicalKey", "CreatedAt")
+            VALUES
+                ('{{seed.OrganizationSubmissionId}}', 'language-org-{{Guid.NewGuid():N}}', NOW()),
+                ('{{seed.PersonalSubmissionId}}', 'language-personal-{{Guid.NewGuid():N}}', NOW());
+
+            INSERT INTO "Invitations"
+                ("Id", "TenantId", "NormalizedEmail", "TokenHash", "Status", "CreatedAt", "ExpiresAt")
+            VALUES
+                ('{{seed.InvitationId}}', '{{seed.OrganizationTenantId}}', 'invitee@example.test', '{{invitationHash}}',
+                 'Pending', NOW(), NOW() + INTERVAL '1 day');
+
+            INSERT INTO "PlatformAdminInvitations"
+                ("Id", "TenantId", "NormalizedEmail", "TokenHash", "Status", "Delivery", "IsOwner", "CreatedAt", "ExpiresAt")
+            VALUES
+                ('{{seed.PlatformInvitationId}}', '{{seed.PlatformTenantId}}', 'platform@example.test', '{{platformHash}}',
+                 'Pending', 'Pending', TRUE, NOW(), NOW() + INTERVAL '1 day');
+
+            INSERT INTO pending_registration_intents
+                ("Id", "SubmissionId", "NormalizedEmail", "LegalName", "Cuit", "PasswordHash", "CreatedAt", "ExpiresAt")
+            VALUES
+                ('{{seed.OrganizationIntentId}}', '{{seed.OrganizationSubmissionId}}', 'organization@example.test',
+                 'Acme S.A.', '30712345674', 'password-hash', NOW(), NOW() + INTERVAL '1 day');
+
+            INSERT INTO pending_personal_intents
+                ("Id", "SubmissionId", "NormalizedEmail", "FullName", "DisplayName", "DocumentCiphertext", "PasswordHash", "CreatedAt", "ExpiresAt")
+            VALUES
+                ('{{seed.PersonalIntentId}}', '{{seed.PersonalSubmissionId}}', 'personal@example.test',
+                 'Ana Example', 'Ana', 'sealed-document', 'password-hash', NOW(), NOW() + INTERVAL '1 day');
+
+            INSERT INTO outbox_messages
+                ("Id", "Type", "Payload", "AttemptCount", "NextAttemptAt", "CreatedAt", "Status", "Generation", "FirstAttemptAt", "RequestFingerprint")
+            VALUES
+                ('{{seed.LifecycleMessageIds["self_deactivated"]}}', 'identity.lifecycle.notice.requested',
+                 jsonb_build_object('IdentityId', '{{seed.UserId}}'::uuid, 'Outcome', 'self_deactivated'),
+                 2, NOW(), NOW(), 'Pending', 2, NOW(), '{{fingerprint}}'),
+                ('{{seed.LifecycleMessageIds["administratively_suspended"]}}', 'identity.lifecycle.notice.requested',
+                 jsonb_build_object('IdentityId', '{{seed.UserId}}'::uuid, 'Outcome', 'administratively_suspended'),
+                 0, NOW(), NOW(), 'Pending', 0, NULL, NULL),
+                ('{{seed.LifecycleMessageIds["reactivated"]}}', 'identity.lifecycle.notice.requested',
+                 jsonb_build_object('IdentityId', '{{seed.UserId}}'::uuid, 'Outcome', 'reactivated'),
+                 0, NOW(), NOW(), 'Pending', 0, NULL, NULL);
+            """);
+
+        return seed;
+    }
+
+    private static async Task AssertIdentityLanguageSchemaAsync(
+        string connectionString,
+        IdentityLanguageSeed seed,
+        bool expected)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        foreach (var column in IdentityLanguageColumns(seed))
+        {
+            var exists = await Scalar<bool>(connection, $$"""
+                SELECT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = '{{column.Table}}'
+                      AND column_name = '{{column.Column}}');
+                """);
+            exists.ShouldBe(expected, $"{column.Table}.{column.Column}");
+            var constraintExists = await Scalar<bool>(connection,
+                $"SELECT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = '{column.Constraint}');");
+            constraintExists.ShouldBe(expected, column.Constraint);
+
+            if (expected)
+            {
+                (await Scalar<string>(connection, $$"""
+                    SELECT is_nullable FROM information_schema.columns
+                    WHERE table_schema = 'public' AND table_name = '{{column.Table}}' AND column_name = '{{column.Column}}';
+                    """)).ShouldBe("YES");
+                (await Scalar<int>(connection, $$"""
+                    SELECT character_maximum_length FROM information_schema.columns
+                    WHERE table_schema = 'public' AND table_name = '{{column.Table}}' AND column_name = '{{column.Column}}';
+                    """)).ShouldBe(16);
+                (await Scalar<bool>(connection,
+                    $"SELECT \"{column.Column}\" IS NULL FROM \"{column.Table}\" WHERE \"Id\" = '{column.RowId}';"))
+                    .ShouldBeTrue($"the migration must not backfill {column.Table}.{column.Column}");
+            }
+            else
+            {
+                (await Scalar<bool>(connection,
+                    $"SELECT EXISTS (SELECT 1 FROM \"{column.Table}\" WHERE \"Id\" = '{column.RowId}');"))
+                    .ShouldBeTrue($"downgrade must preserve the predecessor row in {column.Table}");
+            }
+        }
+    }
+
+    private static async Task AssertIdentityLanguageConstraintsAsync(string connectionString, IdentityLanguageSeed seed)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        foreach (var column in IdentityLanguageColumns(seed))
+        {
+            foreach (var supported in new[] { "en", "es" })
+            {
+                await Execute(connection,
+                    $"UPDATE \"{column.Table}\" SET \"{column.Column}\" = '{supported}' WHERE \"Id\" = '{column.RowId}';");
+                (await Scalar<string>(connection,
+                    $"SELECT \"{column.Column}\" FROM \"{column.Table}\" WHERE \"Id\" = '{column.RowId}';"))
+                    .ShouldBe(supported);
+            }
+
+            foreach (var unsupported in new[] { "ES", "fr" })
+            {
+                var refused = await Should.ThrowAsync<PostgresException>(() => Execute(connection,
+                    $"UPDATE \"{column.Table}\" SET \"{column.Column}\" = '{unsupported}' WHERE \"Id\" = '{column.RowId}';"));
+                refused.SqlState.ShouldBe(PostgresErrorCodes.CheckViolation);
+            }
+
+            await Execute(connection,
+                $"UPDATE \"{column.Table}\" SET \"{column.Column}\" = NULL WHERE \"Id\" = '{column.RowId}';");
+        }
+    }
+
+    private static async Task AssertLifecyclePayloadUpgradeAsync(
+        string connectionString,
+        IdentityLanguageSeed seed,
+        bool upgraded)
+    {
+        var expectedTypes = new Dictionary<string, string>
+        {
+            ["self_deactivated"] = "identity.lifecycle.self.deactivated.notice.requested",
+            ["administratively_suspended"] = "identity.lifecycle.administratively.suspended.notice.requested",
+            ["reactivated"] = "identity.lifecycle.reactivated.notice.requested"
+        };
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        foreach (var item in seed.LifecycleMessageIds)
+        {
+            var expectedType = upgraded ? expectedTypes[item.Key] : "identity.lifecycle.notice.requested";
+            (await Scalar<string>(connection,
+                $"SELECT \"Type\" FROM outbox_messages WHERE \"Id\" = '{item.Value}';"))
+                .ShouldBe(expectedType);
+            (await Scalar<string>(connection,
+                $"SELECT \"Payload\" ->> 'IdentityId' FROM outbox_messages WHERE \"Id\" = '{item.Value}';"))
+                .ShouldBe(seed.UserId.ToString());
+            (await Scalar<int>(connection,
+                $"SELECT COUNT(*)::int FROM outbox_messages, LATERAL jsonb_object_keys(\"Payload\") WHERE \"Id\" = '{item.Value}';"))
+                .ShouldBe(upgraded ? 1 : 2);
+            (await Scalar<bool>(connection,
+                $"SELECT \"Payload\" ? 'Outcome' FROM outbox_messages WHERE \"Id\" = '{item.Value}';"))
+                .ShouldBe(!upgraded);
+            if (!upgraded)
+            {
+                (await Scalar<string>(connection,
+                    $"SELECT \"Payload\" ->> 'Outcome' FROM outbox_messages WHERE \"Id\" = '{item.Value}';"))
+                    .ShouldBe(item.Key);
+            }
+        }
+
+        (await Scalar<string>(connection,
+            $"SELECT \"RequestFingerprint\" FROM outbox_messages WHERE \"Id\" = '{seed.LifecycleMessageIds["self_deactivated"]}';"))
+            .ShouldBe(new string('a', 64));
+    }
+
+    private static IEnumerable<IdentityLanguageColumn> IdentityLanguageColumns(IdentityLanguageSeed seed) =>
+    [
+        new("PlatformAdminInvitations", "Language", "CK_PlatformAdminInvitations_Language", seed.PlatformInvitationId),
+        new("pending_registration_intents", "Language", "CK_pending_registration_intents_Language", seed.OrganizationIntentId),
+        new("pending_personal_intents", "Language", "CK_pending_personal_intents_Language", seed.PersonalIntentId),
+        new("outbox_messages", "DeliveryLanguage", "CK_outbox_messages_DeliveryLanguage", seed.LifecycleMessageIds["self_deactivated"]),
+        new("Invitations", "Language", "CK_Invitations_Language", seed.InvitationId),
+        new("AspNetUsers", "PreferredLanguage", "CK_AspNetUsers_PreferredLanguage", seed.UserId)
+    ];
+
+    private sealed record IdentityLanguageSeed(
+        Guid UserId,
+        Guid OrganizationTenantId,
+        Guid PlatformTenantId,
+        Guid OrganizationSubmissionId,
+        Guid PersonalSubmissionId,
+        Guid InvitationId,
+        Guid PlatformInvitationId,
+        Guid OrganizationIntentId,
+        Guid PersonalIntentId,
+        IReadOnlyDictionary<string, Guid> LifecycleMessageIds);
+
+    private sealed record IdentityLanguageColumn(string Table, string Column, string Constraint, Guid RowId);
 
     private static async Task CreateDatabase(string databaseName, string connectionString)
     {

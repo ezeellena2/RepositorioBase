@@ -95,8 +95,8 @@ public sealed class SuspendIdentityCommandHandler(
             await IdentityLifecycleEffects.ApplyDisableAsync(context, proofs, request.IdentityId, now, "administratively_suspended", ct);
             context.AuditEvents.Add(PlatformIdentityAudit.Changed(request.IdentityId, "administratively_suspended", request.Reason.ToString()));
             context.OutboxMessages.Add(OutboxMessage.Create(
-                PlatformIdentityAudit.NoticeMessageType,
-                JsonSerializer.Serialize(new PlatformIdentityAudit.NoticeEnvelope(request.IdentityId, "administratively_suspended")),
+                IdentityLifecycleNotice.AdministrativelySuspendedMessageType,
+                JsonSerializer.Serialize(new IdentityLifecycleNotice.Envelope(request.IdentityId)),
                 now));
 
             await context.SaveChangesAsync(ct);
@@ -154,8 +154,8 @@ public sealed class ReactivateIdentityCommandHandler(
             context.AuditEvents.Add(PlatformIdentityAudit.Changed(
                 request.IdentityId, overSelfDeactivation ? "reactivated_over_self_deactivation" : "reactivated", null));
             context.OutboxMessages.Add(OutboxMessage.Create(
-                PlatformIdentityAudit.NoticeMessageType,
-                JsonSerializer.Serialize(new PlatformIdentityAudit.NoticeEnvelope(request.IdentityId, "reactivated")),
+                IdentityLifecycleNotice.ReactivatedMessageType,
+                JsonSerializer.Serialize(new IdentityLifecycleNotice.Envelope(request.IdentityId)),
                 timeProvider.GetUtcNow()));
 
             await context.SaveChangesAsync(ct);
@@ -167,10 +167,6 @@ public sealed class ReactivateIdentityCommandHandler(
 /// <summary>The one shape both operator transitions are recorded in.</summary>
 internal static class PlatformIdentityAudit
 {
-    internal const string NoticeMessageType = "identity.lifecycle.notice.requested";
-
-    internal sealed record NoticeEnvelope(Guid IdentityId, string Outcome);
-
     internal static AuditEvent Changed(Guid identityId, string outcome, string? reason) =>
         AuditEvent.CreateSessionEvent(identityId, null, "identity.lifecycle.changed", AuditCorrelation.Current(), outcome, reason);
 }

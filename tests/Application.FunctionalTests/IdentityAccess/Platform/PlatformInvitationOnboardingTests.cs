@@ -89,8 +89,8 @@ public sealed class PlatformInvitationOnboardingTests : TestBase
     [Test]
     public async Task Registering_when_the_identity_already_exists_ignores_the_credentials_and_cannot_take_over_the_account()
     {
-        var (email, token) = await PlatformScenario.PendingInvitationAsync();
-        await IdentityHttpHarness.SeedConfirmedUserAsync(email, ValidPassword);
+        var (email, token) = await PlatformScenario.PendingInvitationAsync(language: "es");
+        await IdentityHttpHarness.SeedConfirmedUserAsync(email, ValidPassword, "en");
         var before = (await TestApp.ListAsync<ApplicationUser>()).Single(user => user.Email == email);
         var storedHash = before.PasswordHash;
         PlatformScenario.RunAnonymously();
@@ -101,6 +101,7 @@ public sealed class PlatformInvitationOnboardingTests : TestBase
         (await TestApp.CountAsync<ApplicationUser>()).ShouldBe(1, "an existing address is never registered twice.");
         var after = (await TestApp.ListAsync<ApplicationUser>()).Single(user => user.Email == email);
         after.PasswordHash.ShouldBe(storedHash, "submitted credentials must not overwrite an account the caller may not own.");
+        after.PreferredLanguage.ShouldBe("en", "the neutral existing-account branch cannot overwrite a preference.");
         after.EmailConfirmed.ShouldBeTrue("an already-confirmed identity is not un-confirmed by an invitation.");
         (await TestApp.CountAsync<TenantMembership>()).ShouldBe(0);
     }

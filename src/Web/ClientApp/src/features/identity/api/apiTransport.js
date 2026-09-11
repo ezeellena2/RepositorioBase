@@ -1,6 +1,8 @@
 import { isProblem, readProblem, readSuccess } from './problemDetails';
 
 const ANTIFORGERY = '/api/identity/antiforgery';
+const CONTEXT = '/api/identity/context';
+const SESSION_LOST = new Set(['authentication_required', 'invalid_session']);
 
 export class ApiProblem extends Error {
   constructor(problem) {
@@ -23,6 +25,7 @@ export class ApiProblem extends Error {
  */
 export function createApiTransport() {
   let requestToken = null;
+  const sessionLostListeners = new Set();
 
   const bootstrapAntiforgery = async () => {
     const response = await fetch(ANTIFORGERY);
@@ -50,13 +53,22 @@ export function createApiTransport() {
     if (!isProblem(response)) throw new Error(`The API answered ${response.status} without a problem document.`);
 
     const problem = await readProblem(response);
+    const sessionWasLost = response.status === 401 && SESSION_LOST.has(problem.code);
+    if (sessionWasLost) requestToken = null;
     if (problem.code === 'antiforgery_validation_failed') await bootstrapAntiforgery();
+    if (sessionWasLost && path !== CONTEXT) {
+      sessionLostListeners.forEach((listener) => listener(problem));
+    }
     throw new ApiProblem(problem);
   };
 
   return {
     bootstrapAntiforgery,
     hasRequestToken: () => requestToken !== null,
+    onSessionLost: (listener) => {
+      sessionLostListeners.add(listener);
+      return () => sessionLostListeners.delete(listener);
+    },
     send,
   };
 }

@@ -85,6 +85,7 @@ public sealed class SelectTenantCommandHandler(
                     account.Id,
                     displayName,
                     account.IsActive,
+                    account.PreferredLanguage,
                     selected,
                     tenants,
                     effectivePermissions,

@@ -19,6 +19,14 @@ export function createIdentityClient(transport = createApiTransport()) {
   // thing that continues a listing: `limit` is deliberately never sent, so the server's own page size stays the
   // contract rather than something a caller can widen.
   const continued = (path, cursor) => (cursor ? `${path}?cursor=${encodeURIComponent(cursor)}` : path);
+  const identityContextMembers = [
+    'user',
+    'preferredLanguage',
+    'availableTenants',
+    'permissions',
+    'session',
+    'personalData',
+  ];
 
   return {
     transport,
@@ -28,7 +36,7 @@ export function createIdentityClient(transport = createApiTransport()) {
     // activeTenant is genuinely absent for an identity that holds no membership yet, so it is not required.
     // Demanding it would read "you belong to nothing" as "the contract drifted".
     getContext: () => send('/api/identity/context', {
-      expect: ['user', 'availableTenants', 'permissions', 'session', 'personalData'],
+      expect: identityContextMembers,
     }),
 
     signIn: (email, password) => send('/api/identity/sessions', { method: 'POST', body: { email, password } }),
@@ -37,7 +45,13 @@ export function createIdentityClient(transport = createApiTransport()) {
     selectTenant: (tenantId) => send('/api/identity/context/tenant', {
       method: 'PUT',
       body: { tenantId },
-      expect: ['user', 'availableTenants', 'permissions', 'session', 'personalData'],
+      expect: identityContextMembers,
+    }),
+
+    updatePreferredLanguage: (language) => send('/api/identity/context/language', {
+      method: 'PUT',
+      body: { language },
+      expect: identityContextMembers,
     }),
 
     registerOrganization: (request) => send('/api/identity/organizations/register', { method: 'POST', body: request }),

@@ -22,8 +22,6 @@ namespace CleanArchitecture.Infrastructure.Data.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-
-
             modelBuilder.Entity("CleanArchitecture.Domain.IdentityAccess.Auditing.AuditEvent", b =>
                 {
                     b.Property<Guid>("Id")
@@ -360,6 +358,10 @@ namespace CleanArchitecture.Infrastructure.Data.Migrations
                     b.Property<DateTimeOffset>("ExpiresAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("Language")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
                     b.Property<string>("NormalizedEmail")
                         .IsRequired()
                         .HasMaxLength(256)
@@ -402,6 +404,8 @@ namespace CleanArchitecture.Infrastructure.Data.Migrations
                     b.ToTable("Invitations", null, t =>
                         {
                             t.HasCheckConstraint("CK_Invitations_Ids_NotEmpty", "\"Id\" <> '00000000-0000-0000-0000-000000000000'::uuid AND \"TenantId\" <> '00000000-0000-0000-0000-000000000000'::uuid AND (\"AcceptedByIdentityId\" IS NULL OR \"AcceptedByIdentityId\" <> '00000000-0000-0000-0000-000000000000'::uuid)");
+
+                            t.HasCheckConstraint("CK_Invitations_Language", "\"Language\" IS NULL OR \"Language\" IN ('en', 'es')");
 
                             t.HasCheckConstraint("CK_Invitations_Lifecycle", "\"TokenHash\" ~ '^v1:[A-Za-z0-9+/]{42}[AEIMQUYcgkosw048]=$' AND \"NormalizedEmail\" = normalize(\"NormalizedEmail\", NFC) AND \"NormalizedEmail\" = lower(\"NormalizedEmail\") AND \"NormalizedEmail\" !~ '[[:space:]]' AND position(U&'\\00a0' IN \"NormalizedEmail\") = 0 AND strpos(\"NormalizedEmail\", '@') > 0 AND \"ExpiresAt\" > \"CreatedAt\" AND ((\"Status\" = 'Pending' AND \"AcceptedByIdentityId\" IS NULL AND \"AcceptedAt\" IS NULL AND \"CancelledAt\" IS NULL) OR (\"Status\" = 'Accepted' AND \"AcceptedByIdentityId\" IS NOT NULL AND \"AcceptedAt\" IS NOT NULL AND \"AcceptedAt\" >= \"CreatedAt\" AND \"AcceptedAt\" <= \"ExpiresAt\" AND \"CancelledAt\" IS NULL) OR (\"Status\" = 'Cancelled' AND \"AcceptedByIdentityId\" IS NULL AND \"AcceptedAt\" IS NULL AND \"CancelledAt\" IS NOT NULL AND \"CancelledAt\" >= \"CreatedAt\"))");
                         });
@@ -509,6 +513,10 @@ namespace CleanArchitecture.Infrastructure.Data.Migrations
                     b.Property<DateTimeOffset>("ExpiresAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("Language")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
                     b.Property<string>("LegalName")
                         .IsRequired()
                         .HasMaxLength(256)
@@ -539,6 +547,8 @@ namespace CleanArchitecture.Infrastructure.Data.Migrations
                     b.ToTable("pending_registration_intents", null, t =>
                         {
                             t.HasCheckConstraint("CK_pending_registration_intents_Ids_NotEmpty", "\"Id\" <> '00000000-0000-0000-0000-000000000000'::uuid AND \"SubmissionId\" <> '00000000-0000-0000-0000-000000000000'::uuid");
+
+                            t.HasCheckConstraint("CK_pending_registration_intents_Language", "\"Language\" IS NULL OR \"Language\" IN ('en', 'es')");
 
                             t.HasCheckConstraint("CK_pending_registration_intents_Settlement", "(\"Outcome\" IS NULL) = (\"CompletedAt\" IS NULL) AND \"ExpiresAt\" > \"CreatedAt\"");
                         });
@@ -591,6 +601,10 @@ namespace CleanArchitecture.Infrastructure.Data.Migrations
                     b.Property<DateTimeOffset?>("DeliveredAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("DeliveryLanguage")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
                     b.Property<string>("FailureCode")
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)");
@@ -639,6 +653,8 @@ namespace CleanArchitecture.Infrastructure.Data.Migrations
 
                     b.ToTable("outbox_messages", null, t =>
                         {
+                            t.HasCheckConstraint("CK_outbox_messages_DeliveryLanguage", "\"DeliveryLanguage\" IS NULL OR \"DeliveryLanguage\" IN ('en', 'es')");
+
                             t.HasCheckConstraint("CK_outbox_messages_Dispatch", "\"AttemptCount\" >= 0 AND \"Generation\" >= 0 AND ((\"LeaseOwner\" IS NULL) = (\"LeaseExpiresAt\" IS NULL)) AND ((\"Status\" = 'Pending' AND \"DeliveredAt\" IS NULL) OR (\"Status\" = 'Delivered' AND \"DeliveredAt\" IS NOT NULL AND \"LeaseOwner\" IS NULL) OR (\"Status\" = 'Abandoned' AND \"DeliveredAt\" IS NULL AND \"LeaseOwner\" IS NULL AND \"FailureCode\" IS NOT NULL))");
 
                             t.HasCheckConstraint("CK_outbox_messages_Id_NotEmpty", "\"Id\" <> '00000000-0000-0000-0000-000000000000'::uuid");
@@ -899,6 +915,10 @@ namespace CleanArchitecture.Infrastructure.Data.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<string>("Language")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
                     b.Property<string>("NormalizedEmail")
                         .IsRequired()
                         .HasMaxLength(256)
@@ -924,6 +944,8 @@ namespace CleanArchitecture.Infrastructure.Data.Migrations
                     b.ToTable("pending_personal_intents", null, t =>
                         {
                             t.HasCheckConstraint("CK_pending_personal_intents_Ids_NotEmpty", "\"Id\" <> '00000000-0000-0000-0000-000000000000'::uuid AND \"SubmissionId\" <> '00000000-0000-0000-0000-000000000000'::uuid");
+
+                            t.HasCheckConstraint("CK_pending_personal_intents_Language", "\"Language\" IS NULL OR \"Language\" IN ('en', 'es')");
 
                             t.HasCheckConstraint("CK_pending_personal_intents_Settlement", "(\"Outcome\" IS NULL) = (\"CompletedAt\" IS NULL) AND \"ExpiresAt\" > \"CreatedAt\"");
                         });
@@ -1030,6 +1052,10 @@ namespace CleanArchitecture.Infrastructure.Data.Migrations
                     b.Property<bool>("IsOwner")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("Language")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
                     b.Property<string>("NormalizedEmail")
                         .IsRequired()
                         .HasMaxLength(256)
@@ -1076,6 +1102,8 @@ namespace CleanArchitecture.Infrastructure.Data.Migrations
                     b.ToTable("PlatformAdminInvitations", null, t =>
                         {
                             t.HasCheckConstraint("CK_PlatformAdminInvitations_Ids_NotEmpty", "\"Id\" <> '00000000-0000-0000-0000-000000000000'::uuid AND \"TenantId\" <> '00000000-0000-0000-0000-000000000000'::uuid AND (\"BoundIdentityId\" IS NULL OR \"BoundIdentityId\" <> '00000000-0000-0000-0000-000000000000'::uuid)");
+
+                            t.HasCheckConstraint("CK_PlatformAdminInvitations_Language", "\"Language\" IS NULL OR \"Language\" IN ('en', 'es')");
 
                             t.HasCheckConstraint("CK_PlatformAdminInvitations_Lifecycle", "\"TokenHash\" ~ '^v1:[A-Za-z0-9+/]{42}[AEIMQUYcgkosw048]=$' AND \"NormalizedEmail\" = normalize(\"NormalizedEmail\", NFC) AND \"NormalizedEmail\" = lower(\"NormalizedEmail\") AND \"NormalizedEmail\" !~ '[[:space:]]' AND position(U&'\\00a0' IN \"NormalizedEmail\") = 0 AND strpos(\"NormalizedEmail\", '@') > 0 AND \"ExpiresAt\" > \"CreatedAt\" AND ((\"BoundIdentityId\" IS NULL) = (\"BoundAt\" IS NULL)) AND (\"BoundAt\" IS NULL OR \"BoundAt\" >= \"CreatedAt\") AND ((\"Delivery\" = 'Pending') = (\"DeliverySettledAt\" IS NULL)) AND (\"DeliverySettledAt\" IS NULL OR \"DeliverySettledAt\" >= \"CreatedAt\") AND ((\"Status\" = 'Pending' AND \"AcceptedAt\" IS NULL AND \"CancelledAt\" IS NULL) OR (\"Status\" = 'Accepted' AND \"BoundIdentityId\" IS NOT NULL AND \"AcceptedAt\" IS NOT NULL AND \"AcceptedAt\" >= \"CreatedAt\" AND \"AcceptedAt\" <= \"ExpiresAt\" AND \"CancelledAt\" IS NULL) OR (\"Status\" = 'Cancelled' AND \"AcceptedAt\" IS NULL AND \"CancelledAt\" IS NOT NULL AND \"CancelledAt\" >= \"CreatedAt\"))");
                         });
@@ -1498,6 +1526,10 @@ namespace CleanArchitecture.Infrastructure.Data.Migrations
                     b.Property<bool>("PhoneNumberConfirmed")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("PreferredLanguage")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
                     b.Property<string>("SecurityStamp")
                         .HasColumnType("text");
 
@@ -1532,6 +1564,8 @@ namespace CleanArchitecture.Infrastructure.Data.Migrations
                     b.ToTable("AspNetUsers", null, t =>
                         {
                             t.HasCheckConstraint("CK_AspNetUsers_Id_NotEmpty", "\"Id\" <> '00000000-0000-0000-0000-000000000000'::uuid");
+
+                            t.HasCheckConstraint("CK_AspNetUsers_PreferredLanguage", "\"PreferredLanguage\" IS NULL OR \"PreferredLanguage\" IN ('en', 'es')");
 
                             t.HasCheckConstraint("CK_AspNetUsers_Status", "\"Status\" IN ('PendingConfirmation', 'Active', 'SelfDeactivated', 'AdministrativelySuspended', 'Closed')");
 
@@ -1716,8 +1750,6 @@ namespace CleanArchitecture.Infrastructure.Data.Migrations
 
                     b.ToTable("AspNetUserTokens", (string)null);
                 });
-
-
 
             modelBuilder.Entity("CleanArchitecture.Domain.IdentityAccess.Auditing.AuditEvent", b =>
                 {
@@ -2095,7 +2127,6 @@ namespace CleanArchitecture.Infrastructure.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
-
 
             modelBuilder.Entity("CleanArchitecture.Domain.IdentityAccess.Invitations.Invitation", b =>
                 {

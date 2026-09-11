@@ -30,6 +30,8 @@ public sealed class PlatformBootstrapRecoveryTests : TestBase
     {
         await PlatformScenario.BootstrapAsync(OwnerEmail);
         var original = await PlatformScenario.PendingOwnerTokenAsync();
+        var originalLanguage = (await PlatformScenario.SingleInvitationAsync()).Language;
+        originalLanguage.ShouldBe("en", "bootstrap captures the configured default language");
         await PlatformScenario.ExpireInvitationAsync();
         PlatformScenario.RunAnonymously();
 
@@ -37,6 +39,7 @@ public sealed class PlatformBootstrapRecoveryTests : TestBase
 
         var invitation = await PlatformScenario.SingleInvitationAsync();
         invitation.NormalizedEmail.ShouldBe(OwnerEmail, "recovery never changes the recipient.");
+        invitation.Language.ShouldBe(originalLanguage, "recovery preserves the immutable bootstrap-language snapshot.");
         invitation.TokenHash.Matches(original).ShouldBeFalse("the prior token is invalidated.");
         var replacement = await PlatformScenario.PendingOwnerTokenAsync();
         invitation.TokenHash.Matches(replacement).ShouldBeTrue();

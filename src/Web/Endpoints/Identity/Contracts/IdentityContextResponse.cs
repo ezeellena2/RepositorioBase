@@ -4,6 +4,7 @@ namespace CleanArchitecture.Web.IdentityEndpoints.Contracts;
 
 public sealed record IdentityContextResponse(
     IdentityContextUserResponse User,
+    string? PreferredLanguage,
     IdentityContextTenantResponse? ActiveTenant,
     IReadOnlyList<IdentityContextTenantResponse> AvailableTenants,
     IReadOnlyList<string> Permissions,
@@ -12,6 +13,7 @@ public sealed record IdentityContextResponse(
 {
     public static IdentityContextResponse From(IdentityContext context) => new(
         new IdentityContextUserResponse(context.IdentityId.ToString("N"), context.DisplayName, context.EmailConfirmed),
+        context.PreferredLanguage,
         context.ActiveTenant is null ? null : IdentityContextTenantResponse.From(context.ActiveTenant),
         context.AvailableTenants.Select(IdentityContextTenantResponse.From).ToArray(),
         context.Permissions,

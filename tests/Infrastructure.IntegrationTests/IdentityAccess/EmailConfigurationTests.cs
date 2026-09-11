@@ -78,6 +78,7 @@ public sealed class EmailConfigurationTests
         using var databaseScope = TestServices.CreateScope();
         var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings { EnvironmentName = "Development" });
         builder.Configuration["ConnectionStrings:CleanArchitectureDb"] = databaseScope.ServiceProvider.GetRequiredService<ApplicationDbContext>().Database.GetConnectionString();
+        builder.Configuration["Localization:DefaultLanguage"] = "es";
         builder.Configuration["IdentityAccess:Email:Enabled"] = "false";
         builder.Configuration["IdentityAccess:Email:PublicOrigin"] = "https://app.example.test";
         builder.AddOutboxWorkerServices();
@@ -88,6 +89,7 @@ public sealed class EmailConfigurationTests
         using var scope = host.Services.CreateScope();
         scope.ServiceProvider.GetRequiredService<OutboxDispatcher>().ShouldNotBeNull();
         scope.ServiceProvider.GetRequiredService<IUser>().Id.ShouldBeNull();
+        scope.ServiceProvider.GetRequiredService<IRequestLanguage>().Language.ShouldBe("es");
         scope.ServiceProvider.GetRequiredService<MediatR.IMediator>().ShouldNotBeNull();
         var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var identity = new CleanArchitecture.Infrastructure.Identity.ApplicationUser { Id = Guid.NewGuid(), Email = "worker-isolated@example.test" };

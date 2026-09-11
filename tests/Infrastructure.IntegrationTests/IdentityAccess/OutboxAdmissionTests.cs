@@ -1,4 +1,5 @@
 using CleanArchitecture.Application.Common.Interfaces;
+using CleanArchitecture.Application.Common.Localization;
 using CleanArchitecture.Application.IdentityAccess.Organizations.RegisterOrganization;
 using CleanArchitecture.Application.IdentityAccess.Lifecycle;
 using CleanArchitecture.Domain.IdentityAccess.Authorization;
@@ -11,6 +12,7 @@ using CleanArchitecture.Infrastructure.IntegrationTests.Infrastructure;
 using CleanArchitecture.Infrastructure.IntegrationTests.TestDoubles;
 using CleanArchitecture.Infrastructure.Outbox;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace CleanArchitecture.Infrastructure.IntegrationTests.IdentityAccess;
@@ -175,7 +177,13 @@ public sealed class OutboxAdmissionTests
         return new OutboxDispatcher(
             context,
             new OutboxSecretReader(context, scope.ServiceProvider.GetRequiredService<Microsoft.AspNetCore.DataProtection.IDataProtectionProvider>()),
-            [new InvitationEmailDeliveryHandler(context, EmailOptions)],
+            [new InvitationEmailDeliveryHandler(
+                context,
+                EmailOptions,
+                new CleanArchitecture.Infrastructure.Localization.IdentityEmailLocalizer(
+                    context,
+                    scope.ServiceProvider.GetRequiredService<ILookupNormalizer>(),
+                    scope.ServiceProvider.GetRequiredService<LocalizationSettings>()))],
             new ControlledTimeProvider(Origin),
             sink,
             admission, TestMetrics.Instance);

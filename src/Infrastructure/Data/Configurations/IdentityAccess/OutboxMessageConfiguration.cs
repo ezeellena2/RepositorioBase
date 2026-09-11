@@ -18,6 +18,7 @@ public sealed class OutboxMessageConfiguration : IEntityTypeConfiguration<Outbox
         builder.Property(x => x.CreatedAt).IsRequired();
         builder.Property(x => x.FirstAttemptAt);
         builder.Property(x => x.RequestFingerprint).HasMaxLength(64);
+        builder.Property(x => x.DeliveryLanguage).HasMaxLength(16);
         builder.Property(x => x.Status).HasConversion<string>().HasMaxLength(32).IsRequired();
         builder.Property(x => x.LeaseOwner).HasMaxLength(128);
         builder.Property(x => x.LeaseExpiresAt);
@@ -33,6 +34,9 @@ public sealed class OutboxMessageConfiguration : IEntityTypeConfiguration<Outbox
             "(\"Status\" = 'Pending' AND \"DeliveredAt\" IS NULL) OR " +
             "(\"Status\" = 'Delivered' AND \"DeliveredAt\" IS NOT NULL AND \"LeaseOwner\" IS NULL) OR " +
             "(\"Status\" = 'Abandoned' AND \"DeliveredAt\" IS NULL AND \"LeaseOwner\" IS NULL AND \"FailureCode\" IS NOT NULL))"));
+        builder.ToTable("outbox_messages", table => table.HasCheckConstraint(
+            "CK_outbox_messages_DeliveryLanguage",
+            "\"DeliveryLanguage\" IS NULL OR \"DeliveryLanguage\" IN ('en', 'es')"));
 
         builder.HasIndex(x => x.NextAttemptAt);
 

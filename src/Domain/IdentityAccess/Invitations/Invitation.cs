@@ -20,6 +20,9 @@ public sealed class Invitation : BaseEntity<InvitationId>
 
     public string NormalizedEmail { get; private set; } = string.Empty;
 
+    /// <summary>The inviter request's supported language, captured once and preserved across reissue.</summary>
+    public string? Language { get; private set; }
+
     public VersionedTokenHash TokenHash { get; private set; }
 
     public InvitationStatus Status { get; private set; }
@@ -36,10 +39,21 @@ public sealed class Invitation : BaseEntity<InvitationId>
 
     public IReadOnlyCollection<InvitationRole> Roles => _roles.AsReadOnly();
 
-    public static Invitation Issue(Tenant tenant, string email, IEnumerable<Role> roles, VersionedTokenHash tokenHash, DateTimeOffset now, DateTimeOffset expiresAt)
+    public static Invitation Issue(Tenant tenant, string email, IEnumerable<Role> roles, VersionedTokenHash tokenHash, DateTimeOffset now, DateTimeOffset expiresAt) =>
+        Issue(tenant, email, roles, tokenHash, "en", now, expiresAt);
+
+    public static Invitation Issue(
+        Tenant tenant,
+        string email,
+        IEnumerable<Role> roles,
+        VersionedTokenHash tokenHash,
+        string language,
+        DateTimeOffset now,
+        DateTimeOffset expiresAt)
     {
         ArgumentNullException.ThrowIfNull(tenant);
         ArgumentNullException.ThrowIfNull(roles);
+        ArgumentException.ThrowIfNullOrWhiteSpace(language);
         if (tenant.Type != TenantType.Organization)
         {
             throw new InvalidOperationException("Only organization tenants can invite members.");
@@ -63,6 +77,7 @@ public sealed class Invitation : BaseEntity<InvitationId>
             Id = InvitationId.New(),
             TenantId = tenant.Id,
             NormalizedEmail = Normalize(email),
+            Language = language,
             TokenHash = tokenHash,
             Status = InvitationStatus.Pending,
             CreatedAt = now,

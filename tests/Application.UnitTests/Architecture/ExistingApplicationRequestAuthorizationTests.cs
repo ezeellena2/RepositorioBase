@@ -4,6 +4,7 @@ using CleanArchitecture.Application.IdentityAccess.Organizations.ConfirmEmail;
 using CleanArchitecture.Application.IdentityAccess.Organizations.RegisterOrganization;
 using CleanArchitecture.Application.IdentityAccess.Context.GetIdentityContext;
 using CleanArchitecture.Application.IdentityAccess.Context.SelectTenant;
+using CleanArchitecture.Application.IdentityAccess.Context.SetPreferredLanguage;
 using CleanArchitecture.Application.IdentityAccess.Sessions.RevokeCurrentSession;
 using NUnit.Framework;
 using Shouldly;
@@ -15,6 +16,7 @@ public class ExistingApplicationRequestAuthorizationTests
     [TestCase(typeof(RevokeCurrentSessionCommand), "identity.sessions.manage")]
     [TestCase(typeof(GetIdentityContextQuery), "identity.context.read")]
     [TestCase(typeof(SelectTenantCommand), "identity.context.select")]
+    [TestCase(typeof(SetPreferredLanguageCommand), "identity.account.manage")]
     [TestCase(typeof(CleanArchitecture.Application.IdentityAccess.Invitations.AcceptInvitation.AcceptInvitationCommand), "identity.invitations.accept")]
     // A Platform invitee holds no membership until the MFA gates complete, so none of the gates can be
     // tenant-scoped either. The permission grants nothing beyond the chance to prove a factor.
@@ -97,6 +99,7 @@ public class ExistingApplicationRequestAuthorizationTests
             typeof(RevokeCurrentSessionCommand).FullName,
             typeof(GetIdentityContextQuery).FullName,
             typeof(SelectTenantCommand).FullName,
+            typeof(SetPreferredLanguageCommand).FullName,
             typeof(CleanArchitecture.Application.IdentityAccess.Invitations.InviteMember.InviteMemberCommand).FullName,
             typeof(CleanArchitecture.Application.IdentityAccess.Invitations.RegisterInvitedUser.RegisterInvitedUserCommand).FullName,
             typeof(CleanArchitecture.Application.IdentityAccess.Invitations.AcceptInvitation.AcceptInvitationCommand).FullName,

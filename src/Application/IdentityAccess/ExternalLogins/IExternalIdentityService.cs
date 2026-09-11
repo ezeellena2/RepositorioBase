@@ -41,5 +41,8 @@ public interface IExternalIdentityService
     /// password, no tenant and no membership. Onboarding into a context is Task 20's explicit choice, not a
     /// side effect of signing in (IA-REQ-020 as C4 amends it).
     /// </summary>
-    Task<Guid?> CreateFromProviderAsync(string normalizedEmail, CancellationToken cancellationToken);
+    Task<Guid?> CreateFromProviderAsync(
+        string normalizedEmail,
+        string preferredLanguage,
+        CancellationToken cancellationToken);
 }

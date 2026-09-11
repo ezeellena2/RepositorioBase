@@ -1,5 +1,6 @@
-import { act, render, renderHook, screen } from '@testing-library/react';
+import { act, render, renderHook, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { http, HttpResponse } from 'msw';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { i18n, resolveLanguage, roleName, setLanguage, useFormat } from './index';
@@ -8,7 +9,7 @@ import { esES } from '@mui/material/locale';
 import { NavMenu } from '../components/NavMenu';
 import { IdentityProvider } from '../features/identity/context/IdentityProvider';
 import { server } from '../test/server';
-import { antiforgery, contextIs, signedInContext } from '../test/identityServer';
+import { antiforgery, contextIs, problem, signedInContext } from '../test/identityServer';
 
 describe('Spanish language selection', () => {
   it('negotiates preference, cookie, browser and default without writing an inferred cookie', () => {
@@ -33,10 +34,19 @@ describe('Spanish language selection', () => {
     expect(document.cookie).toContain('.AspNetCore.Culture=c=es|uic=es');
   });
 
-  it.each([null, signedInContext()])('offers one associated native selector to either visitor', async (context) => {
-    server.use(antiforgery(), contextIs(context));
+  it('changes language locally for a visitor without persisting an account preference', async () => {
+    let preferenceWrites = 0;
+    await act(() => setLanguage('en'));
+    server.use(
+      antiforgery(),
+      contextIs(null),
+      http.put('/api/identity/context/language', () => {
+        preferenceWrites += 1;
+        return HttpResponse.json(signedInContext({ preferredLanguage: 'es' }));
+      }),
+    );
     render(<MemoryRouter><IdentityProvider><NavMenu /></IdentityProvider></MemoryRouter>);
-    await screen.findByRole('link', { name: context ? 'Your access' : 'Log in' });
+    await screen.findByRole('link', { name: 'Log in' });
     const selector = screen.getByRole('combobox', { name: 'Language' });
     expect(selector.tagName).toBe('SELECT');
     expect(selector).toHaveAttribute('name', 'language');
@@ -45,6 +55,27 @@ describe('Spanish language selection', () => {
     await userEvent.selectOptions(selector, 'es');
     expect(screen.getByRole('combobox', { name: 'Idioma' })).toHaveValue('es');
     expect(document.documentElement.lang).toBe('es');
+    expect(preferenceWrites).toBe(0);
+  });
+
+  it('keeps the signed-in language unchanged and shows a refusal when persistence fails', async () => {
+    await act(() => setLanguage('en'));
+    server.use(
+      antiforgery(),
+      contextIs(signedInContext({ preferredLanguage: 'en' })),
+      http.put('/api/identity/context/language', () => problem(400, 'validation_failed')),
+    );
+    render(<MemoryRouter><IdentityProvider><NavMenu /></IdentityProvider></MemoryRouter>);
+    await screen.findByRole('link', { name: 'Your access' });
+
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Language' }), 'es');
+
+    const alert = await screen.findByRole('alert');
+    await waitFor(() => expect(alert).toHaveFocus());
+    expect(screen.getByRole('combobox', { name: 'Language' })).toHaveValue('en');
+    expect(i18n.resolvedLanguage).toBe('en');
+    expect(document.documentElement.lang).toBe('en');
+    expect(document.cookie).toContain('c=en|uic=en');
   });
 
   it('ignores unsupported choices without replacing the existing culture cookie', async () => {
