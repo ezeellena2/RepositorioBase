@@ -338,7 +338,7 @@ public sealed class PlatformOperationsStepDefinitions(ScenarioContext scenario)
     [Then("the directory shows it administratively suspended")]
     public async Task ThenTheDirectoryShowsItSuspended()
     {
-        await Identities.AssertStatusAsync(scenario.Get<string>("account"), "AdministrativelySuspended");
+        await Identities.AssertStatusAsync(scenario.Get<string>("account"), "Administratively suspended");
         await Identities.CaptureAsync("03-directory-after-the-suspension");
     }
 

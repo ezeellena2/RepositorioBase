@@ -1,12 +1,12 @@
 {
   "tenantStatus": {
-    "PendingConfirmation": "PendingConfirmation",
+    "PendingConfirmation": "Pending confirmation",
     "Active": "Active",
     "Suspended": "Suspended",
     "Closed": "Closed"
   },
   "membershipStatus": {
-    "PendingConfirmation": "PendingConfirmation",
+    "PendingConfirmation": "Pending confirmation",
     "Active": "Active",
     "Suspended": "Suspended",
     "Revoked": "Revoked"
@@ -23,31 +23,31 @@
     "Active": "Active"
   },
   "tenantSuspensionReason": {
-    "PolicyViolation": "PolicyViolation",
-    "SecurityIncident": "SecurityIncident",
-    "BillingHold": "BillingHold",
-    "OperatorRequest": "OperatorRequest"
+    "PolicyViolation": "Policy violation",
+    "SecurityIncident": "Security incident",
+    "BillingHold": "Billing hold",
+    "OperatorRequest": "Operator request"
   },
   "identitySuspensionReason": {
-    "PolicyViolation": "PolicyViolation",
-    "SecurityIncident": "SecurityIncident",
-    "BillingHold": "BillingHold",
-    "OperatorRequest": "OperatorRequest"
+    "PolicyViolation": "Policy violation",
+    "SecurityIncident": "Security incident",
+    "BillingHold": "Billing hold",
+    "OperatorRequest": "Operator request"
   },
   "retentionCategory": {
-    "PersonalProfileNames": "PersonalProfileNames",
-    "PersonalIdentityDocument": "PersonalIdentityDocument",
-    "SessionRecords": "SessionRecords",
-    "AuditEvents": "AuditEvents",
-    "OutboxMessages": "OutboxMessages",
-    "OutboxSecrets": "OutboxSecrets",
-    "DeliveryEvidence": "DeliveryEvidence",
-    "PlatformMfaMaterial": "PlatformMfaMaterial"
+    "PersonalProfileNames": "Personal profile names",
+    "PersonalIdentityDocument": "Personal identity document",
+    "SessionRecords": "Session records",
+    "AuditEvents": "Audit events",
+    "OutboxMessages": "Outbox messages",
+    "OutboxSecrets": "Outbox secrets",
+    "DeliveryEvidence": "Delivery evidence",
+    "PlatformMfaMaterial": "Platform second factor material"
   },
   "retentionTrigger": {
-    "RecordCreation": "RecordCreation",
-    "LastActivity": "LastActivity",
-    "AccountClosure": "AccountClosure"
+    "RecordCreation": "Record creation",
+    "LastActivity": "Last activity",
+    "AccountClosure": "Account closure"
   },
   "retentionAction": {
     "Retain": "Retain",
@@ -59,10 +59,10 @@
     "Synthetic": "Synthetic"
   },
   "accountStatus": {
-    "PendingConfirmation": "PendingConfirmation",
+    "PendingConfirmation": "Pending confirmation",
     "Active": "Active",
-    "AdministrativelySuspended": "AdministrativelySuspended",
-    "SelfDeactivated": "SelfDeactivated",
+    "AdministrativelySuspended": "Administratively suspended",
+    "SelfDeactivated": "Self-deactivated",
     "Closed": "Closed"
   },
   "permissions": {

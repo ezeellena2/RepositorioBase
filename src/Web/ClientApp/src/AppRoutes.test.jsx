@@ -30,7 +30,7 @@ describe('identity routes', () => {
 
   it.each([
     ['/identity', 'Your access'],
-    ['/organizations/select', 'Choose an organization'],
+    ['/organizations/select', 'Choose a context'],
     ['/members/invite', 'Invite a member'],
     ['/identity/external', 'Sign-in providers'],
     ['/roles', 'Roles'],

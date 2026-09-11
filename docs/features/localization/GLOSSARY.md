@@ -16,6 +16,7 @@ wording in the running application after delivery.
 | Session | Sesión | An authenticated session; ending a device means ending its session |
 | Access | Acceso | Current identity, context and permissions |
 | Account / personal account | Cuenta / Cuenta personal | The person's account; not a membership |
+| Account holder | Titular | The person whose own account state is described; distinct from an organization or Platform owner |
 | Identity | Identidad | The account identity in operator screens |
 | Profile / personal profile | Perfil / Perfil personal | The person's profile data |
 | Role / permission | Rol / Permiso | Authorization concepts; exact permission codes remain visible below their labels |
@@ -64,7 +65,7 @@ masculine labels for “factor”. Separate identity and tenant suspension catal
 | Active / Suspended / Closed | Activa / Suspendida / Cerrada |
 | Revoked membership / Accepted invitation / Cancelled invitation | Revocada / Aceptada / Cancelada |
 | None / Verified / Active second factor | Ninguno / Verificado / Activo |
-| AdministrativelySuspended / SelfDeactivated | Suspendida administrativamente / Desactivada por su propietario |
+| AdministrativelySuspended / SelfDeactivated | Suspendida administrativamente / Desactivada por su titular |
 | PolicyViolation / SecurityIncident | Incumplimiento de políticas / Incidente de seguridad |
 | BillingHold / OperatorRequest | Bloqueo por facturación / Solicitud del operador |
 | Retention / retention policy / retention period | Conservación / Política de conservación / Período de conservación |
@@ -74,8 +75,8 @@ masculine labels for “factor”. Separate identity and tenant suspension catal
 | Category / trigger / action / evidence | Categoría / Evento de inicio / Acción / Evidencia |
 | PersonalProfileNames / PersonalIdentityDocument | Nombres del perfil personal / Documento de identidad personal |
 | SessionRecords / AuditEvents | Registros de sesiones / Eventos de auditoría |
-| OutboxMessages / OutboxSecrets | Mensajes de salida / Secretos de salida |
-| DeliveryEvidence / PlatformMfaMaterial | Evidencia de entrega / Material del segundo factor de la Plataforma |
+| OutboxMessages / OutboxSecrets | Mensajes de salida / Secretos de mensajes salientes |
+| DeliveryEvidence / PlatformMfaMaterial | Evidencia de entrega / Datos del segundo factor de la Plataforma |
 | RecordCreation / LastActivity / AccountClosure | Creación del registro / Última actividad / Cierre de la cuenta |
 | Retain / Anonymise / Erase | Conservar / Anonimizar / Eliminar |
 | Audit | Auditoría |
@@ -102,10 +103,11 @@ All Spanish values are nonempty drafts. Product-owner attention is especially us
   is the team's preferred wording for a legal hold, including the neutral release acknowledgement.
 - **Contexto**: accurate for the broad tenant abstraction, but more technical than “Organización”. Review the
   broad tenant permissions, context summary and chooser alongside the personal-account flow.
-- **Desactivada por su propietario**: preserves the voluntary account state without confusing it with an
-  administrative suspension. Review the acknowledgement that lifting a suspension may return to this state.
-- **Secretos de salida / Material del segundo factor**: deliberate operational terms for retention categories.
-  Confirm they are clear to the operators who read the policy.
+- **Desactivada por su titular**: names the account holder rather than an organization or Platform owner, and keeps
+  the voluntary account state distinct from an administrative suspension.
+- **Secretos de mensajes salientes / Datos del segundo factor de la Plataforma**: reviewed operational terms for
+  retention categories; the first names the messages whose secrets are retained and the second describes data,
+  rather than an unspecified material.
 - **Documento reemitido / Identificador de URL / Token**: accurate drafts that may benefit from terminology
   already familiar to this product's users.
 

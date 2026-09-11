@@ -24,6 +24,42 @@ const role = (roleId, isSystem, name = 'Owner') => ({ roleId, name, isSystem, is
 const roles = [role('system', true), role('custom', false), role('admin', true, 'Administrator')];
 const pageOf = (items) => ({ items, nextCursor: null });
 const get = (path, body) => http.get(path, () => HttpResponse.json(body));
+const expectedEnglishEnumLabels = {
+  tenantStatus: { PendingConfirmation: 'Pending confirmation' },
+  membershipStatus: { PendingConfirmation: 'Pending confirmation' },
+  tenantSuspensionReason: {
+    PolicyViolation: 'Policy violation',
+    SecurityIncident: 'Security incident',
+    BillingHold: 'Billing hold',
+    OperatorRequest: 'Operator request',
+  },
+  identitySuspensionReason: {
+    PolicyViolation: 'Policy violation',
+    SecurityIncident: 'Security incident',
+    BillingHold: 'Billing hold',
+    OperatorRequest: 'Operator request',
+  },
+  retentionCategory: {
+    PersonalProfileNames: 'Personal profile names',
+    PersonalIdentityDocument: 'Personal identity document',
+    SessionRecords: 'Session records',
+    AuditEvents: 'Audit events',
+    OutboxMessages: 'Outbox messages',
+    OutboxSecrets: 'Outbox secrets',
+    DeliveryEvidence: 'Delivery evidence',
+    PlatformMfaMaterial: 'Platform second factor material',
+  },
+  retentionTrigger: {
+    RecordCreation: 'Record creation',
+    LastActivity: 'Last activity',
+    AccountClosure: 'Account closure',
+  },
+  accountStatus: {
+    PendingConfirmation: 'Pending confirmation',
+    AdministrativelySuspended: 'Administratively suspended',
+    SelfDeactivated: 'Self-deactivated',
+  },
+};
 const platformContext = () => signedInContext({
   activeTenant: { id: 'platform-1', type: 'Platform', name: 'platform' },
   permissions: Object.keys(enumsEn.permissions),
@@ -53,6 +89,14 @@ describe('Spanish system presentation', () => {
       'identity:tenants.empty': 'Todavía no tiene acceso a ningún contexto.',
       'identity:context.noneSelected': 'ninguno seleccionado',
     })) expect(i18n.t(key)).toBe(text);
+    for (const [key, text] of Object.entries({
+      'common:navigation.changeOrganization': 'Change context',
+      'common:navigation.noOrganizationSelected': 'No context selected',
+      'identity:context.activeOrganization': 'Active context',
+      'identity:context.noneInThisOrganization': 'none in this context',
+      'identity:tenants.title': 'Choose a context',
+      'identity:tenants.empty': 'You do not have access to any context yet.',
+    })) expect(i18n.t(key, { lng: 'en' })).toBe(text);
   });
 
   it.each([
@@ -174,7 +218,7 @@ describe('Spanish system presentation', () => {
   it('localizes account state and the separate identity suspension reason picker', async () => {
     server.use(get('/api/platform/identities', pageOf([{ identityId: 'identity-1', normalizedEmail: 'person@example.test', accountStatus: 'SelfDeactivated' }])));
     show(PlatformIdentitiesPage, platformContext());
-    expect(await screen.findByText('Desactivada por su propietario')).toBeVisible();
+    expect(await screen.findByText('Desactivada por su titular')).toBeVisible();
     await userEvent.click(screen.getByRole('button', { name: 'Suspender a person@example.test' }));
     expect(screen.getByRole('option', { name: 'Solicitud del operador' })).toHaveValue('OperatorRequest');
   });
@@ -198,12 +242,17 @@ describe('Spanish system presentation', () => {
     for (const text of ['hold-1', 'Legal:2026', 'CASE-2026', dateIn('es')]) expect(receipt).toHaveTextContent(text);
   });
 
-  it('resolves every system enum in both languages without altering English wire labels', () => {
+  it('resolves every system enum in both languages while preserving invariant codes as keys', () => {
+    expect(i18n.t('enums:retentionCategory.OutboxSecrets', { lng: 'es' })).toBe('Secretos de mensajes salientes');
+    expect(i18n.t('enums:retentionCategory.PlatformMfaMaterial', { lng: 'es' })).toBe('Datos del segundo factor de la Plataforma');
+    expect(i18n.t('enums:accountStatus.SelfDeactivated', { lng: 'es' })).toBe('Desactivada por su titular');
+    expect(Object.values(expectedEnglishEnumLabels).flatMap((values) => Object.keys(values))).toHaveLength(24);
     for (const [type, values] of Object.entries(enumsEn)) {
       if (type === 'permissions' || type === 'roles') continue;
       for (const [code, english] of Object.entries(values)) {
-        expect(english).toBe(code);
-        expect(i18n.t(`enums:${type}.${code}`, { lng: 'en' })).toBe(code);
+        const expectedEnglish = expectedEnglishEnumLabels[type]?.[code] ?? code;
+        expect(english).toBe(expectedEnglish);
+        expect(i18n.t(`enums:${type}.${code}`, { lng: 'en' })).toBe(expectedEnglish);
         expect(i18n.t(`enums:${type}.${code}`, { lng: 'es' })).toBe(enumsEs[type][code]);
         expect(enumsEs[type][code]).not.toBe(code);
       }

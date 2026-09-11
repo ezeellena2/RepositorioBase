@@ -40,10 +40,10 @@
   "context": {
     "signedInAs": "Signed in as",
     "unknown": "unknown",
-    "activeOrganization": "Active organization",
+    "activeOrganization": "Active context",
     "noneSelected": "none selected",
     "permissions": "Permissions",
-    "noneInThisOrganization": "none in this organization"
+    "noneInThisOrganization": "none in this context"
   },
   "credentials": {
     "newPassword": "New password",
@@ -234,8 +234,8 @@
     "endThis": "End this device"
   },
   "tenants": {
-    "title": "Choose an organization",
-    "empty": "You do not belong to an organization yet.",
+    "title": "Choose a context",
+    "empty": "You do not have access to any context yet.",
     "current": "{{name}} (current)"
   }
 }

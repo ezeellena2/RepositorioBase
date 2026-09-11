@@ -165,7 +165,7 @@ describe('platform retention page', () => {
     await stepUpWith();
 
     expect(await screen.findByRole('table')).toBeInTheDocument();
-    expect(await screen.findByText('AuditEvents')).toBeInTheDocument();
+    expect(await screen.findByText('Audit events')).toBeInTheDocument();
   });
 
   it('renders the personal data mode, the active hold count and the category rules', async () => {
@@ -179,7 +179,7 @@ describe('platform retention page', () => {
     expect(headers).toEqual(['Category', 'Retention period', 'Trigger', 'Action', 'Evidence required']);
     screen.getAllByRole('columnheader').forEach((header) => expect(header).toHaveAttribute('scope', 'col'));
     expect(screen.getByText('P2Y')).toBeInTheDocument();
-    expect(screen.getByText('SessionRecords')).toBeInTheDocument();
+    expect(screen.getByText('Session records')).toBeInTheDocument();
   });
 
   /**
@@ -217,7 +217,7 @@ describe('platform retention page', () => {
 
     renderPage();
 
-    expect(await screen.findByText('AuditEvents')).toBeInTheDocument();
+    expect(await screen.findByText('Audit events')).toBeInTheDocument();
     expect(screen.queryByRole('form', { name: 'Place a hold' })).not.toBeInTheDocument();
     expect(screen.queryByRole('form', { name: 'Release a hold' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /release/i })).not.toBeInTheDocument();
@@ -263,7 +263,7 @@ describe('platform retention page', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/something went wrong/i);
     await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
 
-    expect(await screen.findByText('AuditEvents')).toBeInTheDocument();
+    expect(await screen.findByText('Audit events')).toBeInTheDocument();
   });
 
   it('sends no request for a reason code outside the shape the server accepts', async () => {
@@ -387,7 +387,7 @@ describe('platform retention page', () => {
     expect(await screen.findByRole('form', { name: 'Step up' })).toBeInTheDocument();
     expect(screen.getByRole('alert')).toHaveTextContent(/second factor again/i);
     expect(screen.getByRole('table')).toBeInTheDocument();
-    expect(screen.getByText('AuditEvents')).toBeInTheDocument();
+    expect(screen.getByText('Audit events')).toBeInTheDocument();
   });
 
   /**

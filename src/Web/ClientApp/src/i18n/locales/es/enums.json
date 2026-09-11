@@ -40,9 +40,9 @@
     "SessionRecords": "Registros de sesiones",
     "AuditEvents": "Eventos de auditoría",
     "OutboxMessages": "Mensajes de salida",
-    "OutboxSecrets": "Secretos de salida",
+    "OutboxSecrets": "Secretos de mensajes salientes",
     "DeliveryEvidence": "Evidencia de entrega",
-    "PlatformMfaMaterial": "Material del segundo factor de la Plataforma"
+    "PlatformMfaMaterial": "Datos del segundo factor de la Plataforma"
   },
   "retentionTrigger": {
     "RecordCreation": "Creación del registro",
@@ -62,7 +62,7 @@
     "PendingConfirmation": "Confirmación pendiente",
     "Active": "Activa",
     "AdministrativelySuspended": "Suspendida administrativamente",
-    "SelfDeactivated": "Desactivada por su propietario",
+    "SelfDeactivated": "Desactivada por su titular",
     "Closed": "Cerrada"
   },
   "permissions": {
