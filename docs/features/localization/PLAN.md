@@ -2,10 +2,10 @@
 
 | | |
 |---|---|
-| Status | **Phase 0 delivered to `main`. Phase 1 is locally verified; the non-localization baseline journey repair is committed as `f21103d`, while the Phase 1 commit and direct fast-forward push to `origin/main` are pending. Completion requires green `spa` and `build` jobs from that push.** |
-| Last updated | 2026-09-10 |
+| Status | **Phase 0 and the Phase 1 implementation are delivered to `main` at `afe6c92` and `ef19d44`. Local verification is green. GitHub Actions is now restricted to GitHub-owned actions; Phase 1 completion awaits the first green `spa` and `build` jobs from a fresh push.** |
+| Last updated | 2026-09-11 |
 | Scope | Backend (.NET), React SPA (`src/Web/ClientApp`), outbox-delivered messages, tests, CI, and the repository's working rules |
-| Next action | Create the authorized Phase 1 commit, fast-forward push directly to `origin/main`, and wait for its green `spa` and `build` jobs. |
+| Next action | Push this verified policy/state update to `origin/main`, then record the first `Build` run's `spa` and `build` results. |
 
 This document is self-contained: a new session that reads only this file must be able to continue. It is also the
 source of truth — agent memories (Claude auto-memory, Engram) are not shared by every tool.
@@ -41,13 +41,12 @@ source of truth — agent memories (Claude auto-memory, Engram) are not shared b
 - Phase 0 changed no application code, tests, or configuration. The user replaced PR delivery with a direct update to
   `main`; remote `main` was advanced by fast-forward and verified at exact commit `afe6c92`. GitHub Issues remains
   disabled because direct delivery did not need it (P0.4).
-- The user confirmed that a successful login without `returnUrl` lands on `/identity`. The `LoginPage.jsx` and
-  `IdentityProvider.jsx` baseline journey repair is not localization and must be the first separate commit before
-  the Phase 1 commit.
-- P1.1–P1.5 are accepted as recommended (§11.3). The user authorized two ordered commits and their direct
-  fast-forward push to `origin/main`: the non-localization baseline journey repair is the first commit at
-  `f21103d`; the Phase 1 commit is pending. Phase 1 completion requires green `spa` and `build` jobs from that
-  push.
+- The user confirmed that a successful login without `returnUrl` lands on `/identity`. The non-localization baseline
+  journey repair was committed separately at `f21103d`, before the Phase 1 commit.
+- P1.1–P1.5 are accepted as recommended (§11.3). Phase 1 was committed at `ef19d44` and fast-forward pushed to
+  `origin/main` after the complete local verification passed. GitHub Actions produced no run for that earlier push,
+  so the user authorized enabling Actions with only GitHub-owned actions and a fresh push. Phase 1 completion still
+  requires green `spa` and `build` jobs.
 
 ### 0.2 How to work with the user
 
@@ -61,11 +60,16 @@ source of truth — agent memories (Claude auto-memory, Engram) are not shared b
 4. **Delivery.** One conventional commit per phase directly on `main`, then push to `origin/main`; no pull requests
    or feature branches. After verification passes, no recurring authorization is needed. Never commit or push a
    change whose verification failed or did not run (P0.4).
-5. **Verify honestly.** Run the baseline before changing anything in a phase and the full verification after it
+5. **Autonomy and approval boundaries.** Do not ask before committing and pushing verified work to `main`, installing
+   dependencies declared by this plan, running suites, or fixing failures within the current phase's scope. Ask only
+   for the product decisions in each phase's §11 table; changes to GitHub, account, or machine configuration (including
+   WSL, Docker, and settings); data deletion or history rewrites; and anything with a cost. Every question includes a
+   recommendation.
+6. **Verify honestly.** Run the baseline before changing anything in a phase and the full verification after it
    (§12.1). Report failed, skipped or unavailable checks plainly; never claim a check that did not run.
-6. **Amend a rule before working against it** (§9.1). If a new conflict with an existing rule appears, stop, propose
+7. **Amend a rule before working against it** (§9.1). If a new conflict with an existing rule appears, stop, propose
    the amendment — file and line, old text, new text, why — and wait for the OK.
-7. **Keep this file current.** At the end of every phase update the status header, §10, and the log (§15).
+8. **Keep this file current.** At the end of every phase update the status header, §10, and the log (§15).
 
 ### 0.3 Read before starting
 
@@ -567,7 +571,7 @@ requirements of §7; a traceability table (requirement → gate → phase → ev
 | Phase | State |
 |---|---|
 | 0 | Delivered directly to `main` at exact commit `afe6c92` after fast-forward and remote-ref verification — 2026-09-10 |
-| 1 | Locally implemented and fully verified — guarded SPA CI job; bundled `en` source with `es` in progress; catalog, registry and resource-parity gates; request localization; Playwright locale. The separate baseline journey repair is committed first at `f21103d`; the authorized Phase 1 commit and direct fast-forward push to `origin/main` remain pending. Completion requires green `spa` and `build` jobs from that push. |
+| 1 | Implemented, fully verified locally, committed at `ef19d44`, and fast-forward pushed to `origin/main` after the separate baseline journey repair at `f21103d`. GitHub Actions is enabled with only GitHub-owned actions. Completion awaits the first green `spa` and `build` jobs from a fresh push. |
 | 2–6 | Pending |
 
 ## 11. Phases — decisions, steps and exit criteria
@@ -904,3 +908,6 @@ Recorded 2026-09-09, verify before relying on them:
 | 2026-09-10 | Phase 1 foundations implemented locally: separate guarded SPA CI job; i18next facade and empty bundled catalogs (`en` supported, `es` in progress); catalog contract; global JSX-only literal warnings and facade-only React i18next imports; backend registry and request-localization order; registry/resource-parity tests; and Playwright `en-US`. SPA Vitest passed 320/320 and `npx vite build` passed. ESLint exited 0 with 1,385 expected extraction warnings and no errors. The catalog proof temporarily promoted `es`, added an `en`-only key, and failed exactly once with `es/common` reporting `missing key gate`; the deliberate mutation was reverted. `dotnet test --filter "TestCategory!=IndependentDevelopmentReview"` passed Domain 186 and Application Unit 187, but Infrastructure Integration 302 and Application Functional 626 could not start because Docker Desktop was unavailable. The acceptance command is likewise unavailable until Docker starts. CI itself remains unrun locally. |
 | 2026-09-10 | Fresh verification completed after Docker became available: Vitest 320/320; ESLint exit 0 with 0 errors and 1,385 expected P1.5 warnings; Vite build green; Domain 186/186; Application Unit 187/187; Infrastructure Integration 302/302; Application Functional 626/626; Web Acceptance 32/32 — 1,653 tests total and zero failures. `git diff --check` is green. The intentional catalog gate had already proven that temporary `es` promotion with a missing `gate` key fails as `es/common: missing key gate`, then reverted. The user confirmed default login lands on `/identity`; its `LoginPage.jsx` + `IdentityProvider.jsx` repair must be committed separately before Phase 1. Phase 1 is locally verified but not delivered or fully finished: explicit authorization is still required for both commits, push, and PR against `main`; actual green `spa` PR-job evidence is still pending. |
 | 2026-09-10 | The user changed the current delivery policy: work directly on `main` with conventional commits and a push after verification; do not commit or push failed or unrun verification, and use no PR or feature branch. The user authorized the two ordered commits and the direct fast-forward push to `origin/main`; the non-localization baseline journey repair was committed first as `f21103d`. The Phase 1 commit, direct push, and push-triggered green `spa` and `build` results remain pending. |
+| 2026-09-11 | Phase 1 was committed as `ef19d44` after the complete local verification and fast-forward pushed to `origin/main` after `f21103d`; no force push or PR was used. GitHub recorded the push but dispatched no workflow run. |
+| 2026-09-11 | The user established fixed autonomy boundaries (§0.2): do not ask before verified commits/pushes to `main`, planned dependency installs, suite execution, or in-scope fixes; ask only for phase product decisions, GitHub/account/machine configuration, destructive data or history changes, and costs, always with a recommendation. |
+| 2026-09-11 | GitHub Actions was enabled and restricted to GitHub-owned actions (`allowed_actions: selected`, GitHub-owned allowed, verified marketplace actions disallowed, no custom patterns). `Build` remains active; a fresh push is required because the earlier push is not dispatched retroactively. |
