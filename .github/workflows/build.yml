@@ -10,6 +10,15 @@ on:
       - LICENSE
       - README.md
 
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - '.scripts/**'
+      - .gitignore
+      - CODE_OF_CONDUCT.md
+      - LICENSE
+      - README.md
+
   workflow_call:
     inputs:
       build-artifacts:
@@ -21,6 +30,35 @@ permissions:
   contents: read
 
 jobs:
+  #if (!UseApiOnly)
+  spa:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: src/Web/ClientApp
+
+    steps:
+    - uses: actions/checkout@v7
+      name: Checkout code
+
+    - name: Install Node & cache npm packages
+      uses: actions/setup-node@v7
+      with:
+        node-version: '24.x'
+        cache: 'npm'
+        cache-dependency-path: src/Web/ClientApp/package-lock.json
+
+    - name: Install SPA dependencies
+      run: npm ci
+
+    - name: Test SPA
+      run: npx vitest run
+
+    - name: Lint SPA
+      run: npx eslint src/
+  #endif
+
   build:
 
     runs-on: ubuntu-latest

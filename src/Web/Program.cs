@@ -1,5 +1,9 @@
 using CleanArchitecture.Web.Infrastructure.Identity;
+using CleanArchitecture.Web.Localization;
+using Microsoft.AspNetCore.Localization;
+using Microsoft.Extensions.Options;
 using Scalar.AspNetCore;
+using System.Globalization;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -10,9 +14,32 @@ builder.AddApplicationServices();
 builder.AddInfrastructureServices();
 builder.AddWebServices();
 
+var defaultLanguage = LocalizationRegistry.RequireSupportedDefault(
+    builder.Configuration["Localization:DefaultLanguage"]);
+var supportedUiCultures = LocalizationRegistry.SupportedLanguages
+    .Select(CultureInfo.GetCultureInfo)
+    .ToList();
+
+builder.Services.AddLocalization();
+builder.Services.Configure<RequestLocalizationOptions>(options =>
+{
+    options.DefaultRequestCulture = new RequestCulture(defaultLanguage, defaultLanguage);
+    options.SupportedUICultures = supportedUiCultures;
+    // Server parsing and formatting stay invariant during Phase 1; only the UI culture is negotiated.
+    options.SupportedCultures = [CultureInfo.GetCultureInfo(LocalizationRegistry.SourceLanguage)];
+    options.FallBackToParentUICultures = true;
+    options.FallBackToParentCultures = true;
+    options.RequestCultureProviders =
+    [
+        new CookieRequestCultureProvider(),
+        new AcceptLanguageHeaderRequestCultureProvider()
+    ];
+});
+
 var app = builder.Build();
 
 app.UseForwardedHeaders();
+app.UseRequestLocalization(app.Services.GetRequiredService<IOptions<RequestLocalizationOptions>>().Value);
 
 if (!app.Environment.IsDevelopment())
 {

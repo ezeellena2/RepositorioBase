@@ -86,4 +86,4 @@ fault.
 
 ## Delivery
 
-No commits, branches, pushes or pull requests without explicit authorisation in the conversation.
+Work directly on `main`; no pull requests or feature branches. After a change passes the verification in this file, commit it with a conventional message and push it to `origin/main`. Never commit or push a change whose verification failed or did not run; report it instead.

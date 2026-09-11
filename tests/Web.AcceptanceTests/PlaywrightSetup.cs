@@ -26,6 +26,7 @@ public class PlaywrightSetup
         Browser.NewContextAsync(new BrowserNewContextOptions
         {
             IgnoreHTTPSErrors = true,
+            Locale = "en-US",
             ExtraHTTPHeaders = new Dictionary<string, string> { ["X-Forwarded-For"] = NextClientAddress() }
         });
 

@@ -2,10 +2,10 @@
 
 | | |
 |---|---|
-| Status | **Phase 0 committed locally; push and PR pending explicit authorization.** |
+| Status | **Phase 0 delivered to `main`. Phase 1 is locally verified; the non-localization baseline journey repair is committed as `f21103d`, while the Phase 1 commit and direct fast-forward push to `origin/main` are pending. Completion requires green `spa` and `build` jobs from that push.** |
 | Last updated | 2026-09-10 |
 | Scope | Backend (.NET), React SPA (`src/Web/ClientApp`), outbox-delivered messages, tests, CI, and the repository's working rules |
-| Next action | Present P1.1–P1.5; after approval, record the decisions and request authorization to create the Phase 1 branch. |
+| Next action | Create the authorized Phase 1 commit, fast-forward push directly to `origin/main`, and wait for its green `spa` and `build` jobs. |
 
 This document is self-contained: a new session that reads only this file must be able to continue. It is also the
 source of truth — agent memories (Claude auto-memory, Engram) are not shared by every tool.
@@ -36,13 +36,18 @@ source of truth — agent memories (Claude auto-memory, Engram) are not shared b
 ### 0.1 State
 
 - Every standard-level and Phase 0 decision is accepted (§10). The Phase 0 rule amendments, localization skill and
-  reference, ADR-007, localization SPEC, and PR template are committed locally in the isolated worktree
-  `C:\Users\ezequ\source\repos\RepositorioBase\.claude\worktrees\translation-strategy-plan-ba3438`, branch
-  `claude/translation-strategy-plan-ba3438`.
-- Phase 0 changed no application code, tests, or configuration. Its push and PR await explicit user authorization
-  (P0.4).
-- Next action: present the Phase 1 decision round (§11.3). After approval, record P1.1–P1.5 and request authorization
-  before creating the Phase 1 branch.
+  reference, ADR-007, localization SPEC, and PR template are committed at `afe6c92` and pushed to
+  `origin/claude/translation-strategy-plan-ba3438`.
+- Phase 0 changed no application code, tests, or configuration. The user replaced PR delivery with a direct update to
+  `main`; remote `main` was advanced by fast-forward and verified at exact commit `afe6c92`. GitHub Issues remains
+  disabled because direct delivery did not need it (P0.4).
+- The user confirmed that a successful login without `returnUrl` lands on `/identity`. The `LoginPage.jsx` and
+  `IdentityProvider.jsx` baseline journey repair is not localization and must be the first separate commit before
+  the Phase 1 commit.
+- P1.1–P1.5 are accepted as recommended (§11.3). The user authorized two ordered commits and their direct
+  fast-forward push to `origin/main`: the non-localization baseline journey repair is the first commit at
+  `f21103d`; the Phase 1 commit is pending. Phase 1 completion requires green `spa` and `build` jobs from that
+  push.
 
 ### 0.2 How to work with the user
 
@@ -53,8 +58,9 @@ source of truth — agent memories (Claude auto-memory, Engram) are not shared b
    Spanish, one recommendation per row, and wait. The user answers "ok" or changes rows. Record the answers in §10
    and §15 **before** executing.
 3. **One question at a time** (`AGENTS.md:32`). If something blocks, ask the one question that unblocks it and stop.
-4. **Delivery.** No commit, branch, push or PR without explicit authorization in the conversation (`CLAUDE.md`
-   "Delivery"). Conventional commits (`AGENTS.md:30`). One commit and one PR per phase (P0.4).
+4. **Delivery.** One conventional commit per phase directly on `main`, then push to `origin/main`; no pull requests
+   or feature branches. After verification passes, no recurring authorization is needed. Never commit or push a
+   change whose verification failed or did not run (P0.4).
 5. **Verify honestly.** Run the baseline before changing anything in a phase and the full verification after it
    (§12.1). Report failed, skipped or unavailable checks plainly; never claim a check that did not run.
 6. **Amend a rule before working against it** (§9.1). If a new conflict with an existing rule appears, stop, propose
@@ -325,7 +331,7 @@ Phase 0 copies this table into `docs/features/localization/SPEC.md`, which becom
 | L10N-REQ-012 | User-authored content is never translated; system-defined catalogs are translated by key. | SPA tests for roles and permissions | 3 |
 | L10N-REQ-013 | Logs, audit records, outbox payloads, error codes, identifiers, URLs and route paths stay invariant. | Review; existing audit and outbox tests unchanged | All |
 | L10N-REQ-014 | Acceptance journeys run in the source language on any machine; every supported language other than `en` has a smoke journey. | `PlaywrightSetup` `Locale`; per-language journey | 1; 3 |
-| L10N-REQ-015 | CI runs the SPA tests and lint on every pull request. | `build.yml` `spa` job | 1 |
+| L10N-REQ-015 | CI runs the SPA tests and lint on pushes to `main` (and continues to support pull requests). | `build.yml` `spa` job | 1 |
 | L10N-REQ-016 | A signed-in person's language choice persists on their account and applies on every device after sign-in. | Functional and SPA tests | 4 |
 
 ## 8. Enforcement
@@ -503,7 +509,7 @@ added, in which languages, which gates ran) · *References*.
 | Adding a permission or built-in role | Add `enums:permissions.<code>` or `enums:roles.system.<name>` in every supported language |
 | Text the server sends (email, bot) | A backend resource in every supported culture; the culture passed explicitly |
 | Tempted to return display text from the API | Return a code; translate in the SPA |
-| Unsure of the Spanish | Draft it and flag it for native review in the PR; never merge an empty value |
+| Unsure of the Spanish | Draft it and flag it for native review before pushing to `main`; never merge an empty value |
 | English copy reads badly | A separate copy change, in every language |
 
 `references/localization-rules.md`: file layout, key conventions, namespaces, examples of `t()`, `<Trans>`, plurals and
@@ -543,7 +549,7 @@ requirements of §7; a traceability table (requirement → gate → phase → ev
 
 ## 10. Decisions
 
-### 10.1 Standard-level (accepted 2026-09-10, as recommended)
+### 10.1 Standard-level and delivery (accepted 2026-09-10, as recommended)
 
 | # | Decision | Taken | Why |
 |---|---|---|---|
@@ -552,22 +558,24 @@ requirements of §7; a traceability table (requirement → gate → phase → ev
 | D3 | Validation field errors | Codes | One catalog; the field's translated label instead of a property name; a checkable rule |
 | D4 | Organization default language | Not now | Account preference plus snapshots cover every email; add it when a tenant needs it |
 | D5 | Language of an invitation email | The inviter's current language | The best available proxy; a selector on the invite form can follow |
-| D6 | Translation workflow | Files in the repository, reviewed in the PR | Revisit a translation platform (Crowdin, Lokalise, Weblate) at the third language or when non-developers translate |
+| D6 | Translation workflow | Files in the repository, reviewed before push to `main` | Revisit a translation platform (Crowdin, Lokalise, Weblate) at the third language or when non-developers translate |
 | D7 | Existing rules that stand in the way | Amended (§9), including the `Locale` line in `PlaywrightSetup.cs` | A stale rule would make every later session work against the standard |
+| D8 | Delivery policy | Work directly on `main`: conventional commit and push after verification, with no pull requests or feature branches | Verification is the delivery gate; failed or unrun verification is reported instead of committed or pushed |
 
 ### 10.2 Per phase
 
 | Phase | State |
 |---|---|
-| 0 | Committed locally — 2026-09-10; push and PR pending authorization |
-| 1–6 | Pending; Phase 1 decisions are next |
+| 0 | Delivered directly to `main` at exact commit `afe6c92` after fast-forward and remote-ref verification — 2026-09-10 |
+| 1 | Locally implemented and fully verified — guarded SPA CI job; bundled `en` source with `es` in progress; catalog, registry and resource-parity gates; request localization; Playwright locale. The separate baseline journey repair is committed first at `f21103d`; the authorized Phase 1 commit and direct fast-forward push to `origin/main` remain pending. Completion requires green `spa` and `build` jobs from that push. |
+| 2–6 | Pending |
 
 ## 11. Phases — decisions, steps and exit criteria
 
 ### 11.1 Overview
 
-Every phase is one reviewable change with its own commit and PR (P0.4). "No-op" means every existing SPA test and
-journey passes without being edited.
+Every phase is one reviewable change with one conventional commit directly on `main`, pushed after verification
+(P0.4). "No-op" means every existing SPA test and journey passes without being edited.
 
 | Phase | Content | Users see |
 |---|---|---|
@@ -588,7 +596,7 @@ journey passes without being edited.
 | P0.1 | ADR-007 status | Accepted, dated 2026-09-10 | D1–D7 are decided; `Proposed` would say they are not |
 | P0.2 | A localization SPEC with `L10N-REQ-###`, or only the ADR and the skill | The SPEC | Repository practice (identity-access SPEC §12 step 1), and the gates need requirements to trace to |
 | P0.3 | Wording of the amendments | A1–A6 exactly as in §9.3 | Each keeps what the rule protected |
-| P0.4 | How each phase is delivered | One commit and one PR per phase, each authorized in the conversation | `CLAUDE.md` requires authorization; one phase per PR keeps review small |
+| P0.4 | How each phase is delivered | One conventional commit per phase directly on `main`, pushed without a PR after verification | Verification is the delivery gate; a direct main commit keeps each phase independently reviewable |
 
 **Steps**
 
@@ -604,18 +612,19 @@ journey passes without being edited.
 9. identity-access `SPEC.md`: the §12 and §13 additions (§9.3).
 10. Write `.github/pull_request_template.md` (§9.4).
 11. Update this file's header, §0.1, §10.2, and §15 to the transitional status: Phase 0 is implemented locally,
-    with its commit and PR pending explicit authorization.
+    with its commit and direct push pending.
 
 **Implementation-ready gate**: every changed file is read back; `git diff --stat` lists only documentation and skills;
 no application code, tests, or configuration changed.
 
-**Delivery gate**: obtain explicit user authorization. After authorization, first finalize this PLAN's header, §0.1,
-§10.2, and §15 to record Phase 0 as delivered, then create the single authorized Phase 0 commit and PR. Suggested
-message: `docs(localization): adopt the cross-project localization standard`.
+**Delivery gate**: after verification passes, first finalize this PLAN's header, §0.1, §10.2, and §15 to record
+Phase 0 as delivered, then create the single conventional Phase 0 commit directly on `main` and push it to
+`origin/main`; no PR or feature branch. Suggested message:
+`docs(localization): adopt the cross-project localization standard`.
 
 ### 11.3 Phase 1 — Foundations and gates
 
-**Decisions (pending)**
+**Decisions (accepted 2026-09-10)**
 
 | # | Question | Recommendation | Why |
 |---|---|---|---|
@@ -650,8 +659,8 @@ message: `docs(localization): adopt the cross-project localization standard`.
 11. Prove the gate: temporarily add `es` to `supported` with a missing key — the parity test fails — and revert.
     Record it in §15.
 
-**Exit criteria**: every existing test and journey passes; the new tests pass; the `spa` job is green on the PR; the
-parity gate was seen failing once.
+**Exit criteria**: every existing test and journey passes; the new tests pass; the `spa` and `build` jobs are green
+on the push to `main`; the parity gate was seen failing once.
 
 ### 11.4 Phase 2 — Extract the SPA to `en`
 
@@ -689,7 +698,7 @@ parity gate was seen failing once.
 |---|---|---|---|
 | P3.1 | Register: *tú* or *usted* | *Tú* | The usual register of neutral Latin American software; *vos* would need `es-AR` (D1) |
 | P3.2 | Terminology | A glossary first (`docs/features/localization/GLOSSARY.md`): organization, tenant, sign in, session, role, membership, invitation, Platform | The same term everywhere; translation and review check against it |
-| P3.3 | Who translates and who reviews | Drafted in the PR; reviewed by a native speaker | D6: files in the repository, reviewed in the PR |
+| P3.3 | Who translates and who reviews | Drafted in the repository; reviewed by a native speaker before push to `main` | D6: files in the repository, reviewed before push to `main` |
 | P3.4 | Human names for permissions | A human label, with the code as secondary text — after checking `RolesPage.test.jsx` and the page objects | People read names; operators and tests read codes. Page objects read role names, not permission codes (verified 2026-09-10) |
 | P3.5 | Language selector | In the shell: a native `select`, each language named in itself ("English", "Español"), no flags | Flags name countries, not languages; a native `select` is the repository's pattern |
 | P3.6 | Date and time format | `Intl` medium date and short time, in the browser's time zone | No time-zone preference exists yet (§13) |
@@ -885,3 +894,13 @@ Recorded 2026-09-09, verify before relying on them:
 | 2026-09-10 | Phase 0 rule amendments, the localization skill and reference, ADR-007, the localization SPEC, and the PR template were implemented locally; commit and PR are pending explicit authorization. Phase 1 decisions follow delivery |
 | 2026-09-10 | Review corrections tightened outbox payload privacy, clarified server cookie → `Accept-Language` → default resolution, refined the ADR alternatives, and named the lint and validation-code gates; Phase 0 remains implemented locally with delivery pending |
 | 2026-09-10 | The user authorized the Phase 0 commit. The PLAN state was finalized and the Phase 0 work was committed locally; push and PR remain pending explicit authorization. Phase 1 decisions are next |
+| 2026-09-10 | P1.1–P1.5 accepted as recommended: separate guarded `spa` CI job; fix a red SPA baseline first; missing-key behavior by environment; backend languages in code with only the default configured; lint `warn` globally and `error` per completed folder |
+| 2026-09-10 | Delivery authorized: push `claude/translation-strategy-plan-ba3438`, open the Phase 0 PR against `main`, and create the Phase 1 branch from `afe6c92`. Do not open the Phase 1 PR until the user confirms Phase 0 is merged; its diff must exclude Phase 0 |
+| 2026-09-10 | Phase 0 was pushed at exact commit `afe6c92`. Its PR is blocked because GitHub Issues is disabled and `branch-pr` requires a linked approved issue. Local Phase 1 branch `feat/localization-phase-1-foundations` was created from `afe6c92`; it remains unpushed and its PLAN decision log remains uncommitted |
+| 2026-09-10 | The user replaced the Phase 0 PR with direct delivery to `main` and authorized enabling GitHub Issues if needed. Direct delivery makes that repository setting change unnecessary; verify a fast-forward to exact commit `afe6c92` before pushing `main` |
+| 2026-09-10 | `origin/main` was fast-forwarded from `497e087` to `afe6c92` and then verified remotely at full SHA `afe6c92a325d950a0a0db90bd956f882618c01d6`. No GitHub setting was changed and no PR was opened |
+| 2026-09-10 | Phase 1 baseline: SPA 308/308 tests passed, ESLint 0 errors/0 warnings, and Vite built successfully. .NET Domain 186/186, Application Unit 187/187, Infrastructure Integration 300/300, and Application Functional 626/626 passed. Acceptance was 7 passed/25 failed both in the solution run and isolated journey run; the dominant timeout waits for the `Sign in` heading to disappear although the authenticated shell is already visible. P1.2 does not apply because Vitest and ESLint are green; diagnose before implementation |
+| 2026-09-10 | Acceptance diagnosis: 24 failures share a stale post-login assumption — successful authentication lands on `/`, whose Home intentionally has no `h1`, while Playwright's negated heading assertion still requires one. The remaining throttling journey loses the existing neutral refusal because `IdentityProvider` suppresses `authentication_required` after both bootstrap and an explicit sign-in attempt. Repair production only: default successful sign-in to the existing headed `/identity` route, preserve explicit safe return URLs, and suppress anonymous context refusal only during bootstrap. Do not edit tests |
+| 2026-09-10 | Phase 1 foundations implemented locally: separate guarded SPA CI job; i18next facade and empty bundled catalogs (`en` supported, `es` in progress); catalog contract; global JSX-only literal warnings and facade-only React i18next imports; backend registry and request-localization order; registry/resource-parity tests; and Playwright `en-US`. SPA Vitest passed 320/320 and `npx vite build` passed. ESLint exited 0 with 1,385 expected extraction warnings and no errors. The catalog proof temporarily promoted `es`, added an `en`-only key, and failed exactly once with `es/common` reporting `missing key gate`; the deliberate mutation was reverted. `dotnet test --filter "TestCategory!=IndependentDevelopmentReview"` passed Domain 186 and Application Unit 187, but Infrastructure Integration 302 and Application Functional 626 could not start because Docker Desktop was unavailable. The acceptance command is likewise unavailable until Docker starts. CI itself remains unrun locally. |
+| 2026-09-10 | Fresh verification completed after Docker became available: Vitest 320/320; ESLint exit 0 with 0 errors and 1,385 expected P1.5 warnings; Vite build green; Domain 186/186; Application Unit 187/187; Infrastructure Integration 302/302; Application Functional 626/626; Web Acceptance 32/32 — 1,653 tests total and zero failures. `git diff --check` is green. The intentional catalog gate had already proven that temporary `es` promotion with a missing `gate` key fails as `es/common: missing key gate`, then reverted. The user confirmed default login lands on `/identity`; its `LoginPage.jsx` + `IdentityProvider.jsx` repair must be committed separately before Phase 1. Phase 1 is locally verified but not delivered or fully finished: explicit authorization is still required for both commits, push, and PR against `main`; actual green `spa` PR-job evidence is still pending. |
+| 2026-09-10 | The user changed the current delivery policy: work directly on `main` with conventional commits and a push after verification; do not commit or push failed or unrun verification, and use no PR or feature branch. The user authorized the two ordered commits and the direct fast-forward push to `origin/main`; the non-localization baseline journey repair was committed first as `f21103d`. The Phase 1 commit, direct push, and push-triggered green `spa` and `build` results remain pending. |
