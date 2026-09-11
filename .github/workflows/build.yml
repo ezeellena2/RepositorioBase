@@ -90,7 +90,10 @@ jobs:
       uses: actions/setup-dotnet@v6
 
     - name: Trust development HTTPS certificate
-      run: dotnet dev-certs https --trust
+      run: |
+        export SSL_CERT_DIR="$HOME/.aspnet/dev-certs/trust:/usr/lib/ssl/certs"
+        dotnet dev-certs https --trust
+        echo "SSL_CERT_DIR=$SSL_CERT_DIR" >> "$GITHUB_ENV"
 
     - name: Restore solution
       run: dotnet restore

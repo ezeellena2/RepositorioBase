@@ -2,10 +2,10 @@
 
 | | |
 |---|---|
-| Status | **Phase 0 and the Phase 1 implementation are delivered to `main` at `afe6c92` and `ef19d44`. The [first Build run](https://github.com/ezeellena2/RepositorioBase/actions/runs/34557253186) passed `spa`, compiled successfully, and passed Domain 186, Application Unit 187, Infrastructure Integration 302, and Application Functional 626; Web Acceptance failed 3/32 because auxiliary `HttpClient` calls rejected the Ubuntu ASP.NET development certificate with `AuthenticationException UntrustedRoot`. The certificate-trust correction awaits a rerun.** |
+| Status | **Phase 0 and the Phase 1 implementation are delivered to `main` at `afe6c92` and `ef19d44`. The revised `SSL_CERT_DIR` correction and its one Build rerun are pending; no Docker image is needed because Linux CI is the functional proof. Test Templates run [34557253244](https://github.com/ezeellena2/RepositorioBase/actions/runs/34557253244) failed for unrelated template drift and is now manual-only; CodeQL is deferred. Phase 2 decisions are next without awaiting CI.** |
 | Last updated | 2026-09-11 |
 | Scope | Backend (.NET), React SPA (`src/Web/ClientApp`), outbox-delivered messages, tests, CI, and the repository's working rules |
-| Next action | Push the certificate-trust correction to `origin/main`, then record the rerun's `spa` and `build` results. |
+| Next action | Commit and push the one revised `SSL_CERT_DIR` attempt to `origin/main`; if Build remains red, report it and continue separately. Begin Phase 2 decisions without awaiting CI. |
 
 This document is self-contained: a new session that reads only this file must be able to continue. It is also the
 source of truth — agent memories (Claude auto-memory, Engram) are not shared by every tool.
@@ -47,6 +47,10 @@ source of truth — agent memories (Claude auto-memory, Engram) are not shared b
   `origin/main` after the complete local verification passed. GitHub Actions produced no run for that earlier push,
   so the user authorized enabling Actions with only GitHub-owned actions and a fresh push. Phase 1 completion still
   requires green `spa` and `build` jobs.
+- For the workflow-only certificate correction, the user declined a Docker image: `git diff --check` is sufficient
+  locally and Linux CI is the functional proof. The current work unit has one `SSL_CERT_DIR` attempt and makes Test
+  Templates manual-only after unrelated template drift; CodeQL is deferred. Its Build rerun is pending, but Phase 2
+  decisions proceed without waiting for it.
 
 ### 0.2 How to work with the user
 
@@ -571,7 +575,7 @@ requirements of §7; a traceability table (requirement → gate → phase → ev
 | Phase | State |
 |---|---|
 | 0 | Delivered directly to `main` at exact commit `afe6c92` after fast-forward and remote-ref verification — 2026-09-10 |
-| 1 | Implemented, fully verified locally, committed at `ef19d44`, and fast-forward pushed to `origin/main` after the separate baseline journey repair at `f21103d`. The [first Build run](https://github.com/ezeellena2/RepositorioBase/actions/runs/34557253186) passed `spa`; its build compiled and passed Domain 186, Application Unit 187, Infrastructure Integration 302, and Application Functional 626, but Web Acceptance failed 3/32 because auxiliary `HttpClient` calls rejected the Ubuntu ASP.NET development certificate with `AuthenticationException UntrustedRoot`. The `dotnet dev-certs https --trust` correction awaits a rerun. |
+| 1 | Implemented, fully verified locally, committed at `ef19d44`, and fast-forward pushed to `origin/main` after the separate baseline journey repair at `f21103d`. The [first Build run](https://github.com/ezeellena2/RepositorioBase/actions/runs/34557253186) passed `spa`; its build compiled and passed Domain 186, Application Unit 187, Infrastructure Integration 302, and Application Functional 626, but Web Acceptance failed 3/32 because auxiliary `HttpClient` calls rejected the Ubuntu ASP.NET development certificate with `AuthenticationException UntrustedRoot`. The [rerun](https://github.com/ezeellena2/RepositorioBase/actions/runs/34558083319) passed `spa` but build failed in `Trust development HTTPS certificate` with exit 4 because OpenSSL lacked `SSL_CERT_DIR` wiring. One revised correction exports and persists `SSL_CERT_DIR` before trusting the certificate; its Build rerun is pending. Test Templates run [34557253244](https://github.com/ezeellena2/RepositorioBase/actions/runs/34557253244) failed for unrelated template drift and is manual-only; CodeQL is deferred. Phase 2 decisions continue without awaiting CI. |
 | 2–6 | Pending |
 
 ## 11. Phases — decisions, steps and exit criteria
@@ -912,3 +916,5 @@ Recorded 2026-09-09, verify before relying on them:
 | 2026-09-11 | The user established fixed autonomy boundaries (§0.2): do not ask before verified commits/pushes to `main`, planned dependency installs, suite execution, or in-scope fixes; ask only for phase product decisions, GitHub/account/machine configuration, destructive data or history changes, and costs, always with a recommendation. |
 | 2026-09-11 | GitHub Actions was enabled and restricted to GitHub-owned actions (`allowed_actions: selected`, GitHub-owned allowed, verified marketplace actions disallowed, no custom patterns). `Build` remains active; a fresh push is required because the earlier push is not dispatched retroactively. |
 | 2026-09-11 | The [first Build run](https://github.com/ezeellena2/RepositorioBase/actions/runs/34557253186) passed `spa`. Its build compiled successfully and passed Domain 186, Application Unit 187, Infrastructure Integration 302, and Application Functional 626; Web Acceptance failed 3/32 because auxiliary `HttpClient` calls rejected the ASP.NET development certificate on Ubuntu with `AuthenticationException UntrustedRoot`. Playwright already ignores HTTPS errors. The smallest environment correction adds `dotnet dev-certs https --trust` immediately after `actions/setup-dotnet@v6`; its rerun is pending. |
+| 2026-09-11 | The [Build rerun](https://github.com/ezeellena2/RepositorioBase/actions/runs/34558083319) passed `spa`, but `build` failed before restore in `Trust development HTTPS certificate` with exit 4. The runner diagnosed missing OpenSSL `SSL_CERT_DIR` wiring and prescribed `$HOME/.aspnet/dev-certs/trust:/usr/lib/ssl/certs`. The revised step exports that exact value, runs `dotnet dev-certs https --trust`, then persists it through `$GITHUB_ENV`; its rerun is pending. |
+| 2026-09-11 | The user chose one `SSL_CERT_DIR` attempt with no Docker image: for this workflow-only change, `git diff --check` is sufficient locally and the Linux Build run is the functional proof. The same commit makes Test Templates manual-only by retaining `workflow_dispatch` and removing its push trigger after [run 34557253244](https://github.com/ezeellena2/RepositorioBase/actions/runs/34557253244) failed for unrelated template drift. CodeQL is deferred. Commit and push the work unit once; if Build remains red, report it and continue separately. Phase 2 decisions proceed without awaiting CI. |
