@@ -8,11 +8,19 @@ import Typography from '@mui/material/Typography';
 import { useIdentity } from '../context/IdentityProvider';
 import { ProblemMessage } from '../ProblemMessage';
 import { useSubmit } from '../useSubmit';
+import { useTranslation } from '../../../i18n';
 
 /** Required without the asterisk MUI would add, which would rename the field for everything that reads its label. */
 const requiredField = { inputLabel: { required: false } };
 
 const card = { p: { xs: 3, sm: 4 } };
+
+const fields = {
+  legalName: 'legalName',
+  cuit: 'cuit',
+  email: 'email',
+  password: 'password',
+};
 
 /**
  * Registration answers with a neutral bodyless 202 whether or not the address is already taken, so the page says
@@ -21,6 +29,7 @@ const card = { p: { xs: 3, sm: 4 } };
  */
 export function RegisterOrganizationPage() {
   const identity = useIdentity();
+  const { t } = useTranslation('identity');
   const [form, setForm] = useState({ email: '', password: '', legalName: '', cuit: '' });
   const { submit, problem, isBusy, result } = useSubmit((request) => identity.client.registerOrganization(request));
   const update = (field) => (event) => setForm((current) => ({ ...current, [field]: event.target.value }));
@@ -28,7 +37,7 @@ export function RegisterOrganizationPage() {
   return (
     <Paper component="section" elevation={3} aria-labelledby="register-heading" sx={card}>
       <Stack spacing={3}>
-        <Typography id="register-heading" component="h1" variant="h5">Register an organization</Typography>
+        <Typography id="register-heading" component="h1" variant="h5">{t('register.organization.title')}</Typography>
         {/* One frame, two states. The acknowledgement used to be a second copy of this card, which is how the two
             drifted: only the form branch ever rendered a refusal, so a failure that arrived after a success had
             nowhere to go. The heading, its id and the problem slot now belong to the card rather than to a
@@ -36,7 +45,7 @@ export function RegisterOrganizationPage() {
         <ProblemMessage problem={problem} />
         {result ? (
           <Alert severity="success" role="status">
-            If that address can register, we have sent it a confirmation link. Check the inbox.
+            {t('register.organization.acknowledgement')}
           </Alert>
         ) : (
         <Stack component="form" spacing={3} onSubmit={(event) => { event.preventDefault(); submit(form); }}>
@@ -45,48 +54,48 @@ export function RegisterOrganizationPage() {
           <Stack spacing={2}>
             <TextField
               id="register-legal-name"
-              label="Legal name"
+              label={t('register.organization.legalName')}
               required
               fullWidth
               slotProps={requiredField}
               value={form.legalName}
-              onChange={update('legalName')}
+              onChange={update(fields.legalName)}
             />
             <TextField
               id="register-cuit"
-              label="CUIT"
+              label={t('register.organization.cuit')}
               required
               fullWidth
               slotProps={requiredField}
               value={form.cuit}
-              onChange={update('cuit')}
+              onChange={update(fields.cuit)}
             />
           </Stack>
           <Stack spacing={2}>
             <TextField
               id="register-email"
-              label="Email"
+              label={t('register.organization.email')}
               type="email"
               autoComplete="username"
               required
               fullWidth
               slotProps={requiredField}
               value={form.email}
-              onChange={update('email')}
+              onChange={update(fields.email)}
             />
             <TextField
               id="register-password"
-              label="Password"
+              label={t('register.organization.password')}
               type="password"
               autoComplete="new-password"
               required
               fullWidth
               slotProps={requiredField}
               value={form.password}
-              onChange={update('password')}
+              onChange={update(fields.password)}
             />
           </Stack>
-          <Button type="submit" variant="contained" size="large" fullWidth disabled={isBusy}>Register</Button>
+          <Button type="submit" variant="contained" size="large" fullWidth disabled={isBusy}>{t('common:navigation.register')}</Button>
         </Stack>
         )}
       </Stack>

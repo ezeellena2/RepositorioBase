@@ -7,5 +7,34 @@
     "submit": "Sign in",
     "forgotPassword": "Forgot your password?",
     "reactivateAccount": "Reactivate your account"
+  },
+  "register": {
+    "choose": {
+      "title": "What are you registering?",
+      "personal": {
+        "title": "A personal account",
+        "detail": "For yourself. You will be asked for your name and your DNI."
+      },
+      "organization": {
+        "title": "An organization",
+        "detail": "For a company. You will be asked for its legal name and CUIT."
+      },
+      "alreadyHaveAccount": "Already have an account? <signIn>Sign in</signIn>."
+    },
+    "confirmEmail": {
+      "title": "Confirm your email",
+      "missingToken": "Open the link from the confirmation email; this page needs the token it carries.",
+      "success": "Your address is confirmed. Sign in to continue.",
+      "signIn": "Sign in",
+      "submit": "Confirm my address"
+    },
+    "organization": {
+      "title": "Register an organization",
+      "acknowledgement": "If that address can register, we have sent it a confirmation link. Check the inbox.",
+      "legalName": "Legal name",
+      "cuit": "CUIT",
+      "email": "Email",
+      "password": "Password"
+    }
   }
 }

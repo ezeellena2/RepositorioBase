@@ -9,6 +9,7 @@ import { useIdentity } from '../context/IdentityProvider';
 import { ProblemMessage } from '../ProblemMessage';
 import { useFragmentToken } from '../useFragmentToken';
 import { useSubmit } from '../useSubmit';
+import { useTranslation } from '../../../i18n';
 
 const card = { p: { xs: 3, sm: 4 } };
 /** Supporting copy hangs off its title rather than standing as a section of its own. */
@@ -27,6 +28,7 @@ const supporting = { mt: 0.5 };
  */
 export function ConfirmEmailPage() {
   const identity = useIdentity();
+  const { t } = useTranslation('identity');
   const token = useFragmentToken();
   const { submit, problem, isBusy, result } = useSubmit((secret) => identity.client.confirmEmail(secret));
 
@@ -36,10 +38,10 @@ export function ConfirmEmailPage() {
         {/* A link opened without its token is a broken link, so the screen says so where it says what it is,
             rather than under the button the missing token disabled. */}
         <Box>
-          <Typography id="confirm-email-heading" component="h1" variant="h5">Confirm your email</Typography>
+          <Typography id="confirm-email-heading" component="h1" variant="h5">{t('register.confirmEmail.title')}</Typography>
           {!token && (
             <Typography variant="body2" color="text.secondary" sx={supporting}>
-              Open the link from the confirmation email; this page needs the token it carries.
+              {t('register.confirmEmail.missingToken')}
             </Typography>
           )}
         </Box>
@@ -50,9 +52,9 @@ export function ConfirmEmailPage() {
             related-item gap apart instead of the section gap the rest of the card is built on. */}
         {result ? (
           <Stack spacing={1}>
-            <Alert severity="success" role="status">Your address is confirmed. Sign in to continue.</Alert>
+            <Alert severity="success" role="status">{t('register.confirmEmail.success')}</Alert>
             <Button component={RouterLink} to="/login" variant="contained" size="large" fullWidth>
-              Sign in
+              {t('register.confirmEmail.signIn')}
             </Button>
           </Stack>
         ) : (
@@ -64,7 +66,7 @@ export function ConfirmEmailPage() {
             disabled={isBusy || !token}
             onClick={() => submit(token ?? '')}
           >
-            Confirm my address
+            {t('register.confirmEmail.submit')}
           </Button>
         )}
       </Stack>

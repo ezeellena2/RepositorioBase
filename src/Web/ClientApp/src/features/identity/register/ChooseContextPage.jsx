@@ -10,6 +10,7 @@ import List from '@mui/material/List';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
+import { Trans, useTranslation } from '../../../i18n';
 
 const card = { p: { xs: 3, sm: 4 } };
 /** What the choice says on the left, where it goes on the right, and neither one crushing the other. */
@@ -54,27 +55,32 @@ function Choice({ to, title, detail }) {
  * so the product asks rather than guesses (SPEC section 2.1).
  */
 export function ChooseContextPage() {
+  const { t } = useTranslation('identity');
+
   return (
     <Paper component="section" elevation={3} aria-labelledby="choose-context-heading" sx={card}>
       <Stack spacing={3}>
-        <Typography id="choose-context-heading" component="h1" variant="h5">What are you registering?</Typography>
+        <Typography id="choose-context-heading" component="h1" variant="h5">{t('register.choose.title')}</Typography>
         {/* Two of them is still a list, and it stays one: `List` carries the reset the hand-written `ul` was
             writing out in CSS, and `Stack` carries the gap between the cards. */}
         <Stack component={List} spacing={2} disablePadding>
           <Choice
             to="/personal/register"
-            title="A personal account"
-            detail="For yourself. You will be asked for your name and your DNI."
+            title={t('register.choose.personal.title')}
+            detail={t('register.choose.personal.detail')}
           />
           <Choice
             to="/organizations/register"
-            title="An organization"
-            detail="For a company. You will be asked for its legal name and CUIT."
+            title={t('register.choose.organization.title')}
+            detail={t('register.choose.organization.detail')}
           />
         </Stack>
         <Divider />
         <Typography variant="body2">
-          Already have an account? <Link component={RouterLink} to="/login">Sign in</Link>.
+          <Trans
+            i18nKey="identity:register.choose.alreadyHaveAccount"
+            components={{ signIn: <Link component={RouterLink} to="/login" /> }}
+          />
         </Typography>
       </Stack>
     </Paper>
