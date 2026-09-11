@@ -232,5 +232,10 @@
     "current": "— this device",
     "lastSeen": "last seen {{lastSeenAt}}",
     "endThis": "End this device"
+  },
+  "tenants": {
+    "title": "Choose an organization",
+    "empty": "You do not belong to an organization yet.",
+    "current": "{{name}} (current)"
   }
 }

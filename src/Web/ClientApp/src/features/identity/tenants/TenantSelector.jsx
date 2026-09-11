@@ -6,6 +6,7 @@ import ListItem from '@mui/material/ListItem';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
+import { useTranslation } from '../../../i18n';
 import { useIdentity } from '../context/IdentityProvider';
 import { ProblemMessage } from '../ProblemMessage';
 import { useSubmit } from '../useSubmit';
@@ -28,6 +29,7 @@ const empty = { p: 4, textAlign: 'center' };
  * antiforgery pair is kept rather than bootstrapped again.
  */
 export function TenantSelector() {
+  const { t } = useTranslation('identity');
   const identity = useIdentity();
   const { submit, problem, isBusy } = useSubmit((tenantId) => identity.selectTenant(tenantId));
   const tenants = identity?.context?.availableTenants ?? [];
@@ -41,7 +43,7 @@ export function TenantSelector() {
           region and expects to find exactly the tenants on offer. */}
       <Stack direction="row" spacing={2} sx={header}>
         <Box>
-          <Typography id="tenants-heading" component="h1" variant="h5">Choose an organization</Typography>
+          <Typography id="tenants-heading" component="h1" variant="h5">{t('tenants.title')}</Typography>
         </Box>
       </Stack>
 
@@ -53,7 +55,7 @@ export function TenantSelector() {
               about how to get something. The standard would put the action that creates the first item here, and
               /register is it — as a LINK, never a button, because this region's buttons are counted. Its label
               would be a user-visible string this screen has never carried, so it is reported not written. */}
-          <Typography variant="body2" color="text.secondary">You do not belong to an organization yet.</Typography>
+          <Typography variant="body2" color="text.secondary">{t('tenants.empty')}</Typography>
         </Paper>
       ) : (
         <Paper variant="outlined" sx={section}>
@@ -82,7 +84,7 @@ export function TenantSelector() {
                     disabled={isBusy || tenant.id === activeId}
                     onClick={() => submit(tenant.id)}
                   >
-                    {tenant.name}{tenant.id === activeId ? ' (current)' : ''}
+                    {tenant.id === activeId ? t('tenants.current', { name: tenant.name }) : tenant.name}
                   </Button>
                 </ListItem>
               ))}
