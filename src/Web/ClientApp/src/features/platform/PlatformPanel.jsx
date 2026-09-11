@@ -20,6 +20,7 @@ import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
+import { useTranslation } from '../../i18n';
 import { useIdentity } from '../identity/context/IdentityProvider';
 import { ProblemMessage } from '../identity/ProblemMessage';
 import { useSubmit } from '../identity/useSubmit';
@@ -39,6 +40,14 @@ import { usePlatformRead } from './shared/usePlatformRead';
  * one (IA-REQ-046).
  */
 const REASONS = ['PolicyViolation', 'SecurityIncident', 'BillingHold', 'OperatorRequest'];
+const pendingActionKind = { suspend: 'suspend', revoke: 'revoke' };
+const suspendedStatus = 'Suspended';
+const platformAdministratorsManage = 'platform.admins.manage';
+const recordedOutcome = 'recorded';
+const platformStepUpInputId = 'platform-step-up';
+const suspensionReasonInputId = 'platform-suspension-reason';
+const suspensionReasonInputProps = { id: suspensionReasonInputId };
+const outlinedVariant = 'outlined';
 
 /** Required without the asterisk MUI would add, which would rename the field for everything that reads its label. */
 const requiredField = { inputLabel: { required: false } };
@@ -82,6 +91,7 @@ const EmptyBlock = ({ children }) => (
 );
 
 export function PlatformPanel() {
+  const { t } = useTranslation('platform');
   const identity = useIdentity();
   const platform = usePlatformClient();
   const [stepUpCode, setStepUpCode] = useState('');
@@ -115,8 +125,8 @@ export function PlatformPanel() {
   if (!mayRead) {
     return (
       <Stack component="section" aria-labelledby="platform-panel-heading" spacing={3} sx={frame}>
-        <Typography id="platform-panel-heading" component="h1" variant="h5">Platform</Typography>
-        <Alert severity="info">This area is for an MFA-authenticated Platform administrator.</Alert>
+        <Typography id="platform-panel-heading" component="h1" variant="h5">{t('common:navigation.platform')}</Typography>
+        <Alert severity="info">{t('panel.accessDenied')}</Alert>
       </Stack>
     );
   }
@@ -138,9 +148,9 @@ export function PlatformPanel() {
         {/* The sentence explains the title rather than the form, so it belongs to the header and stays close to
             it; the section gap below separates the header from the one section on the page. */}
         <Box>
-          <Typography id="platform-panel-heading" component="h1" variant="h5">Platform</Typography>
+          <Typography id="platform-panel-heading" component="h1" variant="h5">{t('common:navigation.platform')}</Typography>
           <Typography variant="body2" color="text.secondary" sx={supporting}>
-            This session has not proved your second factor yet. Enter a code from your authenticator to continue.
+            {t('panel.stepUpDescription')}
           </Typography>
         </Box>
         <Paper variant="outlined" sx={section}>
@@ -149,7 +159,7 @@ export function PlatformPanel() {
           <Stack spacing={2}>
             <ProblemMessage problem={actionProblem} />
             <PlatformStepUpForm
-              inputId="platform-step-up"
+              inputId={platformStepUpInputId}
               code={stepUpCode}
               onCodeChange={setStepUpCode}
               isBusy={isBusy}
@@ -167,15 +177,15 @@ export function PlatformPanel() {
   const organizationRows = organizations.page?.items ?? [];
   const administratorRows = administrators.page?.items ?? [];
   const auditRows = audit.page?.items ?? [];
-  const armedOrganization = pendingAction?.kind === 'suspend' ? pendingAction.organization.tenantId : null;
-  const armedAdministrator = pendingAction?.kind === 'revoke' ? pendingAction.administrator.membershipId : null;
+  const armedOrganization = pendingAction?.kind === pendingActionKind.suspend ? pendingAction.organization.tenantId : null;
+  const armedAdministrator = pendingAction?.kind === pendingActionKind.revoke ? pendingAction.administrator.membershipId : null;
 
   return (
     <Stack component="section" aria-labelledby="platform-panel-heading" spacing={3}>
       {/* The header is the title alone. Every action on this screen belongs to something narrower than the page —
           a row, its confirmation, the invite form's own submit — so there is nothing to right-align here that
           would not have to be invented. */}
-      <Typography id="platform-panel-heading" component="h1" variant="h5">Platform</Typography>
+      <Typography id="platform-panel-heading" component="h1" variant="h5">{t('common:navigation.platform')}</Typography>
       <ProblemMessage problem={actionProblem} />
 
       {/* A Platform change needs a recent proof of the second factor, so the panel offers one rather than
@@ -183,31 +193,31 @@ export function PlatformPanel() {
           bounded section: floating between the heading and the first table, it read as one more field. */}
       <Paper variant="outlined" sx={section}>
         <PlatformStepUpForm
-          inputId="platform-step-up"
+          inputId={platformStepUpInputId}
           code={stepUpCode}
           onCodeChange={setStepUpCode}
           isBusy={isBusy}
-          submitVariant="outlined"
+          submitVariant={outlinedVariant}
           onSubmit={() => run(() => platform.stepUp(stepUpCode))}
         />
       </Paper>
 
       <Stack spacing={2}>
-        <Typography id="platform-organizations-heading" component="h2" variant="subtitle1">Organizations</Typography>
+        <Typography id="platform-organizations-heading" component="h2" variant="subtitle1">{t('organizations.title')}</Typography>
         <ProblemMessage problem={organizations.problem} />
         {organizations.problem !== null ? null : organizations.page === null ? (
           <Placeholder />
         ) : organizationRows.length === 0 ? (
-          <EmptyBlock>No organizations are listed here.</EmptyBlock>
+          <EmptyBlock>{t('organizations.empty')}</EmptyBlock>
         ) : (
           <TableContainer component={Paper} variant="outlined">
             <Table size="small" aria-labelledby="platform-organizations-heading">
               <TableHead>
                 <TableRow>
-                  <TableCell component="th" scope="col">Slug</TableCell>
-                  <TableCell component="th" scope="col">Status</TableCell>
-                  <TableCell component="th" scope="col">Suspended for</TableCell>
-                  <TableCell component="th" scope="col" align="right">Actions</TableCell>
+                  <TableCell component="th" scope="col">{t('organizations.columns.slug')}</TableCell>
+                  <TableCell component="th" scope="col">{t('organizations.columns.status')}</TableCell>
+                  <TableCell component="th" scope="col">{t('organizations.columns.suspendedFor')}</TableCell>
+                  <TableCell component="th" scope="col" align="right">{t('organizations.columns.actions')}</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -228,13 +238,13 @@ export function PlatformPanel() {
                     </TableCell>
                     <TableCell align="right">
                       <Stack direction="row" spacing={1} useFlexGap sx={rowActions}>
-                        {organization.status === 'Suspended' ? (
+                        {organization.status === suspendedStatus ? (
                           <Button type="button" size="small" disabled={isBusy} onClick={() => run(() => platform.reactivateOrganization(organization.tenantId))}>
-                            {`Reactivate ${organization.slug}`}
+                            {t('organizations.reactivate', { slug: organization.slug })}
                           </Button>
                         ) : (
-                          <Button type="button" size="small" color="error" disabled={isBusy} onClick={() => setPendingAction({ kind: 'suspend', organization })}>
-                            {`Suspend ${organization.slug}`}
+                          <Button type="button" size="small" color="error" disabled={isBusy} onClick={() => setPendingAction({ kind: pendingActionKind.suspend, organization })}>
+                            {t('organizations.suspend', { slug: organization.slug })}
                           </Button>
                         )}
                       </Stack>
@@ -253,20 +263,20 @@ export function PlatformPanel() {
             `Confirm suspension` is `outlined color="error"` rather than filled: this screen spends its one
             `contained` on inviting an administrator, the only thing here that creates something. A destructive
             step does not need fill to lead — it is the only committing control in its own card. */}
-        {pendingAction?.kind === 'suspend' && (
+        {pendingAction?.kind === pendingActionKind.suspend && (
           <Paper
             variant="outlined"
             component="form"
-            aria-label="Confirm suspension"
+            aria-label={t('suspension.confirmationLabel')}
             sx={confirmation}
             onSubmit={(event) => { event.preventDefault(); run(() => platform.suspendOrganization(pendingAction.organization.tenantId, reason)); }}
           >
             <Stack spacing={2}>
-              <Typography variant="body2">{`Suspend ${pendingAction.organization.slug}?`}</Typography>
+              <Typography variant="body2">{t('suspension.prompt', { slug: pendingAction.organization.slug })}</Typography>
               <FormControl fullWidth>
-                <InputLabel htmlFor="platform-suspension-reason">Reason</InputLabel>
+                <InputLabel htmlFor={suspensionReasonInputId}>{t('suspension.reason')}</InputLabel>
                 <NativeSelect
-                  inputProps={{ id: 'platform-suspension-reason' }}
+                  inputProps={suspensionReasonInputProps}
                   value={reason}
                   onChange={(event) => setReason(event.target.value)}
                 >
@@ -274,34 +284,34 @@ export function PlatformPanel() {
                 </NativeSelect>
               </FormControl>
               <Stack direction="row" spacing={1} useFlexGap sx={buttons}>
-                <Button type="submit" variant="outlined" color="error" disabled={isBusy}>Confirm suspension</Button>
-                <Button type="button" onClick={() => setPendingAction(null)}>Cancel</Button>
+                <Button type="submit" variant="outlined" color="error" disabled={isBusy}>{t('suspension.confirm')}</Button>
+                <Button type="button" onClick={() => setPendingAction(null)}>{t('panel.cancel')}</Button>
               </Stack>
             </Stack>
           </Paper>
         )}
 
         {organizations.page?.nextCursor && (
-          <Button type="button" variant="outlined" sx={{ alignSelf: 'flex-start' }} onClick={() => organizations.refresh(organizations.page.nextCursor)}>More organizations</Button>
+          <Button type="button" variant="outlined" sx={{ alignSelf: 'flex-start' }} onClick={() => organizations.refresh(organizations.page.nextCursor)}>{t('organizations.more')}</Button>
         )}
       </Stack>
 
       <Stack spacing={2}>
-        <Typography id="platform-administrators-heading" component="h2" variant="subtitle1">Administrators</Typography>
+        <Typography id="platform-administrators-heading" component="h2" variant="subtitle1">{t('administrators.title')}</Typography>
         <ProblemMessage problem={administrators.problem} />
         {administrators.problem !== null ? null : administrators.page === null ? (
           <Placeholder />
         ) : administratorRows.length === 0 ? (
-          <EmptyBlock>No administrators are listed here.</EmptyBlock>
+          <EmptyBlock>{t('administrators.empty')}</EmptyBlock>
         ) : (
           <TableContainer component={Paper} variant="outlined">
             <Table size="small" aria-labelledby="platform-administrators-heading">
               <TableHead>
                 <TableRow>
-                  <TableCell component="th" scope="col">Address</TableCell>
-                  <TableCell component="th" scope="col">Status</TableCell>
-                  <TableCell component="th" scope="col">Second factor</TableCell>
-                  <TableCell component="th" scope="col" align="right">Actions</TableCell>
+                  <TableCell component="th" scope="col">{t('administrators.columns.address')}</TableCell>
+                  <TableCell component="th" scope="col">{t('administrators.columns.status')}</TableCell>
+                  <TableCell component="th" scope="col">{t('administrators.columns.secondFactor')}</TableCell>
+                  <TableCell component="th" scope="col" align="right">{t('administrators.columns.actions')}</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -314,14 +324,14 @@ export function PlatformPanel() {
                     <TableCell>
                       <StatusChip
                         status={administrator.membershipStatus}
-                        label={administrator.isOwner ? `${administrator.membershipStatus} (owner)` : administrator.membershipStatus}
+                        label={administrator.isOwner ? t('administrators.owner', { status: administrator.membershipStatus }) : administrator.membershipStatus}
                       />
                     </TableCell>
                     <TableCell><StatusChip status={administrator.mfaStatus} /></TableCell>
                     <TableCell align="right">
                       <Stack direction="row" spacing={1} useFlexGap sx={rowActions}>
-                        <Button type="button" size="small" color="error" disabled={isBusy} onClick={() => setPendingAction({ kind: 'revoke', administrator })}>
-                          {`Revoke ${administrator.normalizedEmail}`}
+                        <Button type="button" size="small" color="error" disabled={isBusy} onClick={() => setPendingAction({ kind: pendingActionKind.revoke, administrator })}>
+                          {t('administrators.revoke', { email: administrator.normalizedEmail })}
                         </Button>
                       </Stack>
                     </TableCell>
@@ -332,19 +342,19 @@ export function PlatformPanel() {
           </TableContainer>
         )}
 
-        {pendingAction?.kind === 'revoke' && (
+        {pendingAction?.kind === pendingActionKind.revoke && (
           <Paper
             variant="outlined"
             component="form"
-            aria-label="Confirm revocation"
+            aria-label={t('revocation.confirmationLabel')}
             sx={confirmation}
             onSubmit={(event) => { event.preventDefault(); run(() => platform.revokeAdministrator(pendingAction.administrator.membershipId)); }}
           >
             <Stack spacing={2}>
-              <Typography variant="body2">{`Revoke ${pendingAction.administrator.normalizedEmail}?`}</Typography>
+              <Typography variant="body2">{t('revocation.prompt', { email: pendingAction.administrator.normalizedEmail })}</Typography>
               <Stack direction="row" spacing={1} useFlexGap sx={buttons}>
-                <Button type="submit" variant="outlined" color="error" disabled={isBusy}>Confirm revocation</Button>
-                <Button type="button" onClick={() => setPendingAction(null)}>Cancel</Button>
+                <Button type="submit" variant="outlined" color="error" disabled={isBusy}>{t('revocation.confirm')}</Button>
+                <Button type="button" onClick={() => setPendingAction(null)}>{t('panel.cancel')}</Button>
               </Stack>
             </Stack>
           </Paper>
@@ -353,18 +363,18 @@ export function PlatformPanel() {
 
       {/* The screen's one filled button. Inviting is the only thing here that creates rather than ends something,
           it is the one action that is not begun from a row, and it sits next to the directory it adds to. */}
-      {permissions.includes('platform.admins.manage') && (
+      {permissions.includes(platformAdministratorsManage) && (
         <Paper
           variant="outlined"
           component="form"
-          aria-label="Invite an administrator"
+          aria-label={t('invite.label')}
           sx={confirmation}
           onSubmit={(event) => { event.preventDefault(); run(() => platform.inviteAdministrator(inviteEmail)); }}
         >
           <Stack spacing={2}>
             <TextField
               id="platform-invite-email"
-              label="Invite an administrator"
+              label={t('invite.label')}
               type="email"
               required
               fullWidth
@@ -372,24 +382,24 @@ export function PlatformPanel() {
               value={inviteEmail}
               onChange={(event) => setInviteEmail(event.target.value)}
             />
-            <Button type="submit" variant="contained" disabled={isBusy} sx={{ alignSelf: 'flex-start' }}>Invite</Button>
+            <Button type="submit" variant="contained" disabled={isBusy} sx={{ alignSelf: 'flex-start' }}>{t('invite.submit')}</Button>
           </Stack>
         </Paper>
       )}
 
       <Stack spacing={2}>
-        <Typography component="h2" variant="subtitle1">Audit</Typography>
+        <Typography component="h2" variant="subtitle1">{t('audit.title')}</Typography>
         <ProblemMessage problem={audit.problem} />
         {audit.problem !== null ? null : audit.page === null ? (
           <Placeholder />
         ) : auditRows.length === 0 ? (
-          <EmptyBlock>Nothing has been recorded here yet.</EmptyBlock>
+          <EmptyBlock>{t('audit.empty')}</EmptyBlock>
         ) : (
           <Paper variant="outlined">
-            <List aria-label="Audit" dense disablePadding>
+            <List aria-label={t('audit.label')} dense disablePadding>
               {auditRows.map((event, index) => (
                 <ListItem key={event.eventId} divider={index < auditRows.length - 1}>
-                  <ListItemText primary={event.eventType} secondary={event.outcome ?? 'recorded'} />
+                  <ListItemText primary={event.eventType} secondary={event.outcome ?? recordedOutcome} />
                 </ListItem>
               ))}
             </List>

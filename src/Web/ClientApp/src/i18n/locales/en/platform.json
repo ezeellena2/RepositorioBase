@@ -1,1 +1,52 @@
-{}
+{
+  "panel": {
+    "accessDenied": "This area is for an MFA-authenticated Platform administrator.",
+    "stepUpDescription": "This session has not proved your second factor yet. Enter a code from your authenticator to continue.",
+    "cancel": "Cancel"
+  },
+  "organizations": {
+    "title": "Organizations",
+    "empty": "No organizations are listed here.",
+    "columns": {
+      "slug": "Slug",
+      "status": "Status",
+      "suspendedFor": "Suspended for",
+      "actions": "Actions"
+    },
+    "reactivate": "Reactivate {{slug}}",
+    "suspend": "Suspend {{slug}}",
+    "more": "More organizations"
+  },
+  "suspension": {
+    "confirmationLabel": "Confirm suspension",
+    "prompt": "Suspend {{slug}}?",
+    "reason": "Reason",
+    "confirm": "Confirm suspension"
+  },
+  "administrators": {
+    "title": "Administrators",
+    "empty": "No administrators are listed here.",
+    "columns": {
+      "address": "Address",
+      "status": "Status",
+      "secondFactor": "Second factor",
+      "actions": "Actions"
+    },
+    "owner": "{{status}} (owner)",
+    "revoke": "Revoke {{email}}"
+  },
+  "revocation": {
+    "confirmationLabel": "Confirm revocation",
+    "prompt": "Revoke {{email}}?",
+    "confirm": "Confirm revocation"
+  },
+  "invite": {
+    "label": "Invite an administrator",
+    "submit": "Invite"
+  },
+  "audit": {
+    "title": "Audit",
+    "empty": "Nothing has been recorded here yet.",
+    "label": "Audit"
+  }
+}
