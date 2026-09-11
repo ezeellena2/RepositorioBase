@@ -166,5 +166,33 @@
     "saveRoles": "Save roles",
     "cancel": "Cancel",
     "showMore": "Show more members"
+  },
+  "people": {
+    "fullName": "Full name",
+    "displayName": "Display name",
+    "register": {
+      "title": "Set up your personal account",
+      "organizationInstead": "Registering a company instead? <organization>Register an organization</organization>."
+    },
+    "dispute": {
+      "title": "Correct this document",
+      "success": "The correction was sent for review. Nothing about your account changes while it is open.",
+      "alreadyOpen": "A correction is already being reviewed for this document.",
+      "description": "An operator reviews the correction. Your account keeps working while it is open.",
+      "number": "What the number should be",
+      "reason": "Why",
+      "typedWrongAtSignup": "I typed it wrong when I signed up",
+      "documentReissued": "My document was reissued",
+      "recordedByMistake": "It is not my document",
+      "submit": "Send for review"
+    },
+    "context": {
+      "success": "Your personal account was added. Refreshing your access…",
+      "submit": "Add my personal account",
+      "empty": "You have no personal context yet."
+    },
+    "profile": {
+      "save": "Save"
+    }
   }
 }

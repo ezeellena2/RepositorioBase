@@ -15,6 +15,7 @@ import Typography from '@mui/material/Typography';
 import { useIdentity } from '../context/IdentityProvider';
 import { ProblemMessage } from '../ProblemMessage';
 import { useSubmit } from '../useSubmit';
+import { Trans, useTranslation } from '../../../i18n';
 
 /** Required without the asterisk MUI would add, which would rename the field for everything that reads its label. */
 const requiredField = { inputLabel: { required: false } };
@@ -38,6 +39,23 @@ const facts = {
 const fact = { m: 0 };
 const supporting = { mt: 0.5, maxWidth: 640 };
 const startOfRow = { alignSelf: 'flex-start' };
+const personalField = {
+  fullName: 'fullName',
+  displayName: 'displayName',
+  documentNumber: 'documentNumber',
+  email: 'email',
+  password: 'password',
+};
+const DocumentType = 'DNI';
+const organizationRegisterPath = '/organizations/register';
+const disputeReasonId = 'dispute-reason';
+const numericDocumentField = { ...requiredField, htmlInput: { inputMode: 'numeric', autoComplete: 'off' } };
+const disputeReason = {
+  typedWrongAtSignup: 'TypedWrongAtSignup',
+  documentReissued: 'DocumentReissued',
+  recordedByMistake: 'RecordedByMistake',
+};
+const recordedDocumentStatus = 'recorded';
 
 /**
  * A newcomer setting up their own account. Like the organization signup it answers with a neutral bodyless 202
@@ -45,6 +63,7 @@ const startOfRow = { alignSelf: 'flex-start' };
  */
 export function PersonalRegisterPage() {
   const identity = useIdentity();
+  const { t } = useTranslation();
   const [form, setForm] = useState({ email: '', password: '', fullName: '', displayName: '', documentNumber: '' });
   const { submit, problem, isBusy, result } = useSubmit((request) => identity.client.registerPersonal(request));
   const update = (field) => (event) => setForm((current) => ({ ...current, [field]: event.target.value }));
@@ -53,9 +72,9 @@ export function PersonalRegisterPage() {
     return (
       <Paper component="section" elevation={3} aria-labelledby="personal-register-heading" sx={card}>
         <Stack spacing={3}>
-          <Typography id="personal-register-heading" component="h1" variant="h5">Set up your personal account</Typography>
+          <Typography id="personal-register-heading" component="h1" variant="h5">{t('identity:people.register.title')}</Typography>
           <Alert severity="success" role="status">
-            If that address can register, we have sent it a confirmation link. Check the inbox.
+            {t('identity:register.organization.acknowledgement')}
           </Alert>
         </Stack>
       </Paper>
@@ -65,7 +84,7 @@ export function PersonalRegisterPage() {
   return (
     <Paper component="section" elevation={3} aria-labelledby="personal-register-heading" sx={card}>
       <Stack spacing={3}>
-        <Typography id="personal-register-heading" component="h1" variant="h5">Set up your personal account</Typography>
+        <Typography id="personal-register-heading" component="h1" variant="h5">{t('identity:people.register.title')}</Typography>
         <ProblemMessage problem={problem} />
         <Stack component="form" spacing={3} onSubmit={(event) => { event.preventDefault(); submit(form); }}>
           {/* Two things are asked for at once — who this person is, and the credential they will sign in with — so
@@ -74,60 +93,63 @@ export function PersonalRegisterPage() {
           <Stack spacing={2}>
             <TextField
               id="personal-full-name"
-              label="Full name"
+              label={t('identity:people.fullName')}
               required
               fullWidth
               slotProps={requiredField}
               value={form.fullName}
-              onChange={update('fullName')}
+              onChange={update(personalField.fullName)}
             />
             <TextField
               id="personal-display-name"
-              label="Display name"
+              label={t('identity:people.displayName')}
               required
               fullWidth
               slotProps={requiredField}
               value={form.displayName}
-              onChange={update('displayName')}
+              onChange={update(personalField.displayName)}
             />
             <TextField
               id="personal-document"
-              label="DNI"
+              label={DocumentType}
               required
               fullWidth
-              slotProps={{ ...requiredField, htmlInput: { inputMode: 'numeric', autoComplete: 'off' } }}
+              slotProps={numericDocumentField}
               value={form.documentNumber}
-              onChange={update('documentNumber')}
+              onChange={update(personalField.documentNumber)}
             />
           </Stack>
           <Stack spacing={2}>
             <TextField
               id="personal-email"
-              label="Email"
+              label={t('identity:login.email')}
               type="email"
               autoComplete="username"
               required
               fullWidth
               slotProps={requiredField}
               value={form.email}
-              onChange={update('email')}
+              onChange={update(personalField.email)}
             />
             <TextField
               id="personal-password"
-              label="Password"
+              label={t('identity:login.password')}
               type="password"
               autoComplete="new-password"
               required
               fullWidth
               slotProps={requiredField}
               value={form.password}
-              onChange={update('password')}
+              onChange={update(personalField.password)}
             />
           </Stack>
-          <Button type="submit" variant="contained" size="large" fullWidth disabled={isBusy}>Register</Button>
+          <Button type="submit" variant="contained" size="large" fullWidth disabled={isBusy}>{t('common:navigation.register')}</Button>
         </Stack>
         <Typography variant="body2">
-          Registering a company instead? <Link component={RouterLink} to="/organizations/register">Register an organization</Link>.
+          <Trans
+            i18nKey="identity:people.register.organizationInstead"
+            components={{ organization: <Link component={RouterLink} to={organizationRegisterPath} /> }}
+          />
         </Typography>
       </Stack>
     </Paper>
@@ -143,8 +165,9 @@ export function PersonalRegisterPage() {
  * carries only an opaque identifier back.
  */
 function DocumentDispute({ client, available, country, type }) {
+  const { t } = useTranslation();
   const [claimedNumber, setClaimedNumber] = useState('');
-  const [reasonCode, setReasonCode] = useState('TypedWrongAtSignup');
+  const [reasonCode, setReasonCode] = useState(disputeReason.typedWrongAtSignup);
   const { submit, problem, isBusy, result } = useSubmit((request) => client.openDocumentDispute(request));
 
   // Both endings are states of this block, not replacements for it: the card and its heading stay, and what
@@ -154,13 +177,13 @@ function DocumentDispute({ client, available, country, type }) {
     return (
       <Paper variant="outlined" component="section" aria-labelledby="dispute-heading" sx={section}>
         <Stack spacing={2}>
-          <Typography id="dispute-heading" component="h3" variant="subtitle1">Correct this document</Typography>
+          <Typography id="dispute-heading" component="h3" variant="subtitle1">{t('identity:people.dispute.title')}</Typography>
           {result ? (
             <Alert severity="success" role="status">
-              The correction was sent for review. Nothing about your account changes while it is open.
+              {t('identity:people.dispute.success')}
             </Alert>
           ) : (
-            <Alert severity="info">A correction is already being reviewed for this document.</Alert>
+            <Alert severity="info">{t('identity:people.dispute.alreadyOpen')}</Alert>
           )}
         </Stack>
       </Paper>
@@ -181,15 +204,15 @@ function DocumentDispute({ client, available, country, type }) {
     >
       <Stack spacing={2}>
         <Box>
-          <Typography id="dispute-heading" component="h3" variant="subtitle1">Correct this document</Typography>
+          <Typography id="dispute-heading" component="h3" variant="subtitle1">{t('identity:people.dispute.title')}</Typography>
           <Typography variant="body2" color="text.secondary" sx={supporting}>
-            An operator reviews the correction. Your account keeps working while it is open.
+            {t('identity:people.dispute.description')}
           </Typography>
         </Box>
         <ProblemMessage problem={problem} />
         <TextField
           id="dispute-number"
-          label="What the number should be"
+          label={t('identity:people.dispute.number')}
           required
           fullWidth
           slotProps={requiredField}
@@ -197,21 +220,21 @@ function DocumentDispute({ client, available, country, type }) {
           onChange={(event) => setClaimedNumber(event.target.value)}
         />
         <FormControl fullWidth>
-          <InputLabel htmlFor="dispute-reason">Why</InputLabel>
+          <InputLabel htmlFor={disputeReasonId}>{t('identity:people.dispute.reason')}</InputLabel>
           <NativeSelect
-            inputProps={{ id: 'dispute-reason', name: 'dispute-reason' }}
+            inputProps={{ id: disputeReasonId, name: disputeReasonId }}
             value={reasonCode}
             onChange={(event) => setReasonCode(event.target.value)}
           >
-            <option value="TypedWrongAtSignup">I typed it wrong when I signed up</option>
-            <option value="DocumentReissued">My document was reissued</option>
-            <option value="RecordedByMistake">It is not my document</option>
+            <option value={disputeReason.typedWrongAtSignup}>{t('identity:people.dispute.typedWrongAtSignup')}</option>
+            <option value={disputeReason.documentReissued}>{t('identity:people.dispute.documentReissued')}</option>
+            <option value={disputeReason.recordedByMistake}>{t('identity:people.dispute.recordedByMistake')}</option>
           </NativeSelect>
         </FormControl>
         {/* Outlined, not filled: the page's own action is saving the names below, and a correction that takes two
             parties and days of review is not the thing to press by reflex. */}
         <Button type="submit" variant="outlined" disabled={isBusy} sx={startOfRow}>
-          Send for review
+          {t('identity:people.dispute.submit')}
         </Button>
       </Stack>
     </Paper>
@@ -227,6 +250,7 @@ function DocumentDispute({ client, available, country, type }) {
  * nothing. What they need is the claim itself, which is the identity they are holding plus a document.
  */
 function AddPersonalContext({ client, notice, onAdded }) {
+  const { t } = useTranslation();
   const [form, setForm] = useState({ fullName: '', displayName: '', documentNumber: '' });
   const [created, setCreated] = useState(false);
   const { submit, problem, isBusy } = useSubmit(async (request) => {
@@ -243,7 +267,7 @@ function AddPersonalContext({ client, notice, onAdded }) {
   if (created) {
     return (
       <Paper variant="outlined" sx={section}>
-        <Alert severity="success" role="status">Your personal account was added. Refreshing your access…</Alert>
+        <Alert severity="success" role="status">{t('identity:people.context.success')}</Alert>
       </Paper>
     );
   }
@@ -262,33 +286,33 @@ function AddPersonalContext({ client, notice, onAdded }) {
         <ProblemMessage problem={problem} />
         <TextField
           id="add-personal-full-name"
-          label="Full name"
+          label={t('identity:people.fullName')}
           required
           fullWidth
           slotProps={requiredField}
           value={form.fullName}
-          onChange={update('fullName')}
+          onChange={update(personalField.fullName)}
         />
         <TextField
           id="add-personal-display-name"
-          label="Display name"
+          label={t('identity:people.displayName')}
           required
           fullWidth
           slotProps={requiredField}
           value={form.displayName}
-          onChange={update('displayName')}
+          onChange={update(personalField.displayName)}
         />
         <TextField
           id="add-personal-document"
-          label="DNI"
+          label={DocumentType}
           required
           fullWidth
-          slotProps={{ ...requiredField, htmlInput: { inputMode: 'numeric', autoComplete: 'off' } }}
+          slotProps={numericDocumentField}
           value={form.documentNumber}
-          onChange={update('documentNumber')}
+          onChange={update(personalField.documentNumber)}
         />
         <Button type="submit" variant="contained" disabled={isBusy} sx={startOfRow}>
-          Add my personal account
+          {t('identity:people.context.submit')}
         </Button>
       </Stack>
     </Paper>
@@ -303,13 +327,17 @@ function AddPersonalContext({ client, notice, onAdded }) {
  * screen's only primary action is saving the two names, and a save belongs under the fields it saves rather than
  * at the far end of a header row from them; nothing else on the page is an action worth inventing to fill it.
  */
-const ProfileHeader = () => (
-  <Stack direction="row" spacing={2} sx={header}>
-    <Box>
-      <Typography id="profile-heading" component="h1" variant="h5">Your profile</Typography>
-    </Box>
-  </Stack>
-);
+const ProfileHeader = () => {
+  const { t } = useTranslation();
+
+  return (
+    <Stack direction="row" spacing={2} sx={header}>
+      <Box>
+        <Typography id="profile-heading" component="h1" variant="h5">{t('common:navigation.yourProfile')}</Typography>
+      </Box>
+    </Stack>
+  );
+};
 
 /**
  * The owner's own profile. The document is shown masked and is never editable here: correcting one is a separate
@@ -318,6 +346,7 @@ const ProfileHeader = () => (
  */
 export function PersonalProfilePage() {
   const identity = useIdentity();
+  const { t } = useTranslation();
   const [loaded, setLoaded] = useState(null);
   const [loadProblem, setLoadProblem] = useState(null);
   const [edits, setEdits] = useState(null);
@@ -359,7 +388,7 @@ export function PersonalProfilePage() {
             yet and the form that creates it are the same thing, so the sentence is handed to the card. */}
         <AddPersonalContext
           client={identity.client}
-          notice={<Alert severity="info" role="status">You have no personal context yet.</Alert>}
+          notice={<Alert severity="info" role="status">{t('identity:people.context.empty')}</Alert>}
           onAdded={async () => {
             // Failure clears shared context and the protected route shows the existing sign-in/read error.
             if (await identity.reload()) await load();
@@ -410,7 +439,7 @@ export function PersonalProfilePage() {
           are a correction and a form. None of the three may be given a heading it does not already have. */}
       <Paper variant="outlined" sx={section}>
         <Box component="dl" sx={facts}>
-          <Typography component="dt" variant="body2" color="text.secondary">Email</Typography>
+          <Typography component="dt" variant="body2" color="text.secondary">{t('identity:login.email')}</Typography>
           <Typography component="dd" variant="body2" sx={fact}>{profile.email}</Typography>
           {profile.document && (
             <>
@@ -423,7 +452,7 @@ export function PersonalProfilePage() {
         </Box>
       </Paper>
 
-      {profile.document && profile.document.status === 'recorded' && (
+      {profile.document && profile.document.status === recordedDocumentStatus && (
         <DocumentDispute
           client={identity.client}
           available={profile.document.correctionAvailable}
@@ -442,23 +471,23 @@ export function PersonalProfilePage() {
           <ProblemMessage problem={problem} />
           <TextField
             id="profile-full-name"
-            label="Full name"
+            label={t('identity:people.fullName')}
             required
             fullWidth
             slotProps={requiredField}
             value={form.fullName}
-            onChange={update('fullName')}
+            onChange={update(personalField.fullName)}
           />
           <TextField
             id="profile-display-name"
-            label="Display name"
+            label={t('identity:people.displayName')}
             required
             fullWidth
             slotProps={requiredField}
             value={form.displayName}
-            onChange={update('displayName')}
+            onChange={update(personalField.displayName)}
           />
-          <Button type="submit" variant="contained" disabled={isBusy} sx={startOfRow}>Save</Button>
+          <Button type="submit" variant="contained" disabled={isBusy} sx={startOfRow}>{t('identity:people.profile.save')}</Button>
         </Stack>
       </Paper>
     </Stack>
