@@ -1,74 +1,31 @@
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
+import { useTranslation } from '../../i18n';
 
 /**
  * Shows what the API said and nothing more. The stable code decides the message, so the wording is ours and the
  * server's diagnostics stay where they belong; field errors are shown only where the API indexed them.
  */
-const MESSAGES = {
-  antiforgery_validation_failed: 'Your session moved on. Try that again.',
-  validation_failed: 'Some of what you sent was not accepted. Check the details and try again.',
-  authentication_required: 'Sign in to continue.',
-  invalid_session: 'Your session is no longer valid. Sign in again.',
-  credential_superseded: 'Your password changed while you were signing in. Sign in again with the new one.',
-  permission_denied: 'You do not have permission to do that here.',
-  not_found: 'That is not available.',
-  invalid_registration: 'Check the details and try again.',
-  invalid_confirmation: 'That confirmation link is not usable.',
-  invalid_invitation: 'That invitation is not usable.',
-  invitation_conflict: 'That invitation cannot be completed in its current state.',
-  registration_conflict: 'That organization cannot be registered right now.',
-  session_concurrency_conflict: 'Something changed while you were working. Try again.',
-  platform_tenant_concurrency_conflict: 'That tenant changed while you were working. Refresh it and try again.',
-  invalid_platform_operation: 'That Platform operation is not valid in its current state.',
-  recent_mfa_required: 'Confirm your second factor again before making this change.',
-  recent_proof_required: 'Confirm your password again before making this change.',
-  invalid_credential_proof: 'That password was not accepted. Try again.',
-  invalid_external_login: 'That sign-in with a provider could not be completed. Try again.',
-  external_login_conflict: 'That provider account cannot be used here. Sign in and link it from your account.',
-  provider_already_linked: 'That provider is already linked to this account.',
-  last_authenticator_required: 'You cannot remove your only way to sign in. Add another one first.',
-  invalid_role_operation: 'That role change is not allowed. You can only grant permissions you hold yourself.',
-  invalid_membership_operation: 'That membership change is not allowed right now.',
-  role_concurrency_conflict: 'That role changed while you were editing it. Refresh and try again.',
-  membership_concurrency_conflict: 'That member changed while you were editing. Refresh and try again.',
-  last_administrator_required: 'This would leave the organization with no administrator. Give somebody else those permissions first.',
-  owner_required: 'Only the current owner can do that.',
-  invalid_reactivation: 'That reactivation link is not usable, or the password did not match. Ask for a new link and try again.',
-  platform_last_owner: 'This would leave the Platform with no owner. Somebody else has to hold it first.',
-  // Actor-neutral on purpose. The same code answers a person changing their own account and an operator acting on
-  // somebody else's, and "your account" is simply false in the second case.
-  identity_concurrency_conflict: 'That account changed while you were working. Refresh and try again.',
-  identity_reactivation_unavailable: 'That account cannot be reactivated.',
-  platform_mfa_concurrency_conflict: 'Your second factor changed while you were working. Start again.',
-  invalid_document_dispute: 'Check the document details and try again.',
-  document_dispute_conflict: 'A correction for this document is already being reviewed.',
-  self_resolution_refused: 'A correction to your own document has to be reviewed by somebody else.',
-  document_already_recorded: 'That document is already recorded against another account.',
-  // Declared only on the document-dispute resolve route, which this change does not deliver. It is here so the
-  // catalogue matches the codes the API can already answer with: stated, not covered.
-  personal_profile_not_found: 'There is no personal profile on that account.',
-  retention_hold_conflict: 'A hold with that reason already stands for this person.',
-  retention_hold_subject_purged: 'Those records are already erased, so a hold cannot be placed now.',
-  rate_limit_exceeded: 'Too many attempts. Wait a moment and try again.',
-  service_unavailable: 'That is temporarily unavailable. Try again shortly.',
-  internal_server_error: 'Something went wrong. Try again.',
-};
-
 export function ProblemMessage({ problem }) {
+  const { t, i18n } = useTranslation('errors');
+
   if (!problem) return null;
 
   const fields = Object.entries(problem.errors ?? {});
+  const messageKey = problem.code && i18n.exists(`errors:${problem.code}`)
+    ? `errors:${problem.code}`
+    : 'errors:unknown';
+
   return (
     <Alert severity="error">
-      <Typography variant="body2">{MESSAGES[problem.code] ?? 'That request could not be completed.'}</Typography>
+      <Typography variant="body2">{t(messageKey)}</Typography>
       {problem.retryAfterSeconds !== undefined && (
-        <Typography variant="body2">Try again in {problem.retryAfterSeconds} seconds.</Typography>
+        <Typography variant="body2">{t('errors:retryAfter', { seconds: problem.retryAfterSeconds })}</Typography>
       )}
       {fields.length > 0 && (
         <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
-          {fields.map(([field, messages]) => <li key={field}>{field}: {messages.join(' ')}</li>)}
+          {fields.map(([field, messages]) => <li key={field}>{t('errors:fieldMessage', { field, messages: messages.join(' ') })}</li>)}
         </Box>
       )}
     </Alert>
