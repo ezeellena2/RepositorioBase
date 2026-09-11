@@ -145,5 +145,26 @@
       "submit": "Reactivate my account",
       "nextSteps": "<resetPassword>Reset or set a password</resetPassword> if needed. Then <requestReactivation>request a new reactivation link</requestReactivation>."
     }
+  },
+  "members": {
+    "noOrganization": "Choose an organization first. Members belong to one organization, and this session is not in one.",
+    "description": "You can only give somebody a role you could have built yourself, and the organization always keeps at least one administrator. The owner cannot be suspended or removed — transfer the organization first.",
+    "providerProof": "You have no password here. Changing roles or handing the organization over asks {{provider}} to confirm it is you.",
+    "loading": "Loading…",
+    "empty": "Nobody belongs to this organization yet.",
+    "owner": "— owner",
+    "noRoles": "no roles",
+    "editRoles": "Edit roles of {{name}}",
+    "suspend": "Suspend {{name}}",
+    "reactivate": "Reactivate {{name}}",
+    "remove": "Remove {{name}}",
+    "transferConfirm": "Give this organization to {{name}}? You will stop being its owner.",
+    "transfer": "Transfer ownership to {{name}}",
+    "rolesFor": "Roles for {{name}}",
+    "rolesRefused": "You cannot see this organization’s roles, so there are none to give here.",
+    "noRolesToGive": "This organization has no roles to give yet.",
+    "saveRoles": "Save roles",
+    "cancel": "Cancel",
+    "showMore": "Show more members"
   }
 }

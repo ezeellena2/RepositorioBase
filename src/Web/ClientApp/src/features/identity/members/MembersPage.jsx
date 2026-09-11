@@ -19,6 +19,7 @@ import Typography from '@mui/material/Typography';
 import { useIdentity } from '../context/IdentityProvider';
 import { ProblemMessage } from '../ProblemMessage';
 import { useIdentityProof } from '../useIdentityProof';
+import { useTranslation } from '../../../i18n';
 
 const frame = { maxWidth: 560 };
 const panel = { p: { xs: 2, sm: 3 }, maxWidth: 560 };
@@ -63,6 +64,9 @@ const editor = { pt: 1 };
  * not an error, it is a state this screen has not been taught.
  */
 const statusColor = { Active: 'success', Suspended: 'warning', Revoked: 'error' };
+const memberStatus = { active: 'Active', suspended: 'Suspended', revoked: 'Revoked' };
+const memberStatusAction = { suspend: 'suspend', reactivate: 'reactivate', revoke: 'revoke' };
+const memberRoleInputId = (membershipId, roleId) => `role-${membershipId}-${roleId}`;
 
 /**
  * The people in the organization the session is operating in, and what may be done to them (IA-REQ-053).
@@ -85,6 +89,7 @@ const MembersPath = '/members';
 
 export function MembersPage() {
   const identity = useIdentity();
+  const { t } = useTranslation();
   const proof = useIdentityProof();
   const tenantId = identity.context?.activeTenant?.id ?? null;
   const [members, setMembers] = useState(null);
@@ -227,9 +232,9 @@ export function MembersPage() {
     return (
       <Stack component="section" aria-labelledby="members-heading" spacing={3} sx={frame}>
         <Box>
-          <Typography id="members-heading" component="h1" variant="h5">Members</Typography>
+          <Typography id="members-heading" component="h1" variant="h5">{t('common:navigation.members')}</Typography>
           <Typography variant="body2" color="text.secondary" sx={supporting}>
-            Choose an organization first. Members belong to one organization, and this session is not in one.
+            {t('identity:members.noOrganization')}
           </Typography>
         </Box>
         {/* This branch is a dead end: it names the missing thing and offers nothing that resolves it. The control
@@ -244,10 +249,9 @@ export function MembersPage() {
   return (
     <Stack component="section" aria-labelledby="members-heading" spacing={3}>
       <Box>
-        <Typography id="members-heading" component="h1" variant="h5">Members</Typography>
+        <Typography id="members-heading" component="h1" variant="h5">{t('common:navigation.members')}</Typography>
         <Typography variant="body2" color="text.secondary" sx={supporting}>
-          You can only give somebody a role you could have built yourself, and the organization always keeps at least
-          one administrator. The owner cannot be suspended or removed &mdash; transfer the organization first.
+          {t('identity:members.description')}
         </Typography>
       </Box>
 
@@ -260,7 +264,7 @@ export function MembersPage() {
         <Paper variant="outlined" sx={panel}>
           <TextField
             id="members-password"
-            label="Password"
+            label={t('identity:login.password')}
             type="password"
             autoComplete="current-password"
             value={password}
@@ -270,7 +274,7 @@ export function MembersPage() {
         </Paper>
       ) : proof.provider !== null && (
         <Typography variant="body2" color="text.secondary">
-          You have no password here. Changing roles or handing the organization over asks {proof.provider} to confirm it is you.
+          {t('identity:members.providerProof', { provider: proof.provider })}
         </Typography>
       )}
 
@@ -278,7 +282,7 @@ export function MembersPage() {
           word is what a reader of the status region is told, so it is said to them and not also drawn as a line
           of content the roster then has to replace: a visible "Loading…" is not a loading state. */}
       {members === null || !proof.isReady ? (
-        <Stack spacing={1} role="status" aria-label="Loading…">
+        <Stack spacing={1} role="status" aria-label={t('identity:members.loading')}>
           {[0, 1, 2].map((placeholder) => <Skeleton key={placeholder} variant="rounded" height={ROW_HEIGHT} />)}
         </Stack>
       ) : members.length === 0 ? (
@@ -286,7 +290,7 @@ export function MembersPage() {
           {/* The standard asks an empty state to offer the action that creates the first item, and this screen has
               one at /members/invite. Its label is a string this screen has never rendered, so it is reported
               rather than written into a visual change. */}
-          <Typography variant="body2" color="text.secondary">Nobody belongs to this organization yet.</Typography>
+          <Typography variant="body2" color="text.secondary">{t('identity:members.empty')}</Typography>
         </Paper>
       ) : (
         <Paper variant="outlined">
@@ -304,7 +308,7 @@ export function MembersPage() {
                         {/* Deliberately one element holding exactly this text, and deliberately not a chip: the
                             owner marker is read back by its whole text content. */}
                         {member.isOwner && (
-                          <Typography component="span" variant="caption" color="text.secondary">&mdash; owner</Typography>
+                          <Typography component="span" variant="caption" color="text.secondary">{t('identity:members.owner')}</Typography>
                         )}
                       </Stack>
                       <Typography component="div" variant="caption" color="text.secondary">{member.normalizedEmail}</Typography>
@@ -320,7 +324,7 @@ export function MembersPage() {
                         color={statusColor[member.status] ?? 'default'}
                       />
                       {member.roleIds.length === 0 ? (
-                        <Typography variant="caption" color="text.disabled" sx={absence}>no roles</Typography>
+                        <Typography variant="caption" color="text.disabled" sx={absence}>{t('identity:members.noRoles')}</Typography>
                       ) : (
                         member.roleIds.map((roleId) => <Chip key={roleId} size="small" label={nameOf(roleId)} />)
                       )}
@@ -334,22 +338,22 @@ export function MembersPage() {
                       disabled={isBusy}
                       onClick={() => setEditing({ membershipId: member.membershipId, roleIds: [...member.roleIds] })}
                     >
-                      Edit roles of {member.displayName}
+                      {t('identity:members.editRoles', { name: member.displayName })}
                     </Button>
 
-                    {!member.isOwner && member.status === 'Active' && (
-                      <Button type="button" size="small" disabled={isBusy} onClick={() => changeStatus(member, 'suspend')}>
-                        Suspend {member.displayName}
+                    {!member.isOwner && member.status === memberStatus.active && (
+                      <Button type="button" size="small" disabled={isBusy} onClick={() => changeStatus(member, memberStatusAction.suspend)}>
+                        {t('identity:members.suspend', { name: member.displayName })}
                       </Button>
                     )}
-                    {!member.isOwner && member.status === 'Suspended' && (
-                      <Button type="button" size="small" disabled={isBusy} onClick={() => changeStatus(member, 'reactivate')}>
-                        Reactivate {member.displayName}
+                    {!member.isOwner && member.status === memberStatus.suspended && (
+                      <Button type="button" size="small" disabled={isBusy} onClick={() => changeStatus(member, memberStatusAction.reactivate)}>
+                        {t('identity:members.reactivate', { name: member.displayName })}
                       </Button>
                     )}
-                    {!member.isOwner && member.status !== 'Revoked' && (
-                      <Button type="button" size="small" color="error" disabled={isBusy} onClick={() => changeStatus(member, 'revoke')}>
-                        Remove {member.displayName}
+                    {!member.isOwner && member.status !== memberStatus.revoked && (
+                      <Button type="button" size="small" color="error" disabled={isBusy} onClick={() => changeStatus(member, memberStatusAction.revoke)}>
+                        {t('identity:members.remove', { name: member.displayName })}
                       </Button>
                     )}
                   </Stack>
@@ -360,7 +364,7 @@ export function MembersPage() {
                       own actions, and the transfer takes the line under it at the opposite end. Nothing here
                       leaves the member's own `li` — the editor, the actions and the address are one element,
                       because that is how a caller scopes a query to one person. */}
-                  {!member.isOwner && member.status === 'Active' && proof.canProve && (
+                  {!member.isOwner && member.status === memberStatus.active && proof.canProve && (
                     <>
                       <Divider />
                       <Box>
@@ -370,10 +374,10 @@ export function MembersPage() {
                           color="error"
                           disabled={isBusy || !proof.canBegin(password)}
                           onClick={() => {
-                            if (window.confirm(`Give this organization to ${member.displayName}? You will stop being its owner.`)) transfer(member);
+                            if (window.confirm(t('identity:members.transferConfirm', { name: member.displayName }))) transfer(member);
                           }}
                         >
-                          Transfer ownership to {member.displayName}
+                          {t('identity:members.transfer', { name: member.displayName })}
                         </Button>
                       </Box>
                     </>
@@ -388,23 +392,23 @@ export function MembersPage() {
                     >
                       <Divider />
                       <FormControl component="fieldset">
-                        <FormLabel component="legend">Roles for {member.displayName}</FormLabel>
+                        <FormLabel component="legend">{t('identity:members.rolesFor', { name: member.displayName })}</FormLabel>
                         {roles === null && (
                           <Typography variant="body2" color="text.secondary">
-                            You cannot see this organization&rsquo;s roles, so there are none to give here.
+                            {t('identity:members.rolesRefused')}
                           </Typography>
                         )}
                         {roles?.length === 0 && (
-                          <Typography variant="body2" color="text.secondary">This organization has no roles to give yet.</Typography>
+                          <Typography variant="body2" color="text.secondary">{t('identity:members.noRolesToGive')}</Typography>
                         )}
                         <FormGroup>
                           {roles?.map((role) => (
                             <FormControlLabel
                               key={role.roleId}
-                              htmlFor={`role-${member.membershipId}-${role.roleId}`}
+                              htmlFor={memberRoleInputId(member.membershipId, role.roleId)}
                               control={(
                                 <Checkbox
-                                  id={`role-${member.membershipId}-${role.roleId}`}
+                                  id={memberRoleInputId(member.membershipId, role.roleId)}
                                   checked={editing.roleIds.includes(role.roleId)}
                                   onChange={() => toggleRole(role.roleId)}
                                 />
@@ -416,9 +420,9 @@ export function MembersPage() {
                       </FormControl>
                       <Stack direction="row" spacing={1} useFlexGap sx={row}>
                         <Button type="submit" variant="contained" disabled={isBusy || !proof.canProve || !proof.canBegin(password)}>
-                          Save roles
+                          {t('identity:members.saveRoles')}
                         </Button>
-                        <Button type="button" variant="outlined" disabled={isBusy} onClick={() => setEditing(null)}>Cancel</Button>
+                        <Button type="button" variant="outlined" disabled={isBusy} onClick={() => setEditing(null)}>{t('identity:members.cancel')}</Button>
                       </Stack>
                     </Stack>
                   )}
@@ -431,7 +435,7 @@ export function MembersPage() {
 
       {nextCursor !== null && (
         <Button type="button" variant="outlined" disabled={isBusy} onClick={showMore} sx={selfStart}>
-          Show more members
+          {t('identity:members.showMore')}
         </Button>
       )}
     </Stack>
