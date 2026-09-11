@@ -119,5 +119,31 @@
       "withdraw": "Withdraw invitation to {{email}}",
       "showMore": "Show more invitations"
     }
+  },
+  "lifecycle": {
+    "account": {
+      "title": "Your account",
+      "description": "Deactivating ends all your sessions and prevents sign-in. Your memberships stay recorded. To return, request an email link and enter your current password.",
+      "lastAdministrator": "If you are the last administrator or Platform owner, give someone else that responsibility first.",
+      "notAllowed": "You do not have permission to deactivate this account.",
+      "providerProof": "{{provider}} will confirm it is you.",
+      "noProofMethod": "No proof method is available.",
+      "proofWithPassword": "{{proof}} To return after deactivation, you will need a password. <setPassword>Set a password</setPassword>.",
+      "confirmDeactivation": "I understand that this ends all my sessions and stops sign-in.",
+      "deactivate": "Deactivate my account"
+    },
+    "request": {
+      "description": "Use this if you deactivated your own account. This cannot lift an administrative suspension.",
+      "deactivated": "Your account is deactivated. All your sessions have ended.",
+      "success": "If that account can be reactivated, we have sent a link to its email address. Check the inbox.",
+      "submit": "Send reactivation link",
+      "returning": "Returning requires your current password. <resetPassword>Reset or set a password</resetPassword> if needed, then request a reactivation link."
+    },
+    "reactivate": {
+      "success": "Your account is active again. Sign in to continue.",
+      "missingToken": "Open the link from your reactivation email; this page needs its token.",
+      "submit": "Reactivate my account",
+      "nextSteps": "<resetPassword>Reset or set a password</resetPassword> if needed. Then <requestReactivation>request a new reactivation link</requestReactivation>."
+    }
   }
 }
