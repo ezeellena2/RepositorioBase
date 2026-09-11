@@ -27,6 +27,7 @@ import { usePlatformClient } from '../invitations/PlatformInvitationPages';
 import { PlatformStepUpForm } from '../shared/PlatformStepUpForm';
 import { usePlatformRead } from '../shared/usePlatformRead';
 import { usePlatformStepUp } from '../shared/usePlatformStepUp';
+import { useTranslation } from '../../../i18n';
 
 /**
  * The closed set the API accepts for an account suspension. It is declared here rather than shared with the
@@ -34,6 +35,12 @@ import { usePlatformStepUp } from '../shared/usePlatformStepUp';
  * other changing. A shared constant would make that coincidence into a coupling.
  */
 const SUSPENSION_REASONS = ['PolicyViolation', 'SecurityIncident', 'BillingHold', 'OperatorRequest'];
+const actionKinds = { suspend: 'suspend', reactivate: 'reactivate' };
+const identitiesHeadingId = 'platform-identities-heading';
+const identitiesStepUpInputId = 'platform-identities-step-up';
+const suspensionReasonInputId = 'platform-identity-suspension-reason';
+const suspensionReasonInputProps = { id: suspensionReasonInputId };
+const outlinedSubmitVariant = 'outlined';
 
 const frame = { maxWidth: 560 };
 const header = { alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap' };
@@ -107,6 +114,7 @@ const offeredTransition = (accountStatus, mayManage) => (mayManage ? transitionF
  * nothing armed to fire: asking again is the operator's to do, deliberately.
  */
 export function PlatformIdentitiesPage() {
+  const { t } = useTranslation('platform');
   const identity = useIdentity();
   const platform = usePlatformClient();
   const [pending, setPending] = useState(null);
@@ -178,13 +186,13 @@ export function PlatformIdentitiesPage() {
   // section under it, not the raised card the public entrance is composed of.
   if (!mayRead) {
     return (
-      <Stack component="section" aria-labelledby="platform-identities-heading" spacing={3} sx={frame}>
+      <Stack component="section" aria-labelledby={identitiesHeadingId} spacing={3} sx={frame}>
         <Box>
-          <Typography id="platform-identities-heading" component="h1" variant="h5">Identities</Typography>
+          <Typography id={identitiesHeadingId} component="h1" variant="h5">{t('identities.title')}</Typography>
         </Box>
         <Paper variant="outlined" sx={section}>
           <Typography variant="body2" color="text.secondary">
-            This screen is for a Platform administrator holding platform.identities.read.
+            {t('identities.accessDenied')}
           </Typography>
         </Paper>
       </Stack>
@@ -193,9 +201,9 @@ export function PlatformIdentitiesPage() {
 
   if (owesFactor) {
     return (
-      <Stack component="section" aria-labelledby="platform-identities-heading" spacing={3} sx={frame}>
+      <Stack component="section" aria-labelledby={identitiesHeadingId} spacing={3} sx={frame}>
         <Box>
-          <Typography id="platform-identities-heading" component="h1" variant="h5">Identities</Typography>
+          <Typography id={identitiesHeadingId} component="h1" variant="h5">{t('identities.title')}</Typography>
         </Box>
         {/* Here the ceremony is the whole screen, so its submit keeps the primary weight. What was refused belongs
             with the field that produced it: above the sentence it would push the control down the page and be read
@@ -203,11 +211,11 @@ export function PlatformIdentitiesPage() {
         <Paper variant="outlined" sx={section}>
           <Stack spacing={2}>
             <Typography variant="body2" color="text.secondary">
-              This session has not proved your second factor yet. Enter a code from your authenticator to continue.
+              {t('panel.stepUpDescription')}
             </Typography>
             <ProblemMessage problem={stepUp.problem} />
             <PlatformStepUpForm
-              inputId="platform-identities-step-up"
+              inputId={identitiesStepUpInputId}
               code={stepUp.code}
               onCodeChange={stepUp.onCodeChange}
               onSubmit={stepUp.onSubmit}
@@ -226,12 +234,12 @@ export function PlatformIdentitiesPage() {
   const refusal = proofRefusal ?? (actionProblem?.code === 'recent_mfa_required' ? null : actionProblem);
 
   return (
-    <Stack component="section" aria-labelledby="platform-identities-heading" spacing={3}>
+    <Stack component="section" aria-labelledby={identitiesHeadingId} spacing={3}>
       {/* The header keeps the prescribed row even though its right slot stays empty: this screen creates no
           account, and an action invented to fill the slot would be a capability invented to fill it too. */}
       <Stack direction="row" spacing={2} sx={header}>
         <Box>
-          <Typography id="platform-identities-heading" component="h1" variant="h5">Identities</Typography>
+          <Typography id={identitiesHeadingId} component="h1" variant="h5">{t('identities.title')}</Typography>
         </Box>
       </Stack>
 
@@ -244,16 +252,16 @@ export function PlatformIdentitiesPage() {
         <Paper variant="outlined" sx={section}>
           <Stack spacing={2}>
             <Typography variant="body2">
-              That change needs a fresh proof of your second factor. Enter a code, then ask for it again.
+              {t('identities.recentProof')}
             </Typography>
             <ProblemMessage problem={stepUp.problem} />
             <PlatformStepUpForm
-              inputId="platform-identities-step-up"
+              inputId={identitiesStepUpInputId}
               code={stepUp.code}
               onCodeChange={stepUp.onCodeChange}
               onSubmit={stepUp.onSubmit}
               isBusy={stepUp.isBusy}
-              submitVariant="outlined"
+              submitVariant={outlinedSubmitVariant}
             />
           </Stack>
         </Paper>
@@ -263,11 +271,11 @@ export function PlatformIdentitiesPage() {
           neither is undone by clicking the other one. The confirmation opens here, directly under the refusal slot
           and above the directory, so it is not something the operator has to go looking for below a long table —
           and the row it was armed from is marked while it stands. */}
-      {pending?.kind === 'suspend' && (
+      {pending?.kind === actionKinds.suspend && (
         <Paper
           variant="outlined"
           component="form"
-          aria-label="Confirm suspension"
+          aria-label={t('identities.suspension.confirmationLabel')}
           sx={confirmation}
           onSubmit={(event) => {
             event.preventDefault();
@@ -277,11 +285,11 @@ export function PlatformIdentitiesPage() {
           <Stack spacing={2}>
             {/* The question is the section's title and is given a title's weight. Its wording is what the operator
                 is asked, so only the weight is ours to choose. */}
-            <Typography component="h2" variant="subtitle1">{`Suspend ${pending.subject}?`}</Typography>
+            <Typography component="h2" variant="subtitle1">{t('identities.suspension.prompt', { email: pending.subject })}</Typography>
             <FormControl fullWidth>
-              <InputLabel htmlFor="platform-identity-suspension-reason">Reason</InputLabel>
+              <InputLabel htmlFor={suspensionReasonInputId}>{t('identities.suspension.reason')}</InputLabel>
               <NativeSelect
-                inputProps={{ id: 'platform-identity-suspension-reason' }}
+                inputProps={suspensionReasonInputProps}
                 value={reason}
                 onChange={(event) => setReason(event.target.value)}
               >
@@ -289,18 +297,18 @@ export function PlatformIdentitiesPage() {
               </NativeSelect>
             </FormControl>
             <Stack direction="row" spacing={1} useFlexGap sx={buttons}>
-              <Button type="submit" variant="contained" color="error" disabled={isBusy}>Confirm suspension</Button>
-              <Button type="button" variant="outlined" onClick={() => setPending(null)}>Cancel</Button>
+              <Button type="submit" variant="contained" color="error" disabled={isBusy}>{t('identities.suspension.confirm')}</Button>
+              <Button type="button" variant="outlined" onClick={() => setPending(null)}>{t('panel.cancel')}</Button>
             </Stack>
           </Stack>
         </Paper>
       )}
 
-      {pending?.kind === 'reactivate' && (
+      {pending?.kind === actionKinds.reactivate && (
         <Paper
           variant="outlined"
           component="form"
-          aria-label="Confirm reactivation"
+          aria-label={t('identities.reactivation.confirmationLabel')}
           sx={confirmation}
           onSubmit={(event) => {
             event.preventDefault();
@@ -308,7 +316,7 @@ export function PlatformIdentitiesPage() {
           }}
         >
           <Stack spacing={2}>
-            <Typography component="h2" variant="subtitle1">{`Lift the suspension on ${pending.subject}?`}</Typography>
+            <Typography component="h2" variant="subtitle1">{t('identities.reactivation.prompt', { email: pending.subject })}</Typography>
             {/* The explanation and the box it asks for are one thing, so they are one group rather than two of
                 four evenly spaced paragraphs. It cannot be an `Alert`: the page-level one for the same refusal is
                 already up, and this screen is read as having a single alert. Weight and colour say the same thing
@@ -320,8 +328,7 @@ export function PlatformIdentitiesPage() {
                   lives here rather than in the catalogue. */}
               {actionProblem?.code === 'invalid_platform_operation' && (
                 <Typography component="p" variant="subtitle2" color="warning.main">
-                  This account was parked by the person who owns it. Lifting the suspension returns it there, not to
-                  active. Tick the acknowledgement if you mean to do that.
+                  {t('identities.reactivation.acknowledgementRequired')}
                 </Typography>
               )}
               {/* Unticked to begin with and set by nothing but this box. It is the operator saying they know where
@@ -334,12 +341,12 @@ export function PlatformIdentitiesPage() {
                     onChange={(event) => setAcknowledged(event.target.checked)}
                   />
                 )}
-                label="I understand this account may return to deactivated rather than active"
+                label={t('identities.reactivation.acknowledgement')}
               />
             </Stack>
             <Stack direction="row" spacing={1} useFlexGap sx={buttons}>
-              <Button type="submit" variant="contained" disabled={isBusy}>Confirm reactivation</Button>
-              <Button type="button" variant="outlined" onClick={() => setPending(null)}>Cancel</Button>
+              <Button type="submit" variant="contained" disabled={isBusy}>{t('identities.reactivation.confirm')}</Button>
+              <Button type="button" variant="outlined" onClick={() => setPending(null)}>{t('panel.cancel')}</Button>
             </Stack>
           </Stack>
         </Paper>
@@ -351,7 +358,7 @@ export function PlatformIdentitiesPage() {
           it as a label because the region is read back by its text (PlatformIdentitiesPage.test.jsx:415). */}
       {status === 'loading' && rows.length === 0 && (
         <Stack spacing={1} role="status">
-          <Typography variant="body2" sx={visuallyHidden}>Loading the directory…</Typography>
+          <Typography variant="body2" sx={visuallyHidden}>{t('identities.loading')}</Typography>
           {[0, 1, 2].map((placeholder) => (
             <Skeleton key={placeholder} variant="rounded" height={ROW_HEIGHT} />
           ))}
@@ -366,7 +373,7 @@ export function PlatformIdentitiesPage() {
           <ProblemMessage problem={readProblem} />
           {status === 'errored' && (
             <Button type="button" variant="outlined" sx={selfStart} onClick={() => refresh(undefined)}>
-              Try again
+              {t('identities.retry')}
             </Button>
           )}
         </Stack>
@@ -374,25 +381,25 @@ export function PlatformIdentitiesPage() {
 
       {status === 'loaded' && rows.length === 0 && (
         <Paper variant="outlined" sx={emptyBlock}>
-          <Typography variant="body2">No accounts are listed here.</Typography>
+          <Typography variant="body2">{t('identities.empty')}</Typography>
         </Paper>
       )}
 
       {rows.length > 0 && (
         <Paper variant="outlined">
           <Box sx={progressSlot}>
-            {status === 'loading' && <LinearProgress aria-label="Loading the directory…" />}
+            {status === 'loading' && <LinearProgress aria-label={t('identities.loading')} />}
           </Box>
           <TableContainer>
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell component="th" scope="col">Address</TableCell>
-                  <TableCell component="th" scope="col">Account status</TableCell>
-                  <TableCell component="th" scope="col">Identity</TableCell>
+                  <TableCell component="th" scope="col">{t('identities.columns.address')}</TableCell>
+                  <TableCell component="th" scope="col">{t('identities.columns.accountStatus')}</TableCell>
+                  <TableCell component="th" scope="col">{t('identities.columns.identity')}</TableCell>
                   {/* A caller holding the read and not the manage permission is offered no transition, so the
                       column that would have carried them is not drawn empty down the edge of the directory. */}
-                  {mayManage && <TableCell component="th" scope="col" align="right">Actions</TableCell>}
+                  {mayManage && <TableCell component="th" scope="col" align="right">{t('identities.columns.actions')}</TableCell>}
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -417,27 +424,27 @@ export function PlatformIdentitiesPage() {
                     {mayManage && (
                       <TableCell align="right">
                         <Stack direction="row" spacing={1} useFlexGap sx={rowActions}>
-                          {offeredTransition(row.accountStatus, mayManage) === 'suspend' && (
+                          {offeredTransition(row.accountStatus, mayManage) === actionKinds.suspend && (
                             <Button
                               type="button"
                               variant="text"
                               size="small"
                               color="error"
                               disabled={isBusy}
-                              onClick={() => arm('suspend', row)}
+                              onClick={() => arm(actionKinds.suspend, row)}
                             >
-                              {`Suspend ${row.normalizedEmail}`}
+                              {t('identities.suspend', { email: row.normalizedEmail })}
                             </Button>
                           )}
-                          {offeredTransition(row.accountStatus, mayManage) === 'reactivate' && (
+                          {offeredTransition(row.accountStatus, mayManage) === actionKinds.reactivate && (
                             <Button
                               type="button"
                               variant="text"
                               size="small"
                               disabled={isBusy}
-                              onClick={() => arm('reactivate', row)}
+                              onClick={() => arm(actionKinds.reactivate, row)}
                             >
-                              {`Reactivate ${row.normalizedEmail}`}
+                              {t('identities.reactivate', { email: row.normalizedEmail })}
                             </Button>
                           )}
                         </Stack>
@@ -464,7 +471,7 @@ export function PlatformIdentitiesPage() {
                   disabled={isBusy}
                   onClick={() => refresh(page.nextCursor)}
                 >
-                  More accounts
+                  {t('identities.more')}
                 </Button>
               </Box>
             </>

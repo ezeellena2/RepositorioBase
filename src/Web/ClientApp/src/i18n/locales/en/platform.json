@@ -52,5 +52,35 @@
     "title": "Audit",
     "empty": "Nothing has been recorded here yet.",
     "label": "Audit"
+  },
+  "identities": {
+    "title": "Identities",
+    "accessDenied": "This screen is for a Platform administrator holding platform.identities.read.",
+    "recentProof": "That change needs a fresh proof of your second factor. Enter a code, then ask for it again.",
+    "suspension": {
+      "confirmationLabel": "Confirm suspension",
+      "prompt": "Suspend {{email}}?",
+      "reason": "Reason",
+      "confirm": "Confirm suspension"
+    },
+    "reactivation": {
+      "confirmationLabel": "Confirm reactivation",
+      "prompt": "Lift the suspension on {{email}}?",
+      "acknowledgementRequired": "This account was parked by the person who owns it. Lifting the suspension returns it there, not to active. Tick the acknowledgement if you mean to do that.",
+      "acknowledgement": "I understand this account may return to deactivated rather than active",
+      "confirm": "Confirm reactivation"
+    },
+    "loading": "Loading the directory…",
+    "retry": "Try again",
+    "empty": "No accounts are listed here.",
+    "columns": {
+      "address": "Address",
+      "accountStatus": "Account status",
+      "identity": "Identity",
+      "actions": "Actions"
+    },
+    "suspend": "Suspend {{email}}",
+    "reactivate": "Reactivate {{email}}",
+    "more": "More accounts"
   }
 }
