@@ -3,6 +3,7 @@ import Chip from '@mui/material/Chip';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
+import { useTranslation } from '../../../i18n';
 import { useIdentity } from './IdentityProvider';
 
 const page = { maxWidth: 560 };
@@ -45,6 +46,7 @@ const chips = { m: 0, flexWrap: 'wrap' };
 export function IdentityContextPage() {
   const identity = useIdentity();
   const context = identity?.context;
+  const { t } = useTranslation('identity');
 
   // Codes share a prefix per area, so ordering them puts an area's permissions beside each other and a long list
   // becomes scannable without a heading naming each group. Sorted on a copy: the context is not this page's to
@@ -55,7 +57,7 @@ export function IdentityContextPage() {
     <Stack component="section" aria-labelledby="identity-heading" spacing={3} sx={page}>
       <Stack direction="row" spacing={2} sx={header}>
         <Box>
-          <Typography id="identity-heading" component="h1" variant="h5">Your access</Typography>
+          <Typography id="identity-heading" component="h1" variant="h5">{t('common:navigation.yourAccess')}</Typography>
         </Box>
       </Stack>
 
@@ -63,13 +65,13 @@ export function IdentityContextPage() {
           and are read as one pair of facts. */}
       <Paper variant="outlined" sx={section}>
         <Box component="dl" sx={facts}>
-          <Typography component="dt" variant="subtitle2" color="text.secondary">Signed in as</Typography>
+          <Typography component="dt" variant="subtitle2" color="text.secondary">{t('context.signedInAs')}</Typography>
           <Typography component="dd" variant="body1">
-            {context?.user?.displayName ?? 'unknown'}
+            {context?.user?.displayName ?? t('context.unknown')}
           </Typography>
-          <Typography component="dt" variant="subtitle2" color="text.secondary">Active organization</Typography>
+          <Typography component="dt" variant="subtitle2" color="text.secondary">{t('context.activeOrganization')}</Typography>
           <Typography component="dd" variant="body1">
-            {context?.activeTenant?.name ?? 'none selected'}
+            {context?.activeTenant?.name ?? t('context.noneSelected')}
           </Typography>
         </Box>
       </Paper>
@@ -79,11 +81,11 @@ export function IdentityContextPage() {
           gives the wrap room and stops a wall of codes from crowding the two lines that name the session. */}
       <Paper variant="outlined" sx={section}>
         <Box component="dl" sx={facts}>
-          <Typography component="dt" variant="subtitle2" color="text.secondary">Permissions</Typography>
+          <Typography component="dt" variant="subtitle2" color="text.secondary">{t('context.permissions')}</Typography>
           {permissions.length === 0
             ? (
               <Typography component="dd" variant="body2" color="text.secondary">
-                none in this organization
+                {t('context.noneInThisOrganization')}
               </Typography>
             )
             : (
