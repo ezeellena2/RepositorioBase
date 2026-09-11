@@ -12,6 +12,7 @@ import { useIdentity } from '../context/IdentityProvider';
 import { ProblemMessage } from '../ProblemMessage';
 import { useSubmit } from '../useSubmit';
 import { externalNavigation } from '../externalNavigation';
+import { useTranslation } from '../../../i18n';
 
 /**
  * Where a visitor lands after signing in is taken from the query string, so it is treated as untrusted input: a
@@ -45,6 +46,7 @@ const card = { p: { xs: 3, sm: 4 } };
 
 export function LoginPage() {
   const identity = useIdentity();
+  const { t } = useTranslation('identity');
   const location = useLocation();
   const [params] = useSearchParams();
   const [email, setEmail] = useState('');
@@ -75,7 +77,7 @@ export function LoginPage() {
         {/* The two probes are the return URL this card resolved and whatever the context read refused with. They
             are read back by their test ids, so they stay in the markup and out of the reading order. */}
         <Box>
-          <Typography id="login-heading" component="h1" variant="h5">Sign in</Typography>
+          <Typography id="login-heading" component="h1" variant="h5">{t('login.title')}</Typography>
           <p data-testid="return-url" hidden>{returnUrl}</p>
           <p data-testid="context-problem" hidden>{identity?.contextProblem?.code ?? ''}</p>
         </Box>
@@ -85,7 +87,7 @@ export function LoginPage() {
         {/* Two ways in, in the order they are chosen: the provider round trip first, then the credentials this
             card can take itself. The rule dividing them is what makes them read as alternatives. */}
         <Button type="button" variant="outlined" size="large" fullWidth onClick={continueWithGoogle}>
-          Continue with Google
+          {t('login.continueWithGoogle')}
         </Button>
         <Divider />
 
@@ -96,7 +98,7 @@ export function LoginPage() {
         >
           <TextField
             id="login-email"
-            label="Email"
+            label={t('login.email')}
             type="email"
             autoComplete="username"
             required
@@ -107,7 +109,7 @@ export function LoginPage() {
           />
           <TextField
             id="login-password"
-            label="Password"
+            label={t('login.password')}
             type="password"
             autoComplete="current-password"
             required
@@ -116,15 +118,15 @@ export function LoginPage() {
             value={password}
             onChange={(event) => setPassword(event.target.value)}
           />
-          <Button type="submit" variant="contained" size="large" fullWidth disabled={isBusy}>Sign in</Button>
+          <Button type="submit" variant="contained" size="large" fullWidth disabled={isBusy}>{t('login.submit')}</Button>
         </Stack>
 
         <Divider />
 
         {/* Neither of these signs anybody in, so they sit below the rule rather than beside the submit. */}
         <Stack spacing={1}>
-          <Link component={RouterLink} to="/credentials/forgot" variant="body2">Forgot your password?</Link>
-          <Link component={RouterLink} to="/account/reactivation-request" variant="body2">Reactivate your account</Link>
+          <Link component={RouterLink} to="/credentials/forgot" variant="body2">{t('login.forgotPassword')}</Link>
+          <Link component={RouterLink} to="/account/reactivation-request" variant="body2">{t('login.reactivateAccount')}</Link>
         </Stack>
       </Stack>
     </Paper>

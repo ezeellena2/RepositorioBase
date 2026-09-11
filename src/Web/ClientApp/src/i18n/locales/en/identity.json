@@ -1,1 +1,11 @@
-{}
+{
+  "login": {
+    "title": "Sign in",
+    "continueWithGoogle": "Continue with Google",
+    "email": "Email",
+    "password": "Password",
+    "submit": "Sign in",
+    "forgotPassword": "Forgot your password?",
+    "reactivateAccount": "Reactivate your account"
+  }
+}
