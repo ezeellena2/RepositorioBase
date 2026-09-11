@@ -221,5 +221,16 @@
     "create": "Create role",
     "save": "Save role",
     "cancel": "Cancel"
+  },
+  "sessions": {
+    "description": "Signing in somewhere else does not sign you out here. Ending a device asks for your password first.",
+    "endEveryOther": "End every other device",
+    "providerProof": "You have no password here. Ending a device asks {{provider}} to confirm it is you.",
+    "noPassword": "You signed in with a provider and have no password yet, so there is nothing to prove with. <setPassword>Set a password</setPassword> and this page can end a device.",
+    "loading": "Loading",
+    "empty": "No devices are signed in.",
+    "current": "— this device",
+    "lastSeen": "last seen {{lastSeenAt}}",
+    "endThis": "End this device"
   }
 }

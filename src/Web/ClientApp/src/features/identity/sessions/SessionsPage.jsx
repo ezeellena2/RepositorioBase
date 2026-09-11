@@ -11,6 +11,7 @@ import Skeleton from '@mui/material/Skeleton';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
+import { Trans, useTranslation } from '../../../i18n';
 import { useIdentity } from '../context/IdentityProvider';
 import { ProblemMessage } from '../ProblemMessage';
 import { useIdentityProof } from '../useIdentityProof';
@@ -36,6 +37,11 @@ const empty = { p: 4, textAlign: 'center' };
  * whose two `body2` lines are 20px each.
  */
 const rowHeight = 4 + 6 + 20 + 20 + 6 + 4;
+const sessionOperation = {
+  revokeOthers: { proofAction: 'sessions.revoke-others', operation: 'revoke-others' },
+  revokeOne: { proofAction: 'sessions.revoke-one', operation: 'revoke-one' },
+};
+const listItemTextSlots = { primary: { component: 'div' } };
 
 /**
  * The devices an identity is signed in on, and the two ways to end one (IA-REQ-049).
@@ -48,6 +54,7 @@ const rowHeight = 4 + 6 + 20 + 20 + 6 + 4;
 const SessionsPath = '/identity/sessions';
 
 export function SessionsPage() {
+  const { t } = useTranslation('identity');
   const identity = useIdentity();
   const proof = useIdentityProof();
   const [sessions, setSessions] = useState(null);
@@ -120,9 +127,9 @@ export function SessionsPage() {
     <Stack component="section" aria-labelledby="sessions-heading" spacing={3} sx={page}>
       <Stack direction="row" spacing={2} sx={header}>
         <Box>
-          <Typography id="sessions-heading" component="h1" variant="h5">Your devices</Typography>
+          <Typography id="sessions-heading" component="h1" variant="h5">{t('common:navigation.yourDevices')}</Typography>
           <Typography variant="body2" color="text.secondary" sx={supporting}>
-            Signing in somewhere else does not sign you out here. Ending a device asks for your password first.
+            {t('sessions.description')}
           </Typography>
         </Box>
         {/* Ending every other device at once is the widest thing this screen can do and the least often wanted, so
@@ -135,11 +142,11 @@ export function SessionsPage() {
             color="error"
             disabled={isBusy || !proof.canBegin(password)}
             onClick={() => run(
-              'sessions.revoke-others',
+              sessionOperation.revokeOthers.proofAction,
               () => identity.client.revokeOtherSessions(),
-              { returnTo: SessionsPath, operation: 'revoke-others' })}
+              { returnTo: SessionsPath, operation: sessionOperation.revokeOthers.operation })}
           >
-            End every other device
+            {t('sessions.endEveryOther')}
           </Button>
         )}
       </Stack>
@@ -152,7 +159,7 @@ export function SessionsPage() {
         <Paper variant="outlined" sx={proofSection}>
           <TextField
             id="sessions-password"
-            label="Password"
+            label={t('login.password')}
             type="password"
             autoComplete="current-password"
             fullWidth
@@ -162,25 +169,28 @@ export function SessionsPage() {
         </Paper>
       ) : proof.provider !== null ? (
         <Typography variant="body2" color="text.secondary">
-          You have no password here. Ending a device asks {proof.provider} to confirm it is you.
+          {t('sessions.providerProof', { provider: proof.provider })}
         </Typography>
       ) : (
         // A mailed reset is the one way in that needs no proof, which is exactly why it is the way out of here.
         <Typography variant="body2" color="text.secondary">
-          You signed in with a provider and have no password yet, so there is nothing to prove with.{' '}
-          <Link component={RouterLink} to="/credentials/forgot">Set a password</Link> and this page can end a device.
+          <Trans
+            ns="identity"
+            i18nKey="sessions.noPassword"
+            components={{ setPassword: <Link component={RouterLink} to="/credentials/forgot" /> }}
+          />
         </Typography>
       )}
 
       {/* The rows wait for the proof seam as well as for the list. Showing a device before this screen knows
           what it may offer would render the ending controls twice: once wrong, then again right. */}
       {sessions === null || !proof.isReady ? (
-        <Stack spacing={1} role="status" aria-label="Loading">
+        <Stack spacing={1} role="status" aria-label={t('sessions.loading')}>
           {[0, 1, 2].map((placeholder) => <Skeleton key={placeholder} variant="rounded" height={rowHeight} />)}
         </Stack>
       ) : sessions.length === 0 ? (
         <Paper variant="outlined" sx={empty}>
-          <Typography variant="body2" color="text.secondary">No devices are signed in.</Typography>
+          <Typography variant="body2" color="text.secondary">{t('sessions.empty')}</Typography>
         </Paper>
       ) : (
         <Paper variant="outlined">
@@ -188,18 +198,18 @@ export function SessionsPage() {
             {sessions.map((session, index) => (
               <ListItem key={session.sessionRef} divider={index < sessions.length - 1} sx={deviceRow}>
                 <ListItemText
-                  slotProps={{ primary: { component: 'div' } }}
+                  slotProps={listItemTextSlots}
                   primary={(
                     <Stack direction="row" spacing={1} useFlexGap sx={deviceName}>
                       <Typography id={`device-${session.sessionRef}`} variant="body2">{session.deviceLabel}</Typography>
                       {/* Deliberately one element holding exactly this text, and deliberately not a chip: the
                           marker for the device being used is read back with its dash. */}
                       {session.isCurrent && (
-                        <Typography variant="caption" color="text.secondary">&mdash; this device</Typography>
+                        <Typography variant="caption" color="text.secondary">{t('sessions.current')}</Typography>
                       )}
                     </Stack>
                   )}
-                  secondary={`last seen ${session.lastSeenAt}`}
+                  secondary={t('sessions.lastSeen', { lastSeenAt: session.lastSeenAt })}
                 />
                 {/* Every one of these is named "End this device" — the name a person reads in the row they are
                     looking at, and the name several callers read back, so it cannot change. What distinguishes
@@ -214,11 +224,11 @@ export function SessionsPage() {
                     aria-describedby={`device-${session.sessionRef}`}
                     disabled={isBusy || !proof.canBegin(password)}
                     onClick={() => run(
-                      'sessions.revoke-one',
+                      sessionOperation.revokeOne.proofAction,
                       () => identity.client.revokeSession(session.sessionRef),
-                      { returnTo: SessionsPath, operation: 'revoke-one', target: session.sessionRef })}
+                      { returnTo: SessionsPath, operation: sessionOperation.revokeOne.operation, target: session.sessionRef })}
                   >
-                    End this device
+                    {t('sessions.endThis')}
                   </Button>
                 )}
               </ListItem>
