@@ -89,6 +89,9 @@ jobs:
     - name: Install .NET
       uses: actions/setup-dotnet@v6
 
+    - name: Trust development HTTPS certificate
+      run: dotnet dev-certs https --trust
+
     - name: Restore solution
       run: dotnet restore
 

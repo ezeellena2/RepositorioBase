@@ -2,10 +2,10 @@
 
 | | |
 |---|---|
-| Status | **Phase 0 and the Phase 1 implementation are delivered to `main` at `afe6c92` and `ef19d44`. Local verification is green. GitHub Actions is now restricted to GitHub-owned actions; Phase 1 completion awaits the first green `spa` and `build` jobs from a fresh push.** |
+| Status | **Phase 0 and the Phase 1 implementation are delivered to `main` at `afe6c92` and `ef19d44`. The [first Build run](https://github.com/ezeellena2/RepositorioBase/actions/runs/34557253186) passed `spa`, compiled successfully, and passed Domain 186, Application Unit 187, Infrastructure Integration 302, and Application Functional 626; Web Acceptance failed 3/32 because auxiliary `HttpClient` calls rejected the Ubuntu ASP.NET development certificate with `AuthenticationException UntrustedRoot`. The certificate-trust correction awaits a rerun.** |
 | Last updated | 2026-09-11 |
 | Scope | Backend (.NET), React SPA (`src/Web/ClientApp`), outbox-delivered messages, tests, CI, and the repository's working rules |
-| Next action | Push this verified policy/state update to `origin/main`, then record the first `Build` run's `spa` and `build` results. |
+| Next action | Push the certificate-trust correction to `origin/main`, then record the rerun's `spa` and `build` results. |
 
 This document is self-contained: a new session that reads only this file must be able to continue. It is also the
 source of truth — agent memories (Claude auto-memory, Engram) are not shared by every tool.
@@ -571,7 +571,7 @@ requirements of §7; a traceability table (requirement → gate → phase → ev
 | Phase | State |
 |---|---|
 | 0 | Delivered directly to `main` at exact commit `afe6c92` after fast-forward and remote-ref verification — 2026-09-10 |
-| 1 | Implemented, fully verified locally, committed at `ef19d44`, and fast-forward pushed to `origin/main` after the separate baseline journey repair at `f21103d`. GitHub Actions is enabled with only GitHub-owned actions. Completion awaits the first green `spa` and `build` jobs from a fresh push. |
+| 1 | Implemented, fully verified locally, committed at `ef19d44`, and fast-forward pushed to `origin/main` after the separate baseline journey repair at `f21103d`. The [first Build run](https://github.com/ezeellena2/RepositorioBase/actions/runs/34557253186) passed `spa`; its build compiled and passed Domain 186, Application Unit 187, Infrastructure Integration 302, and Application Functional 626, but Web Acceptance failed 3/32 because auxiliary `HttpClient` calls rejected the Ubuntu ASP.NET development certificate with `AuthenticationException UntrustedRoot`. The `dotnet dev-certs https --trust` correction awaits a rerun. |
 | 2–6 | Pending |
 
 ## 11. Phases — decisions, steps and exit criteria
@@ -911,3 +911,4 @@ Recorded 2026-09-09, verify before relying on them:
 | 2026-09-11 | Phase 1 was committed as `ef19d44` after the complete local verification and fast-forward pushed to `origin/main` after `f21103d`; no force push or PR was used. GitHub recorded the push but dispatched no workflow run. |
 | 2026-09-11 | The user established fixed autonomy boundaries (§0.2): do not ask before verified commits/pushes to `main`, planned dependency installs, suite execution, or in-scope fixes; ask only for phase product decisions, GitHub/account/machine configuration, destructive data or history changes, and costs, always with a recommendation. |
 | 2026-09-11 | GitHub Actions was enabled and restricted to GitHub-owned actions (`allowed_actions: selected`, GitHub-owned allowed, verified marketplace actions disallowed, no custom patterns). `Build` remains active; a fresh push is required because the earlier push is not dispatched retroactively. |
+| 2026-09-11 | The [first Build run](https://github.com/ezeellena2/RepositorioBase/actions/runs/34557253186) passed `spa`. Its build compiled successfully and passed Domain 186, Application Unit 187, Infrastructure Integration 302, and Application Functional 626; Web Acceptance failed 3/32 because auxiliary `HttpClient` calls rejected the ASP.NET development certificate on Ubuntu with `AuthenticationException UntrustedRoot`. Playwright already ignores HTTPS errors. The smallest environment correction adds `dotnet dev-certs https --trust` immediately after `actions/setup-dotnet@v6`; its rerun is pending. |
