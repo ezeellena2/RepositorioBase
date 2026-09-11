@@ -26,7 +26,7 @@ export function IdentityProvider({ children, client }) {
 
   useEffect(() => () => { mounted.current = false; }, []);
 
-  const loadContext = useCallback(async () => {
+  const loadContext = useCallback(async ({ suppressAuthenticationRequired = true } = {}) => {
     try {
       const loaded = await identityClient.getContext();
       if (mounted.current) {
@@ -39,18 +39,20 @@ export function IdentityProvider({ children, client }) {
       // acting on one is worse than showing none. Why it failed is kept, so the sign-in page can say something
       // truer than "sign in" when the real answer was that a session expired or the contract drifted.
       //
-      // `authentication_required` is the one code that is not a failure at all: it is what this endpoint answers
-      // every visitor who has no session yet, which is everyone who opens /login. Recording it put a red refusal
-      // — "Sign in to continue." — at the top of the sign-in card before anybody had asked for anything. It is
-      // dropped, and only that one: `invalid_session` still lands here, because a session that expired is
-      // precisely the thing the paragraph above wants the sign-in page to be able to say.
+      // `authentication_required` is not a failure during the initial anonymous bootstrap: it is what this
+      // endpoint answers every visitor who opens /login without a session. After an explicit sign-in attempt it
+      // is a refusal, though, and must reach the submit path so the sign-in card can explain the neutral outcome.
+      // `invalid_session` still lands here, because an expired session is precisely what the paragraph above
+      // wants the sign-in page to be able to say.
       const problem = failure instanceof IdentityProblem
         ? failure.problem
         : { code: 'context_unreadable', status: 0, detail: String(failure.message ?? failure) };
+      const authenticationRequired = problem.code === 'authentication_required';
       if (mounted.current) {
         setContext(null);
-        setContextProblem(problem.code === 'authentication_required' ? null : problem);
+        setContextProblem(suppressAuthenticationRequired && authenticationRequired ? null : problem);
       }
+      if (!suppressAuthenticationRequired && authenticationRequired) throw failure;
       return null;
     }
   }, [identityClient]);
@@ -69,7 +71,7 @@ export function IdentityProvider({ children, client }) {
   const signIn = useCallback(async (email, password) => {
     await identityClient.signIn(email, password);
     await identityClient.bootstrapAntiforgery();
-    return loadContext();
+    return loadContext({ suppressAuthenticationRequired: false });
   }, [identityClient, loadContext]);
 
   const signOut = useCallback(async () => {

@@ -49,7 +49,9 @@ export function LoginPage() {
   const [params] = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const returnUrl = safeReturnUrl(params.get('returnUrl'));
+  const returnUrl = params.has('returnUrl')
+    ? safeReturnUrl(params.get('returnUrl'))
+    : '/identity';
   const { submit, problem, isBusy } = useSubmit((...args) => identity.signIn(...args));
   const [providerProblem, setProviderProblem] = useState(null);
 
