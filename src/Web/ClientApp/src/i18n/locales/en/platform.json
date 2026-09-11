@@ -82,5 +82,45 @@
     "suspend": "Suspend {{email}}",
     "reactivate": "Reactivate {{email}}",
     "more": "More accounts"
+  },
+  "invitations": {
+    "register": {
+      "title": "Set up your Platform account",
+      "success": "Check your email. If that invitation is still open, we have sent you what you need to continue. Confirm your address, sign in, then open this invitation link again to set up your second factor.",
+      "password": "Choose a password",
+      "continue": "Continue"
+    },
+    "confirm": {
+      "title": "Confirm your Platform address",
+      "success": "Your address is confirmed. Sign in, then open your invitation email again to set up your second factor.",
+      "signIn": "Sign in",
+      "submit": "Confirm my address"
+    },
+    "bootstrap": {
+      "title": "Resend the Platform owner invitation",
+      "success": "If an owner invitation is waiting and could not be delivered, a new one is on its way.",
+      "resend": "Resend"
+    }
+  },
+  "mfa": {
+    "setUp": "Set up your second factor",
+    "signInWithInvitedAddress": "Sign in with the invited address, then open your invitation email again.",
+    "beginEnrollment": "Begin enrollment",
+    "sharedKey": "Shared key",
+    "recoveryCodes": "Recovery codes",
+    "codeFromAuthenticator": "Code from your authenticator",
+    "verify": "Verify",
+    "savedRecoveryCodes": "I have saved my recovery codes",
+    "active": "Your second factor is active.",
+    "recovery": {
+      "title": "Replace your second factor",
+      "description": "Use this if you have lost the authenticator. You need your password and one unused recovery code.",
+      "signInFirst": "Sign in first. Replacing a second factor needs your password as well as a recovery code.",
+      "replacementReady": "Add this key to your authenticator and save the codes. They are shown once and cannot be shown again.",
+      "proveNewFactor": "Prove the new factor before making any Platform change: nobody has proved it yet, including you.",
+      "password": "Your password",
+      "code": "A recovery code",
+      "submit": "Replace my second factor"
+    }
   }
 }

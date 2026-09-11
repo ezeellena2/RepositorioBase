@@ -13,6 +13,7 @@ import { useIdentity } from '../../identity/context/IdentityProvider';
 import { usePlatformClient } from './PlatformInvitationPages';
 import { ProblemMessage } from '../../identity/ProblemMessage';
 import { useSubmit } from '../../identity/useSubmit';
+import { useTranslation } from '../../../i18n';
 
 /** Required without the asterisk MUI would add, which would rename the field for everything that reads its label. */
 const requiredField = { inputLabel: { required: false } };
@@ -41,6 +42,9 @@ const value = { m: 0, mt: 0.5 };
 /** Both shown-once values are set out the same way: a bordered block holding only what has to be copied down. */
 const codeBlock = { px: 2, py: 1 };
 const leading = { alignSelf: 'flex-start' };
+const recoveryHeadingId = 'mfa-recovery-heading';
+const recoveryAction = 'platform.mfa.recover';
+const emptyFieldValue = '';
 
 /**
  * Getting a second factor back after losing the authenticator that held it (IA-REQ-041, C6).
@@ -54,6 +58,7 @@ const leading = { alignSelf: 'flex-start' };
  * what authorizes this is the caller's own session plus the code.
  */
 export function MfaRecoveryPage() {
+  const { t } = useTranslation('platform');
   const identity = useIdentity();
   const platform = usePlatformClient();
   const [password, setPassword] = useState('');
@@ -65,14 +70,14 @@ export function MfaRecoveryPage() {
   const asking = signedIn && replacement === null;
 
   return (
-    <Stack component="section" aria-labelledby="mfa-recovery-heading" spacing={3} sx={frame}>
+    <Stack component="section" aria-labelledby={recoveryHeadingId} spacing={3} sx={frame}>
       <Box>
-        <Typography id="mfa-recovery-heading" component="h1" variant="h5">Replace your second factor</Typography>
+        <Typography id={recoveryHeadingId} component="h1" variant="h5">{t('mfa.recovery.title')}</Typography>
         {/* The line that says what this screen is for belongs to the screen, so it sits with the title rather
             than inside the form. It is said while there is still a decision to make and not after. */}
         {asking && (
           <Typography variant="body2" color="text.secondary" sx={supporting}>
-            Use this if you have lost the authenticator. You need your password and one unused recovery code.
+            {t('mfa.recovery.description')}
           </Typography>
         )}
       </Box>
@@ -83,7 +88,7 @@ export function MfaRecoveryPage() {
            piece — so the way out is its sibling and never a link inside it. */
         <Paper variant="outlined" sx={empty}>
           <Typography variant="body2" color="text.secondary">
-            Sign in first. Replacing a second factor needs your password as well as a recovery code.
+            {t('mfa.recovery.signInFirst')}
           </Typography>
           {/* The way out belongs here and /login is it, but its label would be a user-visible string this screen
               has never carried, so it is reported rather than written into a visual change. */}
@@ -91,12 +96,12 @@ export function MfaRecoveryPage() {
       ) : replacement ? (
         <>
           <Alert severity="success" role="status">
-            Add this key to your authenticator and save the codes. They are shown once and cannot be shown again.
+            {t('mfa.recovery.replacementReady')}
           </Alert>
           <Paper variant="outlined" sx={section}>
             <Stack spacing={2}>
               <Box component="dl" sx={facts}>
-                <Typography component="dt" variant="body2" color="text.secondary">Shared key</Typography>
+                <Typography component="dt" variant="body2" color="text.secondary">{t('mfa.sharedKey')}</Typography>
                 <Box component="dd" sx={value}>
                   {/* Given the weight of a value somebody copies by hand, and deliberately nothing else: the
                       element's own text is read and decoded, so a space, a hyphen or a control sharing it would
@@ -112,7 +117,7 @@ export function MfaRecoveryPage() {
                   dense list in a bordered block. It was a `ul` with the bullets switched off by hand here and a
                   `List` there — the component MUI already ships carries that reset and its density. */}
               <Paper variant="outlined" sx={codeBlock}>
-                <List dense disablePadding aria-label="Recovery codes">
+                <List dense disablePadding aria-label={t('mfa.recoveryCodes')}>
                   {replacement.recoveryCodes.map((code, index) => (
                     <ListItem
                       key={code}
@@ -130,7 +135,7 @@ export function MfaRecoveryPage() {
               the only Alert on this branch and stays that way: what the server refused is rendered on the form
               branch alone, so this one can never become a second thing shouting at the same time. */}
           <Alert severity="warning">
-            Prove the new factor before making any Platform change: nobody has proved it yet, including you.
+            {t('mfa.recovery.proveNewFactor')}
           </Alert>
         </>
       ) : (
@@ -146,12 +151,12 @@ export function MfaRecoveryPage() {
               // The proof first, for this action alone: a proof bought to change a password does not pay for
               // replacing a second factor. Nothing is kept between the two calls but what the person typed.
               const proved = await submit(async () => {
-                await identity.client.reauthenticate('platform.mfa.recover', password);
+                await identity.client.reauthenticate(recoveryAction, password);
                 return platform.recoverMfa(recoveryCode);
               });
 
-              setPassword('');
-              setRecoveryCode('');
+              setPassword(emptyFieldValue);
+              setRecoveryCode(emptyFieldValue);
               if (proved) setReplacement(proved);
             }}
           >
@@ -160,7 +165,7 @@ export function MfaRecoveryPage() {
                   code are exactly the two things a password manager must not be able to fill. */}
               <TextField
                 id="mfa-recovery-password"
-                label="Your password"
+                label={t('mfa.recovery.password')}
                 type="password"
                 required
                 fullWidth
@@ -170,7 +175,7 @@ export function MfaRecoveryPage() {
               />
               <TextField
                 id="mfa-recovery-code"
-                label="A recovery code"
+                label={t('mfa.recovery.code')}
                 type="text"
                 required
                 fullWidth
@@ -179,7 +184,7 @@ export function MfaRecoveryPage() {
                 onChange={(event) => setRecoveryCode(event.target.value)}
               />
               <Button type="submit" variant="contained" disabled={isBusy} sx={leading}>
-                Replace my second factor
+                {t('mfa.recovery.submit')}
               </Button>
             </Stack>
           </Paper>

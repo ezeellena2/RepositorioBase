@@ -16,6 +16,7 @@ import { ProblemMessage } from '../../identity/ProblemMessage';
 import { useFragmentToken } from '../../identity/useFragmentToken';
 import { useSubmit } from '../../identity/useSubmit';
 import { createPlatformClient } from '../api/platformClient';
+import { useTranslation } from '../../../i18n';
 
 /** Required without the asterisk MUI would add, which would rename the field for everything that reads its label. */
 const requiredField = { inputLabel: { required: false } };
@@ -50,6 +51,16 @@ const codeBlock = { px: 2, py: 1 };
 /** A one-time code is six characters wide, so the FORM is — and the field fills the form it was put in. */
 const codeForm = { maxWidth: 240 };
 const leading = { alignSelf: 'flex-start' };
+const invitationHeadings = {
+  register: 'platform-register-heading',
+  confirm: 'platform-confirm-heading',
+  mfa: 'platform-mfa-heading',
+  recover: 'platform-recover-heading',
+};
+const mfaStages = { start: 'start', verify: 'verify', acknowledge: 'acknowledge', done: 'done' };
+const emptyToken = '';
+const platformTenantType = 'Platform';
+const mfaCodeFieldSlots = { ...requiredField, htmlInput: { inputMode: 'numeric' } };
 
 export function usePlatformClient() {
   const identity = useIdentity();
@@ -80,6 +91,7 @@ function EntranceCard({ headingId, title, children }) {
  * the matching identity is missing; for one that already exists it is ignored and cannot take over the account.
  */
 export function RegisterPlatformInviteePage() {
+  const { t } = useTranslation('platform');
   const identity = useIdentity();
   const platform = usePlatformClient();
   const token = useFragmentToken();
@@ -88,7 +100,7 @@ export function RegisterPlatformInviteePage() {
   const { submit, problem, isBusy, result } = useSubmit((secret, chosen) => platform.registerFromInvitation(secret, chosen));
 
   return (
-    <EntranceCard headingId="platform-register-heading" title="Set up your Platform account">
+    <EntranceCard headingId={invitationHeadings.register} title={t('invitations.register.title')}>
       {/* Gated on the branch that can raise it. The registration form unmounts the moment the ceremony starts, so
           `problem` can only ever be stale from here on — and the ceremony renders a refusal slot of its own. Two
           `Alert`s are two `role="alert"` elements, and this screen is read as having exactly one. */}
@@ -101,15 +113,14 @@ export function RegisterPlatformInviteePage() {
         <PlatformSecondFactor token={token} />
       ) : result ? (
         <Alert severity="success" role="status">
-          Check your email. If that invitation is still open, we have sent you what you need to continue. Confirm
-          your address, sign in, then open this invitation link again to set up your second factor.
+          {t('invitations.register.success')}
         </Alert>
       ) : (
         <>
-          <Stack component="form" spacing={2} onSubmit={(event) => { event.preventDefault(); submit(token ?? '', password); }}>
+          <Stack component="form" spacing={2} onSubmit={(event) => { event.preventDefault(); submit(token ?? emptyToken, password); }}>
             <TextField
               id="platform-password"
-              label="Choose a password"
+              label={t('invitations.register.password')}
               type="password"
               autoComplete="new-password"
               required
@@ -118,7 +129,7 @@ export function RegisterPlatformInviteePage() {
               value={password}
               onChange={(event) => setPassword(event.target.value)}
             />
-            <Button type="submit" variant="contained" size="large" fullWidth disabled={isBusy}>Continue</Button>
+            <Button type="submit" variant="contained" size="large" fullWidth disabled={isBusy}>{t('invitations.register.continue')}</Button>
           </Stack>
           {/* Signed in already means the account exists and the address is confirmed, so what is left of the
               invitation is its last gate. Offering it here is what makes the mailed link the whole journey rather
@@ -136,7 +147,7 @@ export function RegisterPlatformInviteePage() {
                 disabled={!token}
                 onClick={() => setContinuing(true)}
               >
-                Set up your second factor
+                {t('mfa.setUp')}
               </Button>
             </>
           )}
@@ -155,22 +166,23 @@ export function RegisterPlatformInviteePage() {
  * confirmed comes from the envelope the server sealed, not from anything typed here.
  */
 export function ConfirmPlatformInviteePage() {
+  const { t } = useTranslation('platform');
   const platform = usePlatformClient();
   const confirmationToken = useFragmentToken();
   const { submit, problem, isBusy, result } = useSubmit((secret) => platform.confirmInvitation(secret));
 
   return (
-    <EntranceCard headingId="platform-confirm-heading" title="Confirm your Platform address">
+    <EntranceCard headingId={invitationHeadings.confirm} title={t('invitations.confirm.title')}>
       <ProblemMessage problem={problem} />
       {result ? (
         <>
           <Alert severity="success" role="status">
-            Your address is confirmed. Sign in, then open your invitation email again to set up your second factor.
+            {t('invitations.confirm.success')}
           </Alert>
           {/* Confirming is done and its button is out of the tree, so the one filled button on this state is the
               step the sentence above names. It stays an anchor — `component={RouterLink}` renders `<a href>` —
               because it is read back as a link to /login, and its whole text is the name that is read. */}
-          <Button variant="contained" size="large" fullWidth component={RouterLink} to="/login">Sign in</Button>
+          <Button variant="contained" size="large" fullWidth component={RouterLink} to="/login">{t('invitations.confirm.signIn')}</Button>
         </>
       ) : (
         <Button
@@ -179,9 +191,9 @@ export function ConfirmPlatformInviteePage() {
           size="large"
           fullWidth
           disabled={isBusy}
-          onClick={() => submit(confirmationToken ?? '')}
+          onClick={() => submit(confirmationToken ?? emptyToken)}
         >
-          Confirm my address
+          {t('invitations.confirm.submit')}
         </Button>
       )}
     </EntranceCard>
@@ -198,21 +210,22 @@ export function ConfirmPlatformInviteePage() {
  * rather than inherited from a container meant for a login card.
  */
 export function PlatformMfaEnrollmentPage() {
+  const { t } = useTranslation('platform');
   const identity = useIdentity();
   const token = useFragmentToken();
 
   if (!identity?.isAuthenticated) {
     return (
-      <Stack component="section" aria-labelledby="platform-mfa-heading" spacing={3} sx={pageWidth}>
+      <Stack component="section" aria-labelledby={invitationHeadings.mfa} spacing={3} sx={pageWidth}>
         <Box>
-          <Typography id="platform-mfa-heading" component="h1" variant="h5">Set up your second factor</Typography>
+          <Typography id={invitationHeadings.mfa} component="h1" variant="h5">{t('mfa.setUp')}</Typography>
         </Box>
         {/* Signing in is the thing that resolves this state and it is a thing the visitor can do, so the empty
             state offers the door instead of only describing it. The sentence stays whole and the way out is its
             sibling: a link put inside the sentence would break the clause a caller reads back in one piece. */}
         <Paper variant="outlined" sx={empty}>
           <Typography variant="body2" color="text.secondary">
-            Sign in with the invited address, then open your invitation email again.
+            {t('mfa.signInWithInvitedAddress')}
           </Typography>
           {/* The way out belongs here and /login is it, but its label would be a user-visible string this screen
               has never carried, so it is reported rather than written into a visual change. */}
@@ -222,9 +235,9 @@ export function PlatformMfaEnrollmentPage() {
   }
 
   return (
-    <Stack component="section" aria-labelledby="platform-mfa-heading" spacing={3} sx={pageWidth}>
+    <Stack component="section" aria-labelledby={invitationHeadings.mfa} spacing={3} sx={pageWidth}>
       <Box>
-        <Typography id="platform-mfa-heading" component="h1" variant="h5">Set up your second factor</Typography>
+        <Typography id={invitationHeadings.mfa} component="h1" variant="h5">{t('mfa.setUp')}</Typography>
       </Box>
       <Paper variant="outlined" sx={section}>
         <PlatformSecondFactor token={token} />
@@ -246,40 +259,41 @@ export function PlatformMfaEnrollmentPage() {
  * inside the shell it sits in an outlined section, because that difference is a fact about the route.
  */
 function PlatformSecondFactor({ token }) {
+  const { t } = useTranslation('platform');
   const identity = useIdentity();
   const platform = usePlatformClient();
   const [enrollment, setEnrollment] = useState(null);
   const [code, setCode] = useState('');
-  const [stage, setStage] = useState('start');
+  const [stage, setStage] = useState(mfaStages.start);
   const { submit, problem, isBusy } = useSubmit(async (action) => action());
 
   return (
     <Stack spacing={3}>
       <ProblemMessage problem={problem} />
 
-      {stage === 'start' && (
+      {stage === mfaStages.start && (
         <Button
           type="button"
           variant="contained"
           disabled={isBusy}
           sx={leading}
           onClick={async () => {
-            const details = await submit(() => platform.beginMfaEnrollment(token ?? ''));
+            const details = await submit(() => platform.beginMfaEnrollment(token ?? emptyToken));
             if (details) {
               setEnrollment(details);
-              setStage('verify');
+              setStage(mfaStages.verify);
             }
           }}
         >
-          Begin enrollment
+          {t('mfa.beginEnrollment')}
         </Button>
       )}
 
       {/* Shown once and never again, so both halves are set out to be copied down rather than read past: the key
           in a block of its own, and the codes as a list somebody can tick their way through. */}
-      {stage !== 'start' && enrollment && (
+      {stage !== mfaStages.start && enrollment && (
         <Box component="dl" sx={facts}>
-          <Typography component="dt" variant="body2" color="text.secondary">Shared key</Typography>
+          <Typography component="dt" variant="body2" color="text.secondary">{t('mfa.sharedKey')}</Typography>
           <Box component="dd" sx={value}>
             {/* The key is the one string in this product that is transcribed by hand, so it is given the weight
                 of a value to copy instead of the weight of a sentence. What it is NOT given is grouping: a
@@ -290,10 +304,10 @@ function PlatformSecondFactor({ token }) {
               <Typography component="div" variant="subtitle1" data-testid="platform-shared-key">{enrollment.sharedKey}</Typography>
             </Paper>
           </Box>
-          <Typography component="dt" variant="body2" color="text.secondary" sx={nextFact}>Recovery codes</Typography>
+          <Typography component="dt" variant="body2" color="text.secondary" sx={nextFact}>{t('mfa.recoveryCodes')}</Typography>
           <Box component="dd" sx={value}>
             <Paper variant="outlined" sx={codeBlock}>
-              <List dense disablePadding aria-label="Recovery codes">
+              <List dense disablePadding aria-label={t('mfa.recoveryCodes')}>
                 {enrollment.recoveryCodes.map((recoveryCode, index) => (
                   <ListItem
                     key={recoveryCode}
@@ -309,55 +323,55 @@ function PlatformSecondFactor({ token }) {
         </Box>
       )}
 
-      {stage === 'verify' && (
+      {stage === mfaStages.verify && (
         <Stack
           component="form"
           spacing={2}
           sx={codeForm}
           onSubmit={async (event) => {
             event.preventDefault();
-            const verified = await submit(() => platform.verifyMfaEnrollment(token ?? '', code));
-            if (verified !== undefined) setStage('acknowledge');
+            const verified = await submit(() => platform.verifyMfaEnrollment(token ?? emptyToken, code));
+            if (verified !== undefined) setStage(mfaStages.acknowledge);
           }}
         >
           <TextField
             id="platform-mfa-code"
-            label="Code from your authenticator"
+            label={t('mfa.codeFromAuthenticator')}
             type="text"
             required
             fullWidth
-            slotProps={{ ...requiredField, htmlInput: { inputMode: 'numeric' } }}
+            slotProps={mfaCodeFieldSlots}
             value={code}
             onChange={(event) => setCode(event.target.value)}
           />
-          <Button type="submit" variant="contained" disabled={isBusy} sx={leading}>Verify</Button>
+          <Button type="submit" variant="contained" disabled={isBusy} sx={leading}>{t('mfa.verify')}</Button>
         </Stack>
       )}
 
-      {stage === 'acknowledge' && (
+      {stage === mfaStages.acknowledge && (
         <Button
           type="button"
           variant="contained"
           disabled={isBusy}
           sx={leading}
           onClick={async () => {
-            const acknowledged = await submit(() => platform.acknowledgeRecoveryCodes(token ?? ''));
+            const acknowledged = await submit(() => platform.acknowledgeRecoveryCodes(token ?? emptyToken));
             if (acknowledged !== undefined) {
-              setStage('done');
+              setStage(mfaStages.done);
               // The membership only exists as of this moment, so the session that completed the ceremony still
               // has no active tenant. Selecting it here is what makes the ceremony end somewhere rather than
               // leaving the new administrator to work out that they must go and choose one.
               const reloaded = await identity.reload();
-              const platformTenant = reloaded?.availableTenants?.find((tenant) => tenant.type === 'Platform');
+              const platformTenant = reloaded?.availableTenants?.find((tenant) => tenant.type === platformTenantType);
               if (platformTenant) await identity.selectTenant(platformTenant.id);
             }
           }}
         >
-          I have saved my recovery codes
+          {t('mfa.savedRecoveryCodes')}
         </Button>
       )}
 
-      {stage === 'done' && <Alert severity="success" role="status">Your second factor is active.</Alert>}
+      {stage === mfaStages.done && <Alert severity="success" role="status">{t('mfa.active')}</Alert>}
     </Stack>
   );
 }
@@ -370,15 +384,16 @@ function PlatformSecondFactor({ token }) {
  * support line. That is a product requirement about what this page is allowed to know, not a style.
  */
 export function RecoverPlatformBootstrapPage() {
+  const { t } = useTranslation('platform');
   const platform = usePlatformClient();
   const { submit, problem, isBusy, result } = useSubmit(() => platform.recoverBootstrapInvitation());
 
   return (
-    <EntranceCard headingId="platform-recover-heading" title="Resend the Platform owner invitation">
+    <EntranceCard headingId={invitationHeadings.recover} title={t('invitations.bootstrap.title')}>
       <ProblemMessage problem={problem} />
       {result ? (
         <Alert severity="success" role="status">
-          If an owner invitation is waiting and could not be delivered, a new one is on its way.
+          {t('invitations.bootstrap.success')}
         </Alert>
       ) : (
         <Button
@@ -389,7 +404,7 @@ export function RecoverPlatformBootstrapPage() {
           disabled={isBusy}
           onClick={() => submit()}
         >
-          Resend
+          {t('invitations.bootstrap.resend')}
         </Button>
       )}
     </EntranceCard>
