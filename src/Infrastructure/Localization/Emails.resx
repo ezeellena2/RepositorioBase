@@ -9,7 +9,7 @@
   <data name="ConfirmationSubject" xml:space="preserve"><value>Confirm your email</value></data>
   <data name="ConfirmationBody" xml:space="preserve"><value>Open this link to confirm: {0}#token={1}</value></data>
   <data name="SignInNoticeSubject" xml:space="preserve"><value>Sign in to your account</value></data>
-  <data name="SignInNoticeBody" xml:space="preserve"><value>A registration was requested for your email. You can sign in at {0}.</value></data>
+  <data name="SignInNoticeBody" xml:space="preserve"><value>Someone tried to register with your email. You can sign in at {0}.</value></data>
   <data name="OrganizationRegistrationConfirmationSubject" xml:space="preserve"><value>Confirm your email</value></data>
   <data name="OrganizationRegistrationConfirmationBody" xml:space="preserve"><value>Open this link to finish registering your organization: {0}#token={1}</value></data>
   <data name="OrganizationRegistrationSignInSubject" xml:space="preserve"><value>Sign in to your account</value></data>
@@ -17,13 +17,13 @@
   <data name="PersonalRegistrationConfirmationSubject" xml:space="preserve"><value>Confirm your email</value></data>
   <data name="PersonalRegistrationConfirmationBody" xml:space="preserve"><value>Open this link to finish setting up your personal account: {0}#token={1}</value></data>
   <data name="PersonalRegistrationSignInSubject" xml:space="preserve"><value>Sign in to your account</value></data>
-  <data name="PersonalRegistrationSignInBody" xml:space="preserve"><value>Someone tried to set up a personal account with your email. Your account already exists; sign in at {0} and add it from there.</value></data>
+  <data name="PersonalRegistrationSignInBody" xml:space="preserve"><value>Someone tried to set up a personal account with your email. Your account already exists; sign in at {0} and set up your personal account there.</value></data>
   <data name="PasswordRecoverySubject" xml:space="preserve"><value>Reset your password</value></data>
   <data name="PasswordRecoveryBody" xml:space="preserve"><value>Open this link to choose a new password: {0}#token={1}</value></data>
   <data name="AccountReactivationSubject" xml:space="preserve"><value>Reactivate your account</value></data>
   <data name="AccountReactivationBody" xml:space="preserve"><value>Open this link and enter your current password to reactivate your account: {0}#token={1}</value></data>
   <data name="AccountSelfDeactivatedSubject" xml:space="preserve"><value>Your account was deactivated</value></data>
-  <data name="AccountSelfDeactivatedBody" xml:space="preserve"><value>Your account was deactivated and its sessions were ended. To request reactivation, visit {0}</value></data>
+  <data name="AccountSelfDeactivatedBody" xml:space="preserve"><value>Your account was deactivated and all your sessions were closed. To request reactivation, visit {0}</value></data>
   <data name="AccountAdministrativelySuspendedSubject" xml:space="preserve"><value>Your account status changed</value></data>
   <data name="AccountAdministrativelySuspendedBody" xml:space="preserve"><value>An administrator suspended your account. This message does not restore access. To check your access, visit {0}</value></data>
   <data name="AccountReactivatedSubject" xml:space="preserve"><value>Your account status changed</value></data>
@@ -32,7 +32,7 @@
   <data name="PlatformOwnerInvitationBody" xml:space="preserve"><value>You have been invited to become the Platform owner. Open this link to set up your account: {0}#token={1}</value></data>
   <data name="PlatformAdministratorInvitationSubject" xml:space="preserve"><value>You have been invited to Platform</value></data>
   <data name="PlatformAdministratorInvitationBody" xml:space="preserve"><value>You have been invited to become a Platform administrator. Open this link to set up your account: {0}#token={1}</value></data>
-  <data name="PlatformConfirmationSubject" xml:space="preserve"><value>Confirm your Platform address</value></data>
+  <data name="PlatformConfirmationSubject" xml:space="preserve"><value>Confirm your Platform email address</value></data>
   <data name="PlatformConfirmationBody" xml:space="preserve"><value>Open this link to confirm your address: {0}#token={1}</value></data>
   <data name="PlatformSignInSubject" xml:space="preserve"><value>Sign in to your account</value></data>
   <data name="PlatformSignInBody" xml:space="preserve"><value>Someone tried to register with your email. Your account already exists; you can sign in at {0}.</value></data>

@@ -101,6 +101,8 @@ public sealed class IdentityEmailDeliveryMatrixTests
                                 email.Body,
                                 Does.StartWith(language == "es" ? scenario.SpanishLead : scenario.EnglishLead),
                                 scenario.Name);
+                            var exactBody = language == "es" ? scenario.SpanishBody : scenario.EnglishBody;
+                            if (exactBody is not null) email.Body.ShouldBe(exactBody, scenario.Name);
                             Assert.That(email.Body, Does.Contain($"{Origin}{scenario.Path}"), scenario.Name);
                             Regex.IsMatch(email.Subject, @"\{\d+[^}]*\}").ShouldBeFalse(scenario.Name);
                             Regex.IsMatch(email.Body, @"\{\d+[^}]*\}").ShouldBeFalse(scenario.Name);
@@ -422,7 +424,9 @@ public sealed class IdentityEmailDeliveryMatrixTests
             JsonSerializer.Serialize(new { IdentityId = seeded.InvitedAccount.Id, InvitationId = seeded.OrganizationInvitation.Id.Value }),
             seeded.InvitedAccount.Email!, false, "/login",
             "Sign in to your account", "Inicie sesión en su cuenta",
-            "A registration was requested", "Se solicitó un registro"),
+            "Someone tried to register with your email", "Alguien intentó registrarse con su correo electrónico",
+            $"Someone tried to register with your email. You can sign in at {Origin}/login.",
+            $"Alguien intentó registrarse con su correo electrónico. Puede iniciar sesión en {Origin}/login."),
         new("organization registration confirmation", "identity.registration.confirmation.requested",
             JsonSerializer.Serialize(new { IntentId = seeded.OrganizationConfirmation.Id }),
             seeded.OrganizationConfirmation.NormalizedEmail, true, "/confirm-email",
@@ -442,7 +446,9 @@ public sealed class IdentityEmailDeliveryMatrixTests
             JsonSerializer.Serialize(new { IntentId = seeded.PersonalSignIn.Id }),
             seeded.PersonalSignIn.NormalizedEmail, false, "/login",
             "Sign in to your account", "Inicie sesión en su cuenta",
-            "Someone tried to set up a personal account", "Alguien intentó configurar una cuenta personal"),
+            "Someone tried to set up a personal account", "Alguien intentó configurar una cuenta personal",
+            $"Someone tried to set up a personal account with your email. Your account already exists; sign in at {Origin}/login and set up your personal account there.",
+            $"Alguien intentó configurar una cuenta personal con su correo electrónico. Su cuenta ya existe; inicie sesión en {Origin}/login y configure ahí su cuenta personal."),
         new("password recovery", "identity.password.recovery.requested",
             JsonSerializer.Serialize(new { RequestId = seeded.PasswordReset.Id }),
             seeded.Account.Email!, true, "/credentials/reset",
@@ -457,7 +463,9 @@ public sealed class IdentityEmailDeliveryMatrixTests
             JsonSerializer.Serialize(new { IdentityId = seeded.Account.Id }),
             seeded.Account.Email!, false, "/account/reactivation-request",
             "Your account was deactivated", "Su cuenta fue desactivada",
-            "Your account was deactivated", "Su cuenta fue desactivada"),
+            "Your account was deactivated", "Su cuenta fue desactivada",
+            $"Your account was deactivated and all your sessions were closed. To request reactivation, visit {Origin}/account/reactivation-request",
+            $"Su cuenta fue desactivada y se cerraron todas sus sesiones. Para solicitar la reactivación, visite {Origin}/account/reactivation-request"),
         new("administrative suspension notice", "identity.lifecycle.administratively.suspended.notice.requested",
             JsonSerializer.Serialize(new { IdentityId = seeded.Account.Id }),
             seeded.Account.Email!, false, "/login",
@@ -481,8 +489,10 @@ public sealed class IdentityEmailDeliveryMatrixTests
         new("Platform confirmation", "platform.invitation.confirmation.requested",
             JsonSerializer.Serialize(new { IdentityId = seeded.PlatformAccount.Id, InvitationId = seeded.PlatformAdministrator.Id.Value }),
             seeded.PlatformAccount.Email!, true, "/platform/invitations/confirm",
-            "Confirm your Platform address", "Confirme su dirección de la Plataforma",
-            "Open this link to confirm your address:", "Abra este enlace para confirmar su dirección:"),
+            "Confirm your Platform email address", "Confirme su correo electrónico de la Plataforma",
+            "Open this link to confirm your address:", "Abra este enlace para confirmar su dirección:",
+            $"Open this link to confirm your address: {Origin}/platform/invitations/confirm#token={Uri.EscapeDataString(Token)}",
+            $"Abra este enlace para confirmar su dirección: {Origin}/platform/invitations/confirm#token={Uri.EscapeDataString(Token)}"),
         new("Platform sign-in notice", "platform.invitation.signin.notice.requested",
             JsonSerializer.Serialize(new { IdentityId = seeded.PlatformAccount.Id, InvitationId = seeded.PlatformAdministrator.Id.Value }),
             seeded.PlatformAccount.Email!, false, "/login",
@@ -516,6 +526,8 @@ public sealed class IdentityEmailDeliveryMatrixTests
         string EnglishSubject,
         string SpanishSubject,
         string EnglishLead,
-        string SpanishLead);
+        string SpanishLead,
+        string? EnglishBody = null,
+        string? SpanishBody = null);
 
 }

@@ -131,7 +131,7 @@ public sealed class TenantSelectorPage(IPage page) : BasePage(page)
     {
         // Scoped to the screen's own region: the page furniture is lists too, and counting those would be
         // counting the navigation.
-        var offered = Page.GetByRole(AriaRole.Region, new() { Name = "Choose a context" }).GetByRole(AriaRole.Button);
+        var offered = Page.GetByRole(AriaRole.Region, new() { Name = "Choose a workspace" }).GetByRole(AriaRole.Button);
         await Assertions.Expect(offered).ToHaveCountAsync(2);
         var names = await offered.AllInnerTextsAsync();
         return names

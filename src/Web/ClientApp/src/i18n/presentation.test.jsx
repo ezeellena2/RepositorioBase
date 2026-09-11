@@ -79,23 +79,23 @@ describe('Spanish system presentation', () => {
       activeTenant: { id: 'personal-1', type: 'Personal', name: 'Ana personal' }, permissions: [],
     }));
     expect(await screen.findByText('Ana personal')).toBeVisible();
-    expect(screen.getByText('Contexto activo')).toBeVisible();
-    expect(screen.getByText('ninguno en este contexto')).toBeVisible();
+    expect(screen.getByText('Espacio de trabajo activo')).toBeVisible();
+    expect(screen.getByText('ninguno en este espacio de trabajo')).toBeVisible();
     expect(container).not.toHaveTextContent(/organización/i);
     for (const [key, text] of Object.entries({
-      'common:navigation.changeOrganization': 'Cambiar de contexto',
-      'common:navigation.noOrganizationSelected': 'Ningún contexto seleccionado',
-      'identity:tenants.title': 'Elegir un contexto',
-      'identity:tenants.empty': 'Todavía no tiene acceso a ningún contexto.',
+      'common:navigation.changeOrganization': 'Cambiar de espacio de trabajo',
+      'common:navigation.noOrganizationSelected': 'Ningún espacio de trabajo seleccionado',
+      'identity:tenants.title': 'Elegir un espacio de trabajo',
+      'identity:tenants.empty': 'Todavía no tiene acceso a ningún espacio de trabajo.',
       'identity:context.noneSelected': 'ninguno seleccionado',
     })) expect(i18n.t(key)).toBe(text);
     for (const [key, text] of Object.entries({
-      'common:navigation.changeOrganization': 'Change context',
-      'common:navigation.noOrganizationSelected': 'No context selected',
-      'identity:context.activeOrganization': 'Active context',
-      'identity:context.noneInThisOrganization': 'none in this context',
-      'identity:tenants.title': 'Choose a context',
-      'identity:tenants.empty': 'You do not have access to any context yet.',
+      'common:navigation.changeOrganization': 'Change workspace',
+      'common:navigation.noOrganizationSelected': 'No workspace selected',
+      'identity:context.activeOrganization': 'Active workspace',
+      'identity:context.noneInThisOrganization': 'none in this workspace',
+      'identity:tenants.title': 'Choose a workspace',
+      'identity:tenants.empty': 'You do not have access to any workspace yet.',
     })) expect(i18n.t(key, { lng: 'en' })).toBe(text);
   });
 

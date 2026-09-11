@@ -10,7 +10,8 @@ wording in the running application after delivery.
 | Source concept | Spanish | Meaning / use |
 | --- | --- | --- |
 | Organization / organization-specific tenant | Organización | Organization registration, membership and Platform organization management |
-| Tenant / context, across tenant types | Contexto | The shared abstraction also contains Personal and Platform tenants |
+| Tenant / context (internal domain terminology) | Contexto | The underlying shared abstraction contains Personal, Organization and Platform tenants; it is not the human-facing selector label |
+| Workspace | Espacio de trabajo | Human-facing label for the active or selectable tenant across Personal, Organization and Platform |
 | Platform | Plataforma | The system administration area; capitalized as the named area |
 | Sign in / sign out | Iniciar sesión / Cerrar sesión | Includes the older English “Log in” / “Log out” labels |
 | Session | Sesión | An authenticated session; ending a device means ending its session |
@@ -49,7 +50,8 @@ wording in the running application after delivery.
 
 The Platform organization directory and its lifecycle commands target only `TenantType.Organization`. Therefore
 `platform.tenants.manage` and `platform_tenant_concurrency_conflict` say **Organización**. The broader `tenant.read`
-and `tenant.manage` permissions, active-context summary, shell switcher and context chooser say **Contexto**.
+and `tenant.manage` permissions retain the internal **Contexto** terminology. The active-workspace summary, shell
+switcher and workspace chooser use the human-facing **Espacio de trabajo**.
 Custom role names stay exactly stored, including `Owner` or
 `Administrator`; organization names, user names, provider names, emails, document types/country codes, slugs, IDs,
 references, reason codes, audit codes, routes, durations and raw operator data are never translated.
@@ -101,8 +103,9 @@ All Spanish values are nonempty drafts. Product-owner attention is especially us
 
 - **Bloqueo de eliminación / Levantar bloqueo**: chosen to say what a retention hold prevents. Confirm that this
   is the team's preferred wording for a legal hold, including the neutral release acknowledgement.
-- **Contexto**: accurate for the broad tenant abstraction, but more technical than “Organización”. Review the
-  broad tenant permissions, context summary and chooser alongside the personal-account flow.
+- **Espacio de trabajo**: the human-facing umbrella for Personal, Organization and Platform choices. Review the
+  active-workspace summary and chooser alongside the personal-account flow; **Tenant/context** remains internal
+  domain terminology.
 - **Desactivada por su titular**: names the account holder rather than an organization or Platform owner, and keeps
   the voluntary account state distinct from an administrative suspension.
 - **Secretos de mensajes salientes / Datos del segundo factor de la Plataforma**: reviewed operational terms for

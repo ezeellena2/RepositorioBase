@@ -40,10 +40,10 @@
   "context": {
     "signedInAs": "Signed in as",
     "unknown": "unknown",
-    "activeOrganization": "Active context",
+    "activeOrganization": "Active workspace",
     "noneSelected": "none selected",
     "permissions": "Permissions",
-    "noneInThisOrganization": "none in this context"
+    "noneInThisOrganization": "none in this workspace"
   },
   "credentials": {
     "newPassword": "New password",
@@ -236,8 +236,8 @@
     "endThis": "End this device"
   },
   "tenants": {
-    "title": "Choose a context",
-    "empty": "You do not have access to any context yet.",
+    "title": "Choose a workspace",
+    "empty": "You do not have access to any workspace yet.",
     "current": "{{name}} (current)"
   }
 }

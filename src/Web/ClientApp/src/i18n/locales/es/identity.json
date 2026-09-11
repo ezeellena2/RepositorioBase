@@ -40,10 +40,10 @@
   "context": {
     "signedInAs": "Sesión iniciada como",
     "unknown": "desconocido",
-    "activeOrganization": "Contexto activo",
+    "activeOrganization": "Espacio de trabajo activo",
     "noneSelected": "ninguno seleccionado",
     "permissions": "Permisos",
-    "noneInThisOrganization": "ninguno en este contexto"
+    "noneInThisOrganization": "ninguno en este espacio de trabajo"
   },
   "credentials": {
     "newPassword": "Nueva contraseña",
@@ -236,8 +236,8 @@
     "endThis": "Finalizar la sesión de este dispositivo"
   },
   "tenants": {
-    "title": "Elegir un contexto",
-    "empty": "Todavía no tiene acceso a ningún contexto.",
+    "title": "Elegir un espacio de trabajo",
+    "empty": "Todavía no tiene acceso a ningún espacio de trabajo.",
     "current": "{{name}} (actual)"
   }
 }

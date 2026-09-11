@@ -204,7 +204,7 @@ public sealed class PlatformOperationsStepDefinitions(ScenarioContext scenario)
         await invitation.RegisterAsync(PlatformFixtures.Password);
         await invitation.AssertNeutralAcknowledgementAsync();
 
-        var confirmation = await PlatformFixtures.DeliveredAsync(invitee, "Confirm your Platform address");
+        var confirmation = await PlatformFixtures.DeliveredAsync(invitee, "Confirm your Platform email address");
         await invitation.OpenDeliveredAsync(confirmation);
         await invitation.ConfirmAsync();
 
@@ -434,7 +434,7 @@ public sealed class PlatformOperationsStepDefinitions(ScenarioContext scenario)
         await Invitation.AssertNeutralAcknowledgementAsync();
         var membershipsAfterPassword = await PlatformFixtures.PlatformMembershipsAsync();
 
-        var confirmation = await PlatformFixtures.DeliveredAsync(owner, "Confirm your Platform address");
+        var confirmation = await PlatformFixtures.DeliveredAsync(owner, "Confirm your Platform email address");
 
         // Answering the invitation again before confirming, which is what someone whose confirmation expired or
         // was lost would do. It reissues the confirmation and retires the one it replaces, so the recipient ends
@@ -443,7 +443,7 @@ public sealed class PlatformOperationsStepDefinitions(ScenarioContext scenario)
         await Invitation.OpenDeliveredAsync(invitation);
         await Invitation.RegisterAsync(PlatformFixtures.Password);
         await Invitation.AssertNeutralAcknowledgementAsync();
-        var reissued = await PlatformFixtures.DeliveredAsync(owner, "Confirm your Platform address", [confirmation.DropFile]);
+        var reissued = await PlatformFixtures.DeliveredAsync(owner, "Confirm your Platform email address", [confirmation.DropFile]);
 
         await Invitation.OpenDeliveredAsync(confirmation);
         await Invitation.AssertConfirmationRefusedAsync();
