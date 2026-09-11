@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Checkbox from '@mui/material/Checkbox';
@@ -18,7 +18,8 @@ import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
-import { useTranslation } from '../../../i18n';
+import { roleName, useTranslation } from '../../../i18n';
+import { PermissionLabel } from '../PermissionLabel';
 import { useIdentity } from '../context/IdentityProvider';
 import { ProblemMessage } from '../ProblemMessage';
 import { useIdentityProof } from '../useIdentityProof';
@@ -34,12 +35,11 @@ const empty = { p: 4, textAlign: 'center' };
 const chips = { flexWrap: 'wrap' };
 
 /**
- * A role can hold two codes or thirty. Left alone the chips decide the width of the Permissions column and the
- * height of every row that has them, so the cell is bounded here instead: the chips wrap inside a box three chip
- * rows tall — 24px each plus the two 4px gaps between them — and that box scrolls once a role outgrows it. This
+ * A role can hold two codes or thirty. Permission names and their secondary codes wrap inside a bounded column
+ * with room for three two-line labels and their gaps; it scrolls once a role outgrows it. This
  * is layout only. Every code stays in the DOM, in the cell, in reading order; nothing moves behind a control.
  */
-const permissionChips = { flexWrap: 'wrap', maxWidth: 360, maxHeight: 24 * 3 + 4 * 2, overflowY: 'auto' };
+const permissionChips = { flexWrap: 'wrap', maxWidth: 360, maxHeight: 40 * 3 + 4 * 2, overflowY: 'auto' };
 
 const rowActions = { flexWrap: 'wrap', justifyContent: 'flex-end' };
 const row = { flexWrap: 'wrap', alignItems: 'center' };
@@ -76,6 +76,7 @@ const RolesPath = '/roles';
 
 export function RolesPage() {
   const { t } = useTranslation('identity');
+  const permissionDescriptionPrefix = useId();
   const identity = useIdentity();
   const proof = useIdentityProof();
   const tenantId = identity.context?.activeTenant?.id ?? null;
@@ -224,13 +225,13 @@ export function RolesPage() {
     <TableRow key={role.roleId} hover>
       {/* The name is the cell. `TableCell` already sets `body2`, so wrapping one string in a `Typography` that
           asks for the size it is already being drawn at is a node per role and nothing else. */}
-      <TableCell>{role.name}</TableCell>
+      <TableCell>{roleName(role, t)}</TableCell>
       <TableCell>
         {role.permissions.length === 0 ? (
           <Typography variant="caption" color="text.secondary">{t('roles.noPermissions')}</Typography>
         ) : (
           <Stack direction="row" spacing={0.5} useFlexGap sx={permissionChips}>
-            {role.permissions.map((code) => <Chip key={code} size="small" label={code} />)}
+            {role.permissions.map((code) => <Box key={code}><PermissionLabel code={code} /></Box>)}
           </Stack>
         )}
       </TableCell>
@@ -411,11 +412,12 @@ export function RolesPage() {
                   control={(
                     <Checkbox
                       id={`permission-${entry.code}`}
+                      slotProps={{ input: { 'aria-label': entry.code, 'aria-describedby': `${permissionDescriptionPrefix}-${entry.code}` } }}
                       checked={draft.permissions.includes(entry.code)}
                       onChange={() => toggle(entry.code)}
                     />
                   )}
-                  label={entry.code}
+                  label={<PermissionLabel code={entry.code} primaryId={`${permissionDescriptionPrefix}-${entry.code}`} />}
                 />
               ))}
             </FormGroup>

@@ -22,6 +22,7 @@ import TableRow from '@mui/material/TableRow';
 import Typography from '@mui/material/Typography';
 import { useIdentity } from '../../identity/context/IdentityProvider';
 import { ProblemMessage } from '../../identity/ProblemMessage';
+import { PermissionLabel } from '../../identity/PermissionLabel';
 import { useSubmit } from '../../identity/useSubmit';
 import { usePlatformClient } from '../invitations/PlatformInvitationPages';
 import { PlatformStepUpForm } from '../shared/PlatformStepUpForm';
@@ -41,6 +42,7 @@ const identitiesStepUpInputId = 'platform-identities-step-up';
 const suspensionReasonInputId = 'platform-identity-suspension-reason';
 const suspensionReasonInputProps = { id: suspensionReasonInputId };
 const outlinedSubmitVariant = 'outlined';
+const readPermission = 'platform.identities.read';
 
 const frame = { maxWidth: 560 };
 const header = { alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap' };
@@ -71,8 +73,8 @@ const progressSlot = { height: 4 };
 /**
  * An account state is a closed set the server owns, so the colour is a lookup rather than a condition. A state
  * this screen has not been taught falls back to the neutral chip: it is not an error, it is a state this screen
- * has not been taught. The chip carries the server's word verbatim, because the operator acts on what the row
- * states and a directory that paraphrased it would be describing a different account.
+ * has not been taught. The server code determines both the semantic color and its catalog label; translation
+ * changes the presentation without changing which transitions the account permits.
  */
 const statusColor = {
   Active: 'success',
@@ -128,7 +130,7 @@ export function PlatformIdentitiesPage() {
   // renders a directory its caller may not read produces a refusal where an answer was expected.
   const mayRead = Boolean(identity?.isAuthenticated)
     && context?.activeTenant?.type === 'Platform'
-    && permissions.includes('platform.identities.read');
+    && permissions.includes(readPermission);
   const mayManage = mayRead && permissions.includes('platform.identities.manage');
   const owesFactor = context?.session?.requiresTwoFactor === true;
   const mayLoad = mayRead && !owesFactor;
@@ -194,6 +196,7 @@ export function PlatformIdentitiesPage() {
           <Typography variant="body2" color="text.secondary">
             {t('identities.accessDenied')}
           </Typography>
+          <PermissionLabel code={readPermission} />
         </Paper>
       </Stack>
     );
@@ -293,7 +296,7 @@ export function PlatformIdentitiesPage() {
                 value={reason}
                 onChange={(event) => setReason(event.target.value)}
               >
-                {SUSPENSION_REASONS.map((value) => <option key={value} value={value}>{value}</option>)}
+                {SUSPENSION_REASONS.map((value) => <option key={value} value={value}>{t(`enums:identitySuspensionReason.${value}`)}</option>)}
               </NativeSelect>
             </FormControl>
             <Stack direction="row" spacing={1} useFlexGap sx={buttons}>
@@ -412,7 +415,7 @@ export function PlatformIdentitiesPage() {
                       <Chip
                         size="small"
                         variant="outlined"
-                        label={row.accountStatus}
+                        label={t(`enums:accountStatus.${row.accountStatus}`)}
                         color={statusColor[row.accountStatus] ?? 'default'}
                       />
                     </TableCell>

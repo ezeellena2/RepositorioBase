@@ -1,1 +1,241 @@
-{}
+{
+  "login": {
+    "title": "Iniciar sesión",
+    "continueWithGoogle": "Continuar con Google",
+    "email": "Correo electrónico",
+    "password": "Contraseña",
+    "submit": "Iniciar sesión",
+    "forgotPassword": "¿Olvidó su contraseña?",
+    "reactivateAccount": "Reactivar su cuenta"
+  },
+  "register": {
+    "choose": {
+      "title": "¿Qué desea registrar?",
+      "personal": {
+        "title": "Una cuenta personal",
+        "detail": "Para usted. Se le solicitarán su nombre y su DNI."
+      },
+      "organization": {
+        "title": "Una organización",
+        "detail": "Para una empresa. Se le solicitarán la razón social y el CUIT."
+      },
+      "alreadyHaveAccount": "¿Ya tiene una cuenta? <signIn>Inicie sesión</signIn>."
+    },
+    "confirmEmail": {
+      "title": "Confirmar su correo electrónico",
+      "missingToken": "Abra el enlace del correo de confirmación; esta página necesita el token que contiene.",
+      "success": "Su dirección está confirmada. Inicie sesión para continuar.",
+      "signIn": "Iniciar sesión",
+      "submit": "Confirmar mi dirección"
+    },
+    "organization": {
+      "title": "Registrar una organización",
+      "acknowledgement": "Si esa dirección puede registrarse, le hemos enviado un enlace de confirmación. Revise la bandeja de entrada.",
+      "legalName": "Razón social",
+      "cuit": "CUIT",
+      "email": "Correo electrónico",
+      "password": "Contraseña"
+    }
+  },
+  "context": {
+    "signedInAs": "Sesión iniciada como",
+    "unknown": "desconocido",
+    "activeOrganization": "Contexto activo",
+    "noneSelected": "ninguno seleccionado",
+    "permissions": "Permisos",
+    "noneInThisOrganization": "ninguno en este contexto"
+  },
+  "credentials": {
+    "newPassword": "Nueva contraseña",
+    "forgot": {
+      "title": "Restablecer su contraseña",
+      "acknowledgement": "Si esa dirección puede iniciar sesión, le hemos enviado un enlace para restablecer la contraseña. Revise la bandeja de entrada.",
+      "submit": "Enviar el enlace",
+      "remembered": "¿La recordó? <signIn>Inicie sesión</signIn>."
+    },
+    "reset": {
+      "title": "Elegir una nueva contraseña",
+      "missingToken": "Abra el enlace del correo para restablecer la contraseña; esta página necesita el token que contiene.",
+      "success": "Su contraseña está establecida. Inicie sesión para continuar.",
+      "submit": "Establecer mi contraseña"
+    },
+    "change": {
+      "title": "Cambiar su contraseña",
+      "success": "Su contraseña cambió. Se cerraron las sesiones de sus otros dispositivos.",
+      "currentPassword": "Contraseña actual",
+      "submit": "Cambiarla"
+    },
+    "external": {
+      "description": "La vinculación se realiza desde aquí; nunca ocurre por una coincidencia de direcciones. Siempre conserva al menos un método para iniciar sesión.",
+      "refused": "La operación no se completó. No se realizó ningún cambio.",
+      "loading": "Cargando…",
+      "empty": "Este despliegue no tiene un proveedor de inicio de sesión configurado, por lo que todavía no hay nada que vincular aquí.",
+      "onlyWayIn": "— este es su único método para iniciar sesión. Establezca una contraseña antes de desvincularlo.",
+      "unlink": "Desvincular {{provider}}",
+      "link": "Vincular {{provider}}",
+      "back": "Volver a su acceso"
+    },
+    "externalReturn": {
+      "title": "Finalizando",
+      "loading": "Un momento…",
+      "refused": "No se realizó ningún cambio. Puede volver a intentarlo."
+    }
+  },
+  "invitations": {
+    "register": {
+      "title": "Configurar su cuenta",
+      "success": "Revise su correo electrónico. Si esa invitación sigue abierta, le hemos enviado lo necesario para continuar.",
+      "choosePassword": "Elegir una contraseña",
+      "continue": "Continuar"
+    },
+    "accept": {
+      "title": "Aceptar su invitación",
+      "precondition": "Inicie sesión con la dirección invitada primero.",
+      "success": "Ahora es miembro.",
+      "continue": "Continuar",
+      "refreshFailed": "Su membresía se guardó, pero no se pudo actualizar su acceso. <signIn>Inicie sesión para continuar</signIn>.",
+      "loading": "Aceptando y actualizando su acceso…",
+      "submit": "Aceptar"
+    },
+    "member": {
+      "title": "Invitar a un miembro",
+      "noOrganization": "Elija una organización primero. Una invitación pertenece a una organización, y esta sesión no está en ninguna.",
+      "sent": "Invitación enviada. Vence el {{expiresAt}}.",
+      "rolesToOffer": "Roles para ofrecer",
+      "rolesRefused": "No puede ver los roles de esta organización, por lo que no hay ninguno para ofrecer aquí.",
+      "noRolesToOffer": "Esta organización todavía no tiene roles para ofrecer.",
+      "send": "Enviar invitación",
+      "listTitle": "Invitaciones",
+      "invitationsRefused": "No puede ver las invitaciones de esta organización.",
+      "noInvitations": "Todavía no se ha enviado ninguna invitación.",
+      "recipient": "Destinatario",
+      "state": "Estado",
+      "roles": "Roles",
+      "actions": "Acciones",
+      "expires": "vence el {{expiresAt}}",
+      "noRoles": "sin roles",
+      "resend": "Reenviar a {{email}}",
+      "withdrawConfirm": "¿Retirar la invitación a {{email}}? Su enlace dejará de funcionar.",
+      "withdraw": "Retirar invitación a {{email}}",
+      "showMore": "Mostrar más invitaciones"
+    }
+  },
+  "lifecycle": {
+    "account": {
+      "title": "Su cuenta",
+      "description": "La desactivación finaliza todas sus sesiones e impide iniciar sesión. Sus membresías quedan registradas. Para volver, solicite un enlace por correo electrónico e introduzca su contraseña actual.",
+      "lastAdministrator": "Si es el último administrador o propietario de la Plataforma, asigne esa responsabilidad a otra persona primero.",
+      "notAllowed": "No tiene permiso para desactivar esta cuenta.",
+      "providerProof": "{{provider}} confirmará su identidad.",
+      "noProofMethod": "No hay un método de verificación disponible.",
+      "proofWithPassword": "{{proof}} Para volver después de la desactivación, necesitará una contraseña. <setPassword>Establezca una contraseña</setPassword>.",
+      "confirmDeactivation": "Entiendo que esto finaliza todas mis sesiones e impide iniciar sesión.",
+      "deactivate": "Desactivar mi cuenta"
+    },
+    "request": {
+      "description": "Utilice esta opción si desactivó su propia cuenta. No permite levantar una suspensión administrativa.",
+      "deactivated": "Su cuenta está desactivada. Todas sus sesiones finalizaron.",
+      "success": "Si esa cuenta puede reactivarse, hemos enviado un enlace a su dirección de correo electrónico. Revise la bandeja de entrada.",
+      "submit": "Enviar enlace de reactivación",
+      "returning": "Para volver necesita su contraseña actual. <resetPassword>Restablezca o establezca una contraseña</resetPassword> si es necesario y luego solicite un enlace de reactivación."
+    },
+    "reactivate": {
+      "success": "Su cuenta está activa de nuevo. Inicie sesión para continuar.",
+      "missingToken": "Abra el enlace del correo de reactivación; esta página necesita su token.",
+      "submit": "Reactivar mi cuenta",
+      "nextSteps": "<resetPassword>Restablezca o establezca una contraseña</resetPassword> si es necesario. Luego <requestReactivation>solicite un nuevo enlace de reactivación</requestReactivation>."
+    }
+  },
+  "members": {
+    "noOrganization": "Elija una organización primero. Los miembros pertenecen a una organización, y esta sesión no está en ninguna.",
+    "description": "Solo puede asignar un rol que usted mismo podría haber creado, y la organización siempre conserva al menos un administrador. No se puede suspender ni eliminar al propietario; transfiera la organización primero.",
+    "providerProof": "No tiene una contraseña aquí. Para cambiar roles o transferir la organización, {{provider}} debe confirmar su identidad.",
+    "loading": "Cargando…",
+    "empty": "Todavía no hay miembros en esta organización.",
+    "owner": "— propietario",
+    "noRoles": "sin roles",
+    "editRoles": "Editar roles de {{name}}",
+    "suspend": "Suspender a {{name}}",
+    "reactivate": "Reactivar a {{name}}",
+    "remove": "Eliminar a {{name}}",
+    "transferConfirm": "¿Transferir esta organización a {{name}}? Usted dejará de ser su propietario.",
+    "transfer": "Transferir la propiedad a {{name}}",
+    "rolesFor": "Roles de {{name}}",
+    "rolesRefused": "No puede ver los roles de esta organización, por lo que no hay ninguno para asignar aquí.",
+    "noRolesToGive": "Esta organización todavía no tiene roles para asignar.",
+    "saveRoles": "Guardar roles",
+    "cancel": "Cancelar",
+    "showMore": "Mostrar más miembros"
+  },
+  "people": {
+    "fullName": "Nombre completo",
+    "displayName": "Nombre visible",
+    "register": {
+      "title": "Configurar su cuenta personal",
+      "organizationInstead": "¿Desea registrar una empresa? <organization>Registre una organización</organization>."
+    },
+    "dispute": {
+      "title": "Corregir este documento",
+      "success": "La corrección se envió para revisión. Su cuenta no cambia mientras la solicitud esté abierta.",
+      "alreadyOpen": "Ya se está revisando una corrección de este documento.",
+      "description": "Un operador revisa la corrección. Su cuenta sigue funcionando mientras la solicitud esté abierta.",
+      "number": "Número correcto",
+      "reason": "Motivo",
+      "typedWrongAtSignup": "Lo escribí mal al registrarme",
+      "documentReissued": "Mi documento fue reemitido",
+      "recordedByMistake": "No es mi documento",
+      "submit": "Enviar para revisión"
+    },
+    "context": {
+      "success": "Su cuenta personal se añadió. Actualizando su acceso…",
+      "submit": "Añadir mi cuenta personal",
+      "empty": "Todavía no tiene un contexto personal."
+    },
+    "profile": {
+      "save": "Guardar"
+    }
+  },
+  "roles": {
+    "noPermissions": "sin permisos",
+    "builtIn": "del sistema",
+    "retired": "retirado",
+    "edit": "Editar {{name}}",
+    "retire": "Retirar {{name}}",
+    "noOrganization": "Elija una organización primero. Los roles pertenecen a una organización, y esta sesión no está en ninguna.",
+    "description": "Un rol es un nombre asociado a permisos. Solo puede incluir en un rol permisos que usted tenga, y la organización siempre conserva al menos un administrador.",
+    "providerProof": "No tiene una contraseña aquí. Cada cambio requiere que {{provider}} confirme su identidad.",
+    "loading": "Cargando…",
+    "empty": "Todavía no se han creado roles para esta organización. Puede crear el primero a continuación.",
+    "columns": {
+      "role": "Rol",
+      "permissions": "Permisos",
+      "state": "Estado",
+      "actions": "Acciones"
+    },
+    "showMore": "Mostrar más roles",
+    "new": "Nuevo rol",
+    "editing": "Editando {{name}}",
+    "name": "Nombre",
+    "permissionsToGrant": "Permisos que puede otorgar",
+    "noneGrantable": "No tiene permisos que se puedan incluir en un rol.",
+    "create": "Crear rol",
+    "save": "Guardar rol",
+    "cancel": "Cancelar"
+  },
+  "sessions": {
+    "description": "Iniciar sesión en otro lugar no cierra esta sesión. Para finalizar la sesión de un dispositivo, debe confirmar su contraseña primero.",
+    "endEveryOther": "Finalizar las sesiones de los demás dispositivos",
+    "providerProof": "No tiene una contraseña aquí. Para finalizar la sesión de un dispositivo, {{provider}} debe confirmar su identidad.",
+    "noPassword": "Inició sesión con un proveedor y todavía no tiene contraseña, por lo que no hay un método de verificación disponible. <setPassword>Establezca una contraseña</setPassword> para poder finalizar la sesión de un dispositivo desde esta página.",
+    "loading": "Cargando",
+    "empty": "No hay dispositivos con sesión iniciada.",
+    "current": "— este dispositivo",
+    "lastSeen": "última actividad: {{lastSeenAt}}",
+    "endThis": "Finalizar la sesión de este dispositivo"
+  },
+  "tenants": {
+    "title": "Elegir un contexto",
+    "empty": "Todavía no tiene acceso a ningún contexto.",
+    "current": "{{name}} (actual)"
+  }
+}

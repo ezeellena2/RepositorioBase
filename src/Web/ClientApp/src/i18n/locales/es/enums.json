@@ -1,1 +1,105 @@
-{}
+{
+  "tenantStatus": {
+    "PendingConfirmation": "Confirmación pendiente",
+    "Active": "Activa",
+    "Suspended": "Suspendida",
+    "Closed": "Cerrada"
+  },
+  "membershipStatus": {
+    "PendingConfirmation": "Confirmación pendiente",
+    "Active": "Activa",
+    "Suspended": "Suspendida",
+    "Revoked": "Revocada"
+  },
+  "invitationStatus": {
+    "Pending": "Pendiente",
+    "Accepted": "Aceptada",
+    "Cancelled": "Cancelada"
+  },
+  "mfaStatus": {
+    "None": "Ninguno",
+    "Pending": "Pendiente",
+    "Verified": "Verificado",
+    "Active": "Activo"
+  },
+  "tenantSuspensionReason": {
+    "PolicyViolation": "Incumplimiento de políticas",
+    "SecurityIncident": "Incidente de seguridad",
+    "BillingHold": "Bloqueo por facturación",
+    "OperatorRequest": "Solicitud del operador"
+  },
+  "identitySuspensionReason": {
+    "PolicyViolation": "Incumplimiento de políticas",
+    "SecurityIncident": "Incidente de seguridad",
+    "BillingHold": "Bloqueo por facturación",
+    "OperatorRequest": "Solicitud del operador"
+  },
+  "retentionCategory": {
+    "PersonalProfileNames": "Nombres del perfil personal",
+    "PersonalIdentityDocument": "Documento de identidad personal",
+    "SessionRecords": "Registros de sesiones",
+    "AuditEvents": "Eventos de auditoría",
+    "OutboxMessages": "Mensajes de salida",
+    "OutboxSecrets": "Secretos de salida",
+    "DeliveryEvidence": "Evidencia de entrega",
+    "PlatformMfaMaterial": "Material del segundo factor de la Plataforma"
+  },
+  "retentionTrigger": {
+    "RecordCreation": "Creación del registro",
+    "LastActivity": "Última actividad",
+    "AccountClosure": "Cierre de la cuenta"
+  },
+  "retentionAction": {
+    "Retain": "Conservar",
+    "Anonymise": "Anonimizar",
+    "Erase": "Eliminar"
+  },
+  "personalDataMode": {
+    "Real": "Reales",
+    "Synthetic": "Sintéticos"
+  },
+  "accountStatus": {
+    "PendingConfirmation": "Confirmación pendiente",
+    "Active": "Activa",
+    "AdministrativelySuspended": "Suspendida administrativamente",
+    "SelfDeactivated": "Desactivada por su propietario",
+    "Closed": "Cerrada"
+  },
+  "permissions": {
+    "members.read": "Ver miembros",
+    "members.manage": "Administrar miembros",
+    "members.invite": "Invitar miembros",
+    "roles.read": "Ver roles",
+    "roles.manage": "Administrar roles",
+    "tenant.read": "Ver contexto",
+    "tenant.manage": "Administrar contexto",
+    "tenant.ownership.transfer": "Transferir la propiedad de la organización",
+    "platform.admins.read": "Ver administradores de la Plataforma",
+    "platform.admins.manage": "Administrar administradores de la Plataforma",
+    "platform.organizations.read": "Ver organizaciones",
+    "platform.tenants.manage": "Administrar organizaciones",
+    "platform.identities.read": "Ver identidades",
+    "platform.identities.manage": "Administrar identidades",
+    "platform.identities.documents.resolve": "Resolver correcciones de documentos",
+    "platform.audit.read": "Ver auditoría",
+    "platform.retention.read": "Ver política de conservación",
+    "platform.retention.manage": "Administrar bloqueos de eliminación",
+    "identity.sessions.manage": "Administrar las sesiones propias",
+    "identity.context.read": "Ver el acceso propio",
+    "identity.context.select": "Elegir contexto",
+    "identity.invitations.accept": "Aceptar invitaciones",
+    "platform.mfa.enroll": "Configurar el segundo factor de la Plataforma",
+    "identity.profile.read": "Ver el perfil propio",
+    "identity.profile.manage": "Administrar el perfil propio",
+    "identity.credentials.manage": "Administrar las credenciales propias",
+    "identity.external.manage": "Administrar los proveedores de inicio de sesión propios",
+    "identity.account.manage": "Administrar la cuenta propia",
+    "identity.document.dispute": "Solicitar la corrección del documento propio"
+  },
+  "roles": {
+    "system": {
+      "Owner": "Propietario",
+      "Administrator": "Administrador"
+    }
+  }
+}

@@ -27,8 +27,8 @@ const POLICY = {
   personalDataMode: 'Synthetic',
   activeHoldCount: 2,
   categories: [
-    { category: 'AuditEvents', retentionPeriod: 'P2Y', trigger: 'Recorded', action: 'Erase', evidenceRequired: true },
-    { category: 'Sessions', retentionPeriod: 'P30D', trigger: 'Expiry', action: 'Erase', evidenceRequired: false },
+    { category: 'AuditEvents', retentionPeriod: 'P2Y', trigger: 'RecordCreation', action: 'Erase', evidenceRequired: true },
+    { category: 'SessionRecords', retentionPeriod: 'P30D', trigger: 'LastActivity', action: 'Erase', evidenceRequired: false },
   ],
 };
 
@@ -179,7 +179,7 @@ describe('platform retention page', () => {
     expect(headers).toEqual(['Category', 'Retention period', 'Trigger', 'Action', 'Evidence required']);
     screen.getAllByRole('columnheader').forEach((header) => expect(header).toHaveAttribute('scope', 'col'));
     expect(screen.getByText('P2Y')).toBeInTheDocument();
-    expect(screen.getByText('Sessions')).toBeInTheDocument();
+    expect(screen.getByText('SessionRecords')).toBeInTheDocument();
   });
 
   /**
@@ -204,7 +204,9 @@ describe('platform retention page', () => {
 
     renderPage();
 
-    expect(await screen.findByText(/platform\.retention\.read/)).toBeInTheDocument();
+    expect(await screen.findByText('This screen needs the platform.retention.read permission. Ask a Platform owner to grant it.')).toBeInTheDocument();
+    expect(screen.getByText('View retention policy', { exact: true })).toBeVisible();
+    expect(screen.getByText('platform.retention.read', { exact: true })).toBeVisible();
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
     await waitFor(() => expect(retentionCalls(paths)).toEqual([]));
   });
@@ -323,7 +325,7 @@ describe('platform retention page', () => {
     expect(receipt).toHaveTextContent(HOLD.holdId);
     expect(receipt).toHaveTextContent(HOLD.reasonCode);
     expect(receipt).toHaveTextContent(HOLD.reference);
-    expect(receipt).toHaveTextContent(HOLD.placedAt);
+    expect(receipt).toHaveTextContent(new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(HOLD.placedAt)));
   });
 
   /**

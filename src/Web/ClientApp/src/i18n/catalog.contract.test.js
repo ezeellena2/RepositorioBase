@@ -32,6 +32,10 @@ function placeholders(value) {
   return [...String(value).matchAll(/{{\s*([\w.-]+)/g)].map((match) => match[1]).sort();
 }
 
+function richTextTags(value) {
+  return [...String(value).matchAll(/<\/?([\w-]+)\s*\/?\s*>/g)].map((match) => match[0]).sort();
+}
+
 function semanticKeys(entries) {
   return new Set([...entries.keys()].map((key) => key.replace(pluralSuffix, '')));
 }
@@ -59,6 +63,9 @@ export function catalogViolations(source, candidate, language) {
     }
     if (JSON.stringify(placeholders(candidateValue)) !== JSON.stringify(placeholders(sourceValue))) {
       violations.push(`placeholder mismatch ${key}`);
+    }
+    if (JSON.stringify(richTextTags(candidateValue)) !== JSON.stringify(richTextTags(sourceValue))) {
+      violations.push(`rich-text tag mismatch ${key}`);
     }
   }
 
@@ -94,11 +101,12 @@ describe('language registry contract', () => {
   }
 
   it('detects missing keys, placeholders, empty values, and required plural forms', () => {
-    const source = { message: 'Hello {{name}}', invitations_one: '{{count}} invitation', invitations_other: '{{count}} invitations' };
-    const candidate = { message: 'Hello', invitations_other: '' };
+    const source = { message: 'Hello {{name}}', link: '<signIn>Sign in</signIn>', invitations_one: '{{count}} invitation', invitations_other: '{{count}} invitations' };
+    const candidate = { message: 'Hello', link: 'Sign in', invitations_other: '' };
 
     expect(catalogViolations(source, candidate, 'en')).toEqual(expect.arrayContaining([
       'placeholder mismatch message',
+      'rich-text tag mismatch link',
       'empty value invitations_other',
       'missing plural invitations_one',
     ]));

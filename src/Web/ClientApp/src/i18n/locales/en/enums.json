@@ -1,1 +1,105 @@
-{}
+{
+  "tenantStatus": {
+    "PendingConfirmation": "PendingConfirmation",
+    "Active": "Active",
+    "Suspended": "Suspended",
+    "Closed": "Closed"
+  },
+  "membershipStatus": {
+    "PendingConfirmation": "PendingConfirmation",
+    "Active": "Active",
+    "Suspended": "Suspended",
+    "Revoked": "Revoked"
+  },
+  "invitationStatus": {
+    "Pending": "Pending",
+    "Accepted": "Accepted",
+    "Cancelled": "Cancelled"
+  },
+  "mfaStatus": {
+    "None": "None",
+    "Pending": "Pending",
+    "Verified": "Verified",
+    "Active": "Active"
+  },
+  "tenantSuspensionReason": {
+    "PolicyViolation": "PolicyViolation",
+    "SecurityIncident": "SecurityIncident",
+    "BillingHold": "BillingHold",
+    "OperatorRequest": "OperatorRequest"
+  },
+  "identitySuspensionReason": {
+    "PolicyViolation": "PolicyViolation",
+    "SecurityIncident": "SecurityIncident",
+    "BillingHold": "BillingHold",
+    "OperatorRequest": "OperatorRequest"
+  },
+  "retentionCategory": {
+    "PersonalProfileNames": "PersonalProfileNames",
+    "PersonalIdentityDocument": "PersonalIdentityDocument",
+    "SessionRecords": "SessionRecords",
+    "AuditEvents": "AuditEvents",
+    "OutboxMessages": "OutboxMessages",
+    "OutboxSecrets": "OutboxSecrets",
+    "DeliveryEvidence": "DeliveryEvidence",
+    "PlatformMfaMaterial": "PlatformMfaMaterial"
+  },
+  "retentionTrigger": {
+    "RecordCreation": "RecordCreation",
+    "LastActivity": "LastActivity",
+    "AccountClosure": "AccountClosure"
+  },
+  "retentionAction": {
+    "Retain": "Retain",
+    "Anonymise": "Anonymise",
+    "Erase": "Erase"
+  },
+  "personalDataMode": {
+    "Real": "Real",
+    "Synthetic": "Synthetic"
+  },
+  "accountStatus": {
+    "PendingConfirmation": "PendingConfirmation",
+    "Active": "Active",
+    "AdministrativelySuspended": "AdministrativelySuspended",
+    "SelfDeactivated": "SelfDeactivated",
+    "Closed": "Closed"
+  },
+  "permissions": {
+    "members.read": "View members",
+    "members.manage": "Manage members",
+    "members.invite": "Invite members",
+    "roles.read": "View roles",
+    "roles.manage": "Manage roles",
+    "tenant.read": "View context",
+    "tenant.manage": "Manage context",
+    "tenant.ownership.transfer": "Transfer organization ownership",
+    "platform.admins.read": "View Platform administrators",
+    "platform.admins.manage": "Manage Platform administrators",
+    "platform.organizations.read": "View organizations",
+    "platform.tenants.manage": "Manage organizations",
+    "platform.identities.read": "View identities",
+    "platform.identities.manage": "Manage identities",
+    "platform.identities.documents.resolve": "Resolve document corrections",
+    "platform.audit.read": "View audit",
+    "platform.retention.read": "View retention policy",
+    "platform.retention.manage": "Manage deletion holds",
+    "identity.sessions.manage": "Manage own sessions",
+    "identity.context.read": "View own access",
+    "identity.context.select": "Choose context",
+    "identity.invitations.accept": "Accept invitations",
+    "platform.mfa.enroll": "Set up Platform second factor",
+    "identity.profile.read": "View own profile",
+    "identity.profile.manage": "Manage own profile",
+    "identity.credentials.manage": "Manage own credentials",
+    "identity.external.manage": "Manage own sign-in providers",
+    "identity.account.manage": "Manage own account",
+    "identity.document.dispute": "Request own document correction"
+  },
+  "roles": {
+    "system": {
+      "Owner": "Owner",
+      "Administrator": "Administrator"
+    }
+  }
+}

@@ -22,7 +22,7 @@ const namespaceNames = ['common', 'errors', 'enums', 'identity', 'platform'];
 
 const sourceLanguage = languages.source;
 const defaultLanguage = languages.default ?? sourceLanguage;
-const supportedLanguages = languages.supported ?? [];
+export const supportedLanguages = languages.supported ?? [];
 
 const resources = {
   en: {
@@ -104,7 +104,7 @@ const readLanguageFromCookie = () => {
   return readCultureCookie(document.cookie);
 };
 
-const resolveLanguage = (preferredLanguage = null) => {
+export const resolveLanguage = (preferredLanguage = null) => {
   const fromPreference = normalizeLanguage(preferredLanguage);
   if (fromPreference) return fromPreference;
 
@@ -182,3 +182,9 @@ if (typeof document !== 'undefined' && document.documentElement) {
 export { i18n };
 export const t = i18n.t.bind(i18n);
 export { reactUseTranslation as useTranslation, Trans };
+export { useFormat } from './useFormat';
+
+/** Only server-designated system roles have catalog names; custom names are user content. */
+export const roleName = (role, translate) => role.isSystem
+  ? translate(`enums:roles.system.${role.name}`)
+  : role.name;

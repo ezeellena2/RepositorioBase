@@ -6,6 +6,9 @@ import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Divider from '@mui/material/Divider';
 import Drawer from '@mui/material/Drawer';
+import FormControl from '@mui/material/FormControl';
+import InputLabel from '@mui/material/InputLabel';
+import NativeSelect from '@mui/material/NativeSelect';
 import IconButton from '@mui/material/IconButton';
 import List from '@mui/material/List';
 import ListItem from '@mui/material/ListItem';
@@ -18,9 +21,12 @@ import Stack from '@mui/material/Stack';
 import Toolbar from '@mui/material/Toolbar';
 import Typography from '@mui/material/Typography';
 import { useIdentity } from '../features/identity/context/IdentityProvider';
-import { useTranslation } from '../i18n';
+import { setLanguage, supportedLanguages, useTranslation } from '../i18n';
 
 export const drawerWidth = 264;
+/** Two rows keep localized controls visible on phones; every fixed-bar spacer uses the same height. */
+export const shellToolbarSx = { minHeight: { xs: 112, sm: 64 } };
+const toolbarSx = { ...shellToolbarSx, gap: 1, flexWrap: { xs: 'wrap', sm: 'nowrap' }, py: { xs: 1, sm: 0 } };
 
 /**
  * The sidebar is the product's navigation, so it is always present on a wide screen rather than behind a
@@ -40,6 +46,26 @@ const hideAtWide = (theme) => ({ [theme.breakpoints.up('md')]: { display: 'none'
 const switcherTrigger = { maxWidth: drawerWidth };
 const switcherLabel = { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' };
 const navigationTextSlotProps = { primary: { variant: 'body2', component: 'span' } };
+const languageInputProps = { id: 'shell-language', name: 'language' };
+const languageControlSize = 'small';
+
+function LanguageSelector() {
+  const { t, i18n } = useTranslation('common');
+  return (
+    <FormControl size={languageControlSize} sx={{ minWidth: 96, flexShrink: 0 }}>
+      <InputLabel htmlFor={languageInputProps.id}>{t('language.label')}</InputLabel>
+      <NativeSelect
+        inputProps={languageInputProps}
+        value={i18n.resolvedLanguage}
+        onChange={(event) => setLanguage(event.target.value)}
+      >
+        {supportedLanguages.map((language) => (
+          <option key={language} value={language}>{t(`language.${language}`)}</option>
+        ))}
+      </NativeSelect>
+    </FormControl>
+  );
+}
 
 const brand = { color: 'inherit', textDecoration: 'none', whiteSpace: 'nowrap' };
 
@@ -241,7 +267,7 @@ export function NavMenu() {
 
   const contents = (
     <>
-      <Toolbar />
+      <Toolbar sx={shellToolbarSx} />
       <NavContents onNavigate={() => setOpen(false)} />
     </>
   );
@@ -249,7 +275,7 @@ export function NavMenu() {
   return (
     <>
       <AppBar position="fixed" sx={(theme) => ({ zIndex: theme.zIndex.drawer + 1 })}>
-        <Toolbar sx={{ gap: 1 }}>
+        <Toolbar sx={toolbarSx}>
           {/* The hamburger belongs to the drawer, so it is offered only where there is one to open. */}
           {signedIn && (
             <IconButton
@@ -266,6 +292,7 @@ export function NavMenu() {
             ? <ContextSwitcher />
             : <Typography component={RouterLink} to="/" variant="h6" sx={brand}>{t('navigation.brand')}</Typography>}
           <Box sx={{ flexGrow: 1 }} />
+          <LanguageSelector />
           {signedIn && displayName !== null && (
             <Typography variant="body2" sx={{ display: { xs: 'none', sm: 'block' } }}>{displayName}</Typography>
           )}

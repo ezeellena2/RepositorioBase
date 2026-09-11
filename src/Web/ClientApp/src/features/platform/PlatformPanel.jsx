@@ -74,7 +74,7 @@ const buttons = { flexWrap: 'wrap', alignItems: 'center' };
 const statusColor = { Active: 'success', Suspended: 'warning', Revoked: 'error', Closed: 'error' };
 
 const StatusChip = ({ status, label }) => (
-  <Chip size="small" variant="outlined" label={label ?? status} color={statusColor[status] ?? 'default'} />
+  <Chip size="small" variant="outlined" label={label} color={statusColor[status] ?? 'default'} />
 );
 
 /** The wait keeps the shape of what is coming, so a directory does not arrive by pushing the page down. */
@@ -226,12 +226,12 @@ export function PlatformPanel() {
                   // attached to something a reader can find again rather than to whichever row they last clicked.
                   <TableRow key={organization.tenantId} hover selected={organization.tenantId === armedOrganization}>
                     <TableCell><Typography variant="body2">{organization.slug}</Typography></TableCell>
-                    <TableCell><StatusChip status={organization.status} /></TableCell>
+                    <TableCell><StatusChip status={organization.status} label={t(`enums:tenantStatus.${organization.status}`)} /></TableCell>
                     {/* The reason is the server's own closed vocabulary — the same four words the picker below
                         offers — so it is read as a value, not as a sentence. */}
                     <TableCell>
                       {organization.suspensionReason ? (
-                        <Chip size="small" variant="outlined" label={organization.suspensionReason} />
+                        <Chip size="small" variant="outlined" label={t(`enums:tenantSuspensionReason.${organization.suspensionReason}`)} />
                       ) : (
                         <Typography variant="body2" color="text.secondary">—</Typography>
                       )}
@@ -280,7 +280,7 @@ export function PlatformPanel() {
                   value={reason}
                   onChange={(event) => setReason(event.target.value)}
                 >
-                  {REASONS.map((value) => <option key={value} value={value}>{value}</option>)}
+                  {REASONS.map((value) => <option key={value} value={value}>{t(`enums:tenantSuspensionReason.${value}`)}</option>)}
                 </NativeSelect>
               </FormControl>
               <Stack direction="row" spacing={1} useFlexGap sx={buttons}>
@@ -324,10 +324,10 @@ export function PlatformPanel() {
                     <TableCell>
                       <StatusChip
                         status={administrator.membershipStatus}
-                        label={administrator.isOwner ? t('administrators.owner', { status: administrator.membershipStatus }) : administrator.membershipStatus}
+                        label={administrator.isOwner ? t('administrators.owner', { status: t(`enums:membershipStatus.${administrator.membershipStatus}`) }) : t(`enums:membershipStatus.${administrator.membershipStatus}`)}
                       />
                     </TableCell>
-                    <TableCell><StatusChip status={administrator.mfaStatus} /></TableCell>
+                    <TableCell><StatusChip status={administrator.mfaStatus} label={t(`enums:mfaStatus.${administrator.mfaStatus}`)} /></TableCell>
                     <TableCell align="right">
                       <Stack direction="row" spacing={1} useFlexGap sx={rowActions}>
                         <Button type="button" size="small" color="error" disabled={isBusy} onClick={() => setPendingAction({ kind: pendingActionKind.revoke, administrator })}>

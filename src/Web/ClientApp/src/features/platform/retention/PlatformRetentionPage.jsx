@@ -21,10 +21,12 @@ import { usePlatformClient } from '../invitations/PlatformInvitationPages';
 import { PlatformStepUpForm } from '../shared/PlatformStepUpForm';
 import { usePlatformRead } from '../shared/usePlatformRead';
 import { usePlatformStepUp } from '../shared/usePlatformStepUp';
-import { useTranslation } from '../../../i18n';
+import { useFormat, useTranslation } from '../../../i18n';
+import { PermissionLabel } from '../../identity/PermissionLabel';
 
 /** Required without the asterisk MUI would add, which would rename the field for everything that reads its label. */
 const requiredField = { inputLabel: { required: false } };
+const readPermission = 'platform.retention.read';
 
 /**
  * Two widths, and both are chosen rather than inherited. The policy itself is a table and takes the container it
@@ -97,12 +99,13 @@ const policyStatuses = { loading: 'loading', refused: 'refused', errored: 'error
  * while it proves it again.
  */
 export function PlatformRetentionPage() {
+  const { formatDate, formatNumber } = useFormat();
   const { t } = useTranslation('platform');
   const identity = useIdentity();
   const platform = usePlatformClient();
 
   const permissions = identity?.context?.permissions ?? [];
-  const mayRead = permissions.includes('platform.retention.read');
+  const mayRead = permissions.includes(readPermission);
   // Reading the rules and stopping an erasure are separately trusted, and manage deliberately does not imply read.
   const mayManage = permissions.includes('platform.retention.manage');
   const owesFactor = identity?.context?.session?.requiresTwoFactor === true;
@@ -175,6 +178,7 @@ export function PlatformRetentionPage() {
           <Typography variant="body2" color="text.secondary">
             {t('retention.accessDenied')}
           </Typography>
+          <PermissionLabel code={readPermission} />
         </Paper>
       </Stack>
     );
@@ -280,7 +284,7 @@ export function PlatformRetentionPage() {
                   <Chip
                     size="small"
                     variant="outlined"
-                    label={page.personalDataMode}
+                    label={t(`enums:personalDataMode.${page.personalDataMode}`)}
                     color={personalDataColor[page.personalDataMode] ?? neutralChipColor}
                   />
                 </Box>
@@ -288,7 +292,7 @@ export function PlatformRetentionPage() {
               <Box>
                 <Typography component="dt" variant="body2" color="text.secondary">{t('retention.activeHolds')}</Typography>
                 <Box component="dd" sx={fact} data-testid="retention-active-holds">
-                  <Chip size="small" label={page.activeHoldCount} />
+                  <Chip size="small" label={formatNumber(page.activeHoldCount)} />
                 </Box>
               </Box>
             </Stack>
@@ -327,16 +331,16 @@ export function PlatformRetentionPage() {
                           columns after them are closed sets the server owns, and all three are stated the same
                           way — a chip. Two of them being bare words next to a chipped third was the table
                           disagreeing with itself about which of its own answers count as domain state. */}
-                      <TableCell>{rule.category}</TableCell>
+                      <TableCell>{t(`enums:retentionCategory.${rule.category}`)}</TableCell>
                       <TableCell>{rule.retentionPeriod}</TableCell>
                       <TableCell>
-                        <Chip size="small" variant="outlined" label={rule.trigger} />
+                        <Chip size="small" variant="outlined" label={t(`enums:retentionTrigger.${rule.trigger}`)} />
                       </TableCell>
                       <TableCell>
                         <Chip
                           size="small"
                           variant="outlined"
-                          label={rule.action}
+                          label={t(`enums:retentionAction.${rule.action}`)}
                           color={actionColor[rule.action] ?? neutralChipColor}
                         />
                       </TableCell>
@@ -430,7 +434,7 @@ export function PlatformRetentionPage() {
                   has no way to name the hold again. */}
               {receipt && (
                 <Alert severity="success" role="status">
-                  {t('retention.place.receipt', receipt)}
+                  {t('retention.place.receipt', { ...receipt, placedAt: formatDate(receipt.placedAt) })}
                 </Alert>
               )}
             </Stack>

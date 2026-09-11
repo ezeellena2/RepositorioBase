@@ -1,6 +1,6 @@
 {
   "source": "en",
   "default": "en",
-  "supported": ["en"],
-  "inProgress": ["es"]
+  "supported": ["en", "es"],
+  "inProgress": []
 }

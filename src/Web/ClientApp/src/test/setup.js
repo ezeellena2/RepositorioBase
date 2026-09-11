@@ -2,6 +2,7 @@ import '@testing-library/jest-dom/vitest';
 import { afterAll, afterEach, beforeAll } from 'vitest';
 import { cleanup } from '@testing-library/react';
 import { server } from './server';
+import { i18n } from '../i18n';
 
 // This Node build starts jsdom without a storage backend, so window.localStorage is undefined and any component
 // that reads a saved preference throws on render. The identity feature stores nothing (IA-REQ-025); this exists
@@ -23,8 +24,11 @@ if (!('localStorage' in window) || window.localStorage === undefined) {
 // asserting against the real network, which is neither deterministic nor safe.
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
+  await i18n.changeLanguage('en');
+  document.documentElement.lang = 'en';
+  document.cookie = '.AspNetCore.Culture=; path=/; max-age=0';
   server.resetHandlers();
   window.history.replaceState({}, '', '/');
 });

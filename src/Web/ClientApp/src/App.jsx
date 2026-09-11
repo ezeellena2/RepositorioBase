@@ -4,11 +4,13 @@ import { ThemeProvider as MaterialThemeProvider } from '@mui/material/styles';
 import AppRoutes from './AppRoutes';
 import { Layout } from './components/Layout';
 import { IdentityProvider } from './features/identity/context/IdentityProvider';
-import { appTheme } from './theme';
+import { themeFor } from './theme';
+import { useTranslation } from './i18n';
 
 export default function App() {
+  const { i18n } = useTranslation();
   return (
-    <MaterialThemeProvider theme={appTheme}>
+    <MaterialThemeProvider theme={themeFor(i18n.resolvedLanguage)}>
       <CssBaseline enableColorScheme />
       <IdentityProvider>
         <Layout>

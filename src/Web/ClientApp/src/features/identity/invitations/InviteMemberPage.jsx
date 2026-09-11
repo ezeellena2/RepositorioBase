@@ -22,7 +22,7 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { useIdentity } from '../context/IdentityProvider';
 import { ProblemMessage } from '../ProblemMessage';
-import { useTranslation } from '../../../i18n';
+import { roleName, useFormat, useTranslation } from '../../../i18n';
 
 /** Required without the asterisk MUI would add, which would rename the field for everything that reads its label. */
 const requiredField = { inputLabel: { required: false } };
@@ -80,6 +80,7 @@ const statusColor = { Accepted: 'success', Cancelled: 'error', Expired: 'warning
  * so each part is loaded on its own and its absence is said plainly instead of failing the page.
  */
 export function InviteMemberPage() {
+  const { formatDate } = useFormat();
   const identity = useIdentity();
   const { t } = useTranslation();
   const tenantId = identity.context?.activeTenant?.id ?? null;
@@ -195,7 +196,10 @@ export function InviteMemberPage() {
     );
   }
 
-  const nameOf = (roleId) => roles?.find((role) => role.roleId === roleId)?.name ?? roleId;
+  const nameOf = (roleId) => {
+    const role = roles?.find((candidate) => candidate.roleId === roleId);
+    return role ? roleName(role, t) : roleId;
+  };
 
   return (
     <Stack component="section" aria-labelledby="invite-heading" spacing={3}>
@@ -216,7 +220,7 @@ export function InviteMemberPage() {
         <ProblemMessage problem={problem} />
         {sent && (
           <Alert severity="success" role="status">
-            {t('identity:invitations.member.sent', { expiresAt: new Date(sent.expiresAt).toLocaleString() })}
+            {t('identity:invitations.member.sent', { expiresAt: formatDate(sent.expiresAt) })}
           </Alert>
         )}
 
@@ -263,7 +267,7 @@ export function InviteMemberPage() {
                         onChange={() => toggleRole(role.roleId)}
                       />
                     )}
-                    label={role.name}
+                    label={roleName(role, t)}
                   />
                 ))}
               </FormGroup>
@@ -322,14 +326,14 @@ export function InviteMemberPage() {
                     <TableCell>
                       <Typography variant="body2">{invitation.normalizedEmail}</Typography>
                       <Typography component="div" variant="caption" color="text.secondary">
-                        {t('identity:invitations.member.expires', { expiresAt: new Date(invitation.expiresAt).toLocaleString() })}
+                        {t('identity:invitations.member.expires', { expiresAt: formatDate(invitation.expiresAt) })}
                       </Typography>
                     </TableCell>
                     <TableCell>
                       <Chip
                         size="small"
                         variant="outlined"
-                        label={invitation.status}
+                        label={t(`enums:invitationStatus.${invitation.status}`)}
                         color={statusColor[invitation.status] ?? 'default'}
                       />
                     </TableCell>

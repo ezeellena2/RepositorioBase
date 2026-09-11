@@ -464,7 +464,9 @@ describe('platform identities page', () => {
 
     renderPage();
 
-    expect(await screen.findByText(/platform\.identities\.read/)).toBeInTheDocument();
+    expect(await screen.findByText('This screen is for a Platform administrator holding platform.identities.read.')).toBeInTheDocument();
+    expect(screen.getByText('View identities', { exact: true })).toBeVisible();
+    expect(screen.getByText('platform.identities.read', { exact: true })).toBeVisible();
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
     expect(screen.queryByRole('form', { name: 'Step up' })).not.toBeInTheDocument();
     expect(reads.count).toBe(0);
@@ -476,7 +478,9 @@ describe('platform identities page', () => {
 
     renderPage();
 
-    expect(await screen.findByText(/platform\.identities\.read/)).toBeInTheDocument();
+    expect(await screen.findByText('This screen is for a Platform administrator holding platform.identities.read.')).toBeInTheDocument();
+    expect(screen.getByText('View identities', { exact: true })).toBeVisible();
+    expect(screen.getByText('platform.identities.read', { exact: true })).toBeVisible();
     expect(reads.count).toBe(0);
   });
 

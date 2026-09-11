@@ -10,7 +10,7 @@ export const signedInContext = (overrides = {}) => ({
     { id: 'tenant-1', type: 'Organization', name: 'Acme' },
     { id: 'tenant-2', type: 'Organization', name: 'Globex' },
   ],
-  permissions: ['members.view', 'members.invite'],
+  permissions: ['members.read', 'members.invite'],
   session: { expiresAt: '2026-12-31T00:00:00Z', requiresTwoFactor: false },
   personalData: { mode: 'Synthetic' },
   ...overrides,

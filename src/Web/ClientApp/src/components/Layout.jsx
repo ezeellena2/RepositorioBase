@@ -2,7 +2,7 @@ import Box from '@mui/material/Box';
 import Container from '@mui/material/Container';
 import Toolbar from '@mui/material/Toolbar';
 import { useLocation } from 'react-router-dom';
-import { NavMenu } from './NavMenu';
+import { NavMenu, shellToolbarSx } from './NavMenu';
 
 /**
  * The routes somebody reaches before they hold a session. Every one of them is a way in — signing in, registering,
@@ -63,7 +63,7 @@ export function Layout({ children }) {
       <NavMenu />
       <Box component="main" sx={{ flexGrow: 1, minWidth: 0 }}>
         {/* Sits under the fixed bar, so the first thing on a page is not hidden behind it. */}
-        <Toolbar />
+        <Toolbar sx={shellToolbarSx} />
         <Container maxWidth="lg" sx={{ py: 3 }}>
           {children}
         </Container>

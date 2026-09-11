@@ -9,8 +9,8 @@ public static class LocalizationRegistry
     public const string SourceLanguage = "en";
     public const string DefaultLanguage = SourceLanguage;
 
-    public static IReadOnlyList<string> SupportedLanguages { get; } = [SourceLanguage];
-    public static IReadOnlyList<string> InProgressLanguages { get; } = ["es"];
+    public static IReadOnlyList<string> SupportedLanguages { get; } = [SourceLanguage, "es"];
+    public static IReadOnlyList<string> InProgressLanguages { get; } = [];
 
     public static bool IsSupported(string? language) =>
         language is not null && SupportedLanguages.Contains(language, StringComparer.OrdinalIgnoreCase);

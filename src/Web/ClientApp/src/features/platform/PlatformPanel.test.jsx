@@ -114,7 +114,7 @@ describe('platform panel', () => {
   });
 
   it('does not render for a Platform session that lacks the directory permission', async () => {
-    server.use(antiforgery(), contextIs(platformContext(['members.view'])));
+    server.use(antiforgery(), contextIs(platformContext(['members.read'])));
     renderPanel();
 
     expect(await screen.findByText(/MFA-authenticated Platform administrator/i)).toBeInTheDocument();

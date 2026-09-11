@@ -1,4 +1,5 @@
 import { createTheme } from '@mui/material/styles';
+import { enUS, esES } from '@mui/material/locale';
 
 // Quoted, because CSS will not take these unquoted. An unquoted family name is a sequence of identifiers and
 // `3` is not one — it starts with a digit — so `Source Sans 3, sans-serif` is a parse error the browser drops
@@ -14,7 +15,7 @@ const textFont = '"Source Sans 3", sans-serif';
  * whether or not there is a control on screen. Declaring light alone is what actually removes dark mode — there is
  * no second scheme left to switch to.
  */
-export const appTheme = createTheme({
+const themeOptions = {
   colorSchemes: {
     light: {
       palette: {
@@ -41,4 +42,11 @@ export const appTheme = createTheme({
     h5: { fontFamily: displayFont },
     h6: { fontFamily: displayFont },
   },
-});
+};
+
+export const appTheme = createTheme(themeOptions);
+const localizedThemes = {
+  en: createTheme(themeOptions, enUS),
+  es: createTheme(themeOptions, esES),
+};
+export const themeFor = (language) => localizedThemes[language] ?? localizedThemes.en;

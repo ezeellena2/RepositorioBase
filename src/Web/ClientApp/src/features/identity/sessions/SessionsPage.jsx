@@ -11,7 +11,7 @@ import Skeleton from '@mui/material/Skeleton';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
-import { Trans, useTranslation } from '../../../i18n';
+import { Trans, useFormat, useTranslation } from '../../../i18n';
 import { useIdentity } from '../context/IdentityProvider';
 import { ProblemMessage } from '../ProblemMessage';
 import { useIdentityProof } from '../useIdentityProof';
@@ -54,6 +54,7 @@ const listItemTextSlots = { primary: { component: 'div' } };
 const SessionsPath = '/identity/sessions';
 
 export function SessionsPage() {
+  const { formatDate } = useFormat();
   const { t } = useTranslation('identity');
   const identity = useIdentity();
   const proof = useIdentityProof();
@@ -209,7 +210,7 @@ export function SessionsPage() {
                       )}
                     </Stack>
                   )}
-                  secondary={t('sessions.lastSeen', { lastSeenAt: session.lastSeenAt })}
+                  secondary={t('sessions.lastSeen', { lastSeenAt: formatDate(session.lastSeenAt) })}
                 />
                 {/* Every one of these is named "End this device" — the name a person reads in the row they are
                     looking at, and the name several callers read back, so it cannot change. What distinguishes

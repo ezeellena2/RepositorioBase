@@ -1,5 +1,5 @@
 import Box from '@mui/material/Box';
-import Chip from '@mui/material/Chip';
+import { PermissionLabel } from '../PermissionLabel';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
@@ -91,7 +91,7 @@ export function IdentityContextPage() {
             : (
               <Stack component="dd" direction="row" spacing={1} useFlexGap sx={chips}>
                 {permissions.map((permission) => (
-                  <Chip key={permission} size="small" variant="outlined" label={permission} />
+                  <Box key={permission}><PermissionLabel code={permission} /></Box>
                 ))}
               </Stack>
             )}

@@ -19,7 +19,7 @@ import Typography from '@mui/material/Typography';
 import { useIdentity } from '../context/IdentityProvider';
 import { ProblemMessage } from '../ProblemMessage';
 import { useIdentityProof } from '../useIdentityProof';
-import { useTranslation } from '../../../i18n';
+import { roleName, useTranslation } from '../../../i18n';
 
 const frame = { maxWidth: 560 };
 const panel = { p: { xs: 2, sm: 3 }, maxWidth: 560 };
@@ -244,7 +244,10 @@ export function MembersPage() {
     );
   }
 
-  const nameOf = (roleId) => roles?.find((role) => role.roleId === roleId)?.name ?? roleId;
+  const nameOf = (roleId) => {
+    const role = roles?.find((candidate) => candidate.roleId === roleId);
+    return role ? roleName(role, t) : roleId;
+  };
 
   return (
     <Stack component="section" aria-labelledby="members-heading" spacing={3}>
@@ -320,7 +323,7 @@ export function MembersPage() {
                       <Chip
                         size="small"
                         variant="outlined"
-                        label={member.status}
+                        label={t(`enums:membershipStatus.${member.status}`)}
                         color={statusColor[member.status] ?? 'default'}
                       />
                       {member.roleIds.length === 0 ? (
@@ -413,7 +416,7 @@ export function MembersPage() {
                                   onChange={() => toggleRole(role.roleId)}
                                 />
                               )}
-                              label={role.name}
+                              label={roleName(role, t)}
                             />
                           ))}
                         </FormGroup>

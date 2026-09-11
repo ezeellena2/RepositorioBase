@@ -4,7 +4,7 @@ import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import { useState } from 'react';
-import { useTranslation } from '../i18n';
+import { useFormat, useTranslation } from '../i18n';
 
 const page = { maxWidth: 560 };
 const header = { alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap' };
@@ -15,6 +15,7 @@ const section = { p: { xs: 2, sm: 3 } };
 const reading = { display: 'block', mt: 0.5 };
 
 export function Counter() {
+  const { formatNumber } = useFormat();
   const [count, setCount] = useState(0);
   const { t } = useTranslation('common');
 
@@ -41,7 +42,7 @@ export function Counter() {
             of the region and the page object that locates `p[aria-live='polite'] strong` read it back. */}
         <Typography component="p" variant="body2" color="text.secondary" aria-live="polite">
           {t('counter.currentCount')}
-          <Typography component="strong" variant="h4" color="text.primary" sx={reading}>{count}</Typography>
+          <Typography component="strong" variant="h4" color="text.primary" sx={reading}>{formatNumber(count)}</Typography>
         </Typography>
       </Paper>
     </Stack>

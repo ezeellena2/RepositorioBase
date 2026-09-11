@@ -2,10 +2,10 @@
 
 | | |
 |---|---|
-| Status | **Phase 0 and Phase 1 are delivered to `main`; revised [Build run 34559082676](https://github.com/ezeellena2/RepositorioBase/actions/runs/34559082676) is green. Phase 2 is fully implemented and verified; its final retention work unit and this completion record are delivered by the commit containing this entry. Every existing test remains unedited, all journeys pass, every production feature path enforces localization lint at `error`, and no Spanish translations were added.** |
+| Status | **Phases 0–3 are complete and delivered to `main`. Spanish is fully catalogued and promoted to `supported`; the native selector, localized MUI theme, explicit-locale formatting, permission and system-role names, and Spanish smoke journey are all verified.** |
 | Last updated | 2026-09-11 |
 | Scope | Backend (.NET), React SPA (`src/Web/ClientApp`), outbox-delivered messages, tests, CI, and the repository's working rules |
-| Next action | Present and resolve the Phase 3 product decisions P3.1–P3.7 before adding Spanish (§11.5). |
+| Next action | Present and resolve the Phase 4 product decisions P4.1–P4.6 before localizing server-delivered messages (§11.6). |
 
 This document is self-contained: a new session that reads only this file must be able to continue. It is also the
 source of truth — agent memories (Claude auto-memory, Engram) are not shared by every tool.
@@ -48,7 +48,13 @@ source of truth — agent memories (Claude auto-memory, Engram) are not shared b
   passed both `spa` and `build`, including HTTPS trust and Test solution.
 - For the workflow-only certificate correction, the user declined a Docker image: `git diff --check` is sufficient
   locally and Linux CI is the functional proof. Test Templates is manual-only after unrelated template drift; CodeQL
-  is deferred. Phase 2 decisions proceed without waiting for CI.
+  is deferred.
+- Phase 2 is delivered at `45ed009`. Its final local closure passed 1,334 tests and 32 isolated journeys. The
+  push-triggered `spa` job passed; `build` had one CI-only acceptance timeout that did not reproduce locally and is
+  tracked outside localization.
+- P3.1–P3.7 are accepted and Phase 3 is delivered by the commit containing this entry. Both catalogs contain the same
+  462 leaves; every prior English value is unchanged; `es` is supported; and the complete local verification passed
+  343 SPA tests, 1,335 .NET tests and 33 isolated journeys. Phase 4 decisions are next.
 
 ### 0.2 How to work with the user
 
@@ -564,7 +570,7 @@ requirements of §7; a traceability table (requirement → gate → phase → ev
 | D3 | Validation field errors | Codes | One catalog; the field's translated label instead of a property name; a checkable rule |
 | D4 | Organization default language | Not now | Account preference plus snapshots cover every email; add it when a tenant needs it |
 | D5 | Language of an invitation email | The inviter's current language | The best available proxy; a selector on the invite form can follow |
-| D6 | Translation workflow | Files in the repository, reviewed before push to `main` | Revisit a translation platform (Crowdin, Lokalise, Weblate) at the third language or when non-developers translate |
+| D6 | Translation workflow | Files in the repository; Codex drafts Phase 3 and flags doubtful wording for the product owner's in-app review after delivery | The user explicitly chose the Phase 3 review handoff; revisit a translation platform (Crowdin, Lokalise, Weblate) at the third language or when non-developers translate |
 | D7 | Existing rules that stand in the way | Amended (§9), including the `Locale` line in `PlaywrightSetup.cs` | A stale rule would make every later session work against the standard |
 | D8 | Delivery policy | Work directly on `main`: conventional commit and push after verification, with no pull requests or feature branches | Verification is the delivery gate; failed or unrun verification is reported instead of committed or pushed |
 
@@ -575,7 +581,8 @@ requirements of §7; a traceability table (requirement → gate → phase → ev
 | 0 | Delivered directly to `main` at exact commit `afe6c92` after fast-forward and remote-ref verification — 2026-09-10 |
 | 1 | Implemented, fully verified locally, committed at `ef19d44`, and fast-forward pushed to `origin/main` after the separate baseline journey repair at `f21103d`. The [first Build run](https://github.com/ezeellena2/RepositorioBase/actions/runs/34557253186) passed `spa`; its build compiled and passed Domain 186, Application Unit 187, Infrastructure Integration 302, and Application Functional 626, but Web Acceptance failed 3/32 because auxiliary `HttpClient` calls rejected the Ubuntu ASP.NET development certificate with `AuthenticationException UntrustedRoot`. The [rerun](https://github.com/ezeellena2/RepositorioBase/actions/runs/34558083319) passed `spa` but build failed in `Trust development HTTPS certificate` with exit 4 because OpenSSL lacked `SSL_CERT_DIR` wiring. Revised [Build run 34559082676](https://github.com/ezeellena2/RepositorioBase/actions/runs/34559082676) passed both `spa` and `build`, including HTTPS trust and Test solution. Test Templates run [34557253244](https://github.com/ezeellena2/RepositorioBase/actions/runs/34557253244) failed for unrelated template drift and is manual-only; CodeQL is deferred. Phase 2 decisions continue without awaiting CI. |
 | 2 | **Complete and delivered by the commit containing this entry — 2026-09-11.** Decisions P2.1–P2.4 were applied. Baseline passed; work units were delivered one folder/commit/push at a time through platform invitations `4553b74`, with retention in this final commit. Final closure passed: Vitest 320/320 in 29 files; ESLint 0 errors/4 expected test warnings; Vite 2,493 modules; .NET 1,334/1,334 (Domain 186, Application Unit 187, Infrastructure 302, Functional 627, Acceptance 32); isolated journeys 32/32. All 39 production component/identity/platform files enforce lint severity 2; existing tests stay at severity 1 and were not edited; the new error-catalog contract passes; every Spanish catalog remains empty. |
-| 3–6 | Pending |
+| 3 | **Complete and delivered by the commit containing this entry — 2026-09-11.** P3.1–P3.7 were applied. Both languages contain 462 catalog leaves (common 38, errors 56, enums 75, identity 175, platform 118); `es` is promoted to `supported`; all 383 prior English leaves are unchanged; permissions retain readable names plus visible codes; only system roles are translated; and timestamps use explicit-locale `Intl` formatting in the browser time zone. Final closure passed: Vitest 343/343 in 32 files; ESLint 0 errors/4 expected test warnings; Vite 2,557 modules; .NET 1,335/1,335 (Domain 186, Application Unit 187, Infrastructure 302, Functional 627, Acceptance 33); isolated journeys 33/33, including the Spanish full-navigation smoke at 375 px. Independent specification and quality reviews are green. Doubtful wording and in-app review routes are documented in `GLOSSARY.md`. |
+| 4–6 | Pending |
 
 ## 11. Phases — decisions, steps and exit criteria
 
@@ -699,17 +706,17 @@ on the push to `main`; the parity gate was seen failing once.
 
 ### 11.5 Phase 3 — Spanish in the SPA
 
-**Decisions (pending)**
+**Decisions (accepted 2026-09-11)**
 
-| # | Question | Recommendation | Why |
+| # | Question | Answer | Why |
 |---|---|---|---|
-| P3.1 | Register: *tú* or *usted* | *Tú* | The usual register of neutral Latin American software; *vos* would need `es-AR` (D1) |
-| P3.2 | Terminology | A glossary first (`docs/features/localization/GLOSSARY.md`): organization, tenant, sign in, session, role, membership, invitation, Platform | The same term everywhere; translation and review check against it |
-| P3.3 | Who translates and who reviews | Drafted in the repository; reviewed by a native speaker before push to `main` | D6: files in the repository, reviewed before push to `main` |
-| P3.4 | Human names for permissions | A human label, with the code as secondary text — after checking `RolesPage.test.jsx` and the page objects | People read names; operators and tests read codes. Page objects read role names, not permission codes (verified 2026-09-10) |
-| P3.5 | Language selector | In the shell: a native `select`, each language named in itself ("English", "Español"), no flags | Flags name countries, not languages; a native `select` is the repository's pattern |
+| P3.1 | Register: *tú* or *usted* | *Usted* in sentences; buttons and labels use the infinitive (for example, `Iniciar sesión`, `Guardar`) | The form of address appears only where a complete sentence needs it; action copy stays concise and consistent |
+| P3.2 | Terminology | Write `GLOSSARY.md` with Organización for Organization/Tenant, Plataforma, Iniciar sesión/Cerrar sesión, Sesión, Rol/Permiso, Miembro/Membresía, Propietario/Administrador, Invitación, Segundo factor, and invariant DNI/CUIT; decide missing terms by the same criterion and report them | The same neutral, professional term is used everywhere; verify whether Platform's tenant model includes personal contexts before treating both terms as Organización |
+| P3.3 | Who translates and who reviews | Codex translates; the final handoff lists doubtful wording and explains how to review the Spanish UI | The user explicitly chose an in-app product-owner review after verified delivery instead of a blocking pre-push native-speaker checkpoint |
+| P3.4 | Human names for permissions | A readable localized name with the invariant code as secondary text, kept visible for operators and tests | People read names; operators and tests can still identify the exact permission code |
+| P3.5 | Language selector | In the shell: a native `select`, each language named in itself (`English`, `Español`), no flags | Flags name countries, not languages; a native `select` is the repository's pattern |
 | P3.6 | Date and time format | `Intl` medium date and short time, in the browser's time zone | No time-zone preference exists yet (§13) |
-| P3.7 | Built-in role names | `isSystem` roles show `enums:roles.system.<name>`; custom roles show the stored name | System names are code constants; the `en` value keeps the name page objects check by |
+| P3.7 | Built-in role names | `isSystem` roles show `enums:roles.system.<name>`; custom roles show the stored name | System names are product vocabulary; organization-defined names are user-authored data |
 
 **Steps**
 
@@ -722,7 +729,8 @@ on the push to `main`; the parity gate was seen failing once.
    open `/identity`; assert `html[lang="es"]` and that no raw key is visible.
 7. Promote `es` to `supported` in `languages.json` and in the backend registry; the parity gate is now strict for it.
 
-**Exit criteria**: `es` complete and promoted; parity strict and green; the `es` journey green; native review done.
+**Exit criteria**: `es` complete and promoted; parity strict and green; the `es` journey green; the final handoff lists
+the wording awaiting product-owner review and explains how to inspect the Spanish UI.
 
 ### 11.6 Phase 4 — Spanish outside the SPA
 
@@ -954,3 +962,7 @@ Recorded 2026-09-09, verify before relying on them:
 | 2026-09-11 | Platform retention extraction preserves 34 exact English values plus reused cancellation copy, including JavaScript-built validation and all four receipt placeholders. Raw reasons, operations, hold IDs, permissions, statuses, categories and date text remain invariant; MFA/no-replay, refusal priority, forms, table and accessibility contracts are unchanged. Its final SPA gate passed: Vitest 320/320 in 29 files, ESLint 0 errors/4 expected warnings from an existing test, Vite 2,493 modules, and `git diff --check`, all exit 0. |
 | 2026-09-11 | The Phase 2 lint closure found and corrected two configuration gaps without touching source behavior: tests/specs under components, login and register now remain on the global warning policy, while identity/platform API files and identity root helpers receive production severity 2. Final audit covered 39 production files at severity 2, 24 existing tests at severity 1, 140 production probes rejected as errors and 24 test/spec probes retained as warnings. Every Spanish catalog remains `{}`. |
 | 2026-09-11 | Phase 2 complete closure passed with no tracked-file drift: .NET 1,334/1,334 — Domain 186, Application Unit 187, Infrastructure Integration 302, Application Functional 627 (including `ErrorCatalogContractTests`), Web Acceptance 32 — and the isolated Reqnroll/Playwright journeys 32/32. Docker Desktop 28.5.1 was healthy and no competing AppHost/dcp/testhost was present. The verified retention work unit and this completion record are delivered by the commit containing this entry. |
+| 2026-09-11 | P3.1–P3.7 accepted: formal *usted* only in sentences with infinitive labels/actions; the specified neutral-Spanish glossary plus consistent decisions for missing terms; Codex translation with doubtful wording and in-app review instructions in the final handoff; readable localized permission names with visible invariant codes; a native `English`/`Español` shell selector without flags; `Intl` medium date and short time in the browser time zone; translated system roles and unchanged organization-defined role names. This explicitly replaces the blocking pre-push native-speaker checkpoint for Phase 3 with the user's requested post-delivery product-owner review handoff. |
+| 2026-09-11 | Phase 3 baseline passed before application changes: Vitest 320/320 in 29 files; ESLint 0 errors/4 expected test warnings; Vite 2,493 modules; .NET 1,334/1,334 (Domain 186, Application Unit 187, Infrastructure 302, Functional 627, Acceptance 32); isolated journeys 32/32; `git diff --check` green. The first sandboxed SPA invocation could not read the user-level npm CLI, and the first sandboxed .NET invocations could not read the user NuGet configuration; unchanged elevated reruns passed without installing or changing the machine. |
+| 2026-09-11 | Phase 3 implemented with discriminating RED evidence: the first Spanish runtime tests failed three times before the selector/live language behavior existed; review corrections failed four presentation cases before broad Contexto terminology and readable denied-state permissions were added; accessibility/date tests failed twice before localized checkbox descriptions and unavailable-date handling; and the strengthened 375 px journey exposed a real clipped toolbar before responsive MUI composition fixed it. The Spanish smoke then passed real sign-in, HTTP 204, `/identity`, full-page cookie persistence, `html[lang="es"]`, localized context, raw-key absence and complete mobile control bounds. |
+| 2026-09-11 | Phase 3 final closure passed on the reviewed candidate: strict catalogs contain 462 matching leaves per language (common 38, errors 56, enums 75, identity 175, platform 118), with placeholder and rich-tag parity and all 383 prior English leaves unchanged. Vitest passed 343/343 in 32 files; ESLint passed with 0 errors and the same four test warnings; Vite built 2,557 modules; .NET passed 1,335/1,335 (Domain 186, Application Unit 187, Infrastructure 302, Functional 627, Acceptance 33); isolated journeys passed 33/33; `git diff --check` passed. Independent specification and code-quality reviews found no remaining issue. `es` is promoted to `supported`; Phase 4 decisions are next. |

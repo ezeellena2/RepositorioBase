@@ -1,1 +1,168 @@
-{}
+{
+  "panel": {
+    "accessDenied": "Esta área requiere un administrador de la Plataforma autenticado con segundo factor.",
+    "stepUpDescription": "Esta sesión todavía no ha verificado su segundo factor. Introduzca un código de su aplicación de autenticación para continuar.",
+    "cancel": "Cancelar"
+  },
+  "stepUp": {
+    "label": "Verificar el segundo factor",
+    "authenticatorCode": "Código de autenticación"
+  },
+  "organizations": {
+    "title": "Organizaciones",
+    "empty": "No hay organizaciones en esta lista.",
+    "columns": {
+      "slug": "Identificador de URL",
+      "status": "Estado",
+      "suspendedFor": "Motivo de suspensión",
+      "actions": "Acciones"
+    },
+    "reactivate": "Reactivar {{slug}}",
+    "suspend": "Suspender {{slug}}",
+    "more": "Mostrar más organizaciones"
+  },
+  "suspension": {
+    "confirmationLabel": "Confirmar suspensión",
+    "prompt": "¿Suspender {{slug}}?",
+    "reason": "Motivo",
+    "confirm": "Confirmar suspensión"
+  },
+  "administrators": {
+    "title": "Administradores",
+    "empty": "No hay administradores en esta lista.",
+    "columns": {
+      "address": "Dirección",
+      "status": "Estado",
+      "secondFactor": "Segundo factor",
+      "actions": "Acciones"
+    },
+    "owner": "{{status}} (propietario)",
+    "revoke": "Revocar acceso de {{email}}"
+  },
+  "revocation": {
+    "confirmationLabel": "Confirmar revocación",
+    "prompt": "¿Revocar el acceso de {{email}}?",
+    "confirm": "Confirmar revocación"
+  },
+  "invite": {
+    "label": "Invitar a un administrador",
+    "submit": "Invitar"
+  },
+  "audit": {
+    "title": "Auditoría",
+    "empty": "Todavía no se ha registrado nada aquí.",
+    "label": "Auditoría"
+  },
+  "identities": {
+    "title": "Identidades",
+    "accessDenied": "Esta pantalla requiere un administrador de la Plataforma con el siguiente permiso:",
+    "recentProof": "Ese cambio requiere una nueva verificación de su segundo factor. Introduzca un código y luego solicite el cambio de nuevo.",
+    "suspension": {
+      "confirmationLabel": "Confirmar suspensión",
+      "prompt": "¿Suspender a {{email}}?",
+      "reason": "Motivo",
+      "confirm": "Confirmar suspensión"
+    },
+    "reactivation": {
+      "confirmationLabel": "Confirmar reactivación",
+      "prompt": "¿Levantar la suspensión de {{email}}?",
+      "acknowledgementRequired": "La persona propietaria de esta cuenta la desactivó. Al levantar la suspensión, la cuenta volverá a estar desactivada. Marque la confirmación si desea continuar.",
+      "acknowledgement": "Entiendo que esta cuenta puede volver al estado desactivado en lugar de activo",
+      "confirm": "Confirmar reactivación"
+    },
+    "loading": "Cargando el directorio…",
+    "retry": "Volver a intentar",
+    "empty": "No hay cuentas en esta lista.",
+    "columns": {
+      "address": "Dirección",
+      "accountStatus": "Estado de la cuenta",
+      "identity": "Identidad",
+      "actions": "Acciones"
+    },
+    "suspend": "Suspender a {{email}}",
+    "reactivate": "Reactivar a {{email}}",
+    "more": "Mostrar más cuentas"
+  },
+  "invitations": {
+    "register": {
+      "title": "Configurar su cuenta de la Plataforma",
+      "success": "Revise su correo electrónico. Si esa invitación sigue abierta, le hemos enviado lo necesario para continuar. Confirme su dirección, inicie sesión y luego abra este enlace de invitación de nuevo para configurar su segundo factor.",
+      "password": "Elegir una contraseña",
+      "continue": "Continuar"
+    },
+    "confirm": {
+      "title": "Confirmar su dirección de la Plataforma",
+      "success": "Su dirección está confirmada. Inicie sesión y luego abra el correo de invitación de nuevo para configurar su segundo factor.",
+      "signIn": "Iniciar sesión",
+      "submit": "Confirmar mi dirección"
+    },
+    "bootstrap": {
+      "title": "Reenviar la invitación al propietario de la Plataforma",
+      "success": "Si hay una invitación de propietario pendiente que no pudo entregarse, se enviará una nueva.",
+      "resend": "Reenviar"
+    }
+  },
+  "mfa": {
+    "setUp": "Configurar su segundo factor",
+    "signInWithInvitedAddress": "Inicie sesión con la dirección invitada y luego abra el correo de invitación de nuevo.",
+    "beginEnrollment": "Iniciar configuración",
+    "sharedKey": "Clave compartida",
+    "recoveryCodes": "Códigos de recuperación",
+    "codeFromAuthenticator": "Código de su aplicación de autenticación",
+    "verify": "Verificar",
+    "savedRecoveryCodes": "He guardado mis códigos de recuperación",
+    "active": "Su segundo factor está activo.",
+    "recovery": {
+      "title": "Reemplazar su segundo factor",
+      "description": "Utilice esta opción si perdió el acceso a su aplicación de autenticación. Necesita su contraseña y un código de recuperación sin usar.",
+      "signInFirst": "Inicie sesión primero. Para reemplazar un segundo factor, necesita su contraseña y un código de recuperación.",
+      "replacementReady": "Añada esta clave a su aplicación de autenticación y guarde los códigos. Se muestran una sola vez y no se pueden volver a mostrar.",
+      "proveNewFactor": "Verifique el nuevo factor antes de realizar cambios en la Plataforma: nadie lo ha verificado todavía, incluido usted.",
+      "password": "Su contraseña",
+      "code": "Un código de recuperación",
+      "submit": "Reemplazar mi segundo factor"
+    }
+  },
+  "retention": {
+    "title": "Conservación",
+    "accessDenied": "Esta pantalla requiere el siguiente permiso. Solicite a un propietario de la Plataforma que se lo otorgue.",
+    "entryProof": "Esta sesión todavía no ha verificado su segundo factor. Introduzca un código de su aplicación de autenticación para consultar la política de conservación.",
+    "recentProof": "Ese cambio requiere una verificación reciente de su segundo factor. Confírmelo y luego realice el cambio de nuevo.",
+    "reading": "Consultando la política de conservación.",
+    "personalData": "Datos personales",
+    "activeHolds": "Bloqueos activos",
+    "noPolicy": "No hay una política de conservación configurada para este despliegue, por lo que no se eliminará nada.",
+    "columns": {
+      "category": "Categoría",
+      "period": "Período de conservación",
+      "trigger": "Evento de inicio",
+      "action": "Acción",
+      "evidenceRequired": "Evidencia requerida"
+    },
+    "emptyCategories": "Esta política no define categorías propias.",
+    "yes": "Sí",
+    "no": "No",
+    "retry": "Volver a intentar",
+    "place": {
+      "title": "Establecer un bloqueo de eliminación",
+      "formLabel": "Establecer un bloqueo de eliminación",
+      "subjectIdentity": "Identidad de la persona",
+      "reasonCode": "Código de motivo",
+      "reference": "Referencia",
+      "referenceShape": "Letras, dígitos, punto, guion bajo, dos puntos o guion: de 1 a 64 caracteres.",
+      "validation": "El código de motivo y la referencia deben cumplir lo siguiente: {{shape}} No se envió nada.",
+      "submit": "Establecer bloqueo",
+      "receipt": "El bloqueo {{holdId}} se estableció por {{reasonCode}}, con la referencia {{reference}}, el {{placedAt}}. Guarde ese identificador de bloqueo: no hay una lista de bloqueos, por lo que solo se muestra esta vez."
+    },
+    "release": {
+      "title": "Levantar un bloqueo de eliminación",
+      "formLabel": "Levantar un bloqueo de eliminación",
+      "holdId": "Identificador del bloqueo",
+      "submit": "Levantar",
+      "confirmationLabel": "Confirmar levantamiento",
+      "prompt": "¿Levantar este bloqueo? No se consulta su información antes: la operación responde de la misma manera si sigue vigente, ya se levantó o nunca existió.",
+      "confirm": "Confirmar levantamiento",
+      "notice": "Este bloqueo ya no está vigente. Un bloqueo que ya se levantó y uno que nunca existió reciben exactamente la misma respuesta. Esto indica el estado actual, sin afirmar que esta solicitud haya realizado un cambio."
+    }
+  }
+}

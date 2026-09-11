@@ -71,7 +71,7 @@ describe('application shell', () => {
   });
 
   it('hides the invite action from a member who cannot invite', async () => {
-    server.use(antiforgery(), contextIs(signedInContext({ permissions: ['members.view'] })));
+    server.use(antiforgery(), contextIs(signedInContext({ permissions: ['members.read'] })));
     renderApp();
 
     expect(await screen.findByRole('link', { name: 'Organizations' })).toBeInTheDocument();

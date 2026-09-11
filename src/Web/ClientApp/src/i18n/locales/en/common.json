@@ -1,4 +1,6 @@
 {
+  "format": { "dateUnavailable": "Date unavailable" },
+  "language": { "label": "Language", "en": "English", "es": "Español" },
   "counter": {
     "title": "Counter",
     "description": "This is a simple example of a React component.",
