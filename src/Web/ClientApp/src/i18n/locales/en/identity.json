@@ -80,5 +80,44 @@
       "loading": "One moment…",
       "refused": "Nothing was changed. You can try again."
     }
+  },
+  "invitations": {
+    "register": {
+      "title": "Set up your account",
+      "success": "Check your email. If that invitation is still open, we have sent you what you need to continue.",
+      "choosePassword": "Choose a password",
+      "continue": "Continue"
+    },
+    "accept": {
+      "title": "Accept your invitation",
+      "precondition": "Sign in with the invited address first.",
+      "success": "You are a member now.",
+      "continue": "Continue",
+      "refreshFailed": "Your membership was saved, but your access could not be refreshed. <signIn>Sign in to continue</signIn>.",
+      "loading": "Accepting and refreshing your access…",
+      "submit": "Accept"
+    },
+    "member": {
+      "title": "Invite a member",
+      "noOrganization": "Choose an organization first. An invitation belongs to one organization, and this session is not in one.",
+      "sent": "Invitation sent. It expires on {{expiresAt}}.",
+      "rolesToOffer": "Roles to offer",
+      "rolesRefused": "You cannot see this organization’s roles, so there are none to offer here.",
+      "noRolesToOffer": "This organization has no roles to offer yet.",
+      "send": "Send invitation",
+      "listTitle": "Invitations",
+      "invitationsRefused": "You cannot see this organization’s invitations.",
+      "noInvitations": "No invitation has been sent yet.",
+      "recipient": "Recipient",
+      "state": "State",
+      "roles": "Roles",
+      "actions": "Actions",
+      "expires": "expires {{expiresAt}}",
+      "noRoles": "no roles",
+      "resend": "Resend to {{email}}",
+      "withdrawConfirm": "Withdraw the invitation to {{email}}? Their link stops working.",
+      "withdraw": "Withdraw invitation to {{email}}",
+      "showMore": "Show more invitations"
+    }
   }
 }

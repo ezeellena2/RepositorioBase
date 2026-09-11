@@ -13,6 +13,7 @@ import { useIdentity } from '../context/IdentityProvider';
 import { ProblemMessage } from '../ProblemMessage';
 import { useFragmentToken } from '../useFragmentToken';
 import { useSubmit } from '../useSubmit';
+import { Trans, useTranslation } from '../../../i18n';
 
 /** Required without the asterisk MUI would add, which would rename the field for everything that reads its label. */
 const requiredField = { inputLabel: { required: false } };
@@ -30,6 +31,8 @@ const frame = { maxWidth: 560 };
 const supporting = { mt: 0.5 };
 const waiting = { alignItems: 'center' };
 const selfStart = { alignSelf: 'flex-start' };
+const emptyToken = '';
+const identityRoute = '/identity';
 
 /**
  * Registering from an invitation answers with a neutral bodyless 202 whether the token was live, dead, or
@@ -37,6 +40,7 @@ const selfStart = { alignSelf: 'flex-start' };
  */
 export function RegisterFromInvitationPage() {
   const identity = useIdentity();
+  const { t } = useTranslation();
   const token = useFragmentToken();
   const [password, setPassword] = useState('');
   const { submit, problem, isBusy, result } = useSubmit((secret, chosen) =>
@@ -46,9 +50,9 @@ export function RegisterFromInvitationPage() {
     return (
       <Paper component="section" elevation={3} aria-labelledby="invitation-register-heading" sx={card}>
         <Stack spacing={3}>
-          <Typography id="invitation-register-heading" component="h1" variant="h5">Set up your account</Typography>
+          <Typography id="invitation-register-heading" component="h1" variant="h5">{t('identity:invitations.register.title')}</Typography>
           <Alert severity="success" role="status">
-            Check your email. If that invitation is still open, we have sent you what you need to continue.
+            {t('identity:invitations.register.success')}
           </Alert>
         </Stack>
       </Paper>
@@ -58,12 +62,12 @@ export function RegisterFromInvitationPage() {
   return (
     <Paper component="section" elevation={3} aria-labelledby="invitation-register-heading" sx={card}>
       <Stack spacing={3}>
-        <Typography id="invitation-register-heading" component="h1" variant="h5">Set up your account</Typography>
+        <Typography id="invitation-register-heading" component="h1" variant="h5">{t('identity:invitations.register.title')}</Typography>
         <ProblemMessage problem={problem} />
-        <Stack component="form" spacing={2} onSubmit={(event) => { event.preventDefault(); submit(token ?? '', password); }}>
+        <Stack component="form" spacing={2} onSubmit={(event) => { event.preventDefault(); submit(token ?? emptyToken, password); }}>
           <TextField
             id="invitation-password"
-            label="Choose a password"
+            label={t('identity:invitations.register.choosePassword')}
             type="password"
             autoComplete="new-password"
             required
@@ -72,7 +76,7 @@ export function RegisterFromInvitationPage() {
             value={password}
             onChange={(event) => setPassword(event.target.value)}
           />
-          <Button type="submit" variant="contained" size="large" fullWidth disabled={isBusy}>Continue</Button>
+          <Button type="submit" variant="contained" size="large" fullWidth disabled={isBusy}>{t('identity:invitations.register.continue')}</Button>
         </Stack>
       </Stack>
     </Paper>
@@ -90,6 +94,7 @@ export function RegisterFromInvitationPage() {
  */
 export function AcceptInvitationPage() {
   const identity = useIdentity();
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const token = useFragmentToken();
   const { submit, problem, isBusy, result } = useSubmit(async (secret) => {
@@ -106,10 +111,10 @@ export function AcceptInvitationPage() {
           reason that button cannot be pressed rather than a remark about the screen. It lives and dies with the
           button: once the invitation has been accepted it is the reason for nothing. */}
       <Box>
-        <Typography id="invitation-accept-heading" component="h1" variant="h5">Accept your invitation</Typography>
+        <Typography id="invitation-accept-heading" component="h1" variant="h5">{t('identity:invitations.accept.title')}</Typography>
         {!result && !identity?.isAuthenticated && (
           <Typography id="invitation-accept-precondition" variant="body2" sx={supporting}>
-            Sign in with the invited address first.
+            {t('identity:invitations.accept.precondition')}
           </Typography>
         )}
       </Box>
@@ -123,10 +128,10 @@ export function AcceptInvitationPage() {
               what keeps the announced wait and the announced outcome from ever being read out together. */}
           {result ? (
             <>
-              <Alert severity="success" role="status">You are a member now.</Alert>
+              <Alert severity="success" role="status">{t('identity:invitations.accept.success')}</Alert>
               {identity.isAuthenticated ? (
-                <Button type="button" variant="contained" onClick={() => navigate('/identity')} sx={selfStart}>
-                  Continue
+                <Button type="button" variant="contained" onClick={() => navigate(identityRoute)} sx={selfStart}>
+                  {t('identity:invitations.accept.continue')}
                 </Button>
               ) : (
                 <>
@@ -134,7 +139,10 @@ export function AcceptInvitationPage() {
                       that cost the refresh follows as the detail behind it. In the other order the only sentence
                       carrying a way out reads as a footnote to an error box. */}
                   <Typography variant="body1">
-                    Your membership was saved, but your access could not be refreshed. <Link component={RouterLink} to="/login">Sign in to continue</Link>.
+                    <Trans
+                      i18nKey="identity:invitations.accept.refreshFailed"
+                      components={{ signIn: <Link component={RouterLink} to="/login" /> }}
+                    />
                   </Typography>
                   <ProblemMessage problem={identity.contextProblem} />
                 </>
@@ -143,7 +151,7 @@ export function AcceptInvitationPage() {
           ) : isBusy ? (
             <Stack direction="row" spacing={1} role="status" sx={waiting}>
               <CircularProgress size={16} />
-              <Typography variant="body2">Accepting and refreshing your access…</Typography>
+              <Typography variant="body2">{t('identity:invitations.accept.loading')}</Typography>
             </Stack>
           ) : (
             <Button
@@ -154,9 +162,9 @@ export function AcceptInvitationPage() {
               // reason for a disabled button goes without renaming it.
               aria-describedby={identity?.isAuthenticated ? undefined : 'invitation-accept-precondition'}
               disabled={isBusy || !identity?.isAuthenticated}
-              onClick={() => submit(token ?? '')}
+              onClick={() => submit(token ?? emptyToken)}
             >
-              Accept
+              {t('identity:invitations.accept.submit')}
             </Button>
           )}
         </Stack>

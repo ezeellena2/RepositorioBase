@@ -4,6 +4,8 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
 import i18next from 'eslint-plugin-i18next';
 
+const structuralJsxAttributeExclusions = ['scope', 'align'];
+
 // The lint script has been in package.json since before this feature but no flat config ever existed, so the
 // command failed for everyone. Task 12's verification requires it to pass, so the configuration is supplied here
 // rather than the command being dropped.
@@ -51,6 +53,7 @@ export default [
             'component', 'to', 'href', 'sx', 'variant', 'color', 'position', 'edge',
             'maxWidth', 'direction', 'role', 'data-testid', 'aria-labelledby', 'aria-describedby',
             'aria-controls', 'aria-current', 'aria-haspopup', 'aria-live',
+            ...structuralJsxAttributeExclusions,
           ],
         },
       }],
@@ -67,6 +70,7 @@ export default [
             'component', 'to', 'href', 'sx', 'variant', 'color', 'position', 'edge', 'severity',
             'maxWidth', 'direction', 'role', 'data-testid', 'aria-labelledby', 'aria-describedby',
             'aria-controls', 'aria-current', 'aria-haspopup', 'aria-live',
+            ...structuralJsxAttributeExclusions,
           ],
         },
       }],
@@ -83,6 +87,7 @@ export default [
             'component', 'to', 'href', 'sx', 'variant', 'color', 'position', 'edge', 'size',
             'autoComplete', 'maxWidth', 'direction', 'role', 'data-testid', 'aria-labelledby', 'aria-describedby',
             'aria-controls', 'aria-current', 'aria-haspopup', 'aria-live',
+            ...structuralJsxAttributeExclusions,
           ],
         },
       }],
@@ -99,6 +104,7 @@ export default [
             'component', 'to', 'href', 'sx', 'variant', 'color', 'position', 'edge', 'size', 'severity',
             'autoComplete', 'maxWidth', 'direction', 'role', 'data-testid', 'aria-labelledby', 'aria-describedby',
             'aria-controls', 'aria-current', 'aria-haspopup', 'aria-live',
+            ...structuralJsxAttributeExclusions,
           ],
         },
       }],
@@ -116,6 +122,7 @@ export default [
             'component', 'to', 'href', 'sx', 'variant', 'color', 'position', 'edge', 'size', 'severity',
             'autoComplete', 'maxWidth', 'direction', 'role', 'data-testid', 'aria-labelledby', 'aria-describedby',
             'aria-controls', 'aria-current', 'aria-haspopup', 'aria-live',
+            ...structuralJsxAttributeExclusions,
           ],
         },
       }],
@@ -133,6 +140,25 @@ export default [
             'component', 'to', 'href', 'sx', 'variant', 'color', 'position', 'edge', 'size', 'severity',
             'autoComplete', 'maxWidth', 'direction', 'role', 'data-testid', 'aria-labelledby', 'aria-describedby',
             'aria-controls', 'aria-current', 'aria-haspopup', 'aria-live',
+            ...structuralJsxAttributeExclusions,
+          ],
+        },
+      }],
+    },
+  },
+  {
+    files: ['src/features/identity/invitations/**/*.{js,jsx}'],
+    ignores: ['**/*.test.{js,jsx}', '**/*.spec.{js,jsx}'],
+    rules: {
+      'i18next/no-literal-string': ['error', {
+        mode: 'jsx-only',
+        'jsx-attributes': {
+          exclude: [
+            'className', 'styleName', 'style', 'type', 'key', 'id', 'width', 'height',
+            'component', 'to', 'href', 'sx', 'variant', 'color', 'position', 'edge', 'size', 'severity',
+            'autoComplete', 'maxWidth', 'direction', 'role', 'data-testid', 'aria-labelledby', 'aria-describedby',
+            'aria-controls', 'aria-current', 'aria-haspopup', 'aria-live',
+            ...structuralJsxAttributeExclusions,
           ],
         },
       }],

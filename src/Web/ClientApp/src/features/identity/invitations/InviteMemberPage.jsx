@@ -22,6 +22,7 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { useIdentity } from '../context/IdentityProvider';
 import { ProblemMessage } from '../ProblemMessage';
+import { useTranslation } from '../../../i18n';
 
 /** Required without the asterisk MUI would add, which would rename the field for everything that reads its label. */
 const requiredField = { inputLabel: { required: false } };
@@ -42,6 +43,13 @@ const note = { mt: 1 };
 const chips = { flexWrap: 'wrap' };
 const rowActions = { flexWrap: 'wrap', justifyContent: 'flex-end' };
 const start = { alignSelf: 'flex-start' };
+const pendingAction = {
+  send: 'send',
+  more: 'more',
+  resend: (invitationId) => `resend-${invitationId}`,
+  withdraw: (invitationId) => `withdraw-${invitationId}`,
+};
+const invitationStatus = { pending: 'Pending' };
 
 /**
  * The wait belongs to the control that started it. `isBusy` disables everything, because any of these writes
@@ -73,6 +81,7 @@ const statusColor = { Accepted: 'success', Cancelled: 'error', Expired: 'warning
  */
 export function InviteMemberPage() {
   const identity = useIdentity();
+  const { t } = useTranslation();
   const tenantId = identity.context?.activeTenant?.id ?? null;
   // Three answers, not two: `undefined` is "not asked yet" and holds the shape of what is coming, `null` is the
   // refusal this screen says out loud, and an array is the part of the organization this inviter may read.
@@ -140,7 +149,7 @@ export function InviteMemberPage() {
   const invite = async (event) => {
     event.preventDefault();
     setSent(null);
-    const issued = await run('send', () => identity.client.inviteMember(tenantId, email, roleIds));
+    const issued = await run(pendingAction.send, () => identity.client.inviteMember(tenantId, email, roleIds));
     if (issued) {
       setSent(issued);
       setEmail('');
@@ -151,7 +160,7 @@ export function InviteMemberPage() {
   // A continuation appends, so every offer the reader has seen stays on screen. Each page the server hands out
   // is disjoint from the last, so an offer cannot be listed twice.
   const showMore = async () => {
-    setPending('more');
+    setPending(pendingAction.more);
     setProblem(null);
     try {
       const next = await identity.client.listTenantInvitations(tenantId, nextCursor);
@@ -175,9 +184,9 @@ export function InviteMemberPage() {
     return (
       <Stack component="section" aria-labelledby="invite-heading" spacing={3} sx={compose}>
         <Box>
-          <Typography id="invite-heading" component="h1" variant="h5">Invite a member</Typography>
+          <Typography id="invite-heading" component="h1" variant="h5">{t('identity:invitations.member.title')}</Typography>
           <Typography variant="body2" color="text.secondary" sx={supporting}>
-            Choose an organization first. An invitation belongs to one organization, and this session is not in one.
+            {t('identity:invitations.member.noOrganization')}
           </Typography>
         </Box>
         {/* A dead end with exactly one way out, and no control offering it: the label would be a user-visible
@@ -196,7 +205,7 @@ export function InviteMemberPage() {
           ever has to say beneath it is a sibling of the heading and never part of it. */}
       <Stack direction="row" spacing={2} sx={header}>
         <Box>
-          <Typography id="invite-heading" component="h1" variant="h5">Invite a member</Typography>
+          <Typography id="invite-heading" component="h1" variant="h5">{t('identity:invitations.member.title')}</Typography>
         </Box>
       </Stack>
 
@@ -207,7 +216,7 @@ export function InviteMemberPage() {
         <ProblemMessage problem={problem} />
         {sent && (
           <Alert severity="success" role="status">
-            Invitation sent. It expires on {new Date(sent.expiresAt).toLocaleString()}.
+            {t('identity:invitations.member.sent', { expiresAt: new Date(sent.expiresAt).toLocaleString() })}
           </Alert>
         )}
 
@@ -215,7 +224,7 @@ export function InviteMemberPage() {
           <Stack spacing={2}>
             <TextField
               id="invite-email"
-              label="Email"
+              label={t('identity:login.email')}
               type="email"
               required
               fullWidth
@@ -225,7 +234,7 @@ export function InviteMemberPage() {
             />
 
             <FormControl component="fieldset">
-              <FormLabel component="legend">Roles to offer</FormLabel>
+              <FormLabel component="legend">{t('identity:invitations.member.rolesToOffer')}</FormLabel>
               {roles === undefined && (
                 <Stack spacing={1} sx={note}>
                   {[0, 1].map((placeholder) => <Skeleton key={placeholder} variant="rounded" height={38} />)}
@@ -236,11 +245,11 @@ export function InviteMemberPage() {
                   quiet aside, because that one is about the organization rather than about them. */}
               {roles === null && (
                 <Typography component="p" variant="subtitle2" sx={note}>
-                  You cannot see this organization&rsquo;s roles, so there are none to offer here.
+                  {t('identity:invitations.member.rolesRefused')}
                 </Typography>
               )}
               {roles?.length === 0 && (
-                <Typography variant="body2" color="text.secondary" sx={note}>This organization has no roles to offer yet.</Typography>
+                <Typography variant="body2" color="text.secondary" sx={note}>{t('identity:invitations.member.noRolesToOffer')}</Typography>
               )}
               <FormGroup>
                 {roles?.map((role) => (
@@ -264,10 +273,10 @@ export function InviteMemberPage() {
               type="submit"
               variant="contained"
               disabled={isBusy}
-              startIcon={spinner(pending === 'send')}
+              startIcon={spinner(pending === pendingAction.send)}
               sx={start}
             >
-              Send invitation
+              {t('identity:invitations.member.send')}
             </Button>
           </Stack>
         </Paper>
@@ -276,7 +285,7 @@ export function InviteMemberPage() {
       <Stack spacing={2}>
         {/* A section under an `h5` page title, so it is a section's weight. The level stays h2 — what changes is
             how loudly it is set, not where it sits in the outline. */}
-        <Typography component="h2" variant="subtitle1">Invitations</Typography>
+        <Typography component="h2" variant="subtitle1">{t('identity:invitations.member.listTitle')}</Typography>
 
         {/* The wait holds the shape of the offers rather than saying a word about itself, so the list does not
             arrive by pushing the form up the page. */}
@@ -290,21 +299,21 @@ export function InviteMemberPage() {
           // "there is nothing here" would make them look like one. The refusal is set left, tight and at its own
           // weight: it is a statement about the reader, not about the list.
           <Paper variant="outlined" sx={refusal}>
-            <Typography component="p" variant="subtitle2">You cannot see this organization&rsquo;s invitations.</Typography>
+            <Typography component="p" variant="subtitle2">{t('identity:invitations.member.invitationsRefused')}</Typography>
           </Paper>
         ) : invitations.length === 0 ? (
           <Paper variant="outlined" sx={empty}>
-            <Typography variant="body2" color="text.secondary">No invitation has been sent yet.</Typography>
+            <Typography variant="body2" color="text.secondary">{t('identity:invitations.member.noInvitations')}</Typography>
           </Paper>
         ) : (
           <TableContainer component={Paper} variant="outlined">
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell component="th" scope="col">Recipient</TableCell>
-                  <TableCell component="th" scope="col">State</TableCell>
-                  <TableCell component="th" scope="col">Roles</TableCell>
-                  <TableCell component="th" scope="col" align="right">Actions</TableCell>
+                  <TableCell component="th" scope="col">{t('identity:invitations.member.recipient')}</TableCell>
+                  <TableCell component="th" scope="col">{t('identity:invitations.member.state')}</TableCell>
+                  <TableCell component="th" scope="col">{t('identity:invitations.member.roles')}</TableCell>
+                  <TableCell component="th" scope="col" align="right">{t('identity:invitations.member.actions')}</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -313,7 +322,7 @@ export function InviteMemberPage() {
                     <TableCell>
                       <Typography variant="body2">{invitation.normalizedEmail}</Typography>
                       <Typography component="div" variant="caption" color="text.secondary">
-                        expires {new Date(invitation.expiresAt).toLocaleString()}
+                        {t('identity:invitations.member.expires', { expiresAt: new Date(invitation.expiresAt).toLocaleString() })}
                       </Typography>
                     </TableCell>
                     <TableCell>
@@ -326,7 +335,7 @@ export function InviteMemberPage() {
                     </TableCell>
                     <TableCell>
                       {invitation.roleIds.length === 0 ? (
-                        <Typography variant="caption" color="text.secondary">no roles</Typography>
+                        <Typography variant="caption" color="text.secondary">{t('identity:invitations.member.noRoles')}</Typography>
                       ) : (
                         <Stack direction="row" spacing={0.5} useFlexGap sx={chips}>
                           {invitation.roleIds.map((roleId) => <Chip key={roleId} size="small" label={nameOf(roleId)} />)}
@@ -337,38 +346,38 @@ export function InviteMemberPage() {
                       {/* Only a standing offer can be reissued or withdrawn. One already accepted or already withdrawn
                           is shown because it happened, not because there is anything left to do to it. */}
                       <Stack direction="row" spacing={1} useFlexGap sx={rowActions}>
-                        {invitation.status === 'Pending' && (
+                        {invitation.status === invitationStatus.pending && (
                           <>
                             <Button
                               type="button"
                               size="small"
                               disabled={isBusy}
-                              startIcon={spinner(pending === `resend-${invitation.invitationId}`)}
+                              startIcon={spinner(pending === pendingAction.resend(invitation.invitationId))}
                               onClick={() => run(
-                                `resend-${invitation.invitationId}`,
+                                pendingAction.resend(invitation.invitationId),
                                 () => identity.client.resendInvitation(tenantId, invitation.invitationId),
                               )}
                             >
-                              Resend to {invitation.normalizedEmail}
+                              {t('identity:invitations.member.resend', { email: invitation.normalizedEmail })}
                             </Button>
                             <Button
                               type="button"
                               size="small"
                               color="error"
                               disabled={isBusy}
-                              startIcon={spinner(pending === `withdraw-${invitation.invitationId}`)}
+                              startIcon={spinner(pending === pendingAction.withdraw(invitation.invitationId))}
                               onClick={() => {
                                 // The browser's own confirmation, deliberately: ending somebody's way in is asked
                                 // for by the browser rather than by the page.
-                                if (window.confirm(`Withdraw the invitation to ${invitation.normalizedEmail}? Their link stops working.`)) {
+                                if (window.confirm(t('identity:invitations.member.withdrawConfirm', { email: invitation.normalizedEmail }))) {
                                   run(
-                                    `withdraw-${invitation.invitationId}`,
+                                    pendingAction.withdraw(invitation.invitationId),
                                     () => identity.client.cancelInvitation(tenantId, invitation.invitationId),
                                   );
                                 }
                               }}
                             >
-                              Withdraw invitation to {invitation.normalizedEmail}
+                              {t('identity:invitations.member.withdraw', { email: invitation.normalizedEmail })}
                             </Button>
                           </>
                         )}
@@ -386,11 +395,11 @@ export function InviteMemberPage() {
             type="button"
             variant="outlined"
             disabled={isBusy}
-            startIcon={spinner(pending === 'more')}
+            startIcon={spinner(pending === pendingAction.more)}
             onClick={showMore}
             sx={start}
           >
-            Show more invitations
+            {t('identity:invitations.member.showMore')}
           </Button>
         )}
       </Stack>
