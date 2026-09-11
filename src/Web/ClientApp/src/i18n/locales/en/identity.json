@@ -44,5 +44,41 @@
     "noneSelected": "none selected",
     "permissions": "Permissions",
     "noneInThisOrganization": "none in this organization"
+  },
+  "credentials": {
+    "newPassword": "New password",
+    "forgot": {
+      "title": "Reset your password",
+      "acknowledgement": "If that address can sign in, we have sent it a reset link. Check the inbox.",
+      "submit": "Send the link",
+      "remembered": "Remembered it? <signIn>Sign in</signIn>."
+    },
+    "reset": {
+      "title": "Choose a new password",
+      "missingToken": "Open the link from the reset email; this page needs the token it carries.",
+      "success": "Your password is set. Sign in to continue.",
+      "submit": "Set my password"
+    },
+    "change": {
+      "title": "Change your password",
+      "success": "Your password is changed. Your other devices have been signed out.",
+      "currentPassword": "Current password",
+      "submit": "Change it"
+    },
+    "external": {
+      "description": "Linking is something you do from here, never something that happens because an address matched. You always keep at least one way to sign in.",
+      "refused": "That did not complete. Nothing was changed.",
+      "loading": "Loading…",
+      "empty": "This deployment has no sign-in provider configured, so there is nothing to link here yet.",
+      "onlyWayIn": "— this is your only way to sign in. Set a password before you unlink it.",
+      "unlink": "Unlink {{provider}}",
+      "link": "Link {{provider}}",
+      "back": "Back to your access"
+    },
+    "externalReturn": {
+      "title": "Finishing up",
+      "loading": "One moment…",
+      "refused": "Nothing was changed. You can try again."
+    }
   }
 }

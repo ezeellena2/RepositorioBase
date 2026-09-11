@@ -13,6 +13,7 @@ import { useIdentity } from '../context/IdentityProvider';
 import { ProblemMessage } from '../ProblemMessage';
 import { useFragmentToken } from '../useFragmentToken';
 import { useSubmit } from '../useSubmit';
+import { Trans, useTranslation } from '../../../i18n';
 
 /** Required without the asterisk MUI would add, which would rename the field for everything that reads its label. */
 const requiredField = { inputLabel: { required: false } };
@@ -30,6 +31,7 @@ const panel = { maxWidth: 560 };
 const section = { p: { xs: 2, sm: 3 } };
 /** Supporting copy hangs off its title rather than standing as a section of its own. */
 const supporting = { mt: 0.5 };
+const emptyToken = '';
 
 /**
  * "I forgot my password." The answer is the same whatever address is typed, so this page says the same thing
@@ -43,17 +45,18 @@ const supporting = { mt: 0.5 };
  */
 export function ForgotPasswordPage() {
   const identity = useIdentity();
+  const { t } = useTranslation('identity');
   const [email, setEmail] = useState('');
   const { submit, problem, isBusy, result } = useSubmit((address) => identity.client.requestPasswordRecovery(address));
 
   return (
     <Paper component="section" elevation={3} aria-labelledby="forgot-heading" sx={card}>
       <Stack spacing={3}>
-        <Typography id="forgot-heading" component="h1" variant="h5">Reset your password</Typography>
+        <Typography id="forgot-heading" component="h1" variant="h5">{t('credentials.forgot.title')}</Typography>
 
         {result ? (
           <Alert severity="success" role="status">
-            If that address can sign in, we have sent it a reset link. Check the inbox.
+            {t('credentials.forgot.acknowledgement')}
           </Alert>
         ) : (
           <>
@@ -61,7 +64,7 @@ export function ForgotPasswordPage() {
             <Stack component="form" spacing={2} onSubmit={(event) => { event.preventDefault(); submit(email); }}>
               <TextField
                 id="forgot-email"
-                label="Email"
+                label={t('login.email')}
                 type="email"
                 autoComplete="username"
                 required
@@ -72,14 +75,17 @@ export function ForgotPasswordPage() {
               />
               {/* Full width and left where it is: on a public entrance card the card *is* the form, and this is
                   the documented exception to the left-aligned submit the rest of the product uses. */}
-              <Button type="submit" variant="contained" size="large" fullWidth disabled={isBusy}>Send the link</Button>
+              <Button type="submit" variant="contained" size="large" fullWidth disabled={isBusy}>{t('credentials.forgot.submit')}</Button>
             </Stack>
           </>
         )}
 
         <Divider />
         <Typography variant="body2">
-          Remembered it? <Link component={RouterLink} to="/login">Sign in</Link>.
+          <Trans
+            i18nKey="identity:credentials.forgot.remembered"
+            components={{ signIn: <Link component={RouterLink} to="/login" /> }}
+          />
         </Typography>
       </Stack>
     </Paper>
@@ -96,6 +102,7 @@ export function ForgotPasswordPage() {
  */
 export function ResetPasswordPage() {
   const identity = useIdentity();
+  const { t } = useTranslation('identity');
   const token = useFragmentToken();
   const [password, setPassword] = useState('');
   const { submit, problem, isBusy, result } = useSubmit((secret, next) => identity.client.resetPassword(secret, next));
@@ -107,18 +114,18 @@ export function ResetPasswordPage() {
         {/* Why the submit is dead sits with the title rather than under the form: it is the condition the whole
             screen is in, not a footnote to the field. */}
         <Box>
-          <Typography id="reset-heading" component="h1" variant="h5">Choose a new password</Typography>
+          <Typography id="reset-heading" component="h1" variant="h5">{t('credentials.reset.title')}</Typography>
           {!token && (
             <Typography variant="body2" color="text.secondary" sx={supporting}>
-              Open the link from the reset email; this page needs the token it carries.
+              {t('credentials.reset.missingToken')}
             </Typography>
           )}
         </Box>
 
         {isSet ? (
           <>
-            <Alert severity="success" role="status">Your password is set. Sign in to continue.</Alert>
-            <Button component={RouterLink} to="/login" variant="contained" size="large" fullWidth>Sign in</Button>
+            <Alert severity="success" role="status">{t('credentials.reset.success')}</Alert>
+            <Button component={RouterLink} to="/login" variant="contained" size="large" fullWidth>{t('login.submit')}</Button>
           </>
         ) : (
           <>
@@ -126,11 +133,11 @@ export function ResetPasswordPage() {
             <Stack
               component="form"
               spacing={2}
-              onSubmit={(event) => { event.preventDefault(); submit(token ?? '', password); }}
+              onSubmit={(event) => { event.preventDefault(); submit(token ?? emptyToken, password); }}
             >
               <TextField
                 id="reset-password"
-                label="New password"
+                label={t('credentials.newPassword')}
                 type="password"
                 autoComplete="new-password"
                 required
@@ -140,7 +147,7 @@ export function ResetPasswordPage() {
                 onChange={(event) => setPassword(event.target.value)}
               />
               <Button type="submit" variant="contained" size="large" fullWidth disabled={isBusy || !token}>
-                Set my password
+                {t('credentials.reset.submit')}
               </Button>
             </Stack>
           </>
@@ -160,6 +167,7 @@ export function ResetPasswordPage() {
  */
 export function ChangePasswordPage() {
   const identity = useIdentity();
+  const { t } = useTranslation('identity');
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [problem, setProblem] = useState(null);
@@ -195,7 +203,7 @@ export function ChangePasswordPage() {
   return (
     <Stack component="section" aria-labelledby="change-heading" spacing={3} sx={panel}>
       <Box>
-        <Typography id="change-heading" component="h1" variant="h5">Change your password</Typography>
+        <Typography id="change-heading" component="h1" variant="h5">{t('credentials.change.title')}</Typography>
       </Box>
 
       <ProblemMessage problem={problem} />
@@ -204,7 +212,7 @@ export function ChangePasswordPage() {
           confirmation, and a page that resolves its alert as one element cannot be handed two. */}
       {done && (
         <Alert severity="success" role="status">
-          Your password is changed. Your other devices have been signed out.
+          {t('credentials.change.success')}
         </Alert>
       )}
 
@@ -217,7 +225,7 @@ export function ChangePasswordPage() {
         <Stack spacing={2}>
           <TextField
             id="change-current"
-            label="Current password"
+            label={t('credentials.change.currentPassword')}
             type="password"
             autoComplete="current-password"
             required
@@ -228,7 +236,7 @@ export function ChangePasswordPage() {
           />
           <TextField
             id="change-next"
-            label="New password"
+            label={t('credentials.newPassword')}
             type="password"
             autoComplete="new-password"
             required
@@ -238,7 +246,7 @@ export function ChangePasswordPage() {
             onChange={edit(setNext)}
           />
           <Button type="submit" variant="contained" disabled={isBusy} sx={{ alignSelf: 'flex-start' }}>
-            Change it
+            {t('credentials.change.submit')}
           </Button>
         </Stack>
       </Paper>

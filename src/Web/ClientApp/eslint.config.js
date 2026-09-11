@@ -122,6 +122,23 @@ export default [
     },
   },
   {
+    files: ['src/features/identity/credentials/**/*.{js,jsx}'],
+    ignores: ['**/*.test.{js,jsx}', '**/*.spec.{js,jsx}'],
+    rules: {
+      'i18next/no-literal-string': ['error', {
+        mode: 'jsx-only',
+        'jsx-attributes': {
+          exclude: [
+            'className', 'styleName', 'style', 'type', 'key', 'id', 'width', 'height',
+            'component', 'to', 'href', 'sx', 'variant', 'color', 'position', 'edge', 'size', 'severity',
+            'autoComplete', 'maxWidth', 'direction', 'role', 'data-testid', 'aria-labelledby', 'aria-describedby',
+            'aria-controls', 'aria-current', 'aria-haspopup', 'aria-live',
+          ],
+        },
+      }],
+    },
+  },
+  {
     files: ['**/*.test.{js,jsx}', 'src/test/**'],
     languageOptions: { globals: { ...globals.browser, ...globals.node, ...globals.vitest } },
   },
