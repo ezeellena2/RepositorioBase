@@ -123,7 +123,7 @@ Three outcomes are deliberately kept apart, and reaching one never authorizes th
 - **IA-REQ-009:** the permission catalog lives in code, uses `resource.action`, and is synchronized idempotently to PostgreSQL.
 - **IA-REQ-010:** roles belong to one tenant and group permissions. The backend never authorizes by display role name.
 - **IA-REQ-011:** Application authorization is deny-by-default. Every Application request must implement the authorized-request contract and declare its permission and tenant requirement, or implement the explicit `IPublicRequest` marker. An architecture test rejects requests implementing neither contract; HTTP endpoint metadata alone cannot make a business request public.
-- **IA-REQ-012:** every query for a tenant-scoped resource filters by the validated tenant as well as the resource identifier.
+- **IA-REQ-012:** every query for a tenant-scoped resource filters by the validated tenant as well as the resource identifier. An architecture test scans the Application, Infrastructure and Web sources and fails a read of a set whose entity carries a non-nullable `TenantId` when that read does not name the tenant. The reads that are global by specification — a row addressed by a single-use token, a uniqueness question asked across every tenant, an outbox delivery resolving a row the server itself enqueued, and the Platform slice of IA-REQ-043/044 — are enumerated there, each with its reason and its count, so a new one cannot be added silently.
 - **IA-REQ-013:** changing roles, assignments, memberships, or tenant state increments `AuthorizationVersion` in the same transaction.
 
 ### Invitations
