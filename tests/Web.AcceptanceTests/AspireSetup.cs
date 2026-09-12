@@ -1,4 +1,6 @@
 using Aspire.Hosting;
+using System.Diagnostics;
+using System.Net;
 
 namespace CleanArchitecture.Web.AcceptanceTests;
 
@@ -6,10 +8,10 @@ namespace CleanArchitecture.Web.AcceptanceTests;
 public class AspireSetup
 {
     /// <summary>
-    /// How long the whole distributed application has to become healthy. It covers a container start, a
-    /// migration, a permission-catalogue synchronization and a Vite dev server, and the budget is spent while
-    /// the rest of the solution's suites are competing for the same machine — it is a ceiling rather than a wait, so a fast start costs none of it and this
-    /// is set generously enough that contention cannot make a working application look like a broken one.
+    /// How long the whole distributed application has to become ready. It covers a container start, a
+    /// migration, a permission-catalogue synchronization and a Vite dev server. Readiness is proved below by
+    /// the database and the two endpoints the journeys actually use; this is only their shared diagnostic
+    /// ceiling, so a fast start costs none of it.
     /// </summary>
     internal const string PlatformBootstrapOwnerEmail = "platform-owner@example.test";
 
@@ -36,6 +38,9 @@ public class AspireSetup
     internal static string DatabaseName { get; } = $"acceptance_{Guid.NewGuid():N}";
 
     private static readonly TimeSpan DefaultTimeout = TimeSpan.FromMinutes(8);
+    private static readonly TimeSpan ProbeAttemptTimeout = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan ProbeInterval = TimeSpan.FromMilliseconds(250);
+    private static readonly TimeSpan DiagnosticTimeout = TimeSpan.FromSeconds(2);
 
     public static IDistributedApplicationTestingBuilder Builder { get; private set; } = null!;
     public static DistributedApplication App { get; private set; } = null!;
@@ -97,41 +102,192 @@ public class AspireSetup
             .BuildAsync(cancellationToken)
             .WaitAsync(cancellationToken);
 
-        await App
-            .StartAsync(cancellationToken)
-            .WaitAsync(cancellationToken);
+        var orchestration = Stopwatch.StartNew();
+        try
+        {
+            await App
+                .StartAsync(cancellationToken)
+                .WaitAsync(cancellationToken);
+        }
+        catch (Exception failure)
+        {
+            throw StartupFailure(
+                "Aspire orchestration",
+                "AppHost",
+                orchestration.Elapsed,
+                failure.GetType().Name);
+        }
 
-        await Task.WhenAll(
-            App.ResourceNotifications.WaitForResourceHealthyAsync(Services.WebApi, cancellationToken).WaitAsync(cancellationToken),
-            App.ResourceNotifications.WaitForResourceHealthyAsync(Services.WebFrontend, cancellationToken).WaitAsync(cancellationToken));
+        await WaitForApplicationReadinessAsync(cancellationToken);
 
         await AcceptanceTestCredentials.CreateAsync(App, cancellationToken);
     }
 
-    /// <summary>
-    /// The last thing the outbox worker said. A journey that follows delivered mail fails as "no file
-    /// appeared", which is the symptom; the worker's own log is where the cause is written down.
-    /// </summary>
-    internal static async Task<string> WorkerLogTailAsync(int lines = 25)
+    private static async Task WaitForApplicationReadinessAsync(CancellationToken cancellationToken)
     {
-        var loggers = App.Services.GetRequiredService<Aspire.Hosting.ApplicationModel.ResourceLoggerService>();
-        var collected = new List<string>();
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        try
+        await WaitForConditionAsync(
+            "PostgreSQL accepts a query",
+            Services.Database,
+            ProbeDatabaseAsync,
+            cancellationToken);
+        await WaitForConditionAsync(
+            "Web API identity bootstrap endpoint answers successfully",
+            Services.WebApi,
+            token => ProbeEndpointAsync(Services.WebApi, "/api/identity/antiforgery", token),
+            cancellationToken);
+        await WaitForConditionAsync(
+            "SPA root document answers successfully",
+            Services.WebFrontend,
+            token => ProbeEndpointAsync(Services.WebFrontend, "/", token),
+            cancellationToken);
+    }
+
+    private static async Task WaitForConditionAsync(
+        string condition,
+        string resource,
+        Func<CancellationToken, Task<StartupProbeResult>> probe,
+        CancellationToken cancellationToken)
+    {
+        var elapsed = Stopwatch.StartNew();
+        var lastSafeObservation = "not attempted";
+
+        while (!cancellationToken.IsCancellationRequested)
         {
-            await foreach (var batch in loggers.WatchAsync(Services.OutboxWorker).WithCancellation(timeout.Token))
+            using var attempt = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            attempt.CancelAfter(ProbeAttemptTimeout);
+            try
             {
-                collected.AddRange(batch.Select(entry => entry.Content));
-                if (collected.Count >= lines) break;
+                var result = await probe(attempt.Token);
+                lastSafeObservation = result.Observation;
+                if (result.Ready)
+                {
+                    return;
+                }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception failure)
+            {
+                // Only the exception type is retained. Messages, response bodies and request data may contain
+                // tokens or personal data and are never startup diagnostics.
+                lastSafeObservation = failure.GetType().Name;
+            }
+
+            try
+            {
+                await Task.Delay(ProbeInterval, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
             }
         }
-        catch (OperationCanceledException) { /* Whatever arrived in the window is the answer. */ }
+
+        throw StartupFailure(condition, resource, elapsed.Elapsed, lastSafeObservation);
+    }
+
+    private static async Task<StartupProbeResult> ProbeDatabaseAsync(CancellationToken cancellationToken)
+    {
+        var connectionString = await App.GetConnectionStringAsync(Services.Database, cancellationToken);
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            return new(false, "connection string unavailable");
+        }
+
+        var options = new Npgsql.NpgsqlConnectionStringBuilder(connectionString)
+        {
+            Timeout = (int)ProbeAttemptTimeout.TotalSeconds,
+            CommandTimeout = (int)ProbeAttemptTimeout.TotalSeconds,
+            Pooling = false
+        };
+        await using var connection = new Npgsql.NpgsqlConnection(options.ConnectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new Npgsql.NpgsqlCommand("SELECT 1;", connection);
+        var result = await command.ExecuteScalarAsync(cancellationToken);
+        return Equals(result, 1)
+            ? new(true, "query succeeded")
+            : new(false, "query returned an unexpected scalar type");
+    }
+
+    private static async Task<StartupProbeResult> ProbeEndpointAsync(
+        string resource,
+        string path,
+        CancellationToken cancellationToken)
+    {
+        var endpoint = App.GetEndpoint(resource);
+        if (!endpoint.IsLoopback)
+        {
+            return new(false, "endpoint is not loopback");
+        }
+
+        using var handler = new HttpClientHandler
+        {
+            ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
+        };
+        using var client = new HttpClient(handler)
+        {
+            BaseAddress = endpoint,
+            Timeout = Timeout.InfiniteTimeSpan
+        };
+        using var request = new HttpRequestMessage(HttpMethod.Get, path);
+        using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+
+        var status = (int)response.StatusCode;
+        return status is >= (int)HttpStatusCode.OK and < (int)HttpStatusCode.MultipleChoices
+            ? new(true, $"HTTP {status}")
+            : new(false, $"HTTP {status}");
+    }
+
+    private static InvalidOperationException StartupFailure(
+        string condition,
+        string resource,
+        TimeSpan elapsed,
+        string lastSafeObservation) =>
+        new(
+            $"Acceptance startup condition '{condition}' for resource '{resource}' failed after " +
+            $"{elapsed.TotalSeconds:F1}s. Last safe observation: {lastSafeObservation}. " +
+            $"Process context: pid={Environment.ProcessId}; required resources=" +
+            $"{Services.Database},{Services.WebApi},{Services.WebFrontend}.");
+
+    private readonly record struct StartupProbeResult(bool Ready, string Observation);
+
+    /// <summary>
+    /// Safe delivery-process output context. Local-drop delivery runs inside the web application, not the
+    /// outbox worker. Only counts and stream metadata leave this method: log contents can carry addresses,
+    /// tokens or payloads and are never copied into test failures.
+    /// </summary>
+    internal static async Task<string> WorkerLogTailAsync()
+    {
+        var loggers = App.Services.GetRequiredService<Aspire.Hosting.ApplicationModel.ResourceLoggerService>();
+        var lineCount = 0;
+        var errorCount = 0;
+        var lastLineNumber = 0;
+        using var diagnosticTimeout = new CancellationTokenSource(DiagnosticTimeout);
+        try
+        {
+            await foreach (var batch in loggers
+                               .GetAllAsync(Services.WebApi)
+                               .WithCancellation(diagnosticTimeout.Token))
+            {
+                foreach (var entry in batch)
+                {
+                    lineCount++;
+                    if (entry.IsErrorMessage) errorCount++;
+                    lastLineNumber = Math.Max(lastLineNumber, entry.LineNumber);
+                }
+            }
+        }
+        catch (OperationCanceledException) when (diagnosticTimeout.IsCancellationRequested)
+        {
+            // Partial metadata is still useful; diagnostic collection must never extend the failed journey.
+        }
 
         var model = App.Services.GetRequiredService<Aspire.Hosting.ApplicationModel.DistributedApplicationModel>();
         var resources = string.Join(",", model.Resources.Select(resource => resource.Name));
-        return collected.Count == 0
-            ? $"(no worker log; resources: {resources})"
-            : string.Join(" | ", collected.TakeLast(lines));
+        return $"resource={Services.WebApi}; lines={lineCount}; stderr={errorCount}; " +
+               $"last-line={lastLineNumber}; resources={resources}";
     }
 
     [OneTimeTearDown]

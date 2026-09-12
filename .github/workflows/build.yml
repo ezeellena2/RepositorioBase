@@ -111,5 +111,41 @@ jobs:
     # deliberately instead: `dotnet test --filter TestCategory=IndependentDevelopmentReview`.
     # A category that stops failing is a defect that got fixed, and its test belongs back
     # in the run.
-    - name: Test solution
-      run: dotnet test --no-build --configuration Release --filter "TestCategory!=IndependentDevelopmentReview"
+    # Run each Aspire-bearing suite in its own process. A solution-level `dotnet test` starts them concurrently,
+    # which makes their DCP control planes compete and can exhaust Aspire's fixed startup retry window.
+    - name: Test Domain unit tests
+      run: dotnet test tests/Domain.UnitTests/Domain.UnitTests.csproj --no-build --configuration Release --filter "TestCategory!=IndependentDevelopmentReview"
+
+    - name: Test Application unit tests
+      run: dotnet test tests/Application.UnitTests/Application.UnitTests.csproj --no-build --configuration Release --filter "TestCategory!=IndependentDevelopmentReview"
+
+    - name: Test Infrastructure integration tests
+      run: dotnet test tests/Infrastructure.IntegrationTests/Infrastructure.IntegrationTests.csproj --no-build --configuration Release --filter "TestCategory!=IndependentDevelopmentReview"
+
+    - name: Test Application functional tests
+      run: dotnet test tests/Application.FunctionalTests/Application.FunctionalTests.csproj --no-build --configuration Release --filter "TestCategory!=IndependentDevelopmentReview"
+
+    #if (!UseApiOnly)
+    - name: Test Web acceptance journeys
+      env:
+        DCP_DIAGNOSTICS_LOG_LEVEL: info
+        DCP_DIAGNOSTICS_LOG_FOLDER: ${{ github.workspace }}/artifacts/dcp/acceptance
+      run: >-
+        dotnet test tests/Web.AcceptanceTests/Web.AcceptanceTests.csproj
+        --no-build
+        --configuration Release
+        --filter "TestCategory!=IndependentDevelopmentReview"
+        --logger "trx;LogFileName=acceptance.trx"
+        --results-directory artifacts/test-results/acceptance
+
+    - name: Upload acceptance failure diagnostics
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: acceptance-failure-diagnostics
+        if-no-files-found: warn
+        retention-days: 7
+        path: |
+          artifacts/test-results/acceptance/*.trx
+          artifacts/dcp/acceptance/**
+    #endif

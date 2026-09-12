@@ -8,9 +8,9 @@ public sealed class IdentitySignInPage(IPage page) : BasePage(page)
     public override string PagePath => $"{BaseUrl}/login";
 
     /// <summary>
-    /// Signs in and waits for it to have happened: the page stops being the sign-in page, which is what the
-    /// form does once the session exists. Clicking and moving on would abandon the request mid-flight — the
-    /// next navigation cancels it and no session is ever created.
+    /// Signs in and waits for the positive authenticated destination. A successful response alone is too early:
+    /// the provider still has to rotate antiforgery, load the new context and commit the navigation. Clicking and
+    /// moving on before that transition finishes can replace the destination with a second bootstrap.
     /// </summary>
     public async Task SignInAsync(string email, string password)
     {
@@ -20,7 +20,8 @@ public sealed class IdentitySignInPage(IPage page) : BasePage(page)
             throw new InvalidOperationException($"Sign-in answered {response.Status}: {await response.TextAsync()}");
         }
 
-        await Assertions.Expect(Page.Locator("h1")).Not.ToHaveTextAsync("Sign in");
+        await Assertions.Expect(Page).ToHaveURLAsync($"{BaseUrl}/identity");
+        await new IdentityContextPage(Page).AssertVisibleAsync();
     }
 
     /// <summary>Submits and waits for the answer without requiring one, for the journeys that must be refused.</summary>
@@ -117,7 +118,22 @@ public sealed class TenantSelectorPage(IPage page) : BasePage(page)
 {
     public override string PagePath => $"{BaseUrl}/organizations/select";
 
-    public Task ChooseAsync(string name) => Page.GetByRole(AriaRole.Button, new() { Name = name }).ClickAsync();
+    public async Task ChooseAsync(string name)
+    {
+        var response = await Page.RunAndWaitForResponseAsync(
+            () => Page.GetByRole(AriaRole.Button, new() { Name = name, Exact = true }).ClickAsync(),
+            candidate => candidate.Url.EndsWith("/api/identity/context/tenant", StringComparison.Ordinal) &&
+                         candidate.Request.Method == "PUT");
+        if (response.Status != 200)
+        {
+            throw new InvalidOperationException($"Selecting a workspace answered HTTP {response.Status}.");
+        }
+
+        await Assertions.Expect(Page.GetByRole(
+                AriaRole.Button,
+                new() { Name = $"{name} (current)", Exact = true }))
+            .ToBeVisibleAsync();
+    }
 
     public Task AssertOffersAsync(string name) =>
         Assertions.Expect(Page.GetByRole(AriaRole.Button, new() { Name = name })).ToBeVisibleAsync();

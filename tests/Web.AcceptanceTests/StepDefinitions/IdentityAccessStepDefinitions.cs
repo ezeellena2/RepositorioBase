@@ -127,7 +127,6 @@ public sealed class IdentityAccessStepDefinitions(ScenarioContext scenario)
     {
         await SignIn.GotoAsync();
         await SignIn.SignInAsync(Identity.Email, IdentityAccessFixtures.Password);
-        await Context.GotoAsync();
         await Context.AssertVisibleAsync();
     }
 
