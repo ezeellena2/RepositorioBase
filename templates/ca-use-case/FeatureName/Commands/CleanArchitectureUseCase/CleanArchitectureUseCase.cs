@@ -1,4 +1,5 @@
 using CleanArchitecture.Application.Common.Interfaces;
+using CleanArchitecture.Application.Common.Validation;
 
 namespace CleanArchitecture.Application.FeatureName.Commands.CleanArchitectureUseCase;
 
@@ -8,12 +9,16 @@ public record CleanArchitectureUseCaseCommand : IRequest<TReturnType>
 public record CleanArchitectureUseCaseCommand : IRequest
 //#endif
 {
+    public string SomeInput { get; init; } = string.Empty;
 }
 
 public class CleanArchitectureUseCaseCommandValidator : AbstractValidator<CleanArchitectureUseCaseCommand>
 {
     public CleanArchitectureUseCaseCommandValidator()
     {
+        RuleFor(command => command.SomeInput)
+            .NotEmpty().WithMessage("Some input is required.")
+            .WithErrorCode(ValidationErrorCodes.Required);
     }
 }
 

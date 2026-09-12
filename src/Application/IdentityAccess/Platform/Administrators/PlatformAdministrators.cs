@@ -1,6 +1,7 @@
 using CleanArchitecture.Application.Common.Interfaces;
 using CleanArchitecture.Application.Common.Models;
 using CleanArchitecture.Application.Common.Security;
+using CleanArchitecture.Application.Common.Validation;
 using CleanArchitecture.Application.IdentityAccess.Authorization;
 using CleanArchitecture.Application.IdentityAccess.Common;
 using CleanArchitecture.Application.IdentityAccess.Organizations.RegisterOrganization;
@@ -23,7 +24,9 @@ public sealed record InvitePlatformAdministratorCommand(string Email) : IRequest
 public sealed class InvitePlatformAdministratorCommandValidator : AbstractValidator<InvitePlatformAdministratorCommand>
 {
     public InvitePlatformAdministratorCommandValidator() =>
-        RuleFor(command => command.Email).NotEmpty().MaximumLength(256);
+        RuleFor(command => command.Email)
+            .NotEmpty().WithErrorCode(ValidationErrorCodes.Required)
+            .MaximumLength(256).WithErrorCode(ValidationErrorCodes.TooLong);
 }
 
 /// <summary>

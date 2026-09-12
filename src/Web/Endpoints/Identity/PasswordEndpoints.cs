@@ -29,7 +29,7 @@ internal static class PasswordEndpoints
             .Produces(StatusCodes.Status204NoContent)
             // `429` is newly reachable here: spending a link now waits for the same per-identity lock a sign-in
             // holds, and a wait that elapses is answered rather than forced through.
-            .WithApiProblemDetails(ApiProblemMetadata.AntiforgeryValidationFailed, ApiProblemMetadata.InvalidCredentialToken, ApiProblemMetadata.ValidationFailed, ApiProblemMetadata.RateLimitExceeded, ApiProblemMetadata.InternalServerError)
+            .WithApiProblemDetails(ApiProblemMetadata.AntiforgeryValidationFailed, ApiProblemMetadata.InvalidCredentialToken, ApiProblemMetadata.ValidationFailed, ApiProblemMetadata.IdentityConcurrencyConflict, ApiProblemMetadata.RateLimitExceeded, ApiProblemMetadata.InternalServerError)
             .WithBodyBindingFailureCode(ApiProblemMetadata.InvalidCredentialToken.Code);
 
         group.MapGet("/credentials", Read)
@@ -40,7 +40,7 @@ internal static class PasswordEndpoints
         group.MapPut("/credentials/password", Change)
             .RequireAuthorization()
             .Produces(StatusCodes.Status204NoContent)
-            .WithApiProblemDetails(ApiProblemMetadata.AntiforgeryValidationFailed, ApiProblemMetadata.AuthenticationRequired, ApiProblemMetadata.InvalidSession, ApiProblemMetadata.PermissionDenied, ApiProblemMetadata.RecentProofRequired, ApiProblemMetadata.ValidationFailed, ApiProblemMetadata.RateLimitExceeded, ApiProblemMetadata.InternalServerError)
+            .WithApiProblemDetails(ApiProblemMetadata.AntiforgeryValidationFailed, ApiProblemMetadata.AuthenticationRequired, ApiProblemMetadata.InvalidSession, ApiProblemMetadata.PermissionDenied, ApiProblemMetadata.RecentProofRequired, ApiProblemMetadata.ValidationFailed, ApiProblemMetadata.IdentityConcurrencyConflict, ApiProblemMetadata.RateLimitExceeded, ApiProblemMetadata.InternalServerError)
             .WithBodyBindingFailureCode(ApiProblemMetadata.ValidationFailed.Code);
     }
 

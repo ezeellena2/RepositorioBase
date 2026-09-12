@@ -1,7 +1,10 @@
+/* eslint-disable i18next/no-literal-string -- bounded wire field name, not display copy. */
+import { useEffect, useRef } from 'react';
 import Button from '@mui/material/Button';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import { useTranslation } from '../../../i18n';
+import { fieldError, firstInvalid } from '../../identity/fieldErrors';
 
 const form = { maxWidth: 360 };
 const stepUpFieldSlots = { inputLabel: { required: false }, htmlInput: { inputMode: 'numeric' } };
@@ -18,8 +21,11 @@ const stepUpFieldSlots = { inputLabel: { required: false }, htmlInput: { inputMo
  * the whole screen it is the primary action and stays `contained`; where it sits above a directory the screen's
  * primary action is elsewhere, and a second filled button would claim an emphasis this form does not have.
  */
-export function PlatformStepUpForm({ inputId, code, onCodeChange, onSubmit, isBusy, submitVariant = 'contained' }) {
+export function PlatformStepUpForm({ inputId, code, onCodeChange, onSubmit, isBusy, problem, submitVariant = 'contained' }) {
   const { t } = useTranslation('platform');
+  const codeRef = useRef(null);
+  const invalid = firstInvalid(problem, ['code']);
+  useEffect(() => { if (invalid) codeRef.current?.focus(); }, [invalid]);
 
   return (
     <Stack
@@ -36,6 +42,8 @@ export function PlatformStepUpForm({ inputId, code, onCodeChange, onSubmit, isBu
         required
         fullWidth
         slotProps={stepUpFieldSlots}
+        inputRef={codeRef}
+        {...fieldError(problem, 'code', t)}
         value={code}
         onChange={(event) => onCodeChange(event.target.value)}
       />

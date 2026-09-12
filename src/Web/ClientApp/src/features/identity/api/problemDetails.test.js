@@ -27,12 +27,55 @@ describe('problem details', () => {
     expect(parsed.traceId).toBe('abc123');
   });
 
-  it('exposes field errors only when the API sent them', async () => {
-    const validation = await readProblem(problem(400, { code: 'validation_failed', traceId: 't', errors: { email: ['Required'] } }));
+  it('exposes structured field errors only when the API sent them', async () => {
+    const validation = await readProblem(problem(400, { code: 'validation_failed', traceId: 't', errors: { email: [{ code: 'too_long', params: { max: 256 } }] } }));
     const conflict = await readProblem(problem(409, { code: 'invitation_conflict', traceId: 't' }));
 
-    expect(validation.errors).toEqual({ email: ['Required'] });
+    expect(validation.errors).toEqual({ email: [{ code: 'too_long', params: { max: 256 } }] });
     expect(conflict.errors).toBeUndefined();
+  });
+
+  it('drops prose details and safely downgrades malformed parameterized details', async () => {
+    const parsed = await readProblem(problem(400, {
+      code: 'validation_failed',
+      traceId: 't',
+      errors: { email: ['Required'], password: [{ code: 'too_long', params: { max: '256' } }] },
+    }));
+
+    expect(parsed.errors).toEqual({ password: [{ code: 'invalid', params: {} }] });
+  });
+
+  it('projects only the numeric parameters allowlisted for a known code', async () => {
+    const parsed = await readProblem(problem(400, {
+      code: 'validation_failed',
+      errors: {
+        email: [{ code: 'too_long', params: { max: 256, PropertyValue: 8675309, lngs: 42 } }],
+        password: [{ code: 'required', params: { PropertyValue: 1234 } }],
+      },
+    }));
+
+    expect(parsed.errors).toEqual({
+      email: [{ code: 'too_long', params: { max: 256 } }],
+      password: [{ code: 'required', params: {} }],
+    });
+  });
+
+  it('keeps an unknown code for the generic fallback but strips hostile template options', async () => {
+    const parsed = await readProblem(problem(400, {
+      code: 'validation_failed',
+      errors: { email: [{ code: 'fields.email', params: { lngs: 8675309, PropertyValue: 42 } }] },
+    }));
+
+    expect(parsed.errors).toEqual({ email: [{ code: 'fields.email', params: {} }] });
+  });
+
+  it('downgrades a known detail whose required numeric schema is invalid', async () => {
+    const parsed = await readProblem(problem(400, {
+      code: 'validation_failed',
+      errors: { email: [{ code: 'too_long', params: { max: null } }] },
+    }));
+
+    expect(parsed.errors).toEqual({ email: [{ code: 'invalid', params: {} }] });
   });
 
   it('surfaces Retry-After on a rate limit so the caller can wait rather than hammer', async () => {

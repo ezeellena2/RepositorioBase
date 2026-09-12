@@ -1,4 +1,5 @@
 using CleanArchitecture.Application.Common.Models;
+using CleanArchitecture.Application.Common.Validation;
 using NUnit.Framework;
 using Shouldly;
 
@@ -36,7 +37,10 @@ public sealed class ResultTests
         Should.Throw<ArgumentException>(() => new ApplicationError(
             "not_found",
             ApplicationErrorCategory.NotFound,
-            validationErrors: new Dictionary<string, string[]> { ["id"] = ["missing"] }));
+            validationErrors: new Dictionary<string, ValidationErrorDetail[]>
+            {
+                ["id"] = [new ValidationErrorDetail(ValidationErrorCodes.Required, new Dictionary<string, int>())]
+            }));
     }
 
     [Test]
@@ -51,5 +55,23 @@ public sealed class ResultTests
         var error = new ApplicationError("rate_limit_exceeded", ApplicationErrorCategory.RateLimited, retryAfterSeconds: 30);
 
         error.RetryAfterSeconds.ShouldBe(30);
+    }
+
+    [Test]
+    public void Validation_errors_are_deep_copied_on_input_and_output()
+    {
+        var sourceParams = new Dictionary<string, int> { ["max"] = 18 };
+        var sourceDetails = new[] { new ValidationErrorDetail(ValidationErrorCodes.TooLong, sourceParams) };
+        var source = new Dictionary<string, ValidationErrorDetail[]> { ["NewPassword"] = sourceDetails };
+        var error = new ApplicationError("validation_failed", ApplicationErrorCategory.Validation, validationErrors: source);
+
+        sourceParams["max"] = 999;
+        sourceDetails[0] = new ValidationErrorDetail(ValidationErrorCodes.Required, new Dictionary<string, int>());
+        var firstRead = error.ValidationErrors;
+        firstRead["NewPassword"][0] = new ValidationErrorDetail(ValidationErrorCodes.Invalid, new Dictionary<string, int>());
+
+        var retained = error.ValidationErrors["NewPassword"].ShouldHaveSingleItem();
+        retained.Code.ShouldBe(ValidationErrorCodes.TooLong);
+        retained.Params["max"].ShouldBe(18);
     }
 }

@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json;
 using CleanArchitecture.Application.Common.Models;
 using CleanArchitecture.Application.FunctionalTests.IdentityAccess.Invitations;
 using CleanArchitecture.Application.FunctionalTests.Infrastructure;
@@ -80,13 +81,12 @@ public sealed class PreferredLanguageTests : TestBase
         await AssertContextLanguageAsync(later, host, "es");
     }
 
-    [TestCase("", "Choose a language.")]
-    [TestCase("ES", "Choose a supported language.")]
-    [TestCase("fr", "Choose a supported language.")]
-    [TestCase("inProgress", "Choose a supported language.")]
+    [TestCase("")]
+    [TestCase("ES")]
+    [TestCase("fr")]
+    [TestCase("inProgress")]
     public async Task Own_account_language_update_rejects_every_noncanonical_unsupported_value(
-        string language,
-        string expectedMessage)
+        string language)
     {
         using var harness = CreateProductionHarness();
         var client = harness.Client;
@@ -109,7 +109,16 @@ public sealed class PreferredLanguageTests : TestBase
         problem.GetProperty("code").GetString().ShouldBe("validation_failed");
         var errors = problem.GetProperty("errors");
         errors.EnumerateObject().Select(property => property.Name).ShouldBe(["language"]);
-        errors.GetProperty("language").EnumerateArray().Select(item => item.GetString()).ShouldBe([expectedMessage]);
+        var detail = errors.GetProperty("language").EnumerateArray().Single();
+        detail.EnumerateObject().Select(property => property.Name).ShouldBe(["code", "params"]);
+        detail.GetProperty("code").GetString().ShouldBe(language.Length == 0 ? "required" : "unsupported_value");
+        detail.GetProperty("params").ValueKind.ShouldBe(JsonValueKind.Object);
+        detail.GetProperty("params").EnumerateObject().ShouldBeEmpty();
+        problem.GetRawText().ShouldNotContain("Choose a", Case.Insensitive);
+        problem.GetRawText().ShouldNotContain("PropertyValue", Case.Insensitive);
+        problem.GetRawText().ShouldNotContain("DNI", Case.Insensitive);
+        problem.GetRawText().ShouldNotContain("PIN", Case.Insensitive);
+        if (language.Length > 0) problem.GetRawText().ShouldNotContain($"\"{language}\"");
         (await GetUserAsync((await GetOnlySessionAsync()).IdentityId)).PreferredLanguage.ShouldBeNull();
     }
 

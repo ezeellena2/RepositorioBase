@@ -1,5 +1,6 @@
 using CleanArchitecture.Application.Common.Interfaces;
 using CleanArchitecture.Application.Common.Models;
+using CleanArchitecture.Application.Common.Validation;
 using CleanArchitecture.Application.IdentityAccess.Common;
 using CleanArchitecture.Application.IdentityAccess.Sessions;
 using CleanArchitecture.Domain.IdentityAccess.Auditing;
@@ -26,7 +27,14 @@ public sealed class ChangePasswordCommandHandler(
         var actingSession = currentSession.SessionId.Value;
         if (request.NewPassword is null || request.NewPassword.Length > 256)
             return Result<ReplacedSession>.Failure(IdentityAccessErrors.PasswordPolicyFailed(
-                new Dictionary<string, string[]> { ["newPassword"] = ["A new password is required."] }));
+                new Dictionary<string, ValidationErrorDetail[]>
+                {
+                    ["newPassword"] = [new ValidationErrorDetail(
+                        request.NewPassword is null ? ValidationErrorCodes.Required : ValidationErrorCodes.TooLong,
+                        request.NewPassword is null
+                            ? new Dictionary<string, int>()
+                            : new Dictionary<string, int> { ["max"] = 256 })]
+                }));
 
         return await transaction.ExecuteAsync(async ct =>
         {
@@ -41,7 +49,10 @@ public sealed class ChangePasswordCommandHandler(
                 return Result<ReplacedSession>.Failure(IdentityAccessErrors.RecentProofRequired());
 
             var applied = await credentials.ReplacePasswordAsync(identityId, request.NewPassword, ct);
-            if (!applied.Succeeded) return Result<ReplacedSession>.Failure(IdentityAccessErrors.PasswordPolicyFailed(applied.Errors));
+            if (!applied.Succeeded)
+            {
+                return Result<ReplacedSession>.Failure(applied.ToApplicationError());
+            }
 
             var now = timeProvider.GetUtcNow();
             await proofs.RecordPasswordChangeAsync(identityId, ct);

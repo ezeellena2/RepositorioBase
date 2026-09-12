@@ -54,5 +54,24 @@
   "unexpected": "That request could not be completed.",
   "unknown": "That request could not be completed.",
   "retryAfter": "Try again in {{seconds}} seconds.",
-  "fieldMessage": "{{field}}: {{messages}}"
+  "validation": {
+    "required": "This value is required.",
+    "too_long": "Must be at most {{max}} characters.",
+    "unsupported_value": "This value is not supported.",
+    "password_policy": "This password does not meet the requirements.",
+    "invalid": "This value is not valid.",
+    "unknown": "This value is not valid.",
+    "fieldMessage": "{{field}}: {{message}}",
+    "fields": {
+      "email": "Email",
+      "password": "Password",
+      "newPassword": "New password",
+      "token": "Token",
+      "confirmationToken": "Confirmation token",
+      "code": "Code",
+      "recoveryCode": "Recovery code",
+      "language": "Language",
+      "unknown": "Field"
+    }
+  }
 }

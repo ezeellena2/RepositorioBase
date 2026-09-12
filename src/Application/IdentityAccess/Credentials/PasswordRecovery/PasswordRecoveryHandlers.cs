@@ -146,7 +146,7 @@ public sealed class ResetPasswordCommandHandler(
                 return Result.Failure(IdentityAccessErrors.InvalidCredentialToken());
 
             var applied = await credentials.ReplacePasswordAsync(reset.IdentityId, request.NewPassword, ct);
-            if (!applied.Succeeded) return Result.Failure(IdentityAccessErrors.PasswordPolicyFailed(applied.Errors));
+            if (!applied.Succeeded) return Result.Failure(applied.ToApplicationError());
 
             reset.Consume(now);
             await proofs.RecordPasswordChangeAsync(reset.IdentityId, ct);

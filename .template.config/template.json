@@ -277,6 +277,10 @@
       "exclude": [
         ".azure/**/*",
         ".template.config/**/*",
+        ".claude/settings.local.json",
+        ".git",
+        ".git/**/*",
+        "artifacts/**/*",
         "templates/**/*",
         "**/*.filelist",
         "**/*.user",

@@ -1,4 +1,7 @@
 using CleanArchitecture.Application.Common.Models;
+using CleanArchitecture.Application.Common.Validation;
+using System.Collections.ObjectModel;
+using System.Text.Json;
 
 namespace CleanArchitecture.Web.Infrastructure;
 
@@ -26,7 +29,7 @@ public sealed class ApiProblemDetailsMapper : IProblemDetailsService
             Code = error.Code,
             TraceId = GetTraceId(httpContext),
             Errors = error.Category == ApplicationErrorCategory.Validation && error.ValidationErrors.Count > 0
-                ? error.ValidationErrors
+                ? NormalizeFieldNames(error.ValidationErrors)
                 : null
         };
     }
@@ -96,6 +99,30 @@ public sealed class ApiProblemDetailsMapper : IProblemDetailsService
         StatusCodes.Status503ServiceUnavailable => "Service Unavailable",
         _ => "Internal Server Error"
     };
+
+    private static IReadOnlyDictionary<string, ValidationErrorDetail[]> NormalizeFieldNames(
+        IReadOnlyDictionary<string, ValidationErrorDetail[]> errors)
+    {
+        var normalized = errors
+            .GroupBy(pair => NormalizeFieldPath(pair.Key), StringComparer.Ordinal)
+            .OrderBy(group => group.Key, StringComparer.Ordinal)
+            .ToDictionary(
+                group => group.Key,
+                group => group.SelectMany(pair => pair.Value)
+                    .Select(detail => new ValidationErrorDetail(detail.Code, detail.Params))
+                    .GroupBy(detail => $"{detail.Code}:{string.Join(',', detail.Params.OrderBy(pair => pair.Key).Select(pair => $"{pair.Key}={pair.Value}"))}", StringComparer.Ordinal)
+                    .Select(group => group.First())
+                    .OrderBy(detail => detail.Code, StringComparer.Ordinal)
+                    .ThenBy(detail => detail.Params.TryGetValue("max", out var max) ? max : 0)
+                    .ToArray(),
+                StringComparer.Ordinal);
+
+        return new ReadOnlyDictionary<string, ValidationErrorDetail[]>(normalized);
+    }
+
+    private static string NormalizeFieldPath(string field) => string.Join(
+        '.',
+        field.Split('.', StringSplitOptions.None).Select(JsonNamingPolicy.CamelCase.ConvertName));
 
     private sealed class ProblemDetailsResult(ApiProblemDetailsMapper mapper, ApplicationError error) : IResult
     {

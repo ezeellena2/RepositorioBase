@@ -1,4 +1,5 @@
-import { useCallback, useState } from 'react';
+/* eslint-disable i18next/no-literal-string -- bounded wire field names, not display copy. */
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -23,6 +24,7 @@ import Typography from '@mui/material/Typography';
 import { useTranslation } from '../../i18n';
 import { useIdentity } from '../identity/context/IdentityProvider';
 import { ProblemMessage } from '../identity/ProblemMessage';
+import { fieldError, firstInvalid } from '../identity/fieldErrors';
 import { useSubmit } from '../identity/useSubmit';
 import { usePlatformClient } from './invitations/PlatformInvitationPages';
 import { PlatformStepUpForm } from './shared/PlatformStepUpForm';
@@ -99,6 +101,9 @@ export function PlatformPanel() {
   const [inviteEmail, setInviteEmail] = useState('');
   const [pendingAction, setPendingAction] = useState(null);
   const { submit, problem: actionProblem, isBusy } = useSubmit(async (action) => action());
+  const inviteEmailRef = useRef(null);
+  const invalidInviteField = firstInvalid(actionProblem, ['email']);
+  useEffect(() => { if (invalidInviteField) inviteEmailRef.current?.focus(); }, [invalidInviteField]);
 
   const identityContext = identity?.context;
   const mayLoad = identityContext?.activeTenant?.type === 'Platform' &&
@@ -157,12 +162,13 @@ export function PlatformPanel() {
           {/* A refused code is answered where the code was typed. Rendered above the title, as it was, the refusal
               sat two elements away from the field it is about. */}
           <Stack spacing={2}>
-            <ProblemMessage problem={actionProblem} />
+            <ProblemMessage problem={actionProblem} claimed={['code']} />
             <PlatformStepUpForm
               inputId={platformStepUpInputId}
               code={stepUpCode}
               onCodeChange={setStepUpCode}
               isBusy={isBusy}
+              problem={actionProblem}
               onSubmit={() => run(async () => {
                 await platform.stepUp(stepUpCode);
                 await identity.reload();
@@ -186,7 +192,7 @@ export function PlatformPanel() {
           a row, its confirmation, the invite form's own submit — so there is nothing to right-align here that
           would not have to be invented. */}
       <Typography id="platform-panel-heading" component="h1" variant="h5">{t('common:navigation.platform')}</Typography>
-      <ProblemMessage problem={actionProblem} />
+      <ProblemMessage problem={actionProblem} claimed={['email', 'code']} autoFocus={!firstInvalid(actionProblem, ['email', 'code'])} />
 
       {/* A Platform change needs a recent proof of the second factor, so the panel offers one rather than
           letting the administrator discover the refusal after composing an action. It is a gate and gets its own
@@ -197,6 +203,7 @@ export function PlatformPanel() {
           code={stepUpCode}
           onCodeChange={setStepUpCode}
           isBusy={isBusy}
+          problem={actionProblem}
           submitVariant={outlinedVariant}
           onSubmit={() => run(() => platform.stepUp(stepUpCode))}
         />
@@ -379,6 +386,8 @@ export function PlatformPanel() {
               required
               fullWidth
               slotProps={requiredField}
+              inputRef={inviteEmailRef}
+              {...fieldError(actionProblem, 'email', t)}
               value={inviteEmail}
               onChange={(event) => setInviteEmail(event.target.value)}
             />

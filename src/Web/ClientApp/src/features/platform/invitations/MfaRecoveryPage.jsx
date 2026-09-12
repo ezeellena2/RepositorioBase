@@ -1,4 +1,5 @@
-import { useState } from 'react';
+/* eslint-disable i18next/no-literal-string -- bounded wire field names, not display copy. */
+import { useEffect, useRef, useState } from 'react';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -12,6 +13,7 @@ import Typography from '@mui/material/Typography';
 import { useIdentity } from '../../identity/context/IdentityProvider';
 import { usePlatformClient } from './PlatformInvitationPages';
 import { ProblemMessage } from '../../identity/ProblemMessage';
+import { fieldError, firstInvalid } from '../../identity/fieldErrors';
 import { useSubmit } from '../../identity/useSubmit';
 import { useTranslation } from '../../../i18n';
 
@@ -65,6 +67,9 @@ export function MfaRecoveryPage() {
   const [recoveryCode, setRecoveryCode] = useState('');
   const [replacement, setReplacement] = useState(null);
   const { submit, problem, isBusy } = useSubmit(async (action) => action());
+  const recoveryCodeRef = useRef(null);
+  const invalid = firstInvalid(problem, ['recoveryCode']);
+  useEffect(() => { if (invalid) recoveryCodeRef.current?.focus(); }, [invalid]);
 
   const signedIn = Boolean(identity?.isAuthenticated);
   const asking = signedIn && replacement === null;
@@ -140,7 +145,7 @@ export function MfaRecoveryPage() {
         </>
       ) : (
         <>
-          <ProblemMessage problem={problem} />
+          <ProblemMessage problem={problem} claimed={['recoveryCode']} autoFocus={!invalid} />
           <Paper
             variant="outlined"
             component="form"
@@ -180,6 +185,8 @@ export function MfaRecoveryPage() {
                 required
                 fullWidth
                 slotProps={requiredField}
+                inputRef={recoveryCodeRef}
+                {...fieldError(problem, 'recoveryCode', t)}
                 value={recoveryCode}
                 onChange={(event) => setRecoveryCode(event.target.value)}
               />

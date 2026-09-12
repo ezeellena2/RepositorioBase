@@ -107,6 +107,25 @@ describe('platform identities page', () => {
     expect(reads.count).toBe(0);
   });
 
+  it('associates and focuses a structured step-up code detail without repeating it', async () => {
+    const [reads, directory] = countedDirectory();
+    server.use(antiforgery(), contextIs(platformContext(IDENTITY_PERMISSIONS, { requiresTwoFactor: true })), directory);
+    server.use(http.post('/api/platform/mfa/step-up', () => problem(400, 'validation_failed', {
+      errors: { code: [{ code: 'too_long', params: { max: 16 } }] },
+    })));
+
+    renderPage();
+    const code = await screen.findByLabelText('Authenticator code');
+    await userEvent.type(code, '000000');
+    await userEvent.click(screen.getByRole('button', { name: 'Step up' }));
+
+    await waitFor(() => expect(code).toHaveAttribute('aria-invalid', 'true'));
+    expect(code).toHaveAccessibleDescription('Must be at most 16 characters.');
+    expect(code).toHaveFocus();
+    expect(screen.getByRole('alert')).not.toHaveTextContent('Must be at most 16 characters.');
+    expect(reads.count).toBe(0);
+  });
+
   it('opens the directory once the reloaded context says the factor is settled', async () => {
     let requiresTwoFactor = true;
     server.use(antiforgery());

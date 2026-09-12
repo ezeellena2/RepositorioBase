@@ -29,6 +29,26 @@ function CreateAndTestProject {
         $exitCode = 0
         Push-Location $projectPath
         try {
+            Write-Host "Generating command and query item templates: $name"
+            Push-Location "./src/Application"
+            try {
+                dotnet new ca-usecase --name GeneratedCommand --feature-name TemplateGate --usecase-type command --no-update-check
+                if ($LASTEXITCODE -ne 0) { throw "dotnet new ca-usecase command failed for $name" }
+                dotnet new ca-usecase --name GeneratedQuery --feature-name TemplateGate --usecase-type query --no-update-check
+                if ($LASTEXITCODE -ne 0) { throw "dotnet new ca-usecase query failed for $name" }
+
+                $generatedCommand = Get-Content "TemplateGate/Commands/GeneratedCommand/GeneratedCommand.cs" -Raw
+                $generatedQuery = Get-Content "TemplateGate/Queries/GeneratedQuery/GeneratedQuery.cs" -Raw
+                if (-not $generatedCommand.Contains(".WithErrorCode(ValidationErrorCodes.Required);")) {
+                    throw "Generated command does not carry the approved validation error code syntax for $name"
+                }
+                if (-not $generatedQuery.Contains(".WithErrorCode(ValidationErrorCodes.Required);")) {
+                    throw "Generated query does not carry the approved validation error code syntax for $name"
+                }
+            } finally {
+                Pop-Location
+            }
+
             Write-Host "Building: $name"
             dotnet build --configuration Release
             if ($LASTEXITCODE -ne 0) { throw "Build failed for $name" }

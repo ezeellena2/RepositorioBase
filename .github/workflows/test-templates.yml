@@ -53,6 +53,14 @@ jobs:
           --output generated \
           --no-update-check
 
+    - name: Generate and inspect command and query use cases
+      working-directory: generated/src/Application
+      run: |
+        dotnet new ca-usecase --name GeneratedCommand --feature-name TemplateGate --usecase-type command --no-update-check
+        dotnet new ca-usecase --name GeneratedQuery --feature-name TemplateGate --usecase-type query --no-update-check
+        grep -F '.WithErrorCode(ValidationErrorCodes.Required);' TemplateGate/Commands/GeneratedCommand/GeneratedCommand.cs
+        grep -F '.WithErrorCode(ValidationErrorCodes.Required);' TemplateGate/Queries/GeneratedQuery/GeneratedQuery.cs
+
     - name: Build solution
       working-directory: generated
       run: dotnet build --configuration Release

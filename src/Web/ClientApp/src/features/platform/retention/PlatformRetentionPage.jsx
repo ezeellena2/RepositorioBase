@@ -1,3 +1,4 @@
+/* eslint-disable i18next/no-literal-string -- bounded wire field name, not display copy. */
 import { useCallback, useState } from 'react';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
@@ -190,7 +191,7 @@ export function PlatformRetentionPage() {
     return (
       <Stack component="section" aria-labelledby={retentionHeadingId} spacing={3}>
         <Typography id={retentionHeadingId} component="h1" variant="h5">{t('retention.title')}</Typography>
-        {stepUp.problem && <Box sx={column}><ProblemMessage problem={stepUp.problem} /></Box>}
+        {stepUp.problem && <Box sx={column}><ProblemMessage problem={stepUp.problem} claimed={['code']} /></Box>}
         <Paper variant="outlined" sx={narrowSection}>
           <Stack spacing={2}>
             <Typography variant="body2" color="text.secondary">
@@ -203,6 +204,7 @@ export function PlatformRetentionPage() {
               code={stepUp.code}
               onCodeChange={stepUp.onCodeChange}
               isBusy={stepUp.isBusy}
+              problem={stepUp.problem}
               onSubmit={stepUp.onSubmit}
             />
           </Stack>
@@ -232,7 +234,7 @@ export function PlatformRetentionPage() {
         <Box sx={column}>
           {shapeRefusal
             ? <Alert severity="error" role="alert">{shapeRefusal}</Alert>
-            : <ProblemMessage problem={refusal} />}
+            : <ProblemMessage problem={refusal} claimed={stepUp.problem ? ['code'] : []} />}
         </Box>
       )}
 
@@ -250,6 +252,7 @@ export function PlatformRetentionPage() {
               code={stepUp.code}
               onCodeChange={stepUp.onCodeChange}
               isBusy={stepUp.isBusy}
+              problem={stepUp.problem}
               onSubmit={stepUp.onSubmit}
               submitVariant={outlinedSubmitVariant}
             />

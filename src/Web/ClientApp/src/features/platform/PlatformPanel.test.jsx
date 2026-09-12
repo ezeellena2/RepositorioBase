@@ -85,6 +85,23 @@ describe('platform panel', () => {
     server.events.removeAllListeners();
   });
 
+  it('associates and focuses a structured panel step-up detail without repeating it', async () => {
+    server.use(antiforgery(), contextIs(platformContext(PLATFORM_PERMISSIONS, { requiresTwoFactor: true })));
+    server.use(http.post('/api/platform/mfa/step-up', () => problem(400, 'validation_failed', {
+      errors: { code: [{ code: 'too_long', params: { max: 16 } }] },
+    })));
+
+    renderPanel();
+    const code = await screen.findByLabelText('Authenticator code');
+    await userEvent.type(code, '000000');
+    await userEvent.click(screen.getByRole('button', { name: 'Step up' }));
+
+    await waitFor(() => expect(code).toHaveAttribute('aria-invalid', 'true'));
+    expect(code).toHaveAccessibleDescription('Must be at most 16 characters.');
+    expect(code).toHaveFocus();
+    expect(screen.getByRole('alert')).not.toHaveTextContent('Must be at most 16 characters.');
+  });
+
   /** Proving it is what opens the directories, and the answer comes from the reloaded context, not from the form. */
   it('opens the directories once the factor is proved', async () => {
     let requiresTwoFactor = true;
@@ -231,5 +248,22 @@ describe('platform panel', () => {
 
     await screen.findByText('acme-1');
     expect(screen.queryByLabelText('Invite an administrator')).not.toBeInTheDocument();
+  });
+
+  it('associates and focuses an administrator invitation email detail without repeating it in the alert', async () => {
+    server.use(antiforgery(), contextIs(platformContext()), ...directories());
+    server.use(http.post('/api/platform/admins/invitations', () => problem(400, 'validation_failed', {
+      errors: { email: [{ code: 'too_long', params: { max: 256 } }] },
+    })));
+    renderPanel();
+
+    const email = await screen.findByRole('textbox', { name: 'Invite an administrator' });
+    await userEvent.type(email, 'owner@example.test');
+    await userEvent.click(screen.getByRole('button', { name: 'Invite' }));
+
+    await waitFor(() => expect(email).toHaveAttribute('aria-invalid', 'true'));
+    expect(email).toHaveAccessibleDescription('Must be at most 256 characters.');
+    expect(email).toHaveFocus();
+    expect(screen.getByRole('alert')).not.toHaveTextContent('Must be at most 256 characters.');
   });
 });

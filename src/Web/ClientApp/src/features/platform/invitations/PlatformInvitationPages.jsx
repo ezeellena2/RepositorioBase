@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+/* eslint-disable i18next/no-literal-string -- bounded wire field names, not display copy. */
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
@@ -13,6 +14,7 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { useIdentity } from '../../identity/context/IdentityProvider';
 import { ProblemMessage } from '../../identity/ProblemMessage';
+import { fieldError, firstInvalid } from '../../identity/fieldErrors';
 import { useFragmentToken } from '../../identity/useFragmentToken';
 import { useSubmit } from '../../identity/useSubmit';
 import { createPlatformClient } from '../api/platformClient';
@@ -98,13 +100,16 @@ export function RegisterPlatformInviteePage() {
   const [password, setPassword] = useState('');
   const [continuing, setContinuing] = useState(false);
   const { submit, problem, isBusy, result } = useSubmit((secret, chosen) => platform.registerFromInvitation(secret, chosen));
+  const passwordRef = useRef(null);
+  const invalid = firstInvalid(problem, ['password']);
+  useEffect(() => { if (invalid) passwordRef.current?.focus(); }, [invalid]);
 
   return (
     <EntranceCard headingId={invitationHeadings.register} title={t('invitations.register.title')}>
       {/* Gated on the branch that can raise it. The registration form unmounts the moment the ceremony starts, so
           `problem` can only ever be stale from here on — and the ceremony renders a refusal slot of its own. Two
           `Alert`s are two `role="alert"` elements, and this screen is read as having exactly one. */}
-      {!continuing && <ProblemMessage problem={problem} />}
+      {!continuing && <ProblemMessage problem={problem} claimed={['password']} autoFocus={!invalid} />}
 
       {continuing ? (
         // The ceremony runs here rather than behind a link because the invitation token cannot travel to another
@@ -126,6 +131,8 @@ export function RegisterPlatformInviteePage() {
               required
               fullWidth
               slotProps={requiredField}
+              inputRef={passwordRef}
+              {...fieldError(problem, 'password', t)}
               value={password}
               onChange={(event) => setPassword(event.target.value)}
             />
@@ -266,10 +273,17 @@ function PlatformSecondFactor({ token }) {
   const [code, setCode] = useState('');
   const [stage, setStage] = useState(mfaStages.start);
   const { submit, problem, isBusy } = useSubmit(async (action) => action());
+  const codeRef = useRef(null);
+  const invalidCode = stage === mfaStages.verify ? firstInvalid(problem, ['code']) : undefined;
+  useEffect(() => { if (invalidCode) codeRef.current?.focus(); }, [invalidCode]);
 
   return (
     <Stack spacing={3}>
-      <ProblemMessage problem={problem} />
+      <ProblemMessage
+        problem={problem}
+        claimed={stage === mfaStages.verify ? ['code'] : []}
+        autoFocus={!invalidCode}
+      />
 
       {stage === mfaStages.start && (
         <Button
@@ -341,6 +355,8 @@ function PlatformSecondFactor({ token }) {
             required
             fullWidth
             slotProps={mfaCodeFieldSlots}
+            inputRef={codeRef}
+            {...fieldError(problem, 'code', t)}
             value={code}
             onChange={(event) => setCode(event.target.value)}
           />

@@ -1,6 +1,7 @@
 using CleanArchitecture.Application.Common.Localization;
 using CleanArchitecture.Application.Common.Models;
 using CleanArchitecture.Application.Common.Security;
+using CleanArchitecture.Application.Common.Validation;
 using CleanArchitecture.Application.IdentityAccess.Authorization;
 using CleanArchitecture.Application.IdentityAccess.Common;
 using CleanArchitecture.Application.IdentityAccess.Organizations;
@@ -19,10 +20,10 @@ public sealed class SetPreferredLanguageCommandValidator : AbstractValidator<Set
         RuleFor(command => command.Language)
             .Cascade(CascadeMode.Stop)
             .NotEmpty()
-                .WithErrorCode("language_required")
+                .WithErrorCode(ValidationErrorCodes.Required)
                 .WithMessage("Choose a language.")
             .Must(LocalizationRegistry.IsCanonicalSupported)
-                .WithErrorCode("language_unsupported")
+                .WithErrorCode(ValidationErrorCodes.UnsupportedValue)
                 .WithMessage("Choose a supported language.")
             .OverridePropertyName("language");
     }

@@ -1,4 +1,5 @@
 using CleanArchitecture.Application.Common.Interfaces;
+using CleanArchitecture.Application.Common.Validation;
 
 namespace CleanArchitecture.Application.FeatureName.Queries.CleanArchitectureUseCase;
 
@@ -8,12 +9,16 @@ public record CleanArchitectureUseCaseQuery : IRequest<TReturnType>
 public record CleanArchitectureUseCaseQuery : IRequest
 //#endif
 {
+    public string SomeInput { get; init; } = string.Empty;
 }
 
 public class CleanArchitectureUseCaseQueryValidator : AbstractValidator<CleanArchitectureUseCaseQuery>
 {
     public CleanArchitectureUseCaseQueryValidator()
     {
+        RuleFor(query => query.SomeInput)
+            .NotEmpty().WithMessage("Some input is required.")
+            .WithErrorCode(ValidationErrorCodes.Required);
     }
 }
 

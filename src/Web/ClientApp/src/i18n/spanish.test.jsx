@@ -78,6 +78,29 @@ describe('Spanish language selection', () => {
     expect(document.cookie).toContain('c=en|uic=en');
   });
 
+  it('keeps a failed language detail in the Spanish general alert and returns focus to that alert', async () => {
+    await act(() => setLanguage('es'));
+    server.use(
+      antiforgery(),
+      contextIs(signedInContext({ preferredLanguage: 'es' })),
+      http.put('/api/identity/context/language', () => problem(400, 'validation_failed', {
+        errors: { language: [{ code: 'unsupported_value', params: {} }] },
+      })),
+    );
+    render(<MemoryRouter><IdentityProvider><NavMenu /></IdentityProvider></MemoryRouter>);
+    await screen.findByRole('link', { name: 'Su acceso' });
+
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Idioma' }), 'en');
+
+    const alert = await screen.findByRole('alert');
+    await waitFor(() => expect(alert).toHaveFocus());
+    expect(alert).toHaveTextContent('Idioma: Este valor no es compatible.');
+    expect(screen.getByRole('combobox', { name: 'Idioma' })).toHaveValue('es');
+    expect(i18n.resolvedLanguage).toBe('es');
+    expect(document.documentElement.lang).toBe('es');
+    expect(document.body).not.toHaveTextContent(/unsupported_value/);
+  });
+
   it('ignores unsupported choices without replacing the existing culture cookie', async () => {
     await act(() => setLanguage('es'));
     await act(() => setLanguage('fr'));

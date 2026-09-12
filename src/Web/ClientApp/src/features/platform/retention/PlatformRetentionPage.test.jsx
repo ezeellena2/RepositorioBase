@@ -129,6 +129,25 @@ describe('platform retention page', () => {
     await waitFor(() => expect(retentionCalls(paths)).toEqual([]));
   });
 
+  it('associates and focuses a structured entry step-up detail without repeating it', async () => {
+    const paths = trackRequests();
+    server.use(antiforgery(), contextIs(retentionContext(RETENTION_PERMISSIONS, { requiresTwoFactor: true })), policyIs());
+    server.use(http.post('/api/platform/mfa/step-up', () => problem(400, 'validation_failed', {
+      errors: { code: [{ code: 'required', params: {} }] },
+    })));
+
+    renderPage();
+    const code = await screen.findByLabelText('Authenticator code');
+    await userEvent.type(code, '000000');
+    await userEvent.click(screen.getByRole('button', { name: 'Step up' }));
+
+    await waitFor(() => expect(code).toHaveAttribute('aria-invalid', 'true'));
+    expect(code).toHaveAccessibleDescription('This value is required.');
+    expect(code).toHaveFocus();
+    expect(screen.getByRole('alert')).not.toHaveTextContent('This value is required.');
+    expect(retentionCalls(paths)).toEqual([]);
+  });
+
   /** A reload that did not come back says nothing about the factor either way, so it does not open anything. */
   it('keeps the gate up when the context reload does not come back', async () => {
     const paths = trackRequests();

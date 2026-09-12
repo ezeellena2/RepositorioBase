@@ -137,6 +137,29 @@ describe('platform invitation pages', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/invitation is not usable/i);
   });
 
+  it('associates and focuses an invitation password detail without hiding fragment-token details', async () => {
+    server.use(antiforgery(), contextIs(null));
+    server.use(http.post('/api/platform/invitations/register', () => problem(400, 'validation_failed', {
+      errors: {
+        password: [{ code: 'password_policy', params: {} }],
+        token: [{ code: 'required', params: {} }],
+      },
+    })));
+    withToken('platform-token-validation');
+
+    renderPage(<RegisterPlatformInviteePage />);
+    const password = await screen.findByLabelText('Choose a password');
+    await userEvent.type(password, 'candidate');
+    await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+
+    await waitFor(() => expect(password).toHaveAttribute('aria-invalid', 'true'));
+    expect(password).toHaveAccessibleDescription('This password does not meet the requirements.');
+    expect(password).toHaveFocus();
+    const alert = screen.getByRole('alert');
+    expect(alert).not.toHaveTextContent('This password does not meet the requirements.');
+    expect(alert).toHaveTextContent('Token: This value is required.');
+  });
+
   /**
    * One click, from a link in the recipient's own mailbox. The token comes out of the fragment and never appears
    * in the address bar, and nothing is transcribed by hand.
@@ -222,6 +245,28 @@ describe('platform invitation pages', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/invitation is not usable/i);
     expect(screen.queryByRole('button', { name: /saved my recovery codes/i })).not.toBeInTheDocument();
+  });
+
+  it('associates and focuses an enrollment code detail without duplicating the detail', async () => {
+    server.use(antiforgery(), contextIs(signedInContext()));
+    server.use(http.post('/api/platform/mfa/enroll', () => HttpResponse.json({
+      sharedKey: 'JBSWY3DPEHPK3PXP', provisioningUri: 'otpauth://x', recoveryCodes: ['aaaaa'],
+    })));
+    server.use(http.post('/api/platform/mfa/verify', () => problem(400, 'validation_failed', {
+      errors: { code: [{ code: 'too_long', params: { max: 16 } }] },
+    })));
+    withToken('platform-token-validation');
+
+    renderPage(<PlatformMfaEnrollmentPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Begin enrollment' }));
+    const code = screen.getByLabelText(/code from your authenticator/i);
+    await userEvent.type(code, '000000');
+    await userEvent.click(screen.getByRole('button', { name: 'Verify' }));
+
+    await waitFor(() => expect(code).toHaveAttribute('aria-invalid', 'true'));
+    expect(code).toHaveAccessibleDescription('Must be at most 16 characters.');
+    expect(code).toHaveFocus();
+    expect(screen.getByRole('alert')).not.toHaveTextContent('Must be at most 16 characters.');
   });
 
   it('recovers the bootstrap invitation without sending an address', async () => {

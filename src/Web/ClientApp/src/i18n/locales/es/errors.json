@@ -54,5 +54,24 @@
   "unexpected": "No se pudo completar esa solicitud.",
   "unknown": "No se pudo completar esa solicitud.",
   "retryAfter": "Vuelva a intentarlo en {{seconds}} segundos.",
-  "fieldMessage": "{{field}}: {{messages}}"
+  "validation": {
+    "required": "Este valor es obligatorio.",
+    "too_long": "Debe tener como máximo {{max}} caracteres.",
+    "unsupported_value": "Este valor no es compatible.",
+    "password_policy": "Esta contraseña no cumple los requisitos.",
+    "invalid": "Este valor no es válido.",
+    "unknown": "Este valor no es válido.",
+    "fieldMessage": "{{field}}: {{message}}",
+    "fields": {
+      "email": "Correo electrónico",
+      "password": "Contraseña",
+      "newPassword": "Nueva contraseña",
+      "token": "Token",
+      "confirmationToken": "Token de confirmación",
+      "code": "Código",
+      "recoveryCode": "Código de recuperación",
+      "language": "Idioma",
+      "unknown": "Campo"
+    }
+  }
 }

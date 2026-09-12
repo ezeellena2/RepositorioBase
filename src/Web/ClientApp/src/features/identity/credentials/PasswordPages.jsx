@@ -1,4 +1,5 @@
-import { useState } from 'react';
+/* eslint-disable i18next/no-literal-string -- bounded wire field names, not display copy. */
+import { useEffect, useRef, useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
@@ -13,6 +14,7 @@ import { useIdentity } from '../context/IdentityProvider';
 import { ProblemMessage } from '../ProblemMessage';
 import { useFragmentToken } from '../useFragmentToken';
 import { useSubmit } from '../useSubmit';
+import { fieldError, firstInvalid } from '../fieldErrors';
 import { Trans, useTranslation } from '../../../i18n';
 
 /** Required without the asterisk MUI would add, which would rename the field for everything that reads its label. */
@@ -107,6 +109,9 @@ export function ResetPasswordPage() {
   const [password, setPassword] = useState('');
   const { submit, problem, isBusy, result } = useSubmit((secret, next) => identity.client.resetPassword(secret, next));
   const isSet = result !== null && result !== undefined;
+  const passwordRef = useRef(null);
+  const invalid = firstInvalid(problem, ['newPassword']);
+  useEffect(() => { if (invalid) passwordRef.current?.focus(); }, [invalid]);
 
   return (
     <Paper component="section" elevation={3} aria-labelledby="reset-heading" sx={card}>
@@ -129,7 +134,7 @@ export function ResetPasswordPage() {
           </>
         ) : (
           <>
-            <ProblemMessage problem={problem} />
+            <ProblemMessage problem={problem} claimed={['newPassword']} autoFocus={!invalid} />
             <Stack
               component="form"
               spacing={2}
@@ -143,6 +148,8 @@ export function ResetPasswordPage() {
                 required
                 fullWidth
                 slotProps={requiredField}
+                inputRef={passwordRef}
+                {...fieldError(problem, 'newPassword', t)}
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
               />
@@ -173,6 +180,9 @@ export function ChangePasswordPage() {
   const [problem, setProblem] = useState(null);
   const [isBusy, setIsBusy] = useState(false);
   const [done, setDone] = useState(false);
+  const nextRef = useRef(null);
+  const invalid = firstInvalid(problem, ['newPassword']);
+  useEffect(() => { if (invalid) nextRef.current?.focus(); }, [invalid]);
 
   const change = async () => {
     setIsBusy(true);
@@ -206,7 +216,7 @@ export function ChangePasswordPage() {
         <Typography id="change-heading" component="h1" variant="h5">{t('credentials.change.title')}</Typography>
       </Box>
 
-      <ProblemMessage problem={problem} />
+      <ProblemMessage problem={problem} claimed={['newPassword']} autoFocus={!invalid} />
 
       {/* Deliberately role="status" and not the role="alert" MUI gives every severity: a refusal can arrive over a
           confirmation, and a page that resolves its alert as one element cannot be handed two. */}
@@ -242,6 +252,8 @@ export function ChangePasswordPage() {
             required
             fullWidth
             slotProps={requiredField}
+            inputRef={nextRef}
+            {...fieldError(problem, 'newPassword', t)}
             value={next}
             onChange={edit(setNext)}
           />

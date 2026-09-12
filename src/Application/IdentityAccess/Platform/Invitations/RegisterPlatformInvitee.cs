@@ -1,5 +1,6 @@
 using CleanArchitecture.Application.Common.Models;
 using CleanArchitecture.Application.Common.Security;
+using CleanArchitecture.Application.Common.Validation;
 using FluentValidation;
 
 namespace CleanArchitecture.Application.IdentityAccess.Platform.Invitations;
@@ -21,7 +22,11 @@ public sealed class RegisterPlatformInviteeCommandValidator : AbstractValidator<
 {
     public RegisterPlatformInviteeCommandValidator()
     {
-        RuleFor(command => command.Token).NotEmpty().MaximumLength(256);
-        RuleFor(command => command.Password).NotEmpty().MaximumLength(256);
+        RuleFor(command => command.Token)
+            .NotEmpty().WithErrorCode(ValidationErrorCodes.Required)
+            .MaximumLength(256).WithErrorCode(ValidationErrorCodes.TooLong);
+        RuleFor(command => command.Password)
+            .NotEmpty().WithErrorCode(ValidationErrorCodes.Required)
+            .MaximumLength(256).WithErrorCode(ValidationErrorCodes.TooLong);
     }
 }

@@ -10,6 +10,8 @@ import errorsEs from './locales/es/errors.json';
 import enumsEs from './locales/es/enums.json';
 import identityEs from './locales/es/identity.json';
 import platformEs from './locales/es/platform.json';
+import validationErrorSchema from '../../../../Application/Common/Validation/validationErrorSchema.json';
+import { VALIDATION_CODE_SCHEMA } from '../features/identity/api/problemDetails';
 
 const namespaces = ['common', 'errors', 'enums', 'identity', 'platform'];
 const pluralSuffix = /_(zero|one|two|few|many|other)$/;
@@ -82,6 +84,18 @@ export function catalogViolations(source, candidate, language) {
 }
 
 describe('language registry contract', () => {
+  it('matches the server-owned validation schema and contains every code plus the client fallback', () => {
+    const serverCodes = Object.keys(validationErrorSchema).sort();
+    expect(Object.keys(VALIDATION_CODE_SCHEMA).sort()).toEqual(serverCodes);
+
+    for (const language of languages.supported) {
+      for (const code of [...serverCodes, 'unknown']) {
+        expect(catalogs[language].errors.validation[code]).toEqual(expect.any(String));
+        expect(catalogs[language].errors.validation[code].trim()).not.toBe('');
+      }
+    }
+  });
+
   it('declares a source and default that are supported, and no overlap with in-progress languages', () => {
     expect(languages.source).toBe('en');
     expect(languages.default).toBe('en');

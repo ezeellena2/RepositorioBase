@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using CleanArchitecture.Application.Common.Models;
+using CleanArchitecture.Application.Common.Validation;
 using CleanArchitecture.Application.FunctionalTests.Infrastructure;
 using CleanArchitecture.Web.Infrastructure;
 using CleanArchitecture.Domain.IdentityAccess.Auditing;
@@ -159,6 +160,89 @@ public sealed class ProblemDetailsContractTests : TestBase
         context.Response.Headers.RetryAfter.ToString().ShouldBe("30");
         payload.GetProperty("code").GetString().ShouldBe("rate_limit_exceeded");
         payload.TryGetProperty("success", out _).ShouldBeFalse();
+    }
+
+    [Test]
+    public void Validation_problem_uses_camel_case_fields_and_safe_structured_details()
+    {
+        using var scope = FunctionalTestSetup.ScopeFactory.CreateScope();
+        var mapper = scope.ServiceProvider.GetRequiredService<ApiProblemDetailsMapper>();
+        var context = new DefaultHttpContext();
+        var error = new ApplicationError(
+            "validation_failed",
+            ApplicationErrorCategory.Validation,
+            validationErrors: new Dictionary<string, ValidationErrorDetail[]>
+            {
+                ["NewPassword"] = [new ValidationErrorDetail(
+                    ValidationErrorCodes.TooLong,
+                    new Dictionary<string, int> { ["max"] = 256 })]
+            });
+
+        var problem = mapper.Create(context, error);
+
+        problem.Errors!.Keys.ShouldBe(new[] { "newPassword" });
+        var detail = problem.Errors["newPassword"].ShouldHaveSingleItem();
+        detail.Code.ShouldBe(ValidationErrorCodes.TooLong);
+        detail.Params.Count.ShouldBe(1);
+        detail.Params["max"].ShouldBe(256);
+    }
+
+    [Test]
+    public void Validation_problem_merges_colliding_camel_case_fields_and_removes_duplicate_details()
+    {
+        using var scope = FunctionalTestSetup.ScopeFactory.CreateScope();
+        var mapper = scope.ServiceProvider.GetRequiredService<ApiProblemDetailsMapper>();
+        var error = new ApplicationError(
+            "validation_failed",
+            ApplicationErrorCategory.Validation,
+            validationErrors: new Dictionary<string, ValidationErrorDetail[]>
+            {
+                ["NewPassword"] = [
+                    new ValidationErrorDetail(ValidationErrorCodes.Required, new Dictionary<string, int>()),
+                    new ValidationErrorDetail(ValidationErrorCodes.TooLong, new Dictionary<string, int> { ["max"] = 256 })],
+                ["newPassword"] = [new ValidationErrorDetail(ValidationErrorCodes.Required, new Dictionary<string, int>())]
+            });
+
+        var errors = mapper.Create(new DefaultHttpContext(), error).Errors!;
+
+        errors.Keys.ShouldBe(["newPassword"]);
+        errors["newPassword"].Select(detail => detail.Code).ShouldBe([ValidationErrorCodes.Required, ValidationErrorCodes.TooLong]);
+    }
+
+    [Test]
+    public void Validation_problem_collision_merge_deduplication_and_order_are_independent_of_producer_order()
+    {
+        using var scope = FunctionalTestSetup.ScopeFactory.CreateScope();
+        var mapper = scope.ServiceProvider.GetRequiredService<ApiProblemDetailsMapper>();
+
+        static ApplicationError Error(IEnumerable<KeyValuePair<string, ValidationErrorDetail[]>> entries) => new(
+            "validation_failed",
+            ApplicationErrorCategory.Validation,
+            validationErrors: entries.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal));
+
+        var required = new ValidationErrorDetail(ValidationErrorCodes.Required, new Dictionary<string, int>());
+        var shortLimit = new ValidationErrorDetail(ValidationErrorCodes.TooLong, new Dictionary<string, int> { ["max"] = 16 });
+        var longLimit = new ValidationErrorDetail(ValidationErrorCodes.TooLong, new Dictionary<string, int> { ["max"] = 256 });
+        var forward = Error([
+            new("NewPassword", [longLimit, required]),
+            new("newPassword", [shortLimit, required]),
+        ]);
+        var reverse = Error([
+            new("newPassword", [required, shortLimit]),
+            new("NewPassword", [required, longLimit]),
+        ]);
+
+        var first = mapper.Create(new DefaultHttpContext(), forward).Errors!;
+        var second = mapper.Create(new DefaultHttpContext(), reverse).Errors!;
+
+        JsonSerializer.Serialize(first).ShouldBe(JsonSerializer.Serialize(second));
+        first.Keys.ShouldBe(["newPassword"]);
+        first["newPassword"].Select(detail => (detail.Code, detail.Params.GetValueOrDefault("max")))
+            .ShouldBe([
+                (ValidationErrorCodes.Required, 0),
+                (ValidationErrorCodes.TooLong, 16),
+                (ValidationErrorCodes.TooLong, 256),
+            ]);
     }
 
     /// <summary>

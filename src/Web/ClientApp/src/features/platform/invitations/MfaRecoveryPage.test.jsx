@@ -91,6 +91,27 @@ describe('platform mfa recovery', () => {
     expect(screen.queryByTestId('recovered-shared-key')).not.toBeInTheDocument();
   });
 
+  it('associates and focuses a recovery-code validation detail without marking the proof password', async () => {
+    server.use(antiforgery(), contextIs(signedInContext()));
+    server.use(http.post('/api/identity/credentials/reauthenticate', () => new HttpResponse(null, { status: 204 })));
+    server.use(http.post('/api/platform/mfa/recover', () => problem(400, 'validation_failed', {
+      errors: { recoveryCode: [{ code: 'too_long', params: { max: 64 } }] },
+    })));
+
+    renderPage();
+    const password = await screen.findByLabelText(/your password/i);
+    const recoveryCode = screen.getByLabelText(/a recovery code/i);
+    await userEvent.type(password, 'Testing1234!');
+    await userEvent.type(recoveryCode, 'candidate');
+    await userEvent.click(screen.getByRole('button', { name: /replace my second factor/i }));
+
+    await waitFor(() => expect(recoveryCode).toHaveAttribute('aria-invalid', 'true'));
+    expect(recoveryCode).toHaveAccessibleDescription('Must be at most 64 characters.');
+    expect(recoveryCode).toHaveFocus();
+    expect(password).not.toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByRole('alert')).not.toHaveTextContent('Must be at most 64 characters.');
+  });
+
   it('says what to do first when nobody is signed in, rather than offering a form that cannot work', () => {
     server.use(antiforgery(), contextIs(null));
 

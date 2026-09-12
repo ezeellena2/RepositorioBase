@@ -1,5 +1,6 @@
 using CleanArchitecture.Application.Common.Models;
 using CleanArchitecture.Application.Common.Security;
+using CleanArchitecture.Application.Common.Validation;
 using FluentValidation;
 
 namespace CleanArchitecture.Application.IdentityAccess.Platform.Invitations;
@@ -23,5 +24,7 @@ public sealed record ConfirmPlatformInviteeCommand(string ConfirmationToken)
 public sealed class ConfirmPlatformInviteeCommandValidator : AbstractValidator<ConfirmPlatformInviteeCommand>
 {
     public ConfirmPlatformInviteeCommandValidator() =>
-        RuleFor(command => command.ConfirmationToken).NotEmpty().MaximumLength(256);
+        RuleFor(command => command.ConfirmationToken)
+            .NotEmpty().WithErrorCode(ValidationErrorCodes.Required)
+            .MaximumLength(256).WithErrorCode(ValidationErrorCodes.TooLong);
 }

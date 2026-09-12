@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
+import { i18n } from '../../../i18n';
 import { IdentityProvider } from '../context/IdentityProvider';
 import { ChangePasswordPage, ForgotPasswordPage, ResetPasswordPage } from './PasswordPages';
 import { server } from '../../../test/server';
@@ -65,6 +66,28 @@ describe('password pages', () => {
     expect(screen.getByText(/needs the token it carries/i)).toBeInTheDocument();
   });
 
+  it.each([
+    ['en', 'New password', 'Set my password', 'Must be at most 12 characters.'],
+    ['es', 'Nueva contraseña', 'Establecer mi contraseña', 'Debe tener como máximo 12 caracteres.'],
+  ])('associates, focuses and localizes a reset password detail in %s without duplicating it', async (language, label, submit, helper) => {
+    await i18n.changeLanguage(language);
+    window.history.replaceState({}, '', '/credentials/reset#token=reset-token-validation');
+    server.use(antiforgery(), contextIs(null));
+    server.use(http.post('/api/identity/credentials/password/reset', () => problem(400, 'validation_failed', {
+      errors: { newPassword: [{ code: 'too_long', params: { max: 12 } }] },
+    })));
+
+    renderPage(<ResetPasswordPage />);
+    const password = await screen.findByLabelText(label);
+    await userEvent.type(password, 'candidate');
+    await userEvent.click(screen.getByRole('button', { name: submit }));
+
+    await waitFor(() => expect(password).toHaveAttribute('aria-invalid', 'true'));
+    expect(password).toHaveAccessibleDescription(helper);
+    expect(password).toHaveFocus();
+    expect(screen.getByRole('alert')).not.toHaveTextContent(helper);
+  });
+
   it('buys the proof before it changes anything, and sends no current password to the change', async () => {
     const calls = [];
     server.use(antiforgery(), contextIs(signedInContext()));
@@ -105,5 +128,31 @@ describe('password pages', () => {
 
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
     expect(calls).toHaveLength(0);
+  });
+
+  it('associates a new-password detail with the new field and focuses that field', async () => {
+    server.use(antiforgery(), contextIs(signedInContext()));
+    server.use(http.post('/api/identity/credentials/reauthenticate', () => new HttpResponse(null, { status: 204 })));
+    server.use(http.put('/api/identity/credentials/password', () => problem(400, 'validation_failed', {
+      errors: {
+        newPassword: [
+          { code: 'required', params: {} },
+          { code: 'password_policy', params: {} },
+        ],
+      },
+    })));
+
+    renderPage(<ChangePasswordPage />);
+    const current = await screen.findByLabelText('Current password');
+    const next = screen.getByLabelText('New password');
+    await userEvent.type(current, 'Testing1234!');
+    await userEvent.type(next, 'candidate');
+    await userEvent.click(screen.getByRole('button', { name: 'Change it' }));
+
+    await waitFor(() => expect(next).toHaveAttribute('aria-invalid', 'true'));
+    expect(next).toHaveAccessibleDescription('This value is required. This password does not meet the requirements.');
+    expect(next).toHaveFocus();
+    expect(current).not.toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByRole('alert')).not.toHaveTextContent(/This value is required|does not meet the requirements/i);
   });
 });

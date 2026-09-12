@@ -1,11 +1,44 @@
+using CleanArchitecture.Application.Common.Models;
+using CleanArchitecture.Application.Common.Validation;
+using CleanArchitecture.Application.IdentityAccess.Common;
+using System.Collections.ObjectModel;
+
 namespace CleanArchitecture.Application.IdentityAccess.Credentials;
 
 /// <summary>What a credential change produced: either it applied, or the policy refused it and said why.</summary>
-public sealed record CredentialWriteResult(bool Succeeded, IReadOnlyDictionary<string, string[]> Errors)
-{
-    public static CredentialWriteResult Applied() => new(true, new Dictionary<string, string[]>());
+public enum CredentialWriteFailure { None, PasswordPolicy, Concurrency }
 
-    public static CredentialWriteResult Refused(IReadOnlyDictionary<string, string[]> errors) => new(false, errors);
+public sealed class CredentialWriteResult
+{
+    private static readonly ValidationErrorDetail PasswordPolicyDetail =
+        new(ValidationErrorCodes.PasswordPolicy, new Dictionary<string, int>());
+
+    private CredentialWriteResult(CredentialWriteFailure failure) => Failure = failure;
+
+    public bool Succeeded => Failure == CredentialWriteFailure.None;
+
+    public CredentialWriteFailure Failure { get; }
+
+    /// <summary>A fresh read-only projection prevents callers from mutating the result after construction.</summary>
+    public IReadOnlyDictionary<string, ValidationErrorDetail[]> Errors => Failure == CredentialWriteFailure.PasswordPolicy
+        ? new ReadOnlyDictionary<string, ValidationErrorDetail[]>(new Dictionary<string, ValidationErrorDetail[]>(StringComparer.Ordinal)
+        {
+            ["newPassword"] = [PasswordPolicyDetail]
+        })
+        : new ReadOnlyDictionary<string, ValidationErrorDetail[]>(new Dictionary<string, ValidationErrorDetail[]>(StringComparer.Ordinal));
+
+    public static CredentialWriteResult Applied() => new(CredentialWriteFailure.None);
+
+    public static CredentialWriteResult PasswordPolicy() => new(CredentialWriteFailure.PasswordPolicy);
+
+    public static CredentialWriteResult Concurrency() => new(CredentialWriteFailure.Concurrency);
+
+    public ApplicationError ToApplicationError() => Failure switch
+    {
+        CredentialWriteFailure.PasswordPolicy => IdentityAccessErrors.PasswordPolicyFailed(Errors),
+        CredentialWriteFailure.Concurrency => IdentityAccessErrors.IdentityConcurrencyConflict(),
+        _ => throw new InvalidOperationException("A successful credential write has no application error.")
+    };
 }
 
 /// <summary>

@@ -1,5 +1,6 @@
 using CleanArchitecture.Application.Common.Models;
 using CleanArchitecture.Application.Common.Security;
+using CleanArchitecture.Application.Common.Validation;
 using CleanArchitecture.Application.IdentityAccess.Authorization;
 using FluentValidation;
 
@@ -27,7 +28,9 @@ public sealed record BeginPlatformMfaEnrollmentCommand(string Token)
 public sealed class BeginPlatformMfaEnrollmentCommandValidator : AbstractValidator<BeginPlatformMfaEnrollmentCommand>
 {
     public BeginPlatformMfaEnrollmentCommandValidator() =>
-        RuleFor(command => command.Token).NotEmpty().MaximumLength(256);
+        RuleFor(command => command.Token)
+            .NotEmpty().WithErrorCode(ValidationErrorCodes.Required)
+            .MaximumLength(256).WithErrorCode(ValidationErrorCodes.TooLong);
 }
 
 /// <summary>Proves the authenticator holds the secret. Until this succeeds, the factor is only half set up.</summary>
@@ -39,8 +42,12 @@ public sealed class VerifyPlatformMfaEnrollmentCommandValidator : AbstractValida
 {
     public VerifyPlatformMfaEnrollmentCommandValidator()
     {
-        RuleFor(command => command.Token).NotEmpty().MaximumLength(256);
-        RuleFor(command => command.Code).NotEmpty().MaximumLength(16);
+        RuleFor(command => command.Token)
+            .NotEmpty().WithErrorCode(ValidationErrorCodes.Required)
+            .MaximumLength(256).WithErrorCode(ValidationErrorCodes.TooLong);
+        RuleFor(command => command.Code)
+            .NotEmpty().WithErrorCode(ValidationErrorCodes.Required)
+            .MaximumLength(16).WithErrorCode(ValidationErrorCodes.TooLong);
     }
 }
 
@@ -55,7 +62,9 @@ public sealed record AcknowledgePlatformRecoveryCodesCommand(string Token)
 public sealed class AcknowledgePlatformRecoveryCodesCommandValidator : AbstractValidator<AcknowledgePlatformRecoveryCodesCommand>
 {
     public AcknowledgePlatformRecoveryCodesCommandValidator() =>
-        RuleFor(command => command.Token).NotEmpty().MaximumLength(256);
+        RuleFor(command => command.Token)
+            .NotEmpty().WithErrorCode(ValidationErrorCodes.Required)
+            .MaximumLength(256).WithErrorCode(ValidationErrorCodes.TooLong);
 }
 
 /// <summary>
@@ -87,7 +96,9 @@ public sealed record RecoverPlatformMfaCommand(string RecoveryCode)
 public sealed class RecoverPlatformMfaCommandValidator : AbstractValidator<RecoverPlatformMfaCommand>
 {
     public RecoverPlatformMfaCommandValidator() =>
-        RuleFor(command => command.RecoveryCode).NotEmpty().MaximumLength(64);
+        RuleFor(command => command.RecoveryCode)
+            .NotEmpty().WithErrorCode(ValidationErrorCodes.Required)
+            .MaximumLength(64).WithErrorCode(ValidationErrorCodes.TooLong);
 }
 
 /// <summary>
@@ -101,5 +112,7 @@ public sealed record StepUpPlatformMfaCommand(string Code) : IRequest<Result>, I
 public sealed class StepUpPlatformMfaCommandValidator : AbstractValidator<StepUpPlatformMfaCommand>
 {
     public StepUpPlatformMfaCommandValidator() =>
-        RuleFor(command => command.Code).NotEmpty().MaximumLength(16);
+        RuleFor(command => command.Code)
+            .NotEmpty().WithErrorCode(ValidationErrorCodes.Required)
+            .MaximumLength(16).WithErrorCode(ValidationErrorCodes.TooLong);
 }

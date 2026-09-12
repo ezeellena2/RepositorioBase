@@ -1,5 +1,6 @@
 using CleanArchitecture.Application.Common.Exceptions;
 using CleanArchitecture.Application.Common.Models;
+using CleanArchitecture.Application.Common.Validation;
 using Microsoft.AspNetCore.Diagnostics;
 
 namespace CleanArchitecture.Web.Infrastructure;
@@ -19,7 +20,7 @@ public sealed class ProblemDetailsExceptionHandler(IProblemDetailsService proble
             ValidationException validation => new ApplicationError(
                 "validation_failed",
                 ApplicationErrorCategory.Validation,
-                validationErrors: new Dictionary<string, string[]>(validation.Errors, StringComparer.Ordinal)),
+                validationErrors: new Dictionary<string, ValidationErrorDetail[]>(validation.Errors, StringComparer.Ordinal)),
             NotFoundException => new ApplicationError("not_found", ApplicationErrorCategory.NotFound),
             UnauthorizedAccessException => new ApplicationError("authentication_required", ApplicationErrorCategory.Authentication),
             ForbiddenAccessException => new ApplicationError("permission_denied", ApplicationErrorCategory.Authorization),

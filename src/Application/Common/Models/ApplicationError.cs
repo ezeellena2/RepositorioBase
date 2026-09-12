@@ -1,5 +1,7 @@
 using System.Collections.ObjectModel;
 
+using CleanArchitecture.Application.Common.Validation;
+
 namespace CleanArchitecture.Application.Common.Models;
 
 /// <summary>
@@ -8,11 +10,13 @@ namespace CleanArchitecture.Application.Common.Models;
 /// </summary>
 public sealed class ApplicationError
 {
+    private readonly IReadOnlyDictionary<string, ValidationErrorDetail[]> _validationErrors;
+
     public ApplicationError(
         string code,
         ApplicationErrorCategory category,
         string? detail = null,
-        IReadOnlyDictionary<string, string[]>? validationErrors = null,
+        IReadOnlyDictionary<string, ValidationErrorDetail[]>? validationErrors = null,
         int? retryAfterSeconds = null)
     {
         if (string.IsNullOrWhiteSpace(code))
@@ -38,8 +42,8 @@ public sealed class ApplicationError
         Code = code.Trim();
         Category = category;
         Detail = string.IsNullOrWhiteSpace(detail) ? null : detail.Trim();
-        ValidationErrors = validationErrors is null
-            ? new ReadOnlyDictionary<string, string[]>(new Dictionary<string, string[]>(StringComparer.Ordinal))
+        _validationErrors = validationErrors is null
+            ? new ReadOnlyDictionary<string, ValidationErrorDetail[]>(new Dictionary<string, ValidationErrorDetail[]>(StringComparer.Ordinal))
             : CopyValidationErrors(validationErrors);
         RetryAfterSeconds = retryAfterSeconds;
     }
@@ -51,23 +55,27 @@ public sealed class ApplicationError
     /// <summary>Optional public-safe detail. It must never contain provider diagnostics or secrets.</summary>
     public string? Detail { get; }
 
-    public IReadOnlyDictionary<string, string[]> ValidationErrors { get; }
+    /// <summary>A defensive projection keeps the error immutable even though the wire contract uses arrays.</summary>
+    public IReadOnlyDictionary<string, ValidationErrorDetail[]> ValidationErrors => CopyValidationErrors(_validationErrors);
 
     public int? RetryAfterSeconds { get; }
 
-    private static IReadOnlyDictionary<string, string[]> CopyValidationErrors(IReadOnlyDictionary<string, string[]> errors)
+    private static IReadOnlyDictionary<string, ValidationErrorDetail[]> CopyValidationErrors(IReadOnlyDictionary<string, ValidationErrorDetail[]> errors)
     {
-        var copy = new Dictionary<string, string[]>(StringComparer.Ordinal);
-        foreach (var (field, messages) in errors)
+        var copy = new Dictionary<string, ValidationErrorDetail[]>(StringComparer.Ordinal);
+        foreach (var (field, details) in errors)
         {
-            if (string.IsNullOrWhiteSpace(field) || messages is null || messages.Length == 0 || messages.Any(string.IsNullOrWhiteSpace))
+            if (string.IsNullOrWhiteSpace(field)
+                || details is null
+                || details.Length == 0
+                || details.Any(detail => detail is null || !ValidationErrorCodes.IsApproved(detail.Code)))
             {
-                throw new ArgumentException("Validation errors must contain non-empty field names and messages.", nameof(errors));
+                throw new ArgumentException("Validation errors must contain a field and approved safe details.", nameof(errors));
             }
 
-            copy.Add(field, [.. messages]);
+            copy.Add(field, [.. details]);
         }
 
-        return new ReadOnlyDictionary<string, string[]>(copy);
+        return new ReadOnlyDictionary<string, ValidationErrorDetail[]>(copy);
     }
 }

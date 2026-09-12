@@ -1,4 +1,5 @@
 using CleanArchitecture.Application.Common.Models;
+using CleanArchitecture.Application.Common.Validation;
 
 namespace CleanArchitecture.Application.IdentityAccess.Common;
 
@@ -138,8 +139,8 @@ public static class IdentityAccessErrors
     public static ApplicationError InvalidCredentialToken() =>
         new("invalid_credential_token", ApplicationErrorCategory.Validation, "The credential token is not valid.");
 
-    /// <summary>The configured password policy refused it, field-indexed and describing the rule rather than the value.</summary>
-    public static ApplicationError PasswordPolicyFailed(IReadOnlyDictionary<string, string[]> errors) =>
+    /// <summary>The configured password policy refused it without exposing provider-authored prose or password data.</summary>
+    public static ApplicationError PasswordPolicyFailed(IReadOnlyDictionary<string, ValidationErrorDetail[]> errors) =>
         new("validation_failed", ApplicationErrorCategory.Validation, "The new password does not meet the policy.", errors);
 
     /// <summary>

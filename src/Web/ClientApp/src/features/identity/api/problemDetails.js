@@ -3,7 +3,12 @@
  * and nothing else: the server's internal Result type never crosses the wire, and a client that learned to read
  * one would keep working while the boundary it exists to police drifted away underneath it (IA-REQ-038).
  */
+import validationErrorSchema from '../../../../../../Application/Common/Validation/validationErrorSchema.json';
+
 export const PROBLEM_MEDIA_TYPE = 'application/problem+json';
+export const VALIDATION_CODE_SCHEMA = Object.freeze(Object.fromEntries(
+  Object.entries(validationErrorSchema).map(([code, parameters]) => [code, Object.freeze([...parameters])]),
+));
 
 /** Shapes the API promised never to send. Seeing one is drift, and drift is reported rather than absorbed. */
 const FORBIDDEN_SUCCESS_KEYS = ['succeeded', 'success', 'data', 'error', 'errors', 'value', 'items', 'nextCursor'];
@@ -42,10 +47,46 @@ export async function readProblem(response) {
     traceId: typeof body.traceId === 'string' ? body.traceId : undefined,
     // Field errors exist only where the API indexes them, and a server fault carries no detail worth repeating:
     // whatever diagnostics it holds are the server's business, not the user's.
-    errors: body.errors && typeof body.errors === 'object' ? body.errors : undefined,
+    errors: body.errors && typeof body.errors === 'object' ? readValidationErrors(body.errors) : undefined,
     detail: response.status >= 500 ? undefined : (typeof body.detail === 'string' ? body.detail : undefined),
     retryAfterSeconds: Number.isFinite(retryAfter) ? retryAfter : undefined,
   };
+}
+
+function readValidationErrors(errors) {
+  return Object.fromEntries(Object.entries(errors)
+    .filter(([, details]) => Array.isArray(details))
+    .map(([field, details]) => [field, details.map(readValidationDetail).filter(Boolean)])
+    .filter(([, details]) => details.length > 0));
+}
+
+function readValidationDetail(detail) {
+  if (detail === null
+    || typeof detail !== 'object'
+    || typeof detail.code !== 'string'
+    || detail.code.length === 0
+    || detail.params === null
+    || typeof detail.params !== 'object'
+    || Array.isArray(detail.params)) {
+    return null;
+  }
+
+  // A future server code is still safe to render through the generic catalog entry, but its parameter names are
+  // not a template contract this client knows. Projecting instead of forwarding also prevents i18next option
+  // names such as `lngs` from changing how the fallback is resolved.
+  if (!Object.hasOwn(VALIDATION_CODE_SCHEMA, detail.code)) {
+    return { code: detail.code, params: {} };
+  }
+
+  const params = {};
+  for (const key of VALIDATION_CODE_SCHEMA[detail.code]) {
+    if (!Number.isInteger(detail.params[key]) || detail.params[key] <= 0) {
+      return { code: 'invalid', params: {} };
+    }
+    params[key] = detail.params[key];
+  }
+
+  return { code: detail.code, params };
 }
 
 /**

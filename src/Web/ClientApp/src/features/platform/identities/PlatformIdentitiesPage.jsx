@@ -1,3 +1,4 @@
+/* eslint-disable i18next/no-literal-string -- bounded wire field name, not display copy. */
 import { useCallback, useState } from 'react';
 import { visuallyHidden } from '@mui/utils';
 import Box from '@mui/material/Box';
@@ -216,13 +217,14 @@ export function PlatformIdentitiesPage() {
             <Typography variant="body2" color="text.secondary">
               {t('panel.stepUpDescription')}
             </Typography>
-            <ProblemMessage problem={stepUp.problem} />
+            <ProblemMessage problem={stepUp.problem} claimed={['code']} />
             <PlatformStepUpForm
               inputId={identitiesStepUpInputId}
               code={stepUp.code}
               onCodeChange={stepUp.onCodeChange}
               onSubmit={stepUp.onSubmit}
               isBusy={stepUp.isBusy}
+              problem={stepUp.problem}
             />
           </Stack>
         </Paper>
@@ -257,13 +259,14 @@ export function PlatformIdentitiesPage() {
             <Typography variant="body2">
               {t('identities.recentProof')}
             </Typography>
-            <ProblemMessage problem={stepUp.problem} />
+            <ProblemMessage problem={stepUp.problem} claimed={['code']} />
             <PlatformStepUpForm
               inputId={identitiesStepUpInputId}
               code={stepUp.code}
               onCodeChange={stepUp.onCodeChange}
               onSubmit={stepUp.onSubmit}
               isBusy={stepUp.isBusy}
+              problem={stepUp.problem}
               submitVariant={outlinedSubmitVariant}
             />
           </Stack>

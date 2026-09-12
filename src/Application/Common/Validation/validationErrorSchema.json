@@ -1,0 +1,7 @@
+{
+  "required": [],
+  "too_long": ["max"],
+  "unsupported_value": [],
+  "password_policy": [],
+  "invalid": []
+}
