@@ -5,43 +5,71 @@ import {
   useTranslation as reactUseTranslation,
 } from 'react-i18next';
 
-import commonEn from './locales/en/common.json';
-import errorsEn from './locales/en/errors.json';
-import enumsEn from './locales/en/enums.json';
-import identityEn from './locales/en/identity.json';
-import platformEn from './locales/en/platform.json';
-import commonEs from './locales/es/common.json';
-import errorsEs from './locales/es/errors.json';
-import enumsEs from './locales/es/enums.json';
-import identityEs from './locales/es/identity.json';
-import platformEs from './locales/es/platform.json';
 import languages from './languages.json';
+import { createPseudoResources, PSEUDO_LANGUAGE, resolvePseudoLanguage } from './pseudoLocale';
+export { PSEUDO_LANGUAGE } from './pseudoLocale';
 
 const cultureCookieName = '.AspNetCore.Culture';
-const namespaceNames = ['common', 'errors', 'enums', 'identity', 'platform'];
+export const namespaceNames = Object.freeze(['common', 'errors', 'enums', 'identity', 'platform']);
 
-const sourceLanguage = languages.source;
+export const sourceLanguage = languages.source;
 const defaultLanguage = languages.default ?? sourceLanguage;
 export const supportedLanguages = languages.supported ?? [];
 
-const resources = {
-  en: {
-    common: commonEn,
-    errors: errorsEn,
-    enums: enumsEn,
-    identity: identityEn,
-    platform: platformEn,
-  },
-  es: {
-    common: commonEs,
-    errors: errorsEs,
-    enums: enumsEs,
-    identity: identityEs,
-    platform: platformEs,
-  },
-};
+export function assembleCatalogResources(modules, registry = languages, namespaces = namespaceNames) {
+  const registeredLanguages = new Set([...(registry.supported ?? []), ...(registry.inProgress ?? [])]);
+  const registeredNamespaces = new Set(namespaces);
+  const assembled = {};
 
-const isSupported = (candidate) => {
+  for (const [rawPath, catalog] of Object.entries(modules)) {
+    const path = rawPath.replaceAll('\\', '/');
+    const match = /^\.\/locales\/([^/]+)\/([^/]+)\.json$/.exec(path);
+    if (!match) throw new Error(`Unexpected locale catalog path: ${rawPath}`);
+
+    const [, language, namespace] = match;
+    if (!registeredLanguages.has(language)) {
+      throw new Error(`Locale catalog language '${language}' is not registered.`);
+    }
+    if (!registeredNamespaces.has(namespace)) {
+      throw new Error(`Locale catalog namespace '${namespace}' is not registered.`);
+    }
+    assembled[language] ??= {};
+    if (assembled[language][namespace] !== undefined) {
+      throw new Error(`Duplicate locale catalog: ${language}/${namespace}`);
+    }
+    assembled[language][namespace] = catalog;
+  }
+
+  for (const language of registry.supported ?? []) {
+    for (const namespace of namespaces) {
+      if (assembled[language]?.[namespace] === undefined) {
+        throw new Error(`Supported locale catalog is missing: ${language}/${namespace}`);
+      }
+    }
+  }
+
+  return assembled;
+}
+
+const catalogModules = import.meta.glob('./locales/*/*.json', { eager: true, import: 'default' });
+const catalogResources = assembleCatalogResources(catalogModules);
+
+const currentPseudoLanguage = () => resolvePseudoLanguage({
+  isDevelopment: import.meta.env?.DEV === true,
+  search: typeof window === 'undefined' ? '' : window.location.search,
+});
+
+export const isPseudoLanguageOverrideActive = () => currentPseudoLanguage() === PSEUDO_LANGUAGE;
+
+const initialPseudoLanguage = currentPseudoLanguage();
+const resources = initialPseudoLanguage === null
+  ? catalogResources
+  : { ...catalogResources, [PSEUDO_LANGUAGE]: createPseudoResources(catalogResources[sourceLanguage]) };
+const runtimeSupportedLanguages = initialPseudoLanguage === null
+  ? supportedLanguages
+  : [...supportedLanguages, PSEUDO_LANGUAGE];
+
+export const isSupportedLanguage = (candidate) => {
   if (!candidate) return false;
   return supportedLanguages.includes(candidate);
 };
@@ -50,12 +78,12 @@ const normalizeLanguage = (value) => {
   if (!value) return null;
 
   const normalized = value.trim().toLowerCase();
-  if (isSupported(normalized)) return normalized;
+  if (isSupportedLanguage(normalized)) return normalized;
 
   const dash = normalized.indexOf('-');
   if (dash >= 0) {
     const base = normalized.substring(0, dash);
-    if (isSupported(base)) return base;
+    if (isSupportedLanguage(base)) return base;
   }
 
   return null;
@@ -93,7 +121,7 @@ const browserLanguageCandidates = () => {
 
 const readLanguageFromBrowser = () => {
   for (const candidate of browserLanguageCandidates()) {
-    if (isSupported(candidate)) return candidate;
+    if (isSupportedLanguage(candidate)) return candidate;
   }
 
   return null;
@@ -114,7 +142,7 @@ export const resolveLanguage = (preferredLanguage = null) => {
   const fromBrowser = readLanguageFromBrowser();
   if (fromBrowser) return fromBrowser;
 
-  return isSupported(defaultLanguage) ? defaultLanguage : sourceLanguage;
+  return isSupportedLanguage(defaultLanguage) ? defaultLanguage : sourceLanguage;
 };
 
 const isTest = import.meta.env?.MODE === 'test';
@@ -142,6 +170,26 @@ export const writeLanguageCookie = (language) => {
 };
 
 export const setLanguage = (language) => {
+  if (isPseudoLanguageOverrideActive()) {
+    if (!i18n.hasResourceBundle(PSEUDO_LANGUAGE, namespaceNames[0])) {
+      for (const namespace of namespaceNames) {
+        i18n.addResourceBundle(
+          PSEUDO_LANGUAGE,
+          namespace,
+          createPseudoResources(catalogResources[sourceLanguage][namespace]),
+          true,
+          true,
+        );
+      }
+      i18n.options.supportedLngs = [...supportedLanguages, PSEUDO_LANGUAGE];
+    }
+    i18n.changeLanguage(PSEUDO_LANGUAGE);
+    if (typeof document !== 'undefined' && document.documentElement) {
+      document.documentElement.lang = PSEUDO_LANGUAGE;
+    }
+    return;
+  }
+
   const normalized = normalizeLanguage(language);
   if (!normalized) return;
 
@@ -152,7 +200,7 @@ export const setLanguage = (language) => {
   }
 };
 
-const initialLanguage = resolveLanguage();
+const initialLanguage = initialPseudoLanguage ?? resolveLanguage();
 
 i18n
   .use(initReactI18next)
@@ -160,11 +208,11 @@ i18n
     resources,
     ns: namespaceNames,
     defaultNS: 'common',
-    supportedLngs: supportedLanguages,
+    supportedLngs: runtimeSupportedLanguages,
     fallbackLng: defaultLanguage,
     lng: initialLanguage,
     fallbackNS: false,
-    load: 'languageOnly',
+    load: 'currentOnly',
     saveMissing: true,
     parseMissingKeyHandler: handleMissing,
     missingKeyHandler: (_language, _namespace, key) => handleMissing(key),

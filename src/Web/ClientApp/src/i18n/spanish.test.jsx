@@ -4,7 +4,8 @@ import { http, HttpResponse } from 'msw';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { i18n, resolveLanguage, roleName, setLanguage, useFormat } from './index';
-import { appTheme, themeFor } from '../theme';
+import languages from './languages.json';
+import { appTheme, missingMuiLocaleMappings, muiLocaleByLanguage, themeFor } from '../theme';
 import { esES } from '@mui/material/locale';
 import { NavMenu } from '../components/NavMenu';
 import { IdentityProvider } from '../features/identity/context/IdentityProvider';
@@ -125,6 +126,12 @@ describe('Spanish language selection', () => {
       expect(theme.components.MuiButton).toEqual(appTheme.components.MuiButton);
     }
     expect(appTheme.components.MuiTablePagination).toBeUndefined();
+  });
+
+  it('maps every and only supported language to explicit MUI locale data', () => {
+    expect(Object.keys(muiLocaleByLanguage).sort()).toEqual([...languages.supported].sort());
+    expect(missingMuiLocaleMappings(languages.supported)).toEqual([]);
+    expect(missingMuiLocaleMappings(['en', 'es'], { en: muiLocaleByLanguage.en })).toEqual(['es']);
   });
 
   it('formats dates and numbers in the live language and keeps the browser time zone', async () => {

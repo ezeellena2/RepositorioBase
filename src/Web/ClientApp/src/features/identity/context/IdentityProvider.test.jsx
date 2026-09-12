@@ -8,6 +8,7 @@ import { server } from '../../../test/server';
 import { ANTIFORGERY_TOKEN, antiforgery, contextIs, problem, signedInContext } from '../../../test/identityServer';
 import { i18n, setLanguage } from '../../../i18n';
 
+/* eslint-disable i18next/no-literal-string -- Test-only probe tokens expose provider state and actions; none are product copy. */
 function Probe() {
   const identity = useIdentity();
   const [problem, setProblem] = useState(null);
@@ -43,6 +44,7 @@ function Probe() {
     </>
   );
 }
+/* eslint-enable i18next/no-literal-string */
 
 const renderProbe = (client) => render(<IdentityProvider client={client}><Probe /></IdentityProvider>);
 
