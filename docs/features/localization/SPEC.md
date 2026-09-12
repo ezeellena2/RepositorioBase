@@ -20,8 +20,8 @@ explicit language while machine contracts and user-authored content remain invar
 - email, bot, and other server-delivered system messages;
 - language registries, SPA catalogs, backend resources, journeys, and CI gates.
 
-The initial source language is `en`. Neutral professional `es` is the first target and remains in progress until
-all supported-language promotion gates pass.
+The source language is `en`. Neutral professional `es` is the first supported target; both languages satisfy the
+promotion and enforcement gates.
 
 ## 3. Non-goals
 
@@ -50,8 +50,8 @@ are distinct even when one initially helps derive another.
 
 ## 5. Normative requirements and traceability
 
-The requirements are normative. Evidence cells reflect the current delivery state: Phases 1–4 are delivered,
-Phase 5 is implemented and verified locally, and later phases remain planned.
+The requirements are normative. Evidence cells reflect the current delivery state: Phases 0–6 are complete and
+delivered by the commit containing this entry.
 
 | Requirement | Gate | Phase | Evidence |
 | --- | --- | --- | --- |
@@ -60,14 +60,14 @@ Phase 5 is implemented and verified locally, and later phases remain planned.
 | **L10N-REQ-003** — SPA and backend registries MUST declare equal source, default, supported, and `inProgress` language sets. | Registry parity | 1 | Delivered — registry contract. |
 | **L10N-REQ-004** — Active language MUST follow these ordering semantics: signed-in account preference, culture cookie, browser negotiation with exact-region then region-to-base matching, then configured default. On the server, each interactive request MUST resolve from the culture cookie, `Accept-Language`, then default; the server MUST NOT read the account per request. After sign-in, the SPA MUST obtain the account preference from identity context and write the culture cookie so subsequent server requests receive that preference through the cookie. Only supported languages participate. | Resolution matrix | 1; account preference in 4 | Delivered — resolver, request-culture, and account-preference matrices. |
 | **L10N-REQ-005** — The document `<html lang>` value MUST equal the active language. | Document-language check | 3 | Delivered — DOM and Spanish smoke evidence. |
-| **L10N-REQ-006** — APIs MUST expose invariant codes, never display text, for errors, enum values, permissions, statuses, and validation failures. Each validation detail MUST be `{ code, params }`, with a repository-owned stable snake_case code and only safe allowlisted template metadata; every current FluentValidation rule MUST declare an approved code. | API contract and catalog-parity tests; validator architecture test | 5 | Implemented and verified locally — coordinator delivery is pending. |
+| **L10N-REQ-006** — APIs MUST expose invariant codes, never display text, for errors, enum values, permissions, statuses, and validation failures. Each validation detail MUST be `{ code, params }`, with a repository-owned stable snake_case code and only safe allowlisted template metadata; every current FluentValidation rule MUST declare an approved code. Known correctable rules MUST use actionable specific codes; `invalid` is only the sanitized unknown/malformed fallback, and `password_policy` is only the unknown/custom Identity-provider fallback. Provider descriptions and submitted values MUST NOT cross the boundary. | API contract and catalog-parity tests; validator architecture test | 5 | Delivered — actionable rule codes, safe provider mapping, bilingual catalog coverage and neutral-flow parity. |
 | **L10N-REQ-007** — Every code advertised through `x-problem-codes` MUST have an `errors:<code>` entry in every supported SPA catalog. | Problem-code coverage | 2 | Delivered — OpenAPI/catalog contract. |
 | **L10N-REQ-008** — Server-delivered messages MUST resolve language in order from recipient account preference, the invitation or delivery-intent snapshot, and the configured default, and MUST render under an explicit recipient `CultureInfo`. | Delivery-language matrix | 4 | Delivered — precedence and retry-stability matrix. |
 | **L10N-REQ-009** — Every server-delivered message type MUST render successfully in every supported language. | Message rendering matrix | 4 | Delivered — all registered message types in both supported languages. |
 | **L10N-REQ-010** — Every backend culture resource MUST contain every English source resource with a non-empty value and identical placeholders. | Backend resource parity | 1 (vacuous until 4) | Delivered — resource and placeholder parity. |
 | **L10N-REQ-011** — SPA dates and numbers MUST use the explicit active locale. APIs MUST exchange timestamps in UTC and numbers in invariant machine form. | Formatting contract | 3 | Delivered — locale formatting and invariant API evidence. |
 | **L10N-REQ-012** — User-authored content MUST NOT be translated; system-owned content MUST be translated by stable key. | Ownership-boundary review | 3 | Delivered — presentation boundary coverage. |
-| **L10N-REQ-013** — Logs, audit records, outbox payloads, codes, identifiers, URLs, and routes MUST remain invariant English or machine data and MUST NOT contain localized display text. | Invariant-data contract | All | Delivered through Phase 4 and extended locally by Phase 5 validation-boundary tests. |
+| **L10N-REQ-013** — Logs, audit records, outbox payloads, codes, identifiers, URLs, and routes MUST remain invariant English or machine data and MUST NOT contain localized display text. | Invariant-data contract | All | Delivered through all phases, including validation-boundary and provider-description non-disclosure tests. |
 | **L10N-REQ-014** — Reqnroll/Playwright journeys MUST run deterministically in `en`; every supported non-English language MUST have a smoke journey. | Journey language matrix | 1; 3 | Delivered — deterministic English journeys and Spanish smoke journey. |
 | **L10N-REQ-015** — CI MUST run all SPA tests and SPA lint on every pull request. | Pull-request CI | 1 | Delivered — Build workflow SPA test and lint jobs. |
 | **L10N-REQ-016** — A signed-in language choice MUST persist on the account and apply across devices. | Preference persistence | 4 | Delivered — account, session, and later-sign-in coverage. |

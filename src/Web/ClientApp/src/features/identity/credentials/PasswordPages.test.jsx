@@ -133,14 +133,16 @@ describe('password pages', () => {
     expect(password).toHaveFocus();
     const alert = screen.getByRole('alert');
     expect(alert).toHaveTextContent('Some of what you sent was not accepted. Check the details and try again.');
-    expect(alert).toHaveTextContent('Request: This value is not valid.');
+    expect(alert).toHaveTextContent('This value is not valid.');
+    expect(alert).not.toHaveTextContent('Request:');
     expect(alert).not.toHaveTextContent('newPassword');
     expect(alert).not.toHaveTextContent('Must be at most 12 characters.');
 
     await userEvent.type(password, '!');
     expect(password).toHaveAttribute('aria-invalid', 'false');
     expect(password).not.toHaveAccessibleDescription(/Must be|does not meet/);
-    expect(alert).toHaveTextContent('Request: This value is not valid.');
+    expect(alert).toHaveTextContent('This value is not valid.');
+    expect(alert).not.toHaveTextContent('Request:');
   });
 
   it('buys the proof before it changes anything, and sends no current password to the change', async () => {
@@ -205,10 +207,10 @@ describe('password pages', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Change it' }));
 
     await waitFor(() => expect(next).toHaveAttribute('aria-invalid', 'true'));
-    expect(next).toHaveAccessibleDescription('This value is required. This password does not meet the requirements.');
+    expect(next).toHaveAccessibleDescription('A new password is required. This password does not meet the requirements.');
     expect(next).toHaveFocus();
     expect(current).not.toHaveAttribute('aria-invalid', 'true');
-    expect(screen.getByRole('alert')).not.toHaveTextContent(/This value is required|does not meet the requirements/i);
+    expect(screen.getByRole('alert')).not.toHaveTextContent(/A new password is required|does not meet the requirements/i);
   });
 
   it('matches password-policy keys case-insensitively and focuses the changed-password field', async () => {

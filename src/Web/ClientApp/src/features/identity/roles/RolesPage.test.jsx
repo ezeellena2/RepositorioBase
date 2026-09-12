@@ -123,9 +123,10 @@ describe('roles page', () => {
     await waitFor(() => expect(name).toHaveFocus());
     expect(name).toHaveAttribute('id', 'role-name');
     expect(name).toHaveAttribute('aria-invalid', 'true');
-    expect(name).toHaveAccessibleDescription('This value is required.');
-    expect(screen.getByRole('alert')).toHaveTextContent('Request: This value is not valid.');
-    expect(screen.getByRole('alert')).not.toHaveTextContent('Name: This value is required.');
+    expect(name).toHaveAccessibleDescription('A role name is required.');
+    expect(screen.getByRole('alert')).toHaveTextContent('This value is not valid.');
+    expect(screen.getByRole('alert')).not.toHaveTextContent('Request:');
+    expect(screen.getByRole('alert')).not.toHaveTextContent('Name: A role name is required.');
 
     await userEvent.type(name, 'y');
     expect(name).not.toHaveAttribute('aria-invalid', 'true');

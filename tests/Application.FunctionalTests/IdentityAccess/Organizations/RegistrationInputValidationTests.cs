@@ -85,9 +85,17 @@ public sealed class RegistrationInputValidationTests : TestBase
         result.Error!.Code.ShouldBe("validation_failed");
         result.Error.Category.ShouldBe(ApplicationErrorCategory.Validation);
         result.Error.ValidationErrors.Keys.ShouldBe(["password"]);
-        var passwordError = result.Error.ValidationErrors["password"].ShouldHaveSingleItem();
-        passwordError.Code.ShouldBe(ValidationErrorCodes.PasswordPolicy);
-        passwordError.Params.ShouldBeEmpty();
+        var passwordErrors = result.Error.ValidationErrors["password"];
+        passwordErrors.Select(detail => detail.Code).ShouldBe([
+            ValidationErrorCodes.PasswordRequiresDigit,
+            ValidationErrorCodes.PasswordRequiresSymbol,
+            ValidationErrorCodes.PasswordRequiresUppercase,
+            ValidationErrorCodes.PasswordTooShort,
+        ]);
+        passwordErrors.Single(detail => detail.Code == ValidationErrorCodes.PasswordTooShort)
+            .Params["min"].ShouldBe(12);
+        passwordErrors.Where(detail => detail.Code != ValidationErrorCodes.PasswordTooShort)
+            .ShouldAllBe(detail => detail.Params.Count == 0);
         JsonSerializer.Serialize(result.Error.ValidationErrors).ShouldNotContain("weak");
         await AssertNoRegistrationEffectsAsync();
     }

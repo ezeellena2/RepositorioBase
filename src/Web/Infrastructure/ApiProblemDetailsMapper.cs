@@ -115,7 +115,9 @@ public sealed class ApiProblemDetailsMapper : IProblemDetailsService
                     .GroupBy(detail => $"{detail.Code}:{string.Join(',', detail.Params.OrderBy(pair => pair.Key).Select(pair => $"{pair.Key}={pair.Value}"))}", StringComparer.Ordinal)
                     .Select(group => group.First())
                     .OrderBy(detail => detail.Code, StringComparer.Ordinal)
-                    .ThenBy(detail => detail.Params.TryGetValue("max", out var max) ? max : 0)
+                    .ThenBy(detail => detail.Params.TryGetValue("max", out var max)
+                        ? max
+                        : detail.Params.TryGetValue("min", out var min) ? min : 0)
                     .ToArray(),
                 StringComparer.Ordinal);
 

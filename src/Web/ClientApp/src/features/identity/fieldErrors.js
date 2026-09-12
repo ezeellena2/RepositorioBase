@@ -4,7 +4,33 @@ import { cuitError } from './register/cuit';
 const detail = (code, params = {}) => ({ code, params });
 const addError = (errors, field, error) => ({ ...errors, [field]: [error] });
 
-const translateDetail = (error, t) => {
+const REQUIRED_FIELD_KEYS = Object.freeze({
+  legalname: 'legalName',
+  cuit: 'cuit',
+  email: 'email',
+  password: 'password',
+  fullname: 'fullName',
+  displayname: 'displayName',
+  documentnumber: 'documentNumber',
+  roleids: 'roleIds',
+  name: 'name',
+  newpassword: 'newPassword',
+  token: 'token',
+  confirmationtoken: 'confirmationToken',
+  code: 'code',
+  recoverycode: 'recoveryCode',
+  language: 'language',
+  version: 'version',
+});
+
+export const validationDetailText = (error, t, field) => {
+  const requiredField = typeof field === 'string'
+    ? REQUIRED_FIELD_KEYS[field.toLowerCase()]
+    : undefined;
+  if (error?.code === 'required' && requiredField) {
+    return t(`errors:validation.requiredFields.${requiredField}`);
+  }
+
   const key = Object.hasOwn(VALIDATION_CODE_SCHEMA, error?.code)
     ? `errors:validation.${error.code}`
     : 'errors:validation.unknown';
@@ -14,7 +40,7 @@ const translateDetail = (error, t) => {
 const validateEmail = (errors, email) => {
   if (!email?.trim()) return addError(errors, 'email', detail('required'));
   if (email.length > 256) return addError(errors, 'email', detail('too_long', { max: 256 }));
-  if (!email.trim().includes('@')) return addError(errors, 'email', detail('invalid'));
+  if (!email.trim().includes('@')) return addError(errors, 'email', detail('email_format'));
   return errors;
 };
 
@@ -46,8 +72,11 @@ const validateDocument = (errors, documentNumber) => {
     .filter((character) => /[0-9]/.test(character))
     .join('')
     .replace(/^0+/, '');
-  if (!/^[0-9.\s-]+$/.test(documentNumber) || digits.length < 7 || digits.length > 8) {
-    return addError(errors, 'documentNumber', detail('invalid'));
+  if (!/^[0-9.\s-]+$/.test(documentNumber)) {
+    return addError(errors, 'documentNumber', detail('dni_characters'));
+  }
+  if (digits.length < 7 || digits.length > 8) {
+    return addError(errors, 'documentNumber', detail('dni_length'));
   }
   return errors;
 };
@@ -123,7 +152,9 @@ export function fieldError(problem, name, t) {
   const details = detailsForField(problem?.errors, name);
   return {
     error: details.length > 0,
-    helperText: details.length > 0 ? details.map((item) => translateDetail(item, t)).join(' ') : undefined,
+    helperText: details.length > 0
+      ? details.map((item) => validationDetailText(item, t, name)).join(' ')
+      : undefined,
   };
 }
 
@@ -132,5 +163,5 @@ export const firstInvalid = (problem, names) => (
 );
 
 export const fieldErrorText = (errors, field, t) => (
-  detailsForField(errors, field).map((item) => translateDetail(item, t)).join(' ')
+  detailsForField(errors, field).map((item) => validationDetailText(item, t, field)).join(' ')
 );

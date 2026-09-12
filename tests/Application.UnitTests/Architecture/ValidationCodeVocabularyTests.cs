@@ -29,6 +29,9 @@ public sealed class ValidationCodeVocabularyTests
                         $"{type.FullName}.{member.Key} ({propertyValidator.Name}) must declare its own WithErrorCode.");
                     ValidationErrorCodes.IsApproved(options.ErrorCode).ShouldBeTrue(
                         $"{type.FullName}.{member.Key} ({propertyValidator.Name}) uses unowned code '{options.ErrorCode}'.");
+                    options.ErrorCode.ShouldNotBe(
+                        ValidationErrorCodes.Invalid,
+                        $"{type.FullName}.{member.Key} ({propertyValidator.Name}) is a known rule and must say what can be corrected.");
                 }
             }
         }
@@ -64,14 +67,33 @@ public sealed class ValidationCodeVocabularyTests
     {
         ValidationErrorCodes.Schema.Keys.Order(StringComparer.Ordinal).ShouldBe(new[]
         {
+            ValidationErrorCodes.CuitCharacters,
+            ValidationErrorCodes.CuitCheckDigit,
+            ValidationErrorCodes.CuitLength,
+            ValidationErrorCodes.DniCharacters,
+            ValidationErrorCodes.DniLength,
+            ValidationErrorCodes.EmailFormat,
             ValidationErrorCodes.Invalid,
             ValidationErrorCodes.PasswordPolicy,
+            ValidationErrorCodes.PasswordRequiresDigit,
+            ValidationErrorCodes.PasswordRequiresLowercase,
+            ValidationErrorCodes.PasswordRequiresSymbol,
+            ValidationErrorCodes.PasswordRequiresUniqueCharacters,
+            ValidationErrorCodes.PasswordRequiresUppercase,
+            ValidationErrorCodes.PasswordTooShort,
+            ValidationErrorCodes.ProfileVersionFormat,
             ValidationErrorCodes.Required,
+            ValidationErrorCodes.RoleIdsInvalid,
             ValidationErrorCodes.TooLong,
             ValidationErrorCodes.UnsupportedValue,
         });
         ValidationErrorCodes.Schema[ValidationErrorCodes.TooLong].ShouldBe(["max"]);
-        foreach (var code in ValidationErrorCodes.Schema.Keys.Where(code => code != ValidationErrorCodes.TooLong))
+        ValidationErrorCodes.Schema[ValidationErrorCodes.PasswordTooShort].ShouldBe(["min"]);
+        ValidationErrorCodes.Schema[ValidationErrorCodes.PasswordRequiresUniqueCharacters].ShouldBe(["min"]);
+        foreach (var code in ValidationErrorCodes.Schema.Keys.Where(code =>
+                     code is not ValidationErrorCodes.TooLong
+                         and not ValidationErrorCodes.PasswordTooShort
+                         and not ValidationErrorCodes.PasswordRequiresUniqueCharacters))
             ValidationErrorCodes.Schema[code].ShouldBeEmpty();
     }
 

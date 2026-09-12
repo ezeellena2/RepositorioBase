@@ -15,11 +15,18 @@ public sealed class IdentityCredentialService(UserManager<ApplicationUser> userM
         var user = await userManager.FindByIdAsync(identityId.ToString());
         if (user is null) return CredentialWriteResult.Concurrency();
 
+        var passwordErrors = new List<IdentityError>();
+        var passwordRejected = false;
         foreach (var validator in userManager.PasswordValidators)
         {
             var validated = await validator.ValidateAsync(userManager, user, newPassword);
-            if (!validated.Succeeded) return CredentialWriteResult.PasswordPolicy();
+            passwordRejected |= !validated.Succeeded;
+            passwordErrors.AddRange(validated.Errors);
         }
+
+        if (passwordRejected || passwordErrors.Count > 0)
+            return CredentialWriteResult.PasswordPolicy(
+                IdentityPasswordValidationDetails.From(passwordErrors, userManager.Options.Password));
 
         // The hash is set directly rather than through RemovePassword/AddPassword, which is two writes and leaves
         // a window in which the account has no password at all.

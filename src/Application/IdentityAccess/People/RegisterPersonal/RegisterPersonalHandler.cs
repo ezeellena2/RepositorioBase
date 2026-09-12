@@ -60,11 +60,7 @@ public sealed class RegisterPersonalCommandHandler(
         var password = await identities.ValidatePasswordAsync(request.Password, cancellationToken);
         if (!password.IsValid)
         {
-            return Result.Failure(IdentityAccessErrors.PasswordPolicyFailed(
-                new Dictionary<string, ValidationErrorDetail[]>(StringComparer.Ordinal)
-                {
-                    ["password"] = [new ValidationErrorDetail(ValidationErrorCodes.PasswordPolicy, new Dictionary<string, int>())]
-                }));
+            return Result.Failure(IdentityAccessErrors.PasswordPolicyFailed(password.PasswordErrorsFor("password")));
         }
 
         return await transaction.ExecuteAsync(async ct =>

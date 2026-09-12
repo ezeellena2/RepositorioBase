@@ -51,12 +51,20 @@ describe('problem details', () => {
       errors: {
         email: [{ code: 'too_long', params: { max: 256, PropertyValue: 8675309, lngs: 42 } }],
         password: [{ code: 'required', params: { PropertyValue: 1234 } }],
+        newPassword: [
+          { code: 'password_too_short', params: { min: 12, PropertyValue: 999 } },
+          { code: 'password_requires_unique_characters', params: { min: 4, PIN: 1234 } },
+        ],
       },
     }));
 
     expect(parsed.errors).toEqual({
       email: [{ code: 'too_long', params: { max: 256 } }],
       password: [{ code: 'required', params: {} }],
+      newPassword: [
+        { code: 'password_too_short', params: { min: 12 } },
+        { code: 'password_requires_unique_characters', params: { min: 4 } },
+      ],
     });
   });
 
@@ -69,10 +77,14 @@ describe('problem details', () => {
     expect(parsed.errors).toEqual({ email: [{ code: 'fields.email', params: {} }] });
   });
 
-  it('downgrades a known detail whose required numeric schema is invalid', async () => {
+  it.each([
+    ['too_long', { max: null }],
+    ['password_too_short', {}],
+    ['password_requires_unique_characters', { min: 0 }],
+  ])('downgrades %s when its required numeric schema is invalid', async (code, params) => {
     const parsed = await readProblem(problem(400, {
       code: 'validation_failed',
-      errors: { email: [{ code: 'too_long', params: { max: null } }] },
+      errors: { email: [{ code, params }] },
     }));
 
     expect(parsed.errors).toEqual({ email: [{ code: 'invalid', params: {} }] });

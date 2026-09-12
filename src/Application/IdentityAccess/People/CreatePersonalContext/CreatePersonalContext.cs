@@ -37,22 +37,12 @@ public sealed class CreatePersonalContextCommandValidator : AbstractValidator<Cr
             .Cascade(CascadeMode.Stop)
             .NotEmpty().WithErrorCode(ValidationErrorCodes.Required).WithMessage("A document number is required.")
             .MaximumLength(32).WithErrorCode(ValidationErrorCodes.TooLong).WithMessage("The document number must be 32 characters or fewer.")
-            .Must(HasSupportedDocumentShape)
-            .WithErrorCode(ValidationErrorCodes.Invalid)
-            .WithMessage("An Argentine DNI must contain seven or eight digits and may use only digits, dots, hyphens, and whitespace.")
+            .Must(document => NormalizedDocument.Evaluate(document, out _) is not DocumentRule.Characters)
+            .WithErrorCode(ValidationErrorCodes.DniCharacters)
+            .WithMessage("An Argentine DNI may contain only digits, dots, hyphens, and whitespace.")
+            .Must(document => NormalizedDocument.Evaluate(document, out _) is not DocumentRule.Length)
+            .WithErrorCode(ValidationErrorCodes.DniLength)
+            .WithMessage("An Argentine DNI must contain seven or eight digits.")
             .OverridePropertyName("documentNumber");
-    }
-
-    private static bool HasSupportedDocumentShape(string documentNumber)
-    {
-        try
-        {
-            _ = NormalizedDocument.From(IdentityDocumentCountry.AR, IdentityDocumentKind.DNI, documentNumber);
-            return true;
-        }
-        catch (ArgumentException)
-        {
-            return false;
-        }
     }
 }

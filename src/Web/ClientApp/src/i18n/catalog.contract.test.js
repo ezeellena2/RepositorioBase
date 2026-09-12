@@ -92,6 +92,10 @@ describe('language registry contract', () => {
       for (const code of [...serverCodes, 'unknown']) {
         expect(catalogs[language].errors.validation[code]).toEqual(expect.any(String));
         expect(catalogs[language].errors.validation[code].trim()).not.toBe('');
+        if (code in validationErrorSchema) {
+          expect(placeholders(catalogs[language].errors.validation[code]))
+            .toEqual([...validationErrorSchema[code]].sort());
+        }
       }
     }
   });

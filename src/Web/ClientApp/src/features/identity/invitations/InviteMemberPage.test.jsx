@@ -97,24 +97,25 @@ describe('invite member page', () => {
     const roles = screen.getByRole('group', { name: 'Roles to offer' });
     await waitFor(() => expect(email).toHaveFocus());
     expect(email).toHaveAttribute('id', 'invite-email');
-    expect(email).toHaveAccessibleDescription('This value is required.');
+    expect(email).toHaveAccessibleDescription('Enter an email address.');
     expect(roles).toHaveAttribute('id', 'invite-role-ids');
     expect(roles).toHaveAttribute('tabindex', '-1');
     expect(roles).toHaveAttribute('aria-invalid', 'true');
     expect(roles).toHaveAttribute('aria-describedby', 'invite-role-ids-error');
-    expect(roles).toHaveAccessibleDescription('This value is required.');
-    expect(document.getElementById('invite-role-ids-error')).toHaveTextContent('This value is required.');
-    expect(screen.getByRole('alert')).toHaveTextContent('Request: This value is not valid.');
+    expect(roles).toHaveAccessibleDescription('Choose at least one role.');
+    expect(document.getElementById('invite-role-ids-error')).toHaveTextContent('Choose at least one role.');
+    expect(screen.getByRole('alert')).toHaveTextContent('This value is not valid.');
+    expect(screen.getByRole('alert')).not.toHaveTextContent('Request:');
     expect(screen.getByRole('alert')).not.toHaveFocus();
-    expect(screen.getByRole('alert')).not.toHaveTextContent('Email: This value is required.');
-    expect(screen.getByRole('alert')).not.toHaveTextContent('Roles: This value is required.');
+    expect(screen.getByRole('alert')).not.toHaveTextContent('Email: Enter an email address.');
+    expect(screen.getByRole('alert')).not.toHaveTextContent('Roles: Choose at least one role.');
 
     await userEvent.type(email, 'x');
     expect(email).not.toHaveAttribute('aria-invalid', 'true');
     await userEvent.click(screen.getByLabelText('Bookkeeper'));
     expect(roles).not.toHaveAttribute('aria-invalid', 'true');
     expect(roles).not.toHaveAttribute('aria-describedby');
-    expect(screen.queryByText('This value is required.')).not.toBeInTheDocument();
+    expect(screen.queryByText('Choose at least one role.')).not.toBeInTheDocument();
   });
 
   it('lists standing offers with their state, and shows the role by name', async () => {

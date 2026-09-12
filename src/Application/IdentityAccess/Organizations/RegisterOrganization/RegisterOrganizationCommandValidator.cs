@@ -14,7 +14,7 @@ public sealed class RegisterOrganizationCommandValidator : AbstractValidator<Reg
                 .Cascade(CascadeMode.Stop)
                 .NotEmpty().WithErrorCode(ValidationErrorCodes.Required).WithMessage("Enter an email address.")
                 .MaximumLength(256).WithErrorCode(ValidationErrorCodes.TooLong).WithMessage("The email address must be 256 characters or fewer.")
-                .Must(HasSupportedEmailShape).WithErrorCode(ValidationErrorCodes.Invalid).WithMessage("Enter an email address.")
+                .Must(HasSupportedEmailShape).WithErrorCode(ValidationErrorCodes.EmailFormat).WithMessage("Enter an email address.")
                 .OverridePropertyName("email");
 
             RuleFor(command => command.Password)
@@ -34,11 +34,14 @@ public sealed class RegisterOrganizationCommandValidator : AbstractValidator<Reg
             .Cascade(CascadeMode.Stop)
             .NotEmpty().WithErrorCode(ValidationErrorCodes.Required).WithMessage("A CUIT is required.")
             .MaximumLength(32).WithErrorCode(ValidationErrorCodes.TooLong).WithMessage("The CUIT must be 32 characters or fewer.")
-            .Must(cuit => NormalizedCuit.Evaluate(cuit, out _) is not (CuitRule.Characters or CuitRule.Length))
-            .WithErrorCode(ValidationErrorCodes.Invalid)
-            .WithMessage("The CUIT must contain exactly eleven digits and may use only digits, hyphens, and whitespace.")
+            .Must(cuit => NormalizedCuit.Evaluate(cuit, out _) is not CuitRule.Characters)
+            .WithErrorCode(ValidationErrorCodes.CuitCharacters)
+            .WithMessage("The CUIT may contain only digits, hyphens, and whitespace.")
+            .Must(cuit => NormalizedCuit.Evaluate(cuit, out _) is not CuitRule.Length)
+            .WithErrorCode(ValidationErrorCodes.CuitLength)
+            .WithMessage("The CUIT must contain exactly eleven digits.")
             .Must(cuit => NormalizedCuit.Evaluate(cuit, out _) is not CuitRule.CheckDigit)
-            .WithErrorCode(ValidationErrorCodes.Invalid)
+            .WithErrorCode(ValidationErrorCodes.CuitCheckDigit)
             .WithMessage("That CUIT's check digit does not match. Check the number.")
             .OverridePropertyName("cuit");
     }

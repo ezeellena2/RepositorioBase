@@ -151,7 +151,7 @@ public sealed class InviteMemberTests : TestBase
 
         exception.Errors.Keys.ShouldBe(["email"]);
         var emailError = exception.Errors["email"].ShouldHaveSingleItem();
-        emailError.Code.ShouldBe(ValidationErrorCodes.Invalid);
+        emailError.Code.ShouldBe(ValidationErrorCodes.EmailFormat);
         emailError.Params.ShouldBeEmpty();
         await InvitationScenario.AssertNoInvitationEffectsAsync();
     }

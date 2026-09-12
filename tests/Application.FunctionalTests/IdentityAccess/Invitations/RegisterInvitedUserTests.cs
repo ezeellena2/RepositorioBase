@@ -31,7 +31,7 @@ namespace CleanArchitecture.Application.FunctionalTests.IdentityAccess.Invitatio
 public sealed class RegisterInvitedUserTests : TestBase
 {
     private const string ValidPassword = "Testing1234!";
-    private const string PolicyViolatingPassword = "short";
+    private const string PolicyViolatingPassword = "tiny";
 
     [Test]
     public async Task Registering_from_an_invitation_creates_the_confirmable_identity_and_never_a_membership()
@@ -137,16 +137,22 @@ public sealed class RegisterInvitedUserTests : TestBase
         live.IsFailure.ShouldBeTrue();
         live.Error!.Code.ShouldBe("validation_failed");
         live.Error.ValidationErrors.Keys.ShouldBe(["password"]);
-        var livePassword = live.Error.ValidationErrors["password"].ShouldHaveSingleItem();
-        livePassword.Code.ShouldBe(ValidationErrorCodes.PasswordPolicy);
-        livePassword.Params.ShouldBeEmpty();
+        var livePassword = live.Error.ValidationErrors["password"];
+        livePassword.Select(detail => detail.Code).ShouldBe([
+            ValidationErrorCodes.PasswordRequiresDigit,
+            ValidationErrorCodes.PasswordRequiresSymbol,
+            ValidationErrorCodes.PasswordRequiresUppercase,
+            ValidationErrorCodes.PasswordTooShort,
+        ]);
+        livePassword.Single(detail => detail.Code == ValidationErrorCodes.PasswordTooShort)
+            .Params["min"].ShouldBe(12);
         JsonSerializer.Serialize(live.Error.ValidationErrors).ShouldNotContain(PolicyViolatingPassword);
         dead.IsFailure.ShouldBeTrue();
         dead.Error!.Code.ShouldBe(live.Error.Code, "a weak password must not double as a token-validity oracle");
         dead.Error.Category.ShouldBe(live.Error.Category);
-        var deadPassword = dead.Error.ValidationErrors["password"].ShouldHaveSingleItem();
-        deadPassword.Code.ShouldBe(ValidationErrorCodes.PasswordPolicy);
-        deadPassword.Params.ShouldBeEmpty();
+        JsonSerializer.Serialize(dead.Error.ValidationErrors).ShouldBe(
+            JsonSerializer.Serialize(live.Error.ValidationErrors),
+            "the complete safe refusal must be identical for live and dead tokens");
         TestApp.ConfirmationTokenHashInvocationCount.ShouldBe(0, "a refused password is decided before the token is read at all");
         (await TestApp.CountAsync<ApplicationUser>()).ShouldBe(identitiesBefore);
         (await TestApp.CountAsync<Domain.IdentityAccess.Outbox.OutboxMessage>()).ShouldBe(messagesBefore);

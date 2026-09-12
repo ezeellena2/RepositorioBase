@@ -128,16 +128,34 @@ public class ValidationExceptionTests
             ["unknown"] = 7,
         };
 
-        foreach (var code in new[]
-                 {
-                     ValidationErrorCodes.Required,
-                     ValidationErrorCodes.UnsupportedValue,
-                     ValidationErrorCodes.PasswordPolicy,
-                     ValidationErrorCodes.Invalid,
-                 })
+        foreach (var code in ValidationErrorCodes.Schema
+                     .Where(pair => pair.Value.Count == 0)
+                     .Select(pair => pair.Key))
         {
             var detail = new ValidationErrorDetail(code, parameters);
             detail.Code.ShouldBe(code);
+            detail.Params.ShouldBeEmpty();
+        }
+    }
+
+    [TestCase(ValidationErrorCodes.PasswordTooShort)]
+    [TestCase(ValidationErrorCodes.PasswordRequiresUniqueCharacters)]
+    public void Missing_or_malformed_minimum_metadata_downgrades_to_the_generic_safe_code(string code)
+    {
+        IReadOnlyDictionary<string, int>?[] malformed =
+        [
+            null,
+            new Dictionary<string, int>(),
+            new Dictionary<string, int> { ["min"] = 0 },
+            new Dictionary<string, int> { ["min"] = -1 },
+            new Dictionary<string, int> { ["max"] = 12 },
+            new Dictionary<string, int> { ["min"] = 12, ["unknown"] = 7 },
+        ];
+
+        foreach (var parameters in malformed)
+        {
+            var detail = new ValidationErrorDetail(code, parameters);
+            detail.Code.ShouldBe(ValidationErrorCodes.Invalid);
             detail.Params.ShouldBeEmpty();
         }
     }

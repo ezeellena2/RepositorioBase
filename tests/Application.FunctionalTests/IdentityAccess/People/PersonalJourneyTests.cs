@@ -286,7 +286,7 @@ public sealed class PersonalJourneyTests : TestBase
             {
                 fullName = "Jane Doe", displayName = "Jane", documentNumber = "12x"
             }, antiforgery),
-            "/api/identity/personal", "documentNumber", ValidationDetail(ValidationErrorCodes.Invalid), "12x");
+            "/api/identity/personal", "documentNumber", ValidationDetail(ValidationErrorCodes.DniCharacters), "12x");
 
         new[] {
             await TestApp.CountAsync<Tenant>(),
@@ -442,7 +442,7 @@ public sealed class PersonalJourneyTests : TestBase
             {
                 fullName = "Jane Doe", displayName = "Jane", version = "01"
             }, antiforgery),
-            "/api/identity/profile", "version", ValidationDetail(ValidationErrorCodes.Invalid), "01");
+            "/api/identity/profile", "version", ValidationDetail(ValidationErrorCodes.ProfileVersionFormat), "01");
 
         await AssertBindingValidationAsync(
             await SendPersonalJsonAsync(HttpMethod.Put, host, "/api/identity/profile", new

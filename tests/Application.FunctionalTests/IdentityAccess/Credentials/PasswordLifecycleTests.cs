@@ -335,6 +335,7 @@ public sealed class PasswordLifecycleTests : TestBase
     [Test]
     public async Task A_password_the_policy_refuses_changes_nothing()
     {
+        const string submittedPassword = "tiny";
         var email = $"weak-{Guid.NewGuid():N}@example.test";
         await IdentityHttpHarness.SeedConfirmedUserAsync(email, Password);
         using var harness = IdentityHttpHarness.CreateProductionHarness();
@@ -343,7 +344,7 @@ public sealed class PasswordLifecycleTests : TestBase
         var cookie = await SignInAsync(client, host, email, Password);
         await ProveAsync(client, host, cookie, "credentials.password.change");
 
-        var refused = await ChangeAsync(client, host, cookie, "short");
+        var refused = await ChangeAsync(client, host, cookie, submittedPassword);
 
         var payload = await IdentityHttpHarness.AssertProblemAsync(
             refused,
@@ -353,15 +354,20 @@ public sealed class PasswordLifecycleTests : TestBase
         payload.GetProperty("instance").GetString().ShouldBe("/api/identity/credentials/password");
         payload.GetProperty("errors").EnumerateObject().Select(error => error.Name).ShouldBe(["newPassword"]);
         var details = payload.GetProperty("errors").GetProperty("newPassword").EnumerateArray().ToArray();
-        details.Length.ShouldBe(1);
-        var detail = details[0];
-        detail.ValueKind.ShouldBe(System.Text.Json.JsonValueKind.Object);
-        detail.EnumerateObject().Select(property => property.Name).ShouldBe(["code", "params"]);
-        detail.GetProperty("code").GetString().ShouldBe(ValidationErrorCodes.PasswordPolicy);
-        var parameters = detail.GetProperty("params");
-        parameters.ValueKind.ShouldBe(System.Text.Json.JsonValueKind.Object);
-        parameters.EnumerateObject().ShouldBeEmpty();
-        payload.GetRawText().ShouldNotContain("short", Case.Insensitive);
+        details.Select(detail => detail.GetProperty("code").GetString()).ShouldBe([
+            ValidationErrorCodes.PasswordRequiresDigit,
+            ValidationErrorCodes.PasswordRequiresSymbol,
+            ValidationErrorCodes.PasswordRequiresUppercase,
+            ValidationErrorCodes.PasswordTooShort,
+        ]);
+        details.ShouldAllBe(detail =>
+            detail.ValueKind == System.Text.Json.JsonValueKind.Object
+            && detail.EnumerateObject().Select(property => property.Name).SequenceEqual(new[] { "code", "params" }));
+        details.Single(detail => detail.GetProperty("code").GetString() == ValidationErrorCodes.PasswordTooShort)
+            .GetProperty("params").GetProperty("min").GetInt32().ShouldBe(12);
+        details.Where(detail => detail.GetProperty("code").GetString() != ValidationErrorCodes.PasswordTooShort)
+            .ShouldAllBe(detail => !detail.GetProperty("params").EnumerateObject().Any());
+        payload.GetRawText().ShouldNotContain(submittedPassword, Case.Insensitive);
         (await ContextAsync(client, host, cookie)).StatusCode.ShouldBe(HttpStatusCode.OK, "the session that asked is untouched");
         await SignInAsync(client, host, email, Password);
     }

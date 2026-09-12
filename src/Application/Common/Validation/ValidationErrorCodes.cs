@@ -10,6 +10,20 @@ public static class ValidationErrorCodes
     public const string Required = "required";
     public const string TooLong = "too_long";
     public const string UnsupportedValue = "unsupported_value";
+    public const string EmailFormat = "email_format";
+    public const string CuitCharacters = "cuit_characters";
+    public const string CuitLength = "cuit_length";
+    public const string CuitCheckDigit = "cuit_check_digit";
+    public const string DniCharacters = "dni_characters";
+    public const string DniLength = "dni_length";
+    public const string RoleIdsInvalid = "role_ids_invalid";
+    public const string ProfileVersionFormat = "profile_version_format";
+    public const string PasswordTooShort = "password_too_short";
+    public const string PasswordRequiresUppercase = "password_requires_uppercase";
+    public const string PasswordRequiresLowercase = "password_requires_lowercase";
+    public const string PasswordRequiresDigit = "password_requires_digit";
+    public const string PasswordRequiresSymbol = "password_requires_symbol";
+    public const string PasswordRequiresUniqueCharacters = "password_requires_unique_characters";
     public const string PasswordPolicy = "password_policy";
 
     // A malformed or future server rule must not disclose FluentValidation implementation details or its message.
@@ -89,7 +103,28 @@ public static class ValidationErrorCodes
         var schema = JsonSerializer.Deserialize<Dictionary<string, string[]>>(stream)
             ?? throw new InvalidOperationException("The validation error schema is invalid.");
 
-        var expectedCodes = new[] { Required, TooLong, UnsupportedValue, PasswordPolicy, Invalid };
+        var expectedCodes = new[]
+        {
+            Required,
+            TooLong,
+            UnsupportedValue,
+            EmailFormat,
+            CuitCharacters,
+            CuitLength,
+            CuitCheckDigit,
+            DniCharacters,
+            DniLength,
+            RoleIdsInvalid,
+            ProfileVersionFormat,
+            PasswordTooShort,
+            PasswordRequiresUppercase,
+            PasswordRequiresLowercase,
+            PasswordRequiresDigit,
+            PasswordRequiresSymbol,
+            PasswordRequiresUniqueCharacters,
+            PasswordPolicy,
+            Invalid
+        };
         if (!schema.Keys.Order(StringComparer.Ordinal).SequenceEqual(expectedCodes.Order(StringComparer.Ordinal)))
             throw new InvalidOperationException("The validation error constants and schema do not match.");
 

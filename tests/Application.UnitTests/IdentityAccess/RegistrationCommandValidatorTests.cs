@@ -1,3 +1,4 @@
+using CleanArchitecture.Application.Common.Validation;
 using CleanArchitecture.Application.IdentityAccess.Organizations.RegisterOrganization;
 using CleanArchitecture.Application.IdentityAccess.People.RegisterPersonal;
 using CleanArchitecture.Application.IdentityAccess.Sessions;
@@ -49,9 +50,9 @@ public sealed class RegistrationCommandValidatorTests
             "Example SA",
             invalidCuit));
 
-        AssertErrors(invalidShape,
-            ("email", "Enter an email address."),
-            ("cuit", "The CUIT must contain exactly eleven digits and may use only digits, hyphens, and whitespace."));
+        AssertErrorDetails(invalidShape,
+            ("email", ValidationErrorCodes.EmailFormat, "Enter an email address."),
+            ("cuit", ValidationErrorCodes.CuitCharacters, "The CUIT may contain only digits, hyphens, and whitespace."));
         invalidShape.Errors.Select(error => error.ErrorMessage).ShouldAllBe(message =>
             !message.Contains(invalidEmail, StringComparison.Ordinal)
             && !message.Contains(invalidCuit, StringComparison.Ordinal));
@@ -166,9 +167,9 @@ public sealed class RegistrationCommandValidatorTests
             "Ada",
             invalidDocument));
 
-        AssertErrors(invalidShape,
-            ("email", "Enter an email address."),
-            ("documentNumber", "An Argentine DNI must contain seven or eight digits and may use only digits, dots, hyphens, and whitespace."));
+        AssertErrorDetails(invalidShape,
+            ("email", ValidationErrorCodes.EmailFormat, "Enter an email address."),
+            ("documentNumber", ValidationErrorCodes.DniCharacters, "An Argentine DNI may contain only digits, dots, hyphens, and whitespace."));
         invalidShape.Errors.Select(error => error.ErrorMessage).ShouldAllBe(message =>
             !message.Contains(invalidEmail, StringComparison.Ordinal)
             && !message.Contains(invalidDocument, StringComparison.Ordinal));
@@ -193,6 +194,15 @@ public sealed class RegistrationCommandValidatorTests
     private static void AssertErrors(ValidationResult result, params (string PropertyName, string Message)[] expected)
     {
         result.Errors.Select(error => (error.PropertyName, error.ErrorMessage)).ShouldBe(expected);
+    }
+
+    private static void AssertErrorDetails(
+        ValidationResult result,
+        params (string PropertyName, string Code, string Message)[] expected)
+    {
+        result.Errors
+            .Select(error => (error.PropertyName, error.ErrorCode, error.ErrorMessage))
+            .ShouldBe(expected);
     }
 
     private static readonly SessionStub AnonymousSession = new(null, null);

@@ -7,9 +7,8 @@ export function cuitError(value) {
   if (raw.length > 32) return { code: 'too_long', params: { max: 32 } };
 
   const digits = raw.replace(/\D/g, '');
-  if (!/^[0-9\s-]+$/.test(raw) || digits.length !== 11) {
-    return { code: 'invalid', params: {} };
-  }
+  if (!/^[0-9\s-]+$/.test(raw)) return { code: 'cuit_characters', params: {} };
+  if (digits.length !== 11) return { code: 'cuit_length', params: {} };
 
   const sum = WEIGHTS.reduce(
     (total, weight, index) => total + weight * Number(digits[index]),
@@ -17,6 +16,6 @@ export function cuitError(value) {
   );
   const expected = (11 - (sum % 11)) % 11;
   return expected === 10 || expected !== Number(digits[10])
-    ? { code: 'invalid', params: {} }
+    ? { code: 'cuit_check_digit', params: {} }
     : null;
 }

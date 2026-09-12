@@ -35,11 +35,13 @@ describe('ProblemMessage', () => {
     expect(alert).not.toHaveTextContent('NewPassword');
     expect(alert).not.toHaveTextContent('RecoveryCode');
     expect(alert).not.toHaveTextContent('request:');
-    expect(screen.getByRole('link', { name: 'Recovery code: This value is required.' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Recovery code: A recovery code is required.' })).toHaveAttribute(
       'href',
       '#recovery-code',
     );
-    expect(alert).toHaveTextContent('Request: This value is not valid.');
+    expect(alert).toHaveTextContent('This value is not valid.');
+    expect(alert).not.toHaveTextContent('Request:');
+    expect(alert).not.toHaveTextContent('Field:');
   });
 
   it.each([
@@ -139,11 +141,14 @@ describe('ProblemMessage validation details', () => {
     ['es', 'Correo electrónico: Debe tener como máximo 256 caracteres.'],
   ])('renders the translated field label and interpolated validation code in %s', async (language, expected) => {
     await i18n.changeLanguage(language);
-    render(<ProblemMessage problem={{
-      code: 'validation_failed',
-      status: 400,
-      errors: { email: [{ code: 'too_long', params: { max: 256 } }] },
-    }} />);
+    render(<ProblemMessage
+      problem={{
+        code: 'validation_failed',
+        status: 400,
+        errors: { email: [{ code: 'too_long', params: { max: 256 } }] },
+      }}
+      fieldIds={{ email: 'email' }}
+    />);
 
     expect(screen.getByText(expected)).toBeInTheDocument();
   });
@@ -161,10 +166,43 @@ describe('ProblemMessage validation details', () => {
       headers: { 'Content-Type': PROBLEM_MEDIA_TYPE },
     }));
 
-    render(<ProblemMessage problem={problem} />);
+    render(<ProblemMessage problem={problem} fieldIds={{ email: 'email' }} />);
 
     expect(screen.getByText(expected)).toBeInTheDocument();
     expect(document.body).not.toHaveTextContent(/fields\.email|lngs|PropertyValue|8675309|42/);
     expect(i18n.resolvedLanguage).toBe(language);
+  });
+
+  it.each([
+    ['en', 'The profile version must be an unsigned decimal token.'],
+    ['es', 'La versión del perfil debe ser un identificador decimal sin signo.'],
+  ])('renders an unowned summary error as bare detail without a fabricated field prefix in %s', async (language, expected) => {
+    await i18n.changeLanguage(language);
+    render(<ProblemMessage problem={{
+      code: 'validation_failed',
+      status: 400,
+      errors: { version: [{ code: 'profile_version_format', params: {} }] },
+    }} />);
+
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent(expected);
+    expect(alert).not.toHaveTextContent(/Profile version:|Versión del perfil:|Field:|Campo:/);
+  });
+
+  it.each([
+    ['en', 'Full name: A full name is required.'],
+    ['es', 'Nombre completo: El nombre completo es obligatorio.'],
+  ])('renders field-specific required guidance in %s when the rendered control owns the error', async (language, expected) => {
+    await i18n.changeLanguage(language);
+    render(<ProblemMessage
+      problem={{
+        code: 'validation_failed',
+        status: 400,
+        errors: { fullName: [{ code: 'required', params: {} }] },
+      }}
+      fieldIds={{ fullName: 'full-name' }}
+    />);
+
+    expect(screen.getByRole('link', { name: expected })).toHaveAttribute('href', '#full-name');
   });
 });

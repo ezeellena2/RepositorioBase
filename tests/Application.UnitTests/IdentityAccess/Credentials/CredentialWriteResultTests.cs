@@ -35,6 +35,27 @@ public sealed class CredentialWriteResultTests
     }
 
     [Test]
+    public void Password_policy_preserves_safe_specific_details_and_defensively_copies_their_collection()
+    {
+        ValidationErrorDetail[] source =
+        [
+            new(ValidationErrorCodes.PasswordTooShort, new Dictionary<string, int> { ["min"] = 12 }),
+            new(ValidationErrorCodes.PasswordRequiresDigit, new Dictionary<string, int>()),
+        ];
+        var result = CredentialWriteResult.PasswordPolicy(source);
+
+        source[0] = new ValidationErrorDetail(ValidationErrorCodes.Invalid, new Dictionary<string, int>());
+        result.Errors["newPassword"].Select(detail => detail.Code).ShouldBe([
+            ValidationErrorCodes.PasswordTooShort,
+            ValidationErrorCodes.PasswordRequiresDigit,
+        ]);
+
+        result.Errors["newPassword"][0] = new ValidationErrorDetail(ValidationErrorCodes.Invalid, new Dictionary<string, int>());
+        result.Errors["newPassword"][0].Code.ShouldBe(ValidationErrorCodes.PasswordTooShort);
+        result.Errors["newPassword"][0].Params["min"].ShouldBe(12);
+    }
+
+    [Test]
     public void Failure_outcomes_map_exhaustively_to_the_established_application_contract()
     {
         var policy = CredentialWriteResult.PasswordPolicy().ToApplicationError();

@@ -201,7 +201,8 @@ describe('platform invitation pages', () => {
     expect(password).toHaveFocus();
     const alert = screen.getByRole('alert');
     expect(alert).not.toHaveTextContent('This password does not meet the requirements.');
-    expect(alert).toHaveTextContent('Token: This value is required.');
+    expect(alert).toHaveTextContent('An invitation token is required.');
+    expect(alert).not.toHaveTextContent('Token:');
   });
 
   /**

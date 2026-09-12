@@ -152,12 +152,17 @@ public sealed class IdentityAccountService(
             if (!(await validator.ValidateAsync(userManager, user)).Succeeded) return new IdentityAccountValidationResult(false);
         }
 
+        var passwordErrors = new List<IdentityError>();
+        var passwordRejected = false;
         foreach (var validator in passwordValidators)
         {
-            if (!(await validator.ValidateAsync(userManager, user, password)).Succeeded) return new IdentityAccountValidationResult(false);
+            var result = await validator.ValidateAsync(userManager, user, password);
+            passwordRejected |= !result.Succeeded;
+            passwordErrors.AddRange(result.Errors);
         }
 
-        return new IdentityAccountValidationResult(true);
+        var details = IdentityPasswordValidationDetails.From(passwordErrors, identityOptions.Value.Password);
+        return new IdentityAccountValidationResult(!passwordRejected && details.Count == 0, details);
     }
 
     public async Task<IdentityAccountValidationResult> ValidatePasswordAsync(string password, CancellationToken cancellationToken)
@@ -165,14 +170,17 @@ public sealed class IdentityAccountService(
         // Only the password validators. The user validators would read the store to reject a duplicate name, and
         // running them here would make this answer depend on whether the address exists — exactly the disclosure
         // this method exists to avoid.
-        var errors = new List<string>();
+        var errors = new List<IdentityError>();
+        var passwordRejected = false;
         foreach (var validator in passwordValidators)
         {
             var result = await validator.ValidateAsync(userManager, DecoyUser, password);
-            errors.AddRange(result.Errors.Select(error => error.Description));
+            passwordRejected |= !result.Succeeded;
+            errors.AddRange(result.Errors);
         }
 
-        return new IdentityAccountValidationResult(errors.Count == 0, errors);
+        var details = IdentityPasswordValidationDetails.From(errors, identityOptions.Value.Password);
+        return new IdentityAccountValidationResult(!passwordRejected && details.Count == 0, details);
     }
 
     public async Task<IdentityAccountCreationResult> CreatePendingAsync(

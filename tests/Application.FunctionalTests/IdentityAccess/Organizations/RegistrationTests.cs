@@ -1,3 +1,4 @@
+using System.Text.Json;
 using CleanArchitecture.Application.FunctionalTests.Infrastructure;
 using CleanArchitecture.Application.Common.Models;
 using CleanArchitecture.Application.Common.Validation;
@@ -347,16 +348,22 @@ public sealed class RegistrationTests : TestBase
         free.Error!.Code.ShouldBe("validation_failed");
         free.Error.Category.ShouldBe(ApplicationErrorCategory.Validation);
         free.Error.ValidationErrors.Keys.ShouldBe(["password"]);
-        var freePassword = free.Error.ValidationErrors["password"].ShouldHaveSingleItem();
-        freePassword.Code.ShouldBe(ValidationErrorCodes.PasswordPolicy);
-        freePassword.Params.ShouldBeEmpty();
+        var freePassword = free.Error.ValidationErrors["password"];
+        freePassword.Select(detail => detail.Code).ShouldBe([
+            ValidationErrorCodes.PasswordRequiresDigit,
+            ValidationErrorCodes.PasswordRequiresSymbol,
+            ValidationErrorCodes.PasswordRequiresUppercase,
+            ValidationErrorCodes.PasswordTooShort,
+        ]);
+        freePassword.Single(detail => detail.Code == ValidationErrorCodes.PasswordTooShort)
+            .Params["min"].ShouldBe(12);
         taken.IsFailure.ShouldBeTrue("a weak password must not double as an address-existence oracle");
         taken.Error!.Code.ShouldBe(free.Error.Code);
         taken.Error.Category.ShouldBe(free.Error.Category);
         taken.Error.ValidationErrors.Keys.ShouldBe(free.Error.ValidationErrors.Keys);
-        var takenPassword = taken.Error.ValidationErrors["password"].ShouldHaveSingleItem();
-        takenPassword.Code.ShouldBe(ValidationErrorCodes.PasswordPolicy);
-        takenPassword.Params.ShouldBeEmpty();
+        JsonSerializer.Serialize(taken.Error.ValidationErrors).ShouldBe(
+            JsonSerializer.Serialize(free.Error.ValidationErrors),
+            "the complete safe refusal must be identical for taken and free addresses");
         (await TestApp.CountAsync<Tenant>()).ShouldBe(0, "neither refusal creates an organization");
         (await TestApp.CountAsync<ApplicationUser>()).ShouldBe(1, "the only identity is the one seeded before the test");
     }

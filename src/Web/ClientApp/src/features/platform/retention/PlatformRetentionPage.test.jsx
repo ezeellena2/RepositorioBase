@@ -175,9 +175,9 @@ describe('platform retention page', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Step up' }));
 
     await waitFor(() => expect(code).toHaveAttribute('aria-invalid', 'true'));
-    expect(code).toHaveAccessibleDescription('This value is required.');
+    expect(code).toHaveAccessibleDescription('An authenticator code is required.');
     expect(code).toHaveFocus();
-    expect(screen.getByRole('alert')).not.toHaveTextContent('This value is required.');
+    expect(screen.getByRole('alert')).not.toHaveTextContent('An authenticator code is required.');
     expect(retentionCalls(paths)).toEqual([]);
   });
 

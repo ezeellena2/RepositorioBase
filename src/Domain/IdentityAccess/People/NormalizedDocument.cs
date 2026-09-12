@@ -1,5 +1,13 @@
 namespace CleanArchitecture.Domain.IdentityAccess.People;
 
+public enum DocumentRule
+{
+    Satisfied,
+    Empty,
+    Characters,
+    Length
+}
+
 /// <summary>
 /// A documentary identity in the only form the system compares: issuing country, kind of document, and the digits
 /// with every separator a person might type removed. Two people who typed the same document differently must reach
@@ -24,31 +32,39 @@ public readonly record struct NormalizedDocument
     /// <summary>The tuple the protector encrypts and the fingerprint keys. It is the only member that carries digits.</summary>
     public string Canonical => $"{Country}|{DocumentType}|{Number}";
 
-    public static NormalizedDocument From(IdentityDocumentCountry country, IdentityDocumentKind documentType, string number)
+    public static DocumentRule Evaluate(string? number, out string canonicalNumber)
     {
-        if (!Enum.IsDefined(country)) throw new ArgumentOutOfRangeException(nameof(country));
-        if (!Enum.IsDefined(documentType)) throw new ArgumentOutOfRangeException(nameof(documentType));
-        if (string.IsNullOrWhiteSpace(number))
-        {
-            throw new ArgumentException("Document numbers cannot be empty.", nameof(number));
-        }
+        canonicalNumber = string.Empty;
+        if (string.IsNullOrWhiteSpace(number)) return DocumentRule.Empty;
 
         // Separators a person types are tolerated; anything else is refused rather than silently dropped, because
         // dropping it would turn two different strings into one documentary identity.
         if (number.Any(character => !char.IsAsciiDigit(character) && character != '.' && character != '-' && !char.IsWhiteSpace(character)))
         {
-            throw new ArgumentException("Document numbers can contain only digits, dots, hyphens, and whitespace.", nameof(number));
+            return DocumentRule.Characters;
         }
 
         // Leading zeros are removed before the length is checked, so "07123456" and "7123456" are the same person
         // rather than two rows the unique index would happily accept.
         var digits = new string(number.Where(char.IsAsciiDigit).ToArray()).TrimStart('0');
-        if (digits.Length is < 7 or > 8)
-        {
-            throw new ArgumentException("An Argentine DNI must contain seven or eight digits.", nameof(number));
-        }
+        if (digits.Length is < 7 or > 8) return DocumentRule.Length;
 
-        return new NormalizedDocument(country, documentType, digits);
+        canonicalNumber = digits;
+        return DocumentRule.Satisfied;
+    }
+
+    public static NormalizedDocument From(IdentityDocumentCountry country, IdentityDocumentKind documentType, string number)
+    {
+        if (!Enum.IsDefined(country)) throw new ArgumentOutOfRangeException(nameof(country));
+        if (!Enum.IsDefined(documentType)) throw new ArgumentOutOfRangeException(nameof(documentType));
+        var rule = Evaluate(number, out var canonicalNumber);
+        if (rule == DocumentRule.Empty) throw new ArgumentException("Document numbers cannot be empty.", nameof(number));
+        if (rule == DocumentRule.Characters)
+            throw new ArgumentException("Document numbers can contain only digits, dots, hyphens, and whitespace.", nameof(number));
+        if (rule == DocumentRule.Length)
+            throw new ArgumentException("An Argentine DNI must contain seven or eight digits.", nameof(number));
+
+        return new NormalizedDocument(country, documentType, canonicalNumber);
     }
 
     /// <summary>

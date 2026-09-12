@@ -12,8 +12,17 @@ public sealed class CredentialWriteResult
 {
     private static readonly ValidationErrorDetail PasswordPolicyDetail =
         new(ValidationErrorCodes.PasswordPolicy, new Dictionary<string, int>());
+    private readonly ValidationErrorDetail[] _passwordPolicyDetails;
 
-    private CredentialWriteResult(CredentialWriteFailure failure) => Failure = failure;
+    private CredentialWriteResult(
+        CredentialWriteFailure failure,
+        IEnumerable<ValidationErrorDetail>? details = null)
+    {
+        Failure = failure;
+        _passwordPolicyDetails = failure == CredentialWriteFailure.PasswordPolicy
+            ? details?.ToArray() is { Length: > 0 } mapped ? mapped : [PasswordPolicyDetail]
+            : [];
+    }
 
     public bool Succeeded => Failure == CredentialWriteFailure.None;
 
@@ -23,13 +32,14 @@ public sealed class CredentialWriteResult
     public IReadOnlyDictionary<string, ValidationErrorDetail[]> Errors => Failure == CredentialWriteFailure.PasswordPolicy
         ? new ReadOnlyDictionary<string, ValidationErrorDetail[]>(new Dictionary<string, ValidationErrorDetail[]>(StringComparer.Ordinal)
         {
-            ["newPassword"] = [PasswordPolicyDetail]
+            ["newPassword"] = _passwordPolicyDetails.ToArray()
         })
         : new ReadOnlyDictionary<string, ValidationErrorDetail[]>(new Dictionary<string, ValidationErrorDetail[]>(StringComparer.Ordinal));
 
     public static CredentialWriteResult Applied() => new(CredentialWriteFailure.None);
 
-    public static CredentialWriteResult PasswordPolicy() => new(CredentialWriteFailure.PasswordPolicy);
+    public static CredentialWriteResult PasswordPolicy(IEnumerable<ValidationErrorDetail>? details = null) =>
+        new(CredentialWriteFailure.PasswordPolicy, details);
 
     public static CredentialWriteResult Concurrency() => new(CredentialWriteFailure.Concurrency);
 

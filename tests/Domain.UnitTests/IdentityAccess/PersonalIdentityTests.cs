@@ -44,6 +44,23 @@ public sealed class PersonalIdentityTests
         Should.Throw<ArgumentException>(() => NormalizedDocument.From(IdentityDocumentCountry.AR, IdentityDocumentKind.DNI, "1234567X"));
     }
 
+    [TestCase("1234567X", DocumentRule.Characters)]
+    [TestCase("12345", DocumentRule.Length)]
+    [TestCase("123456789", DocumentRule.Length)]
+    public void A_document_rule_identifies_what_the_person_can_correct(string value, DocumentRule expected)
+    {
+        NormalizedDocument.Evaluate(value, out var canonicalNumber).ShouldBe(expected);
+        canonicalNumber.ShouldBeEmpty("an invalid input must not escape through the evaluator's output");
+    }
+
+    [Test]
+    public void Document_evaluation_preserves_separator_and_leading_zero_normalization()
+    {
+        NormalizedDocument.Evaluate(" 07.123.456 ", out var canonicalNumber)
+            .ShouldBe(DocumentRule.Satisfied);
+        canonicalNumber.ShouldBe("7123456");
+    }
+
     [Test]
     public void A_document_never_prints_its_own_digits()
     {

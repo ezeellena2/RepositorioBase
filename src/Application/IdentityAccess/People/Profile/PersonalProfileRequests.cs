@@ -36,7 +36,7 @@ public sealed class UpdatePersonalProfileCommandValidator : AbstractValidator<Up
         RuleFor(command => command.Version)
             .Cascade(CascadeMode.Stop)
             .NotEmpty().WithErrorCode(ValidationErrorCodes.Required).WithMessage("A profile version is required.")
-            .Must(IsCanonicalUnsignedDecimal).WithErrorCode(ValidationErrorCodes.Invalid).WithMessage("The profile version must be an unsigned decimal token.")
+            .Must(IsCanonicalUnsignedDecimal).WithErrorCode(ValidationErrorCodes.ProfileVersionFormat).WithMessage("The profile version must be an unsigned decimal token.")
             .OverridePropertyName("version");
     }
 

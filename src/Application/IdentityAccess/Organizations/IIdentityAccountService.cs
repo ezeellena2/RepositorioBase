@@ -1,3 +1,5 @@
+using System.Collections.ObjectModel;
+using CleanArchitecture.Application.Common.Validation;
 using CleanArchitecture.Domain.IdentityAccess.Identities;
 
 namespace CleanArchitecture.Application.IdentityAccess.Organizations;
@@ -11,11 +13,33 @@ public sealed record IdentityAccount(Guid Id, string Email, IdentityAccountStatu
 {
     public bool IsActive => Status == IdentityAccountStatus.Active;
 }
-public sealed record IdentityAccountValidationResult(bool IsValid, IReadOnlyList<string> Errors)
+public sealed record IdentityAccountValidationResult
 {
+    private static readonly ValidationErrorDetail UnknownPasswordPolicy =
+        new(ValidationErrorCodes.PasswordPolicy, new Dictionary<string, int>());
+
     public IdentityAccountValidationResult(bool isValid)
-        : this(isValid, Array.Empty<string>())
+        : this(isValid, Array.Empty<ValidationErrorDetail>())
     {
+    }
+
+    public IdentityAccountValidationResult(bool isValid, IEnumerable<ValidationErrorDetail> errors)
+    {
+        IsValid = isValid;
+        Errors = Array.AsReadOnly(errors.ToArray());
+    }
+
+    public bool IsValid { get; }
+
+    public IReadOnlyList<ValidationErrorDetail> Errors { get; }
+
+    /// <summary>Projects safe password rules onto the caller-owned field without exposing provider prose.</summary>
+    public IReadOnlyDictionary<string, ValidationErrorDetail[]> PasswordErrorsFor(string field)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(field);
+        ValidationErrorDetail[] details = Errors.Count == 0 ? [UnknownPasswordPolicy] : Errors.ToArray();
+        return new ReadOnlyDictionary<string, ValidationErrorDetail[]>(
+            new Dictionary<string, ValidationErrorDetail[]>(StringComparer.Ordinal) { [field] = details });
     }
 }
 public sealed record IdentityAccountCreationResult(IdentityAccount? Account, bool IsValidationFailure);

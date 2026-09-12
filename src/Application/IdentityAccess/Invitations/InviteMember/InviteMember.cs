@@ -22,14 +22,14 @@ public sealed class InviteMemberCommandValidator : AbstractValidator<InviteMembe
             .Cascade(CascadeMode.Stop)
             .NotEmpty().WithErrorCode(ValidationErrorCodes.Required).WithMessage("Enter an email address.")
             .MaximumLength(256).WithErrorCode(ValidationErrorCodes.TooLong).WithMessage("The email address must be 256 characters or fewer.")
-            .Must(HasSupportedEmailShape).WithErrorCode(ValidationErrorCodes.Invalid).WithMessage("Enter an email address.")
+            .Must(HasSupportedEmailShape).WithErrorCode(ValidationErrorCodes.EmailFormat).WithMessage("Enter an email address.")
             .OverridePropertyName("email");
 
         RuleFor(command => command.RoleIds)
             .Cascade(CascadeMode.Stop)
             .NotEmpty().WithErrorCode(ValidationErrorCodes.Required).WithMessage("Choose at least one role.")
             .Must(roleIds => roleIds is not null && roleIds.All(roleId => roleId != Guid.Empty))
-            .WithErrorCode(ValidationErrorCodes.Invalid)
+            .WithErrorCode(ValidationErrorCodes.RoleIdsInvalid)
             .WithMessage("Choose valid roles.")
             .OverridePropertyName("roleIds");
     }

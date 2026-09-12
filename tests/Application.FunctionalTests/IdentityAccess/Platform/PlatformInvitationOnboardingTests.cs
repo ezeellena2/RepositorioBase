@@ -26,7 +26,7 @@ namespace CleanArchitecture.Application.FunctionalTests.IdentityAccess.Platform;
 public sealed class PlatformInvitationOnboardingTests : TestBase
 {
     private const string ValidPassword = PlatformScenario.ValidPassword;
-    private const string PolicyViolatingPassword = "short";
+    private const string PolicyViolatingPassword = "tiny";
 
     [Test]
     public async Task Registering_creates_the_confirmable_identity_with_the_submitted_password_and_never_a_membership()
@@ -77,16 +77,22 @@ public sealed class PlatformInvitationOnboardingTests : TestBase
         real.IsFailure.ShouldBeTrue();
         real.Error!.Code.ShouldBe("validation_failed");
         real.Error.ValidationErrors.Keys.ShouldBe(["password"]);
-        var realPassword = real.Error.ValidationErrors["password"].ShouldHaveSingleItem();
-        realPassword.Code.ShouldBe(ValidationErrorCodes.PasswordPolicy);
-        realPassword.Params.ShouldBeEmpty();
+        var realPassword = real.Error.ValidationErrors["password"];
+        realPassword.Select(detail => detail.Code).ShouldBe([
+            ValidationErrorCodes.PasswordRequiresDigit,
+            ValidationErrorCodes.PasswordRequiresSymbol,
+            ValidationErrorCodes.PasswordRequiresUppercase,
+            ValidationErrorCodes.PasswordTooShort,
+        ]);
+        realPassword.Single(detail => detail.Code == ValidationErrorCodes.PasswordTooShort)
+            .Params["min"].ShouldBe(12);
         JsonSerializer.Serialize(real.Error.ValidationErrors).ShouldNotContain(PolicyViolatingPassword);
         unknown.IsFailure.ShouldBeTrue();
         unknown.Error!.Code.ShouldBe(real.Error.Code);
         unknown.Error.Category.ShouldBe(real.Error.Category);
-        var unknownPassword = unknown.Error.ValidationErrors["password"].ShouldHaveSingleItem();
-        unknownPassword.Code.ShouldBe(ValidationErrorCodes.PasswordPolicy);
-        unknownPassword.Params.ShouldBeEmpty();
+        JsonSerializer.Serialize(unknown.Error.ValidationErrors).ShouldBe(
+            JsonSerializer.Serialize(real.Error.ValidationErrors),
+            "the complete safe refusal must be identical for real and unknown tokens");
         TestApp.ConfirmationTokenHashInvocationCount.ShouldBe(0, "a refused password is decided before the token is read at all");
         (await TestApp.CountAsync<ApplicationUser>()).ShouldBe(identitiesBefore, "a refused password creates nothing.");
         (await TestApp.CountAsync<OutboxMessage>()).ShouldBe(messagesBefore);

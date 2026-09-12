@@ -91,7 +91,7 @@ public sealed class InvitationHttpContractTests : TestBase
             email,
             $"/api/tenants/{organization.TenantId.Value}/invitations",
             "email",
-            ValidationDetail(ValidationErrorCodes.Invalid),
+            ValidationDetail(ValidationErrorCodes.EmailFormat),
             "not-an-email");
 
         using var roles = await SendAsync(
@@ -127,7 +127,7 @@ public sealed class InvitationHttpContractTests : TestBase
             emptyRole,
             $"/api/tenants/{organization.TenantId.Value}/invitations",
             "roleIds",
-            ValidationDetail(ValidationErrorCodes.Invalid),
+            ValidationDetail(ValidationErrorCodes.RoleIdsInvalid),
             "valid@example.test");
 
         (await RegistrationDurableCountsAsync()).ShouldBe(before,
@@ -164,6 +164,7 @@ public sealed class InvitationHttpContractTests : TestBase
         bool platform,
         string route)
     {
+        const string policyViolatingPassword = "tiny";
         string liveToken;
         if (platform)
         {
@@ -200,21 +201,31 @@ public sealed class InvitationHttpContractTests : TestBase
             ValidationDetail(ValidationErrorCodes.TooLong, 256),
             overlongToken);
 
-        var passwordPolicy = ValidationDetail(ValidationErrorCodes.PasswordPolicy);
+        ValidationErrorDetail[] passwordPolicy =
+        [
+            ValidationDetail(ValidationErrorCodes.PasswordRequiresDigit),
+            ValidationDetail(ValidationErrorCodes.PasswordRequiresSymbol),
+            ValidationDetail(ValidationErrorCodes.PasswordRequiresUppercase),
+            new ValidationErrorDetail(
+                ValidationErrorCodes.PasswordTooShort,
+                new Dictionary<string, int> { ["min"] = 12 }),
+        ];
         using var live = await SendAsync(
             HttpMethod.Post,
             route,
-            new { token = liveToken, password = "short" },
+            new { token = liveToken, password = policyViolatingPassword },
             antiforgery);
-        var liveBody = await AssertValidationProblemAsync(live, route, "password", passwordPolicy, liveToken, "short");
+        var liveBody = await AssertValidationProblemDetailsAsync(
+            live, route, "password", passwordPolicy, liveToken, policyViolatingPassword);
 
         var deadToken = TestApp.RawTokenAt(9);
         using var dead = await SendAsync(
             HttpMethod.Post,
             route,
-            new { token = deadToken, password = "short" },
+            new { token = deadToken, password = policyViolatingPassword },
             antiforgery);
-        var deadBody = await AssertValidationProblemAsync(dead, route, "password", passwordPolicy, deadToken, "short");
+        var deadBody = await AssertValidationProblemDetailsAsync(
+            dead, route, "password", passwordPolicy, deadToken, policyViolatingPassword);
 
         StableProblemBody(deadBody).ShouldBe(
             StableProblemBody(liveBody),
@@ -354,7 +365,7 @@ public sealed class InvitationHttpContractTests : TestBase
             response,
             path,
             "roleIds",
-            ValidationDetail(ValidationErrorCodes.Invalid),
+            ValidationDetail(ValidationErrorCodes.RoleIdsInvalid),
             "valid@example.test");
         (await RegistrationDurableCountsAsync()).ShouldBe(before);
     }
@@ -497,6 +508,14 @@ public sealed class InvitationHttpContractTests : TestBase
         string instance,
         string field,
         ValidationErrorDetail expectedDetail,
+        params string[] secretValues) =>
+        await AssertValidationProblemDetailsAsync(response, instance, field, [expectedDetail], secretValues);
+
+    private static async Task<string> AssertValidationProblemDetailsAsync(
+        HttpResponseMessage response,
+        string instance,
+        string field,
+        IReadOnlyList<ValidationErrorDetail> expectedDetails,
         params string[] secretValues)
     {
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
@@ -513,8 +532,9 @@ public sealed class InvitationHttpContractTests : TestBase
         var errors = problem.GetProperty("errors");
         errors.EnumerateObject().Select(property => property.Name).ShouldBe([field]);
         var details = errors.GetProperty(field).EnumerateArray().ToArray();
-        details.Length.ShouldBe(1);
-        AssertValidationDetail(details[0], expectedDetail);
+        details.Length.ShouldBe(expectedDetails.Count);
+        for (var index = 0; index < expectedDetails.Count; index++)
+            AssertValidationDetail(details[index], expectedDetails[index]);
         foreach (var secret in secretValues) raw.ShouldNotContain(secret);
         return raw;
     }

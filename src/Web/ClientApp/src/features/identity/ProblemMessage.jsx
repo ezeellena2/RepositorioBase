@@ -1,12 +1,10 @@
-/* eslint-disable i18next/no-literal-string -- bounded validation protocol keys, not display copy. */
 import { useEffect, useRef, useState } from 'react';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Link from '@mui/material/Link';
 import Typography from '@mui/material/Typography';
 import { useTranslation } from '../../i18n';
-import { VALIDATION_CODE_SCHEMA } from './api/problemDetails';
-import { fieldIdFor, unclaimedFieldErrors } from './fieldErrors';
+import { fieldIdFor, unclaimedFieldErrors, validationDetailText } from './fieldErrors';
 
 const validationFieldKey = (i18n, field) => {
   const catalog = i18n.getResource(i18n.resolvedLanguage, 'errors', 'validation.fields');
@@ -77,16 +75,14 @@ export function ProblemMessage({ problem, claimedFields = [], fieldIds = {}, aut
       {fields.length > 0 && (
         <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
           {fields.flatMap(([field, details]) => details.map((detail, index) => {
-            const fieldKey = validationFieldKey(i18n, field);
-            const detailKey = Object.hasOwn(VALIDATION_CODE_SCHEMA, detail.code)
-              && i18n.exists(`errors:validation.${detail.code}`)
-              ? `errors:validation.${detail.code}`
-              : 'errors:validation.unknown';
-            const message = t('errors:validation.fieldMessage', {
-              field: t(fieldKey),
-              message: t(detailKey, { replace: detail.params }),
-            });
             const fieldId = fieldIdFor(fieldIds, field);
+            const detailMessage = validationDetailText(detail, t, field);
+            const message = fieldId
+              ? t('errors:validation.fieldMessage', {
+                field: t(validationFieldKey(i18n, field)),
+                message: detailMessage,
+              })
+              : detailMessage;
             return (
               <li key={`${field}-${index}`}>
                 {fieldId ? <Link href={`#${fieldId}`}>{message}</Link> : message}

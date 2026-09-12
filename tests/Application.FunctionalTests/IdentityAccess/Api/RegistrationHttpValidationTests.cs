@@ -123,15 +123,22 @@ public sealed class RegistrationHttpValidationTests : TestBase
             "/organizations/register",
             new { email = organizationInvalidEmail, password = "Testing1234!", legalName = "Northwind", cuit = invalidCuit },
             Errors(
-                Error("email", ValidationErrorCodes.Invalid),
-                Error("cuit", ValidationErrorCodes.Invalid)),
+                Error("email", ValidationErrorCodes.EmailFormat),
+                Error("cuit", ValidationErrorCodes.CuitCharacters)),
             new[] { organizationInvalidEmail, "Testing1234!", "Northwind", invalidCuit }).SetName("Organization_shape_rules_have_exact_wire_errors");
+
+        const string shortCuit = "30-123";
+        yield return new TestCaseData(
+            "/organizations/register",
+            new { email = "owner@example.test", password = "Testing1234!", legalName = "Northwind", cuit = shortCuit },
+            Errors(Error("cuit", ValidationErrorCodes.CuitLength)),
+            new[] { shortCuit }).SetName("Organization_cuit_length_rule_has_exact_wire_error");
 
         const string wrongCheckDigit = "30-12345678-9";
         yield return new TestCaseData(
             "/organizations/register",
             new { email = "owner@example.test", password = "Testing1234!", legalName = "Northwind", cuit = wrongCheckDigit },
-            Errors(Error("cuit", ValidationErrorCodes.Invalid)),
+            Errors(Error("cuit", ValidationErrorCodes.CuitCheckDigit)),
             new[] { wrongCheckDigit, "12345678" }).SetName("Organization_check_digit_rule_has_exact_wire_error");
 
         yield return new TestCaseData(
@@ -167,9 +174,16 @@ public sealed class RegistrationHttpValidationTests : TestBase
             "/personal/register",
             new { email = personalInvalidEmail, password = "Testing1234!", fullName = "Ada Lovelace", displayName = "Ada", documentNumber = invalidDocument },
             Errors(
-                Error("email", ValidationErrorCodes.Invalid),
-                Error("documentNumber", ValidationErrorCodes.Invalid)),
+                Error("email", ValidationErrorCodes.EmailFormat),
+                Error("documentNumber", ValidationErrorCodes.DniCharacters)),
             new[] { personalInvalidEmail, "Testing1234!", "Ada Lovelace", "Ada", invalidDocument }).SetName("Personal_shape_rules_have_exact_wire_errors");
+
+        const string shortDocument = "12345";
+        yield return new TestCaseData(
+            "/personal/register",
+            new { email = "person@example.test", password = "Testing1234!", fullName = "Ada Lovelace", displayName = "Ada", documentNumber = shortDocument },
+            Errors(Error("documentNumber", ValidationErrorCodes.DniLength)),
+            new[] { shortDocument }).SetName("Personal_document_length_rule_has_exact_wire_error");
     }
 
     [TestCaseSource(nameof(InvalidPayloads))]
@@ -195,6 +209,7 @@ public sealed class RegistrationHttpValidationTests : TestBase
     [TestCase("/api/identity/personal/register")]
     public async Task Password_policy_refusal_is_identical_for_taken_and_free_addresses_before_lookup(string route)
     {
+        const string policyViolatingPassword = "tiny";
         var knownEmail = $"known-{Guid.NewGuid():N}@example.test";
         var freeEmail = $"free-{Guid.NewGuid():N}@example.test";
         await IdentityHttpHarness.SeedConfirmedUserAsync(knownEmail, "Testing1234!");
@@ -210,12 +225,16 @@ public sealed class RegistrationHttpValidationTests : TestBase
         var host = $"https://registration-parity-{Guid.NewGuid():N}.localhost";
         var antiforgery = await IdentityHttpHarness.GetAntiforgeryAsync(harness.Client, host);
         var before = await RegistrationDurableCountsAsync();
-        var expectedErrors = Errors(Error("password", ValidationErrorCodes.PasswordPolicy));
+        var expectedErrors = Errors(Error("password",
+            Detail(ValidationErrorCodes.PasswordRequiresDigit),
+            Detail(ValidationErrorCodes.PasswordRequiresSymbol),
+            Detail(ValidationErrorCodes.PasswordRequiresUppercase),
+            Detail(ValidationErrorCodes.PasswordTooShort, ("min", 12))));
 
         using var knownRequest = IdentityHttpHarness.JsonRequest(
             HttpMethod.Post,
             $"{host}{route}",
-            RegistrationPayload(route, knownEmail, "short"),
+            RegistrationPayload(route, knownEmail, policyViolatingPassword),
             antiforgery);
         using var knownResponse = await harness.Client.SendAsync(knownRequest);
         var knownBody = await AssertValidationProblemAsync(
@@ -223,12 +242,12 @@ public sealed class RegistrationHttpValidationTests : TestBase
             route,
             expectedErrors,
             knownEmail,
-            "short");
+            policyViolatingPassword);
 
         using var freeRequest = IdentityHttpHarness.JsonRequest(
             HttpMethod.Post,
             $"{host}{route}",
-            RegistrationPayload(route, freeEmail, "short"),
+            RegistrationPayload(route, freeEmail, policyViolatingPassword),
             antiforgery);
         using var freeResponse = await harness.Client.SendAsync(freeRequest);
         var freeBody = await AssertValidationProblemAsync(
@@ -236,7 +255,7 @@ public sealed class RegistrationHttpValidationTests : TestBase
             route,
             expectedErrors,
             freeEmail,
-            "short");
+            policyViolatingPassword);
 
         StableProblemBody(freeBody).ShouldBe(
             StableProblemBody(knownBody),
@@ -310,7 +329,7 @@ public sealed class RegistrationHttpValidationTests : TestBase
         var host = $"https://registration-cuit-parity-{Guid.NewGuid():N}.localhost";
         var antiforgery = await IdentityHttpHarness.GetAntiforgeryAsync(harness.Client, host);
         var before = await RegistrationDurableCountsAsync();
-        var expectedErrors = Errors(Error("cuit", ValidationErrorCodes.Invalid));
+        var expectedErrors = Errors(Error("cuit", ValidationErrorCodes.CuitCheckDigit));
 
         using var takenRequest = IdentityHttpHarness.JsonRequest(
             HttpMethod.Post,
@@ -370,9 +389,18 @@ public sealed class RegistrationHttpValidationTests : TestBase
         string field,
         string code,
         params (string Name, int Value)[] parameters) =>
-        new(field, [new ValidationErrorDetail(
+        new(field, [Detail(code, parameters)]);
+
+    private static KeyValuePair<string, ValidationErrorDetail[]> Error(
+        string field,
+        params ValidationErrorDetail[] details) => new(field, details);
+
+    private static ValidationErrorDetail Detail(
+        string code,
+        params (string Name, int Value)[] parameters) =>
+        new(
             code,
-            parameters.ToDictionary(parameter => parameter.Name, parameter => parameter.Value, StringComparer.Ordinal))]);
+            parameters.ToDictionary(parameter => parameter.Name, parameter => parameter.Value, StringComparer.Ordinal));
 
     private static IReadOnlyDictionary<string, ValidationErrorDetail[]> Errors(
         params KeyValuePair<string, ValidationErrorDetail[]>[] errors) =>

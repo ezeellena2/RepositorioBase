@@ -94,6 +94,7 @@ const hideAtWide = (theme) => ({ [theme.breakpoints.up('md')]: { display: 'none'
  */
 const switcherTrigger = { maxWidth: drawerWidth };
 const languageInputProps = { id: 'shell-language', name: 'language' };
+const languageFieldIds = { language: languageInputProps.id };
 const languageControlSize = 'small';
 
 function LanguageSelector() {
@@ -122,7 +123,7 @@ function LanguageSelector() {
       </FormControl>
       {identity.languageProblem !== null && (
         <Box sx={{ position: 'fixed', left: '50%', bottom: 24, zIndex: 'snackbar', transform: 'translateX(-50%)' }}>
-          <ProblemMessage problem={identity.languageProblem} autoFocus />
+          <ProblemMessage problem={identity.languageProblem} fieldIds={languageFieldIds} autoFocus />
         </Box>
       )}
     </>

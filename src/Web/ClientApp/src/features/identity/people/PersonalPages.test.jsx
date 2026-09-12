@@ -85,11 +85,11 @@ describe('personal pages', () => {
     expect(submissions).toHaveLength(0);
     expect(fullName).toHaveFocus();
     expect(fullName).toHaveAttribute('aria-invalid', 'true');
-    expect(fullName).toHaveAccessibleDescription('This value is required.');
-    expect(screen.getByLabelText('Display name')).toHaveAccessibleDescription('This value is required.');
-    expect(screen.getByLabelText('DNI')).toHaveAccessibleDescription('This value is required.');
-    expect(screen.getByLabelText('Email')).toHaveAccessibleDescription('This value is required.');
-    expect(screen.getByLabelText('Password')).toHaveAccessibleDescription('This value is required.');
+    expect(fullName).toHaveAccessibleDescription('A full name is required.');
+    expect(screen.getByLabelText('Display name')).toHaveAccessibleDescription('A display name is required.');
+    expect(screen.getByLabelText('DNI')).toHaveAccessibleDescription('A document number is required.');
+    expect(screen.getByLabelText('Email')).toHaveAccessibleDescription('Enter an email address.');
+    expect(screen.getByLabelText('Password')).toHaveAccessibleDescription('A password is required.');
   });
 
   it('binds exact signup errors, keeps an unclaimed summary, focuses, and clears one edited field', async () => {
@@ -99,9 +99,9 @@ describe('personal pages', () => {
       errors: {
         fullName: [{ code: 'required', params: {} }],
         displayName: [{ code: 'required', params: {} }],
-        documentNumber: [{ code: 'invalid', params: {} }],
-        email: [{ code: 'invalid', params: {} }],
-        password: [{ code: 'password_policy', params: {} }],
+        documentNumber: [{ code: 'dni_length', params: {} }],
+        email: [{ code: 'email_format', params: {} }],
+        password: [{ code: 'password_too_short', params: { min: 12 } }],
         request: [{ code: 'invalid', params: {} }],
       },
     })));
@@ -121,20 +121,21 @@ describe('personal pages', () => {
     const passwordField = screen.getByLabelText('Password');
     await waitFor(() => expect(fullName).toHaveFocus());
     expect(fullName).toHaveAttribute('aria-invalid', 'true');
-    expect(fullName).toHaveAccessibleDescription('This value is required.');
-    expect(displayName).toHaveAccessibleDescription('This value is required.');
-    expect(documentNumber).toHaveAccessibleDescription('This value is not valid.');
-    expect(email).toHaveAccessibleDescription('This value is not valid.');
-    expect(passwordField).toHaveAccessibleDescription('This password does not meet the requirements.');
+    expect(fullName).toHaveAccessibleDescription('A full name is required.');
+    expect(displayName).toHaveAccessibleDescription('A display name is required.');
+    expect(documentNumber).toHaveAccessibleDescription('An Argentine DNI must contain seven or eight digits.');
+    expect(email).toHaveAccessibleDescription('Enter an email address.');
+    expect(passwordField).toHaveAccessibleDescription('Passwords must be at least 12 characters.');
 
     const alert = screen.getByRole('alert');
-    expect(alert).toHaveTextContent('Request: This value is not valid.');
-    expect(alert).not.toHaveTextContent('Full name: This value is required.');
-    expect(alert).not.toHaveTextContent('Password: This password does not meet the requirements.');
+    expect(alert).toHaveTextContent('This value is not valid.');
+    expect(alert).not.toHaveTextContent('Request:');
+    expect(alert).not.toHaveTextContent('Full name: A full name is required.');
+    expect(alert).not.toHaveTextContent('Password: Passwords must be at least 12 characters.');
 
     await userEvent.type(displayName, 'x');
     expect(displayName).not.toHaveAttribute('aria-invalid', 'true');
-    expect(displayName).not.toHaveAccessibleDescription('This value is required.');
+    expect(displayName).not.toHaveAccessibleDescription('A display name is required.');
     expect(documentNumber).toHaveAttribute('aria-invalid', 'true');
   });
 
@@ -280,7 +281,7 @@ describe('personal pages', () => {
       errors: {
         fullName: [{ code: 'required', params: {} }],
         displayName: [{ code: 'required', params: {} }],
-        version: [{ code: 'invalid', params: {} }],
+        version: [{ code: 'profile_version_format', params: {} }],
       },
     })));
 
@@ -289,12 +290,14 @@ describe('personal pages', () => {
 
     const fullName = screen.getByLabelText('Full name');
     await waitFor(() => expect(fullName).toHaveFocus());
-    expect(fullName).toHaveAccessibleDescription('This value is required.');
-    expect(screen.getByLabelText('Display name')).toHaveAccessibleDescription('This value is required.');
+    expect(fullName).toHaveAccessibleDescription('A full name is required.');
+    expect(screen.getByLabelText('Display name')).toHaveAccessibleDescription('A display name is required.');
     const profileForm = screen.getByRole('button', { name: 'Save' }).closest('form');
     const alert = within(profileForm).getByRole('alert');
-    expect(alert).toHaveTextContent('Field: This value is not valid.');
-    expect(alert).not.toHaveTextContent('Full name: This value is required.');
+    expect(alert).toHaveTextContent('The profile version must be an unsigned decimal token.');
+    expect(alert).not.toHaveTextContent('Field:');
+    expect(alert).not.toHaveTextContent('Profile version:');
+    expect(alert).not.toHaveTextContent('Full name: A full name is required.');
 
     await userEvent.type(fullName, 'x');
     expect(fullName).not.toHaveAttribute('aria-invalid', 'true');
@@ -344,7 +347,7 @@ describe('personal pages', () => {
       errors: {
         fullName: [{ code: 'required', params: {} }],
         displayName: [{ code: 'required', params: {} }],
-        documentNumber: [{ code: 'invalid', params: {} }],
+        documentNumber: [{ code: 'dni_characters', params: {} }],
       },
     })));
 
@@ -357,14 +360,14 @@ describe('personal pages', () => {
 
     const fullName = screen.getByLabelText('Full name');
     await waitFor(() => expect(fullName).toHaveFocus());
-    expect(fullName).toHaveAccessibleDescription('This value is required.');
-    expect(screen.getByLabelText('Display name')).toHaveAccessibleDescription('This value is required.');
-    expect(screen.getByLabelText('DNI')).toHaveAccessibleDescription('This value is not valid.');
+    expect(fullName).toHaveAccessibleDescription('A full name is required.');
+    expect(screen.getByLabelText('Display name')).toHaveAccessibleDescription('A display name is required.');
+    expect(screen.getByLabelText('DNI')).toHaveAccessibleDescription('An Argentine DNI may contain only digits, dots, hyphens, and whitespace.');
     const alert = screen.getByRole('alert');
     expect(alert).toHaveTextContent('Some of what you sent was not accepted. Check the details and try again.');
-    expect(alert).not.toHaveTextContent('Full name: This value is required.');
-    expect(alert).not.toHaveTextContent('Display name: This value is required.');
-    expect(alert).not.toHaveTextContent('DNI: This value is not valid.');
+    expect(alert).not.toHaveTextContent('Full name: A full name is required.');
+    expect(alert).not.toHaveTextContent('Display name: A display name is required.');
+    expect(alert).not.toHaveTextContent('DNI: An Argentine DNI may contain only digits, dots, hyphens, and whitespace.');
 
     await userEvent.type(screen.getByLabelText('Display name'), 'x');
     expect(screen.getByLabelText('Display name')).not.toHaveAttribute('aria-invalid', 'true');
