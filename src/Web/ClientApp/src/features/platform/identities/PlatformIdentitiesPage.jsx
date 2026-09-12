@@ -1,4 +1,3 @@
-/* eslint-disable i18next/no-literal-string -- bounded wire field name, not display copy. */
 import { useCallback, useState } from 'react';
 import { visuallyHidden } from '@mui/utils';
 import Box from '@mui/material/Box';
@@ -40,6 +39,7 @@ const SUSPENSION_REASONS = ['PolicyViolation', 'SecurityIncident', 'BillingHold'
 const actionKinds = { suspend: 'suspend', reactivate: 'reactivate' };
 const identitiesHeadingId = 'platform-identities-heading';
 const identitiesStepUpInputId = 'platform-identities-step-up';
+const stepUpFields = ['code'];
 const suspensionReasonInputId = 'platform-identity-suspension-reason';
 const suspensionReasonInputProps = { id: suspensionReasonInputId };
 const outlinedSubmitVariant = 'outlined';
@@ -278,7 +278,7 @@ export function PlatformIdentitiesPage() {
             <Typography variant="body2" color="text.secondary">
               {t('panel.stepUpDescription')}
             </Typography>
-            <ProblemMessage problem={stepUpProblemForSummary} />
+            <ProblemMessage problem={stepUpProblemForSummary} claimedFields={stepUpFields} />
             <PlatformStepUpForm
               inputId={identitiesStepUpInputId}
               code={stepUp.code}
@@ -320,7 +320,7 @@ export function PlatformIdentitiesPage() {
             <Typography variant="body2">
               {t('identities.recentProof')}
             </Typography>
-            <ProblemMessage problem={stepUpProblemForSummary} />
+            <ProblemMessage problem={stepUpProblemForSummary} claimedFields={stepUpFields} />
             <PlatformStepUpForm
               inputId={identitiesStepUpInputId}
               code={stepUp.code}
@@ -328,7 +328,7 @@ export function PlatformIdentitiesPage() {
               onSubmit={stepUp.onSubmit}
               isBusy={stepUp.isBusy}
               problem={stepUp.problem}
-              submitVariant="outlined"
+              submitVariant={outlinedSubmitVariant}
             />
           </Stack>
         </Paper>
@@ -474,12 +474,12 @@ export function PlatformIdentitiesPage() {
               <TableBody>
                 {rows.map((row) => (
                   <TableRow key={row.identityId} hover selected={pending?.identityId === row.identityId}>
-                    <TableCell data-mobile-label="Address">
+                      <TableCell data-mobile-label={t('identities.columns.address')}>
                       <Typography variant="body2" sx={mobileValue}>{row.normalizedEmail}</Typography>
                     </TableCell>
                     {/* The cell states the account status and nothing else: it is the one a journey reads back, and
                         an operator acts on the state they were shown. */}
-                    <TableCell data-mobile-label="Account status">
+                      <TableCell data-mobile-label={t('identities.columns.accountStatus')}>
                       <Chip
                         size="small"
                         variant="outlined"
@@ -489,13 +489,13 @@ export function PlatformIdentitiesPage() {
                     </TableCell>
                     {/* Rendered so an operator can copy it: it is what every other record of this account is keyed
                         by, and an address is not a stable way to name one. */}
-                    <TableCell data-mobile-label="Identity">
+                      <TableCell data-mobile-label={t('identities.columns.identity')}>
                       <Typography variant="caption" color="text.secondary" sx={mobileValue}>
                         {row.identityId}
                       </Typography>
                     </TableCell>
                     {mayManage && (
-                      <TableCell align="right" data-mobile-label="Actions">
+                      <TableCell align="right" data-mobile-label={t('identities.columns.actions')}>
                         <Stack direction="row" spacing={1} useFlexGap sx={rowActions}>
                           {offeredTransition(row.accountStatus, mayManage) === actionKinds.suspend && (
                             <Button

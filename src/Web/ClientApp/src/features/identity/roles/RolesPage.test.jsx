@@ -110,8 +110,8 @@ describe('roles page', () => {
     server.use(http.post(`/api/tenants/${TENANT}/roles`, () => problem(400, 'validation_failed', {
       status: 400,
       errors: {
-        name: ['A role name is required.'],
-        request: ['The role request could not be processed.'],
+        name: [{ code: 'required', params: {} }],
+        request: [{ code: 'invalid', params: {} }],
       },
     })));
 
@@ -123,9 +123,9 @@ describe('roles page', () => {
     await waitFor(() => expect(name).toHaveFocus());
     expect(name).toHaveAttribute('id', 'role-name');
     expect(name).toHaveAttribute('aria-invalid', 'true');
-    expect(name).toHaveAccessibleDescription('A role name is required.');
-    expect(screen.getByRole('alert')).toHaveTextContent('The role request could not be processed.');
-    expect(screen.getByRole('alert')).not.toHaveTextContent('A role name is required.');
+    expect(name).toHaveAccessibleDescription('This value is required.');
+    expect(screen.getByRole('alert')).toHaveTextContent('Request: This value is not valid.');
+    expect(screen.getByRole('alert')).not.toHaveTextContent('Name: This value is required.');
 
     await userEvent.type(name, 'y');
     expect(name).not.toHaveAttribute('aria-invalid', 'true');

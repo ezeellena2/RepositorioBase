@@ -20,6 +20,7 @@ import { useIdentity } from '../context/IdentityProvider';
 import { ProblemMessage } from '../ProblemMessage';
 import { useIdentityProof } from '../useIdentityProof';
 import { useRead } from '../useRead';
+import { roleName, useTranslation } from '../../../i18n';
 
 const frame = { maxWidth: 560 };
 const panel = { p: { xs: 2, sm: 3 }, maxWidth: 560 };
@@ -80,6 +81,10 @@ const editor = { ...fullMemberRow, pt: 1 };
  * not an error, it is a state this screen has not been taught.
  */
 const statusColor = { Active: 'success', Suspended: 'warning', Revoked: 'error' };
+const memberStatus = { active: 'Active', suspended: 'Suspended', revoked: 'Revoked' };
+const memberStatusAction = { suspend: 'suspend', reactivate: 'reactivate', revoke: 'revoke' };
+const memberRoleInputId = (membershipId, roleId) => `role-${membershipId}-${roleId}`;
+const memberReadTarget = { roster: 'roster', pagination: 'pagination' };
 const appendMembers = (current, loaded) => ({
   ...loaded,
   items: [...current.items, ...loaded.items],
@@ -262,7 +267,10 @@ export function MembersPage() {
     );
   }
 
-  const nameOf = (roleId) => roles?.find((role) => role.roleId === roleId)?.name ?? null;
+  const nameOf = (roleId) => {
+    const role = roles?.find((candidate) => candidate.roleId === roleId);
+    return role ? roleName(role, t) : null;
+  };
   const initialLoading = roster.status === 'loading' && roster.data === null;
 
   return (
@@ -306,13 +314,13 @@ export function MembersPage() {
           type="button"
           variant="outlined"
           sx={selfStart}
-          onClick={() => { setReadTarget('roster'); roster.refresh(undefined); }}
+          onClick={() => { setReadTarget(memberReadTarget.roster); roster.refresh(undefined); }}
         >
-          Try again
+          {t('common:actions.tryAgain')}
         </Button>
       )}
       {initialLoading ? (
-        <Stack spacing={1} role="status" aria-label="Loading…">
+        <Stack spacing={1} role="status" aria-label={t('identity:members.loading')}>
           {[0, 1, 2].map((placeholder) => <Skeleton key={placeholder} variant="rounded" height={ROW_HEIGHT} />)}
         </Stack>
       ) : members === null ? null : members.length === 0 ? (
@@ -439,7 +447,7 @@ export function MembersPage() {
                         autoFocus
                       />
                       <FormControl component="fieldset">
-                        <FormLabel component="legend">Roles for {member.displayName}</FormLabel>
+                        <FormLabel component="legend">{t('identity:members.rolesFor', { name: member.displayName })}</FormLabel>
                         {catalog.problem?.code === 'permission_denied' && (
                           <Typography variant="body2" color="text.secondary">
                             {t('identity:members.rolesRefused')}
@@ -455,7 +463,7 @@ export function MembersPage() {
                             sx={selfStart}
                             onClick={() => catalog.refresh(undefined)}
                           >
-                            Try again
+                            {t('common:actions.tryAgain')}
                           </Button>
                         )}
                         {roles?.length === 0 && (
@@ -492,7 +500,7 @@ export function MembersPage() {
                             setEditing(null);
                           }}
                         >
-                          Cancel
+                          {t('identity:members.cancel')}
                         </Button>
                       </Stack>
                     </Stack>
@@ -509,11 +517,11 @@ export function MembersPage() {
           {readTarget === 'pagination' && <ProblemMessage problem={roster.problem} />}
           {readTarget === 'pagination' && roster.status === 'errored' ? (
             <Button type="button" variant="outlined" disabled={isBusy} onClick={showMore} sx={selfStart}>
-              Try again
+              {t('common:actions.tryAgain')}
             </Button>
           ) : nextCursor !== null ? (
             <Button type="button" variant="outlined" disabled={isBusy} onClick={showMore} sx={selfStart}>
-              Show more members
+              {t('identity:members.showMore')}
             </Button>
           ) : null}
         </Stack>

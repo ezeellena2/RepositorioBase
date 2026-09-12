@@ -4,6 +4,7 @@
     "continueWithGoogle": "Continuar con Google",
     "email": "Correo electrónico",
     "password": "Contraseña",
+    "failed": "Esos datos no permitieron iniciar sesión. Revíselos e inténtelo de nuevo.",
     "submit": "Iniciar sesión",
     "forgotPassword": "¿Olvidó su contraseña?",
     "reactivateAccount": "Reactivar su cuenta"
@@ -34,7 +35,10 @@
       "legalName": "Razón social",
       "cuit": "CUIT",
       "email": "Correo electrónico",
-      "password": "Contraseña"
+      "password": "Contraseña",
+      "existingAccount": "Si ya tiene una cuenta, le enviamos por correo instrucciones para iniciar sesión y agregar la organización. <signIn>Inicie sesión</signIn> ahora.",
+      "deliveryHint": "¿No recibió el correo? Revise la carpeta de correo no deseado y espere unos minutos.",
+      "submit": "Registrarse"
     }
   },
   "context": {
@@ -78,12 +82,15 @@
     "externalReturn": {
       "title": "Finalizando",
       "loading": "Un momento…",
-      "refused": "No se realizó ningún cambio. Puede volver a intentarlo."
+      "refused": "No se realizó ningún cambio. Puede volver a intentarlo.",
+      "backToSignIn": "Volver a iniciar sesión",
+      "backToProviders": "Volver a proveedores de inicio de sesión"
     }
   },
   "invitations": {
     "register": {
       "title": "Configurar su cuenta",
+      "missingToken": "Este enlace de invitación está incompleto. Ábralo de nuevo desde el correo de invitación.",
       "success": "Revise su correo electrónico. Si esa invitación sigue abierta, le hemos enviado lo necesario para continuar.",
       "choosePassword": "Elegir una contraseña",
       "continue": "Continuar"

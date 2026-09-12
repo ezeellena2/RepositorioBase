@@ -2,10 +2,10 @@
 
 | | |
 |---|---|
-| Status | **Phases 0–5 are complete and delivered to `main`, including the Phase 3 copy-review correction at `a271c97`, Phase 4 at `c62b48e`, the post-delivery copy correction at `64e758ab`, and Acceptance harness stabilization at `e82334d`. P5.1–P5.3 are implemented and Phase 5 is delivered by the commit containing this entry.** |
+| Status | **Phases 0–5 are complete and delivered to `main`, including the Phase 3 copy-review correction at `a271c97`, Phase 4 at `c62b48e`, the post-delivery copy correction at `64e758ab`, and Acceptance harness stabilization at `e82334d`. The Phase 6 candidate is implemented locally from starting tree `e27edad2bc7ce9030ceabf628dfc115e73eca403` and its focused verification is green; independent full-matrix verification, review, and delivery remain pending.** |
 | Last updated | 2026-09-12 |
 | Scope | Backend (.NET), React SPA (`src/Web/ClientApp`), outbox-delivered messages, tests, CI, and the repository's working rules |
-| Next action | Collect the P6.1–P6.4 product decisions before Phase 6 (§11.8). |
+| Next action | Run the independent full verification matrix and review the Phase 6 candidate; deliver only after those gates pass. |
 
 This document is self-contained: a new session that reads only this file must be able to continue. It is also the
 source of truth — agent memories (Claude auto-memory, Engram) are not shared by every tool.
@@ -98,7 +98,8 @@ source of truth — agent memories (Claude auto-memory, Engram) are not shared b
   sequentially with Acceptance isolated and safe failure-only TRX/DCP artifacts. The deterministic harness contract
   failed 0/1 before the change and passes 1/1; the previously failing permission journey passes 1/1; and the full
   Acceptance suite passes 33/33 on the delivered candidate. Phase 5 is implemented, verified and delivered by the
-  commit containing this entry; Phase 6 product decisions are next.
+  commit containing this entry. The Phase 6 candidate is implemented locally with focused verification green;
+  independent full verification, review, and delivery remain pending.
 
 ### 0.2 How to work with the user
 
@@ -634,7 +635,7 @@ requirements of §7; a traceability table (requirement → gate → phase → ev
 | 3 | **Complete and delivered at `c9ecbea`, with the separate copy-review correction delivered at `a271c97` — 2026-09-11.** P3.1–P3.7 were applied. Both languages contain 462 catalog leaves (common 38, errors 56, enums 75, identity 175, platform 118); `es` is promoted to `supported`; permissions retain readable names plus visible codes; only system roles are translated; and timestamps use explicit-locale `Intl` formatting in the browser time zone. The original closure passed Vitest 343/343 in 32 files, ESLint with 0 errors/4 expected test warnings, Vite with 2,557 modules, .NET 1,335/1,335, and isolated journeys 33/33. The follow-up correction at `a271c97` changed six broad English source values from organization to context and the corresponding Spanish values to contexto; that specific human-facing terminology is superseded by the post-Phase 4 copy correction delivered at `64e758ab`, which uses Workspace/Espacio de trabajo while retaining stable keys and internal Tenant/context terminology. The same `a271c97` correction fixed three reviewed Spanish enum terms and made 24 English multiword enum display entries readable. Its fresh closure repeated Vitest 343/343, ESLint 0 errors/4 expected test warnings, Vite 2,557 modules, .NET 1,335/1,335, isolated journeys 33/33, and `git diff --check`; specification and quality reviews found no remaining issue. |
 | 4 | **Complete and delivered to `main` at exact commit `c62b48e`; the post-delivery copy correction is delivered at `64e758ab`; Acceptance harness and Build workflow stabilization is delivered by the commit containing this entry — 2026-09-11.** P4.1–P4.6 and A7/IA-REQ-059 are applied. Phase 4 adds the nullable account preference, immutable invitation/intent snapshots, migration `20260911161740_IdentityLanguagePreferences`, shared registry/request-language port, protected own-account endpoint, explicit-culture `en`/`es` email resources, retry-stable outbox delivery language, and authenticated SPA persistence/display behavior. The bounded review correction gives lifecycle notices three stable identifier-only message contracts and migrates legacy rows without changing ids/fingerprints or back-filling language; narrows permanent payload classification; restores the invited-confirmation snapshot; removes the endpoint's fallible post-write projection; adds invariant validator messages; and closes tenant/reload/write/session-loss races plus refusal focus. The real delivery matrix renders 17 variants × two languages, covers all 16 DI message types and proves account → snapshot → configured-default/legacy-null resolution by family. The `c62b48e` closure passed Vitest 362/362 in 33 files; ESLint with 0 errors/10 test-only warnings; Vite with 2,557 modules; Domain 190/190; Application Unit 188/188; Infrastructure Integration 315/315; Application Functional 640/640; Web Acceptance and isolated journeys 33/33; and `git diff --check`. The later copy correction moves the six human-facing broad-tenant values to Workspace/Espacio de trabajo and revises email variants #4, #8, #11 and #16 in both languages with exact-body matrix coverage; its focused GREEN passed SPA 33/33, matrix 1/1, catalog parity 12/12, backend localization contracts 4/4 and affected acceptance categories 8/8. The separate harness stabilization replaces fixed Aspire readiness with bounded PostgreSQL/API/SPA conditions, carries each probe token into connection-string resolution, bounds diagnostic log enumeration, removes the post-login reload race, confirms authenticated destination and organization-switch completion, and runs CI .NET suites sequentially with Acceptance diagnostics; its current GREEN passes the structural contract 1/1, focused permission journey 1/1 and full Acceptance 33/33. Phase 5 was subsequently implemented locally; see row 5. |
 | 5 | **Complete and delivered to `main` by the commit containing this entry — 2026-09-12.** P5.1–P5.3 use a server-owned snake_case validation schema shared with the SPA, immutable `{ code, params }` field-error objects with only per-code allowlisted numeric metadata, camel-case wire field keys, and a generic localized fallback for unknown or malformed codes. Every form-owned text field associates and focuses its inline refusal without duplicating it globally; fragment tokens and the non-text language selector remain neutral general presentation. Credential updates distinguish password-policy validation, lost-update conflict and unexpected safe failure. Per-component validator and runnable command/query template gates prevent drift. |
-| 6 | **Decisions accepted on 2026-09-12; implementation has not started.** P6.1 enables unused-key checking but limits the enforceable CI gate to the static `identity`, `platform`, and `common` namespaces; dynamically built `errors` and `enums` keys remain excluded and protected by their dedicated coverage gates, and an unreliably scoped scanner stays report-only. P6.2 keeps the `en-XA` pseudo-language development-only behind `?lng=en-XA`. P6.3 adds no translation platform now. P6.4 adds no third language until the business requests one. Phase 6 also adds data-only gates requiring every supported language to have a MUI locale mapping in `theme.jsx` and deriving the language journey matrix from the language registry rather than hard-coding Spanish. `ADDING-A-LANGUAGE.md` and the WhatsApp bot SPEC localization section remain part of this phase. |
+| 6 | **Implemented locally on 2026-09-12; focused verification is green and independent full verification remains pending.** `i18next-cli` 1.73.2 proved reliable namespace scoping, narrow dynamic-key preservation, read-only status behavior, and a nonzero finding status, so unused-key checking is an enforceable CI gate for exactly the static `identity`, `platform`, and `common` namespaces. Dynamically built `errors` and `enums` keys remain excluded and protected by their dedicated coverage gates. Literal-string lint is now `error` everywhere, with only the narrow non-user-facing test probe annotated. The exact development-only `?lng=en-XA` override is assembled from cloned English resources, cannot be selected or persisted, and is ignored in production. Supported-language MUI mappings and the registry-derived journey dataset have data-only contracts. `ADDING-A-LANGUAGE.md`, the localization SPEC/reference updates, and the WhatsApp bot SPEC localization requirements are included. No translation platform or third language was added. |
 
 ## 11. Phases — decisions, steps and exit criteria
 
@@ -869,7 +870,7 @@ recorded in the SPEC.
 
 ### 11.8 Phase 6 — Harden
 
-**Decisions (accepted on 2026-09-12; implementation not started)**
+**Decisions (accepted on 2026-09-12; implemented locally, independent full verification pending)**
 
 | # | Question | Recommendation | Why |
 |---|---|---|---|
@@ -878,12 +879,16 @@ recorded in the SPEC.
 | P6.3 | Translation platform | No translation platform now (D6) | Revisit when non-developers need to translate or the business requests another language |
 | P6.4 | A third language | No third language until the business requests one | Every added language is a permanent cost on every later change |
 
-**Steps (not started)**: lint `error` everywhere; add unused-key checking with an enforceable gate limited to the
-static `identity`, `platform`, and `common` namespaces, keeping it report-only if reliable scoping is unavailable;
-add the development-only `en-XA` pseudo-language behind `?lng=en-XA`; add a data-only gate requiring every supported
-language to have a MUI locale mapping in `theme.jsx`; parameterize the language journey from the language registry
-rather than hard-coding Spanish; add `docs/features/localization/ADDING-A-LANGUAGE.md` (add as `inProgress` →
-translate → gates green → promote); add a localization section to the WhatsApp bot SPEC; run the full verification.
+**Steps (implemented locally; independent full verification pending)**: literal-string lint is `error` everywhere,
+with the non-user-facing test probe covered by a narrow annotation. `i18next-cli` 1.73.2 runs a read-only, enforceable
+unused-key gate for exactly the static `identity`, `platform`, and `common` namespaces; `errors` and `enums` remain
+outside source scanning and inside their dedicated coverage gates. The development-only exact `?lng=en-XA`
+pseudo-language clones and transforms all English namespaces without becoming registry data, a selector option, or a
+persisted preference. Data-only contracts require an explicit MUI mapping for every supported language and require
+the Reqnroll/Playwright language journey dataset to equal the registry's supported languages minus its source
+language. `docs/features/localization/ADDING-A-LANGUAGE.md` records the real staged workflow and gates, while the
+WhatsApp bot SPEC now defines its localization invariants. Focused verification is recorded in §12 and §15; the full
+matrix remains for an independent verifier.
 
 ## 12. Execution facts
 
@@ -891,7 +896,7 @@ translate → gates green → promote); add a localization section to the WhatsA
 
 ```bash
 # SPA (from the repository root). Unset PORT first — see §12.4.
-cd src/Web/ClientApp && npx vitest run && npx eslint src/ && npx vite build
+cd src/Web/ClientApp && npx vitest run && npx eslint src/ && npm run i18n:unused && npx vite build
 
 # .NET, as CI runs it
 dotnet test --filter "TestCategory!=IndependentDevelopmentReview"
@@ -912,6 +917,23 @@ review remains RED and was neither run by this closure gate nor changed. Command
 build checks, focused architecture/contract gates, and `git diff --check` also pass. This evidence gates the Phase 5
 delivery by the commit containing this entry; the post-push CI result is reported in the delivery handoff.
 
+**Phase 6 focused verification, 2026-09-12:** changing literal-string lint from warning to error first produced the
+discriminating RED of exactly 10 `IdentityProvider.test.jsx` probe failures; the narrow test-harness annotation then
+made `eslint ./src/` exit 0 with no warnings or errors. A synthetic missing MUI mapping failed its contract with
+received `['en']` versus expected `['en', 'es']`; the explicit mapping passes in the 52/52 focused SPA i18n/provider tests.
+Adding a temporary unused `common` key made the scoped checker exit 1 and name that key without modifying catalogs;
+after reverting it, `npm run i18n:unused` exits 0 for exactly `common`, `identity`, and `platform`, and a catalog diff
+check remains empty. Installed `i18next-cli` 1.73.2 source confirms `status --unused --namespace` performs a dry run,
+filters by namespace, honors preservation patterns, and exits nonzero on findings. The focused backend localization
+contracts pass 6/6, the future-language email resource seam passes 1/1, and the registry-driven Acceptance journey
+passes 1/1. The .NET runs emitted only the existing `ASPIRE010` warning. After integrating the current `main`, the
+focused SPA reconciliation run passed 194/195 tests; its sole RED proved that the newly structured `request` detail
+still fell back to the generic field label. Adding the bilingual `request` field label made the affected 67/67 tests
+GREEN. ESLint then passed with 0 errors and 0 warnings, the three-namespace unused-key gate remained clean, the npm
+lockfile consistency check reported `up to date`, and Vite built 2,627 modules with only the existing chunk-size
+warning. A full Vitest/.NET/Acceptance matrix was intentionally not run by the Phase 6 writer and remains pending
+independent verification.
+
 ### 12.2 Harness (recorded 2026-09-08 and 2026-09-10; verify if something behaves differently)
 
 - Build outputs go to `artifacts/` at the root (`Directory.Build.props` `ArtifactsPath`); a fresh worktree has not
@@ -929,7 +951,8 @@ delivery by the commit containing this entry; the post-push CI result is reporte
 - The PostgreSQL container has no data volume, so recreating it empties the database; on a fresh database EF logs one
   expected `Error` for the `__EFMigrationsHistory` probe.
 - The NUnit category `IndependentDevelopmentReview` marks deliberate RED reproductions; baselines exclude it.
-- CI runs only `dotnet build` and `dotnet test` until Phase 1.
+- The Product Build workflow runs SPA tests, literal-string lint and the scoped unused-key gate before its .NET build
+  and test jobs; Test Templates remains `workflow_dispatch`-only.
 
 ### 12.3 What the tests pin — keep it while extracting and translating
 
@@ -988,7 +1011,7 @@ Recorded 2026-09-09, verify before relying on them:
 | An extraction silently changes copy | `en` values are copied verbatim, and the unchanged tests fail on any drift |
 | The machine's locale leaks into tests | Playwright `Locale` pinned; `useFormat` takes the language explicitly |
 | The worker formats in the wrong culture | The recipient's culture is passed explicitly; completeness tests render every language |
-| Keys rot | The parity test rejects extras; the unused-key gate in Phase 6 |
+| Keys rot | The parity test rejects extras; the scoped static-namespace unused-key gate rejects unreferenced keys, while dedicated gates cover dynamic `errors` and `enums` keys |
 | Bundle growth | A documented threshold for lazy loading per language |
 | The standard exists only on paper | Gates run in CI; the plan is not done until Phase 1's CI step exists |
 
@@ -1080,3 +1103,5 @@ Recorded 2026-09-09, verify before relying on them:
 | 2026-09-12 | Phase 5 is complete and delivered to `main` by the commit containing this entry. One server-owned manifest is the authoritative vocabulary and per-code parameter schema for Application and SPA parity: `too_long` accepts exactly one positive integer `max`; malformed, missing, extra, null, arbitrary `PropertyValue`/DNI/PIN and hostile keys are stripped or normalize safely to `invalid`; all exposed parameter dictionaries and error arrays are defensive copies. Factory-only credential outcomes make policy, concurrency, success and unexpected exceptions exhaustive: only password-validator failures produce safe `newPassword/password_policy`, lost updates use `identity_concurrency_conflict`, and provider prose never reaches the safe exception response. Reflection checks every actual FluentValidation component individually, the mapper merges/deduplicates/sorts camel-case collisions independently of producer order, and the runnable command/query item templates generate and build with `WithMessage(...)` and `WithErrorCode(ValidationErrorCodes.Required)`. The SPA safely projects params, translates every claimed detail and field label in English and Spanish, falls back generically for unknown/adversarial codes without locale mutation, associates and focuses the first invalid owning input across password, invitation, MFA, Platform admin, identities, retention and shared step-up forms, and leaves fragment tokens plus the non-text language selector in documented neutral general presentation without duplication. Focused closure passed backend 30/30, affected SPA 154/154 and functional contract 7/7. Fresh full closure passed Vitest 382/382 in 34 files, ESLint 0 errors/10 existing test warnings, Vite 2,559 modules, Domain 190/190, Application Unit 210/210, filtered Infrastructure Integration 316/316, filtered Application Functional 643/643, Web Acceptance 33/33, focused architecture/template gates, and `git diff --check`. The prescribed filter excludes the three `IndependentDevelopmentReview` cases, including the unrelated retention review that remains RED and was not changed. Post-push CI is reported in the delivery handoff. |
 | 2026-09-12 | P6.1–P6.4 accepted: unused-key checking is enforceable only for static `identity`, `platform`, and `common` namespaces, excludes dynamically built `errors` and `enums` keys with dedicated coverage gates, and stays report-only if reliable scoping is unavailable; `en-XA` is development-only via `?lng=en-XA`; no translation platform is adopted now; and no third language is added until the business requests one. Phase 6 also requires a MUI locale mapping for every supported language, a language journey parameterized from the registry rather than Spanish-only, `ADDING-A-LANGUAGE.md`, and a WhatsApp bot SPEC localization section. Implementation has not started. |
 | 2026-09-12 | Phase 6 baseline passed on exact starting tree `e27edad2bc7ce9030ceabf628dfc115e73eca403`: 1,774 tests passed with zero failed or skipped — SPA 382/382 in 34 files, Domain 190/190, Application Unit 210/210, Infrastructure Integration 316/316, Application Functional 643/643, and Acceptance 33/33. ESLint reported 0 errors and the 10 current test-probe warnings. Vite built 2,559 modules with the existing chunk-size warning. The local `postgres:18.3` image was reused; no image was downloaded. `git diff --check` exited 0 with only the PLAN LF→CRLF warning. Phase 6 source changes had not started when this row was recorded. |
+| 2026-09-12 | The Phase 6 candidate is implemented locally; independent full verification, review, and delivery remain pending. Literal-string lint is globally `error`, with the 10 non-user-facing probe literals covered by one narrow annotation. Exact `i18next-cli` 1.73.2 is installed and its local implementation proves that `status --unused --namespace` is dry-run, namespace-scoped, preservation-aware, and exits 1 on findings, so CI gates exactly `common`, `identity`, and `platform`; dynamic `errors` and `enums` remain covered by their dedicated contracts. A temporary unused `common` key produced the expected RED and named the key without catalog mutation, then all three namespaces passed. A synthetic omitted Spanish MUI mapping produced the expected RED. The exact development-only `?lng=en-XA` override transforms cloned English resources, preserves tokens/tags/whitespace, is excluded from registry/selector/persistence, survives account-context application, and is ignored in production. Catalog loading now derives synchronously from registry-validated locale files; MUI mappings and the registry-derived external-data journey matrix have contracts; future email languages resolve from `ResourceManager`; the add-language runbook and localization/WhatsApp normative documentation are updated. Focused GREEN: SPA i18n/provider 52/52, ESLint 0 errors/0 warnings, backend localization contracts 6/6, email resource seam 1/1, registry-driven Acceptance journey 1/1, and scoped unused-key gate clean with no catalog diff. Full Vitest, complete .NET suites, and complete Acceptance remain for the independent verifier. Database exact-language defenses were intentionally not changed: promoting a real language still requires generating and applying an EF migration for the six documented constraints. |
+| 2026-09-12 | The Phase 6 candidate was reconciled with current `main` without weakening its gates. The integration exposed stale provider-prose test fixtures, missing catalog entries, duplicated claimed validation details, and dropped localization consumers. The focused reconciliation run passed 194/195 tests and failed only because the structured `request` detail used the generic field label; after adding `Request`/`Solicitud`, the affected 67/67 tests passed. Final focused gates passed: ESLint 0 errors/0 warnings; unused-key status clean for exactly `common`, `identity`, and `platform`; npm lockfile `up to date`; and Vite 2,627 modules with the existing chunk warning. Full Vitest, full .NET, full Acceptance, review, and delivery remain pending independent verification. |

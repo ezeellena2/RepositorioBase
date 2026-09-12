@@ -84,9 +84,9 @@ describe('invite member page', () => {
     server.use(http.post(`/api/tenants/${TENANT}/invitations`, () => problem(400, 'validation_failed', {
       status: 400,
       errors: {
-        email: ['Enter an email address.'],
-        roleIds: ['Choose at least one role.'],
-        request: ['The invitation request could not be processed.'],
+        email: [{ code: 'invalid', params: {} }],
+        roleIds: [{ code: 'required', params: {} }],
+        request: [{ code: 'invalid', params: {} }],
       },
     })));
 
@@ -97,24 +97,24 @@ describe('invite member page', () => {
     const roles = screen.getByRole('group', { name: 'Roles to offer' });
     await waitFor(() => expect(email).toHaveFocus());
     expect(email).toHaveAttribute('id', 'invite-email');
-    expect(email).toHaveAccessibleDescription('Enter an email address.');
+    expect(email).toHaveAccessibleDescription('This value is not valid.');
     expect(roles).toHaveAttribute('id', 'invite-role-ids');
     expect(roles).toHaveAttribute('tabindex', '-1');
     expect(roles).toHaveAttribute('aria-invalid', 'true');
     expect(roles).toHaveAttribute('aria-describedby', 'invite-role-ids-error');
-    expect(roles).toHaveAccessibleDescription('Choose at least one role.');
-    expect(screen.getByText('Choose at least one role.')).toHaveAttribute('id', 'invite-role-ids-error');
-    expect(screen.getByRole('alert')).toHaveTextContent('The invitation request could not be processed.');
+    expect(roles).toHaveAccessibleDescription('This value is required.');
+    expect(screen.getByText('This value is required.')).toHaveAttribute('id', 'invite-role-ids-error');
+    expect(screen.getByRole('alert')).toHaveTextContent('Request: This value is not valid.');
     expect(screen.getByRole('alert')).not.toHaveFocus();
-    expect(screen.getByRole('alert')).not.toHaveTextContent('Enter an email address.');
-    expect(screen.getByRole('alert')).not.toHaveTextContent('Choose at least one role.');
+    expect(screen.getByRole('alert')).not.toHaveTextContent('Email: This value is not valid.');
+    expect(screen.getByRole('alert')).not.toHaveTextContent('Roles: This value is required.');
 
     await userEvent.type(email, 'x');
     expect(email).not.toHaveAttribute('aria-invalid', 'true');
     await userEvent.click(screen.getByLabelText('Bookkeeper'));
     expect(roles).not.toHaveAttribute('aria-invalid', 'true');
     expect(roles).not.toHaveAttribute('aria-describedby');
-    expect(screen.queryByText('Choose at least one role.')).not.toBeInTheDocument();
+    expect(screen.queryByText('This value is required.')).not.toBeInTheDocument();
   });
 
   it('lists standing offers with their state, and shows the role by name', async () => {

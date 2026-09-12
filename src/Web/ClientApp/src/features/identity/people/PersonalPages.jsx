@@ -48,6 +48,23 @@ const facts = {
 const fact = { m: 0 };
 const supporting = { mt: 0.5, maxWidth: 640 };
 const startOfRow = { alignSelf: 'flex-start' };
+const personalField = {
+  fullName: 'fullName',
+  displayName: 'displayName',
+  documentNumber: 'documentNumber',
+  email: 'email',
+  password: 'password',
+};
+const DocumentType = 'DNI';
+const organizationRegisterPath = '/organizations/register';
+const disputeReasonId = 'dispute-reason';
+const numericDocumentField = { ...requiredField, htmlInput: { inputMode: 'numeric', autoComplete: 'off' } };
+const disputeReason = {
+  typedWrongAtSignup: 'TypedWrongAtSignup',
+  documentReissued: 'DocumentReissued',
+  recordedByMistake: 'RecordedByMistake',
+};
+const recordedDocumentStatus = 'recorded';
 const personalRegistrationFieldIds = {
   fullName: 'personal-full-name',
   displayName: 'personal-display-name',
@@ -124,7 +141,7 @@ export function PersonalRegisterPage() {
   return (
     <Paper component="section" elevation={3} aria-labelledby="personal-register-heading" sx={card}>
       <Stack spacing={3}>
-        <Typography id="personal-register-heading" component="h1" variant="h5">Set up your personal account</Typography>
+        <Typography id="personal-register-heading" component="h1" variant="h5">{t('identity:people.register.title')}</Typography>
         <ProblemMessage problem={problem} claimedFields={claimedFieldNames(problem, personalRegistrationFields)} />
         <Stack component="form" spacing={3} noValidate onSubmit={submitForm}>
           {/* Two things are asked for at once — who this person is, and the credential they will sign in with — so
@@ -138,9 +155,9 @@ export function PersonalRegisterPage() {
               fullWidth
               slotProps={requiredField}
               value={form.fullName}
-              onChange={update('fullName')}
+              onChange={update(personalField.fullName)}
               error={Boolean(fieldErrors.fullName)}
-              helperText={fieldErrorText(fieldErrors, 'fullName', t) || undefined}
+              helperText={fieldErrorText(fieldErrors, personalField.fullName, t) || undefined}
             />
             <TextField
               id="personal-display-name"
@@ -149,9 +166,9 @@ export function PersonalRegisterPage() {
               fullWidth
               slotProps={requiredField}
               value={form.displayName}
-              onChange={update('displayName')}
+              onChange={update(personalField.displayName)}
               error={Boolean(fieldErrors.displayName)}
-              helperText={fieldErrorText(fieldErrors, 'displayName', t) || undefined}
+              helperText={fieldErrorText(fieldErrors, personalField.displayName, t) || undefined}
             />
             <TextField
               id="personal-document"
@@ -160,9 +177,9 @@ export function PersonalRegisterPage() {
               fullWidth
               slotProps={numericDocumentField}
               value={form.documentNumber}
-              onChange={update('documentNumber')}
+              onChange={update(personalField.documentNumber)}
               error={Boolean(fieldErrors.documentNumber)}
-              helperText={fieldErrorText(fieldErrors, 'documentNumber', t) || undefined}
+              helperText={fieldErrorText(fieldErrors, personalField.documentNumber, t) || undefined}
             />
           </Stack>
           <Stack spacing={2}>
@@ -175,9 +192,9 @@ export function PersonalRegisterPage() {
               fullWidth
               slotProps={requiredField}
               value={form.email}
-              onChange={update('email')}
+              onChange={update(personalField.email)}
               error={Boolean(fieldErrors.email)}
-              helperText={fieldErrorText(fieldErrors, 'email', t) || undefined}
+              helperText={fieldErrorText(fieldErrors, personalField.email, t) || undefined}
             />
             <TextField
               id="personal-password"
@@ -188,9 +205,9 @@ export function PersonalRegisterPage() {
               fullWidth
               slotProps={requiredField}
               value={form.password}
-              onChange={update('password')}
+              onChange={update(personalField.password)}
               error={Boolean(fieldErrors.password)}
-              helperText={fieldErrorText(fieldErrors, 'password', t) || undefined}
+              helperText={fieldErrorText(fieldErrors, personalField.password, t) || undefined}
             />
           </Stack>
           <Button type="submit" variant="contained" size="large" fullWidth disabled={isBusy}>{t('common:navigation.register')}</Button>
@@ -363,9 +380,9 @@ function AddPersonalContext({ client, notice, onAdded }) {
           fullWidth
           slotProps={requiredField}
           value={form.fullName}
-          onChange={update('fullName')}
+          onChange={update(personalField.fullName)}
           error={Boolean(fieldErrors.fullName)}
-          helperText={fieldErrorText(fieldErrors, 'fullName', t) || undefined}
+          helperText={fieldErrorText(fieldErrors, personalField.fullName, t) || undefined}
         />
         <TextField
           id="add-personal-display-name"
@@ -374,9 +391,9 @@ function AddPersonalContext({ client, notice, onAdded }) {
           fullWidth
           slotProps={requiredField}
           value={form.displayName}
-          onChange={update('displayName')}
+          onChange={update(personalField.displayName)}
           error={Boolean(fieldErrors.displayName)}
-          helperText={fieldErrorText(fieldErrors, 'displayName', t) || undefined}
+          helperText={fieldErrorText(fieldErrors, personalField.displayName, t) || undefined}
         />
         <TextField
           id="add-personal-document"
@@ -385,9 +402,9 @@ function AddPersonalContext({ client, notice, onAdded }) {
           fullWidth
           slotProps={numericDocumentField}
           value={form.documentNumber}
-          onChange={update('documentNumber')}
+          onChange={update(personalField.documentNumber)}
           error={Boolean(fieldErrors.documentNumber)}
-          helperText={fieldErrorText(fieldErrors, 'documentNumber', t) || undefined}
+          helperText={fieldErrorText(fieldErrors, personalField.documentNumber, t) || undefined}
         />
         <Button type="submit" variant="contained" disabled={isBusy} sx={startOfRow}>
           {t('identity:people.context.submit')}
@@ -586,9 +603,9 @@ export function PersonalProfilePage() {
             fullWidth
             slotProps={requiredField}
             value={form.fullName}
-            onChange={update('fullName')}
+            onChange={update(personalField.fullName)}
             error={Boolean(fieldErrors.fullName)}
-            helperText={fieldErrorText(fieldErrors, 'fullName', t) || undefined}
+            helperText={fieldErrorText(fieldErrors, personalField.fullName, t) || undefined}
           />
           <TextField
             id="profile-display-name"
@@ -597,9 +614,9 @@ export function PersonalProfilePage() {
             fullWidth
             slotProps={requiredField}
             value={form.displayName}
-            onChange={update('displayName')}
+            onChange={update(personalField.displayName)}
             error={Boolean(fieldErrors.displayName)}
-            helperText={fieldErrorText(fieldErrors, 'displayName', t) || undefined}
+            helperText={fieldErrorText(fieldErrors, personalField.displayName, t) || undefined}
           />
           <Button type="submit" variant="contained" disabled={isBusy} sx={startOfRow}>{t('identity:people.profile.save')}</Button>
         </Stack>

@@ -511,16 +511,18 @@ public sealed class RegistrationHttpValidationTests : TestBase
         public Task<IdentityAccountCreationResult> CreatePendingAsync(
             string normalizedEmail,
             string password,
+            string preferredLanguage,
             CancellationToken cancellationToken) =>
-            inner.CreatePendingAsync(normalizedEmail, password, cancellationToken);
+            inner.CreatePendingAsync(normalizedEmail, password, preferredLanguage, cancellationToken);
 
         public string HashPassword(string password) => inner.HashPassword(password);
 
         public Task<IdentityAccountCreationResult> CreatePendingFromHashAsync(
             string normalizedEmail,
             string passwordHash,
+            string preferredLanguage,
             CancellationToken cancellationToken) =>
-            inner.CreatePendingFromHashAsync(normalizedEmail, passwordHash, cancellationToken);
+            inner.CreatePendingFromHashAsync(normalizedEmail, passwordHash, preferredLanguage, cancellationToken);
 
         public Task ActivateAsync(Guid identityId, CancellationToken cancellationToken) =>
             inner.ActivateAsync(identityId, cancellationToken);
@@ -534,5 +536,11 @@ public sealed class RegistrationHttpValidationTests : TestBase
             CleanArchitecture.Domain.IdentityAccess.Identities.IdentityAccountStatus next,
             CancellationToken cancellationToken) =>
             inner.TryTransitionAsync(identityId, expected, next, cancellationToken);
+
+        public Task<bool> SetPreferredLanguageAsync(
+            Guid identityId,
+            string language,
+            CancellationToken cancellationToken) =>
+            inner.SetPreferredLanguageAsync(identityId, language, cancellationToken);
     }
 }

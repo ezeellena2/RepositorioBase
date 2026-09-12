@@ -45,7 +45,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint ./src/",
-    "i18n:unused": "i18next-cli status en --unused --namespace common && i18next-cli status en --unused --namespace identity && i18next-cli status en --unused --namespace platform",
+    "i18n:unused": "node ./scripts/check-unused-i18n.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "generate-api": "nswag run /runtime:Net100"

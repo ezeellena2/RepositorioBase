@@ -26,6 +26,7 @@ import { useIdentity } from '../context/IdentityProvider';
 import { claimedFieldNames, fieldErrorText, selectFieldErrors } from '../fieldErrors';
 import { ProblemMessage } from '../ProblemMessage';
 import { useRead } from '../useRead';
+import { roleName, useFormat, useTranslation } from '../../../i18n';
 
 /** Required without the asterisk MUI would add, which would rename the field for everything that reads its label. */
 const requiredField = { inputLabel: { required: false } };
@@ -69,6 +70,7 @@ const spinner = (busy) => (busy ? <CircularProgress size={16} color="inherit" />
  */
 const statusColor = { Accepted: 'success', Cancelled: 'error', Expired: 'warning' };
 const invitationFields = ['email', 'roleIds'];
+const invitationField = { email: 'email', roles: 'roleIds' };
 const appendInvitations = (current, next) => ({
   ...next,
   items: [...current.items, ...next.items],
@@ -194,7 +196,10 @@ export function InviteMemberPage() {
     );
   }
 
-  const nameOf = (roleId) => roles?.find((role) => role.roleId === roleId)?.name ?? roleId;
+  const nameOf = (roleId) => {
+    const role = roles?.find((candidate) => candidate.roleId === roleId);
+    return role ? roleName(role, t) : roleId;
+  };
   const sendProblem = actionTarget === 'send' ? actionProblem : null;
   const sendClaimedFields = claimedFieldNames(sendProblem, invitationFields);
   const cannotReadRoles = rolesRead.status === 'refused' && rolesRead.problem?.code === 'permission_denied';
@@ -240,10 +245,12 @@ export function InviteMemberPage() {
               value={email}
               onChange={(event) => {
                 setEmail(event.target.value);
-                setClearedServerFields((current) => current.includes('email') ? current : [...current, 'email']);
+                setClearedServerFields((current) => current.includes(invitationField.email)
+                  ? current
+                  : [...current, invitationField.email]);
               }}
               error={Boolean(fieldErrors.email)}
-              helperText={fieldErrorText(fieldErrors, 'email', t) || undefined}
+              helperText={fieldErrorText(fieldErrors, invitationField.email, t) || undefined}
             />
 
             <FormControl
@@ -254,7 +261,7 @@ export function InviteMemberPage() {
               aria-invalid={Boolean(fieldErrors.roleIds)}
               aria-describedby={fieldErrors.roleIds ? 'invite-role-ids-error' : undefined}
             >
-              <FormLabel component="legend">Roles to offer</FormLabel>
+              <FormLabel component="legend">{t('identity:invitations.member.rolesToOffer')}</FormLabel>
               {rolesRead.status === 'loading' && rolesRead.data === null && (
                 <Stack spacing={1} sx={note}>
                   {[0, 1].map((placeholder) => <Skeleton key={placeholder} variant="rounded" height={38} />)}
@@ -265,7 +272,7 @@ export function InviteMemberPage() {
                   <ProblemMessage problem={rolesRead.problem} />
                   {rolesRead.status === 'errored' && (
                     <Button type="button" variant="outlined" onClick={() => rolesRead.refresh(undefined)} sx={start}>
-                      Try again
+                      {t('common:actions.tryAgain')}
                     </Button>
                   )}
                 </Stack>
@@ -299,7 +306,7 @@ export function InviteMemberPage() {
               </FormGroup>
               {fieldErrors.roleIds && (
                 <FormHelperText id="invite-role-ids-error">
-                  {fieldErrorText(fieldErrors, 'roleIds', t)}
+                  {fieldErrorText(fieldErrors, invitationField.roles, t)}
                 </FormHelperText>
               )}
             </FormControl>
@@ -327,7 +334,7 @@ export function InviteMemberPage() {
         )}
         {invitationReadTarget === 'list' && invitationsRead.status === 'errored' && (
           <Button type="button" variant="outlined" onClick={() => invitationsRead.refresh(undefined)} sx={start}>
-            Try again
+            {t('common:actions.tryAgain')}
           </Button>
         )}
 
@@ -463,7 +470,7 @@ export function InviteMemberPage() {
             onClick={() => invitationsRead.refresh(nextCursor, appendInvitations)}
             sx={start}
           >
-            Try again
+            {t('common:actions.tryAgain')}
           </Button>
         )}
       </Stack>

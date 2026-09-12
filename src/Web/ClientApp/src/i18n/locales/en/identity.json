@@ -4,6 +4,7 @@
     "continueWithGoogle": "Continue with Google",
     "email": "Email",
     "password": "Password",
+    "failed": "Those details did not sign you in. Check them and try again.",
     "submit": "Sign in",
     "forgotPassword": "Forgot your password?",
     "reactivateAccount": "Reactivate your account"
@@ -34,7 +35,10 @@
       "legalName": "Legal name",
       "cuit": "CUIT",
       "email": "Email",
-      "password": "Password"
+      "password": "Password",
+      "existingAccount": "If you already have an account, we emailed you instead with instructions to sign in and add the organization. <signIn>Sign in</signIn> now.",
+      "deliveryHint": "Didn't get an email? Check your spam folder and wait a few minutes.",
+      "submit": "Register"
     }
   },
   "context": {
@@ -78,12 +82,15 @@
     "externalReturn": {
       "title": "Finishing up",
       "loading": "One moment…",
-      "refused": "Nothing was changed. You can try again."
+      "refused": "Nothing was changed. You can try again.",
+      "backToSignIn": "Back to sign in",
+      "backToProviders": "Back to sign-in providers"
     }
   },
   "invitations": {
     "register": {
       "title": "Set up your account",
+      "missingToken": "This invitation link is incomplete. Open it again from the invitation email.",
       "success": "Check your email. If that invitation is still open, we have sent you what you need to continue.",
       "choosePassword": "Choose a password",
       "continue": "Continue"

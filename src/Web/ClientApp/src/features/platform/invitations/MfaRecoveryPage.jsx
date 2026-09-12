@@ -16,6 +16,8 @@ import { ProblemMessage } from '../../identity/ProblemMessage';
 import { useSubmit } from '../../identity/useSubmit';
 import { useTranslation } from '../../../i18n';
 
+const recoveryFields = ['password', 'recoveryCode'];
+
 /** Required without the asterisk MUI would add, which would rename the field for everything that reads its label. */
 const requiredField = { inputLabel: { required: false } };
 
@@ -158,7 +160,7 @@ export function MfaRecoveryPage() {
         <>
           <ProblemMessage
             problem={directFieldProblem ? null : problem}
-            claimedFields={['password', 'recoveryCode']}
+            claimedFields={recoveryFields}
             autoFocus={!invalidField}
           />
           <Paper

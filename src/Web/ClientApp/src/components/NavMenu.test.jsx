@@ -102,7 +102,7 @@ describe('navigation', () => {
     }));
 
     renderMenu();
-    const switcher = await screen.findByRole('button', { name: 'Change organization' });
+    const switcher = await screen.findByRole('button', { name: 'Change workspace' });
     await userEvent.click(switcher);
     await userEvent.click(screen.getByRole('menuitem', { name: /Globex/ }));
     await waitFor(() => expect(selections).toEqual([{ tenantId: 'tenant-2' }]));

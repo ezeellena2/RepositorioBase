@@ -47,11 +47,18 @@ import Typography from '@mui/material/Typography';
 import { useIdentity } from '../features/identity/context/IdentityProvider';
 import { ProblemMessage } from '../features/identity/ProblemMessage';
 import { useSubmit } from '../features/identity/useSubmit';
-import { supportedLanguages, useTranslation } from '../i18n';
+import {
+  isPseudoLanguageOverrideActive,
+  sourceLanguage,
+  supportedLanguages,
+  useTranslation,
+} from '../i18n';
 
 export const drawerWidth = 264;
 /** Two rows keep localized controls visible on phones; every fixed-bar spacer uses the same height. */
 export const shellToolbarSx = { minHeight: { xs: 112, sm: 64 } };
+const itemLabelSlotProps = { primary: { variant: 'body2', component: 'span', noWrap: true } };
+const sectionLabelSlotProps = { primary: { variant: 'overline', component: 'span', noWrap: true } };
 const toolbarSx = {
   ...shellToolbarSx,
   gap: 1,
@@ -93,7 +100,10 @@ const languageControlSize = 'small';
 function LanguageSelector() {
   const identity = useIdentity();
   const { t, i18n } = useTranslation('common');
-  const displayedLanguage = identity.pendingLanguage ?? i18n.resolvedLanguage;
+  const pseudoLanguageOverride = isPseudoLanguageOverrideActive();
+  const displayedLanguage = pseudoLanguageOverride
+    ? sourceLanguage
+    : identity.pendingLanguage ?? i18n.resolvedLanguage;
   return (
     <>
       <FormControl size={languageControlSize} sx={{ minWidth: 96, flexShrink: 0 }}>
@@ -104,7 +114,7 @@ function LanguageSelector() {
             'aria-busy': identity.pendingLanguage !== null ? true : undefined,
           }}
           value={displayedLanguage}
-          disabled={identity.isLoading}
+          disabled={identity.isLoading || pseudoLanguageOverride}
           onChange={(event) => {
             void identity.changeLanguage(event.target.value).catch(() => undefined);
           }}
@@ -169,7 +179,7 @@ function NavItem({ to, label, icon: Icon, onNavigate, collapsible = false, expan
           <ListItemText
             primary={label}
             sx={navigationLabelLayout(collapsible, expanded)}
-            slotProps={{ primary: { variant: 'body2', component: 'span', noWrap: true } }}
+            slotProps={itemLabelSlotProps}
           />
         </ListItemButton>
       </Tooltip>
@@ -212,7 +222,7 @@ function ExpandableGroup({ label, routes, icon: Icon, children, collapsible = fa
           <ListItemText
             primary={label}
             sx={navigationLabelLayout(collapsible, navigationExpanded)}
-            slotProps={{ primary: { variant: 'overline', component: 'span', noWrap: true } }}
+            slotProps={sectionLabelSlotProps}
           />
           {expanded
             ? (
@@ -372,7 +382,7 @@ function NavContents({ onNavigate, collapsible = false, expanded = true }) {
               <ListItemText
                 primary={t('navigation.logOut')}
                 sx={navigationLabelLayout(collapsible, expanded)}
-                slotProps={{ primary: { variant: 'body2', component: 'span', noWrap: true } }}
+                slotProps={itemLabelSlotProps}
               />
             </ListItemButton>
           </Tooltip>
@@ -501,7 +511,7 @@ function ContextSwitcher() {
         sx={switcherTrigger}
       >
         <Box component="span" sx={switcherLabel}>
-          {active ? active.name : 'No organization selected'}
+          {active ? active.name : t('navigation.noOrganizationSelected')}
         </Box>
       </Button>
       <Menu anchorEl={anchor} open={anchor !== null} onClose={() => setAnchor(null)}>

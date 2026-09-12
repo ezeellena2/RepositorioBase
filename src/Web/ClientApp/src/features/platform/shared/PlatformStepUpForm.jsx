@@ -7,6 +7,7 @@ import { fieldError } from '../../identity/fieldErrors';
 
 const form = { maxWidth: 360 };
 const stepUpFieldSlots = { inputLabel: { required: false }, htmlInput: { inputMode: 'numeric' } };
+const codeFieldName = 'code';
 
 /**
  * The one form every Platform screen asks the second factor with. It is fully controlled and owns no state: the
@@ -23,7 +24,7 @@ const stepUpFieldSlots = { inputLabel: { required: false }, htmlInput: { inputMo
 export function PlatformStepUpForm({ inputId, code, onCodeChange, onSubmit, isBusy, problem, submitVariant = 'contained' }) {
   const { t } = useTranslation('platform');
   const codeInput = useRef(null);
-  const structured = fieldError(problem, 'code', t);
+  const structured = fieldError(problem, codeFieldName, t);
   const invalidMfaCode = problem?.code === 'invalid_mfa_code';
   const invalid = structured.error || invalidMfaCode;
 
@@ -46,7 +47,7 @@ export function PlatformStepUpForm({ inputId, code, onCodeChange, onSubmit, isBu
         type="text"
         required
         fullWidth
-        slotProps={{ inputLabel: { required: false }, htmlInput: { inputMode: 'numeric' } }}
+        slotProps={stepUpFieldSlots}
         error={invalid}
         helperText={invalidMfaCode ? t('errors:invalid_mfa_code') : structured.helperText}
         value={code}

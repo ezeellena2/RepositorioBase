@@ -1,3 +1,4 @@
+using CleanArchitecture.Application.Common.Validation;
 using CleanArchitecture.Application.IdentityAccess.Common;
 using CleanArchitecture.Application.IdentityAccess.Organizations;
 using CleanArchitecture.Domain.IdentityAccess.Identities;
@@ -165,14 +166,20 @@ public sealed class IdentityAccountService(
         // Only the password validators. The user validators would read the store to reject a duplicate name, and
         // running them here would make this answer depend on whether the address exists — exactly the disclosure
         // this method exists to avoid.
-        var errors = new List<string>();
+        var isValid = true;
         foreach (var validator in passwordValidators)
         {
             var result = await validator.ValidateAsync(userManager, DecoyUser, password);
-            errors.AddRange(result.Errors.Select(error => error.Description));
+            if (!result.Succeeded) isValid = false;
         }
 
-        return new IdentityAccountValidationResult(errors.Count == 0, errors);
+        return isValid
+            ? new IdentityAccountValidationResult(true)
+            : new IdentityAccountValidationResult(
+                false,
+                [new ValidationErrorDetail(
+                    ValidationErrorCodes.PasswordPolicy,
+                    new Dictionary<string, int>())]);
     }
 
     public async Task<IdentityAccountCreationResult> CreatePendingAsync(

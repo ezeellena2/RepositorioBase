@@ -23,9 +23,10 @@ import { Trans, useTranslation } from '../../../i18n';
 
 /** Required without the asterisk MUI would add, which would rename the field for everything that reads its label. */
 const requiredField = { inputLabel: { required: false } };
-const resetFields = ['newPassword'];
+const passwordField = { current: 'password', next: 'newPassword' };
+const resetFields = [passwordField.next];
 const resetFieldIds = { newPassword: 'reset-password' };
-const changeFields = ['password', 'newPassword'];
+const changeFields = [passwordField.current, passwordField.next];
 const changeFieldIds = { password: 'change-current', newPassword: 'change-next' };
 
 const focusFirstField = (errors, fields, fieldIds) => {
@@ -143,7 +144,7 @@ export function ResetPasswordPage() {
   const resetPassword = (event) => {
     event.preventDefault();
     setClearedServerFields([]);
-    submit(token ?? '', password);
+    submit(token ?? emptyToken, password);
   };
 
   return (
@@ -180,14 +181,14 @@ export function ResetPasswordPage() {
               <TextField
                 id="reset-password"
                 inputRef={passwordInput}
-                label="New password"
+                label={t('credentials.newPassword')}
                 type="password"
                 autoComplete="new-password"
                 required
                 fullWidth
                 slotProps={requiredField}
                 error={Boolean(fieldErrors.newPassword)}
-                helperText={fieldErrorText(fieldErrors, 'newPassword', t) || undefined}
+                helperText={fieldErrorText(fieldErrors, passwordField.next, t) || undefined}
                 value={password}
                 onChange={editPassword}
               />
@@ -293,9 +294,9 @@ export function ChangePasswordPage() {
             fullWidth
             slotProps={requiredField}
             error={Boolean(fieldErrors.password)}
-            helperText={fieldErrorText(fieldErrors, 'password', t) || undefined}
+            helperText={fieldErrorText(fieldErrors, passwordField.current, t) || undefined}
             value={current}
-            onChange={edit('password', setCurrent)}
+            onChange={edit(passwordField.current, setCurrent)}
           />
           <TextField
             id="change-next"
@@ -306,9 +307,9 @@ export function ChangePasswordPage() {
             fullWidth
             slotProps={requiredField}
             error={Boolean(fieldErrors.newPassword)}
-            helperText={fieldErrorText(fieldErrors, 'newPassword', t) || undefined}
+            helperText={fieldErrorText(fieldErrors, passwordField.next, t) || undefined}
             value={next}
-            onChange={edit('newPassword', setNext)}
+            onChange={edit(passwordField.next, setNext)}
           />
           <Button type="submit" variant="contained" disabled={isBusy} sx={{ alignSelf: 'flex-start' }}>
             {t('credentials.change.submit')}

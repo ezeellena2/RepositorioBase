@@ -181,8 +181,10 @@ export const setLanguage = (language) => {
           true,
         );
       }
-      i18n.options.supportedLngs = [...supportedLanguages, PSEUDO_LANGUAGE];
     }
+    const pseudoSupportedLanguages = [...supportedLanguages, PSEUDO_LANGUAGE, 'cimode'];
+    i18n.options.supportedLngs = pseudoSupportedLanguages;
+    i18n.services.languageUtils.supportedLngs = pseudoSupportedLanguages;
     i18n.changeLanguage(PSEUDO_LANGUAGE);
     if (typeof document !== 'undefined' && document.documentElement) {
       document.documentElement.lang = PSEUDO_LANGUAGE;

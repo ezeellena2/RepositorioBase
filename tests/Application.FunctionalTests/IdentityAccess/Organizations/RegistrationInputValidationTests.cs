@@ -1,5 +1,6 @@
 using CleanArchitecture.Application.Common.Models;
 using CleanArchitecture.Application.Common.Exceptions;
+using CleanArchitecture.Application.Common.Validation;
 using CleanArchitecture.Application.FunctionalTests.Infrastructure;
 using CleanArchitecture.Application.IdentityAccess.Organizations.RegisterOrganization;
 using CleanArchitecture.Domain.IdentityAccess.Auditing;
@@ -83,15 +84,11 @@ public sealed class RegistrationInputValidationTests : TestBase
         result.Error!.Code.ShouldBe("validation_failed");
         result.Error.Category.ShouldBe(ApplicationErrorCategory.Validation);
         result.Error.ValidationErrors.Keys.ShouldBe(["password"]);
-        result.Error.ValidationErrors["password"].ShouldBe([
-            "Passwords must be at least 12 characters.",
-            "Passwords must have at least one non alphanumeric character.",
-            "Passwords must have at least one digit ('0'-'9').",
-            "Passwords must have at least one uppercase ('A'-'Z')."
-        ]);
-        result.Error.ValidationErrors.Values
-            .SelectMany(messages => messages)
-            .ShouldAllBe(message => !message.Contains("weak", StringComparison.Ordinal));
+        var policy = result.Error.ValidationErrors["password"].ShouldHaveSingleItem();
+        policy.Code.ShouldBe(ValidationErrorCodes.PasswordPolicy);
+        policy.Params.ShouldBeEmpty();
+        System.Text.Json.JsonSerializer.Serialize(result.Error.ValidationErrors).ShouldNotContain("weak");
+        System.Text.Json.JsonSerializer.Serialize(result.Error.ValidationErrors).ShouldNotContain("Passwords must");
         await AssertNoRegistrationEffectsAsync();
     }
 

@@ -18,6 +18,7 @@ import { forgetPendingProof, markPendingProofProved } from '../useIdentityProof'
 import { ProblemMessage } from '../ProblemMessage';
 import { externalNavigation } from '../externalNavigation';
 import { useRead } from '../useRead';
+import { useTranslation } from '../../../i18n';
 
 /**
  * One width for the whole screen, chosen rather than inherited. This is a single-object screen — one identity, the
@@ -40,9 +41,10 @@ const returnPage = { maxWidth: 560, mx: 'auto' };
 const waiting = { alignItems: 'center' };
 const refusal = { alignItems: 'flex-start' };
 const secondarySlotProps = { secondary: { component: 'div' } };
+const signedInOutcome = 'signed_in';
 const outcomes = {
   refused: 'refused',
-  signedIn: 'signed_in',
+  signedIn: signedInOutcome,
   linked: 'linked',
   proved: 'proved',
 };
@@ -145,7 +147,7 @@ export function ExternalAccountsPage() {
 
       <ProblemMessage problem={read.problem} />
       {read.status === 'errored' && (
-        <Button type="button" variant="outlined" onClick={() => read.refresh(undefined)}>Try again</Button>
+        <Button type="button" variant="outlined" onClick={() => read.refresh(undefined)}>{t('common:actions.tryAgain')}</Button>
       )}
 
       {read.status === 'loading' && read.data === null ? (
@@ -199,12 +201,12 @@ export function ExternalAccountsPage() {
                     {row ? (
                       !isOnlyWayIn && (
                         <Button type="button" variant="outlined" color="error" size="small" disabled={isBusy} onClick={() => unlink(provider)}>
-                          Unlink {provider}
+                          {t('credentials.external.unlink', { provider })}
                         </Button>
                       )
                     ) : (
                       <Button type="button" variant="outlined" size="small" disabled={isBusy} onClick={() => link(provider)}>
-                        Link {provider}
+                        {t('credentials.external.link', { provider })}
                       </Button>
                     )}
                   </Stack>
@@ -286,7 +288,7 @@ export function ExternalReturnPage() {
     // A session already exists by the time anyone is here, so this is a screen inside the application, not the
     // centred card of the entrance: the heading belongs to the page and the state belongs to a section of it.
     <Stack component="section" aria-labelledby="external-return-heading" spacing={3} sx={returnPage}>
-      <Typography id="external-return-heading" component="h1" variant="h5">Finishing up</Typography>
+      <Typography id="external-return-heading" component="h1" variant="h5">{t('credentials.externalReturn.title')}</Typography>
       <ProblemMessage problem={problem} autoFocus />
       <Paper variant="outlined" sx={section}>
         {problem === null ? (
@@ -299,14 +301,16 @@ export function ExternalReturnPage() {
           // says "you can try again" and offers nothing to try again with — the control belongs here, but its
           // label would be a user-visible string this screen has never carried, so it is reported not written.
           <Stack spacing={2} sx={refusal}>
-            <Typography variant="body2">Nothing was changed. You can try again.</Typography>
+            <Typography variant="body2">{t('credentials.externalReturn.refused')}</Typography>
             <Button
               component={RouterLink}
-              to={outcome === 'signed_in' ? '/login' : '/identity/external'}
+              to={outcome === signedInOutcome ? '/login' : '/identity/external'}
               variant="text"
               sx={back}
             >
-              {outcome === 'signed_in' ? 'Back to sign in' : 'Back to sign-in providers'}
+              {outcome === outcomes.signedIn
+                ? t('credentials.externalReturn.backToSignIn')
+                : t('credentials.externalReturn.backToProviders')}
             </Button>
           </Stack>
         )}

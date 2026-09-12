@@ -23,8 +23,10 @@ import { toProblem } from '../api/apiTransport';
 import { useIdentity } from '../context/IdentityProvider';
 import { claimedFieldNames, fieldErrorText, selectFieldErrors } from '../fieldErrors';
 import { ProblemMessage } from '../ProblemMessage';
+import { PermissionLabel } from '../PermissionLabel';
 import { useIdentityProof } from '../useIdentityProof';
 import { useRead } from '../useRead';
+import { roleName, useTranslation } from '../../../i18n';
 
 /** Required without the asterisk MUI would add, which would rename the field for everything that reads its label. */
 const requiredField = { inputLabel: { required: false } };
@@ -90,6 +92,8 @@ const ROW_HEIGHT = 6 + 40 + 6 + 1;
 
 const EMPTY_DRAFT = { roleId: null, name: '', permissions: [], version: null };
 const roleFields = ['name'];
+const roleField = { name: 'name' };
+const roleReadTarget = { list: 'list', pagination: 'pagination' };
 const appendRoles = (current, loaded) => ({
   ...loaded,
   catalog: current.catalog,
@@ -392,10 +396,10 @@ export function RolesPage() {
         <Button
           type="button"
           variant="outlined"
-          onClick={() => { setReadTarget('list'); read.refresh(undefined); }}
+          onClick={() => { setReadTarget(roleReadTarget.list); read.refresh(undefined); }}
           sx={start}
         >
-          Try again
+          {t('common:actions.tryAgain')}
         </Button>
       )}
       {read.status === 'loading' && read.data === null ? (
@@ -430,11 +434,11 @@ export function RolesPage() {
           {readTarget === 'pagination' && <ProblemMessage problem={read.problem} />}
           {readTarget === 'pagination' && read.status === 'errored' ? (
             <Button type="button" variant="outlined" disabled={isBusy} onClick={showMore} sx={start}>
-              Try again
+              {t('common:actions.tryAgain')}
             </Button>
           ) : nextCursor !== null ? (
             <Button type="button" variant="outlined" disabled={isBusy} onClick={showMore} sx={start}>
-              Show more roles
+              {t('roles.showMore')}
             </Button>
           ) : null}
         </Stack>
@@ -468,10 +472,12 @@ export function RolesPage() {
             value={draft.name}
             onChange={(event) => {
               setDraft({ ...draft, name: event.target.value });
-              setClearedServerFields((current) => current.includes('name') ? current : [...current, 'name']);
+              setClearedServerFields((current) => current.includes(roleField.name)
+                ? current
+                : [...current, roleField.name]);
             }}
             error={Boolean(fieldErrors.name)}
-            helperText={fieldErrorText(fieldErrors, 'name', t) || undefined}
+            helperText={fieldErrorText(fieldErrors, roleField.name, t) || undefined}
           />
 
           <FormControl component="fieldset">
@@ -522,7 +528,7 @@ export function RolesPage() {
                   setDraft(EMPTY_DRAFT);
                 }}
               >
-                Cancel
+                {t('roles.cancel')}
               </Button>
             )}
           </Stack>

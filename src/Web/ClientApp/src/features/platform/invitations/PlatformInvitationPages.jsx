@@ -70,6 +70,8 @@ const mfaStages = { start: 'start', verify: 'verify', acknowledge: 'acknowledge'
 const emptyToken = '';
 const platformTenantType = 'Platform';
 const mfaCodeFieldSlots = { ...requiredField, htmlInput: { inputMode: 'numeric' } };
+const platformInvitationField = { password: 'password', code: 'code' };
+const mfaFields = [platformInvitationField.code];
 
 export function usePlatformClient() {
   const identity = useIdentity();
@@ -156,7 +158,7 @@ export function RegisterPlatformInviteePage() {
               fullWidth
               slotProps={requiredField}
               error={Boolean(passwordErrors.password)}
-              helperText={fieldErrorText(passwordErrors, 'password', t) || undefined}
+              helperText={fieldErrorText(passwordErrors, platformInvitationField.password, t) || undefined}
               value={password}
               onChange={(event) => setPassword(event.target.value)}
             />
@@ -316,7 +318,7 @@ function PlatformSecondFactor({ token }) {
     <Stack spacing={3}>
       <ProblemMessage
         problem={invalidMfaCode ? null : problem}
-        claimedFields={['code']}
+        claimedFields={mfaFields}
         autoFocus={!invalidCode}
       />
       <ProblemMessage problem={housekeepingProblem} />
@@ -391,7 +393,7 @@ function PlatformSecondFactor({ token }) {
             type="text"
             required
             fullWidth
-            slotProps={{ ...requiredField, htmlInput: { inputMode: 'numeric' } }}
+            slotProps={mfaCodeFieldSlots}
             error={invalidCode || invalidMfaCode}
             helperText={invalidMfaCode ? t('errors:invalid_mfa_code') : codeError.helperText}
             value={code}

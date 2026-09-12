@@ -1,3 +1,4 @@
+using CleanArchitecture.Application.Common.Validation;
 using CleanArchitecture.Domain.IdentityAccess.Identities;
 
 namespace CleanArchitecture.Application.IdentityAccess.Organizations;
@@ -11,10 +12,10 @@ public sealed record IdentityAccount(Guid Id, string Email, IdentityAccountStatu
 {
     public bool IsActive => Status == IdentityAccountStatus.Active;
 }
-public sealed record IdentityAccountValidationResult(bool IsValid, IReadOnlyList<string> Errors)
+public sealed record IdentityAccountValidationResult(bool IsValid, IReadOnlyList<ValidationErrorDetail> Errors)
 {
     public IdentityAccountValidationResult(bool isValid)
-        : this(isValid, Array.Empty<string>())
+        : this(isValid, Array.Empty<ValidationErrorDetail>())
     {
     }
 }

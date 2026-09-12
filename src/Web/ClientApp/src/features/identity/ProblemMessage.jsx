@@ -1,4 +1,3 @@
-/* eslint-disable i18next/no-literal-string -- bounded validation protocol keys, not display copy. */
 import { useEffect, useRef, useState } from 'react';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
@@ -6,7 +5,13 @@ import Link from '@mui/material/Link';
 import Typography from '@mui/material/Typography';
 import { useTranslation } from '../../i18n';
 import { VALIDATION_CODE_SCHEMA } from './api/problemDetails';
-import { fieldIdFor, unclaimedFieldErrors } from './fieldErrors';
+import { fieldIdFor, fieldNameFor, unclaimedFieldErrors } from './fieldErrors';
+
+const validationMessageKey = (i18n, code) => (
+  Object.hasOwn(VALIDATION_CODE_SCHEMA, code) && i18n.exists(`errors:validation.${code}`)
+    ? `errors:validation.${code}`
+    : 'errors:validation.unknown'
+);
 
 /**
  * Shows what the API said and nothing more. The stable code decides the message, so the wording is ours and the
@@ -70,11 +75,8 @@ export function ProblemMessage({ problem, claimedFields = [], fieldIds = {}, aut
       {fields.length > 0 && (
         <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
           {fields.flatMap(([field, details]) => details.map((detail, index) => {
-            const fieldKey = `errors:validation.fields.${field}`;
-            const detailKey = Object.hasOwn(VALIDATION_CODE_SCHEMA, detail.code)
-              && i18n.exists(`errors:validation.${detail.code}`)
-              ? `errors:validation.${detail.code}`
-              : 'errors:validation.unknown';
+            const fieldKey = `errors:validation.fields.${fieldNameFor(fieldIds, field)}`;
+            const detailKey = validationMessageKey(i18n, detail.code);
             const message = t('errors:validation.fieldMessage', {
               field: i18n.exists(fieldKey) ? t(fieldKey) : t('errors:validation.fields.unknown'),
               message: t(detailKey, { replace: detail.params }),

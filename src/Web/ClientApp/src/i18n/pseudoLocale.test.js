@@ -26,8 +26,8 @@ describe('development pseudo-language', () => {
     expect(source).toEqual(before);
     expect(pseudo).not.toBe(source);
     expect(pseudo.message).toContain('<strong>{{name}}</strong>');
-    expect(pseudo.message).toMatch(/^  /);
-    expect(pseudo.message).toMatch(/  $/);
+    expect(pseudo.message).toMatch(/^ {2}/);
+    expect(pseudo.message).toMatch(/ {2}$/);
     expect(pseudo.message).not.toContain('Welcome');
     expect(pseudo.nested[1].count).toContain('{{count}}');
 

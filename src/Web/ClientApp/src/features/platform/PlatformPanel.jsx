@@ -1,4 +1,3 @@
-/* eslint-disable i18next/no-literal-string -- bounded wire field names, not display copy. */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
@@ -23,6 +22,7 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { useTranslation } from '../../i18n';
 import { useIdentity } from '../identity/context/IdentityProvider';
+import { fieldError } from '../identity/fieldErrors';
 import { ProblemMessage } from '../identity/ProblemMessage';
 import { useRead } from '../identity/useRead';
 import { useSubmit } from '../identity/useSubmit';
@@ -42,6 +42,11 @@ import { PlatformStepUpForm } from './shared/PlatformStepUpForm';
  */
 const REASONS = ['PolicyViolation', 'SecurityIncident', 'BillingHold', 'OperatorRequest'];
 const pendingActionKind = { suspend: 'suspend', revoke: 'revoke' };
+const actionTargetKind = { stepUp: 'step-up', invite: 'invite' };
+const inviteOutcomeKind = { sent: 'sent' };
+const inviteFieldName = 'email';
+const inviteFields = [inviteFieldName];
+const stepUpFields = ['code'];
 const suspendedStatus = 'Suspended';
 const platformAdministratorsManage = 'platform.admins.manage';
 const recordedOutcome = 'recorded';
@@ -101,14 +106,20 @@ export function PlatformPanel() {
   const [inviteOutcome, setInviteOutcome] = useState(null);
   const [pendingAction, setPendingAction] = useState(null);
   const [actionTarget, setActionTarget] = useState(null);
+  const inviteEmailRef = useRef(null);
   const { submit, clearProblem, problem: actionProblem, isBusy } = useSubmit(async (action) => action());
   const actionProblemFor = (target) => actionTarget === target ? actionProblem : null;
-  const stepUpProblem = actionProblemFor('step-up');
+  const stepUpProblem = actionProblemFor(actionTargetKind.stepUp);
   const fieldOwnsActionProblem = stepUpProblem?.code === 'invalid_mfa_code';
   const onStepUpCodeChange = useCallback((value) => {
     setStepUpCode(value);
     if (stepUpProblem?.code === 'invalid_mfa_code') clearProblem();
   }, [clearProblem, stepUpProblem]);
+  const inviteProblem = actionProblemFor(actionTargetKind.invite);
+
+  useEffect(() => {
+    if (inviteProblem?.errors?.email) inviteEmailRef.current?.focus();
+  }, [inviteProblem]);
 
   const identityContext = identity?.context;
   const mayLoad = identityContext?.activeTenant?.type === 'Platform' &&
@@ -180,14 +191,18 @@ export function PlatformPanel() {
           {/* A refused code is answered where the code was typed. Rendered above the title, as it was, the refusal
               sat two elements away from the field it is about. */}
           <Stack spacing={2}>
-            <ProblemMessage problem={fieldOwnsActionProblem ? null : stepUpProblem} autoFocus={!fieldOwnsActionProblem} />
+            <ProblemMessage
+              problem={fieldOwnsActionProblem ? null : stepUpProblem}
+              claimedFields={stepUpFields}
+              autoFocus={!fieldOwnsActionProblem}
+            />
             <PlatformStepUpForm
               inputId={platformStepUpInputId}
               code={stepUpCode}
               onCodeChange={onStepUpCodeChange}
               isBusy={isBusy}
               problem={stepUpProblem}
-              onSubmit={() => run('step-up', async () => {
+              onSubmit={() => run(actionTargetKind.stepUp, async () => {
                 await platform.stepUp(stepUpCode);
                 await identity.reload();
               })}
@@ -209,36 +224,40 @@ export function PlatformPanel() {
       {/* The header is the title alone. Every action on this screen belongs to something narrower than the page —
           a row, its confirmation, the invite form's own submit — so there is nothing to right-align here that
           would not have to be invented. */}
-      <Typography id="platform-panel-heading" component="h1" variant="h5">Platform</Typography>
+      <Typography id="platform-panel-heading" component="h1" variant="h5">{t('common:navigation.platform')}</Typography>
 
       {/* A Platform change needs a recent proof of the second factor, so the panel offers one rather than
           letting the administrator discover the refusal after composing an action. It is a gate and gets its own
           bounded section: floating between the heading and the first table, it read as one more field. */}
       <Paper variant="outlined" sx={section}>
         <Stack spacing={2}>
-          <ProblemMessage problem={fieldOwnsActionProblem ? null : stepUpProblem} autoFocus={!fieldOwnsActionProblem} />
+          <ProblemMessage
+            problem={fieldOwnsActionProblem ? null : stepUpProblem}
+            claimedFields={stepUpFields}
+            autoFocus={!fieldOwnsActionProblem}
+          />
           <PlatformStepUpForm
-            inputId="platform-step-up"
+            inputId={platformStepUpInputId}
             code={stepUpCode}
             onCodeChange={onStepUpCodeChange}
             isBusy={isBusy}
             problem={stepUpProblem}
-            submitVariant="outlined"
-            onSubmit={() => run('step-up', () => platform.stepUp(stepUpCode))}
+            submitVariant={outlinedVariant}
+            onSubmit={() => run(actionTargetKind.stepUp, () => platform.stepUp(stepUpCode))}
           />
         </Stack>
       </Paper>
 
       <Stack spacing={2} aria-busy={organizations.status === 'loading'}>
-        <Typography id="platform-organizations-heading" component="h2" variant="subtitle1">Organizations</Typography>
+        <Typography id="platform-organizations-heading" component="h2" variant="subtitle1">{t('organizations.title')}</Typography>
         <ProblemMessage problem={organizations.problem} />
         {organizations.status === 'errored' && (
-          <Button type="button" variant="outlined" sx={{ alignSelf: 'flex-start' }} onClick={() => organizations.refresh(undefined)}>Try again</Button>
+          <Button type="button" variant="outlined" sx={{ alignSelf: 'flex-start' }} onClick={() => organizations.refresh(undefined)}>{t('common:actions.tryAgain')}</Button>
         )}
         {organizations.status === 'loading' && organizations.data === null ? (
           <Placeholder />
         ) : organizations.data === null ? null : organizationRows.length === 0 ? (
-          <EmptyBlock>No organizations are listed here.</EmptyBlock>
+          <EmptyBlock>{t('organizations.empty')}</EmptyBlock>
         ) : (
           <TableContainer component={Paper} variant="outlined">
             <Table size="small" aria-labelledby="platform-organizations-heading">
@@ -272,13 +291,13 @@ export function PlatformPanel() {
                           problem={actionProblemFor(`reactivate:${organization.tenantId}`)}
                           autoFocus
                         />
-                        {organization.status === 'Suspended' ? (
+                        {organization.status === suspendedStatus ? (
                           <Button type="button" size="small" disabled={isBusy} onClick={() => run(`reactivate:${organization.tenantId}`, () => platform.reactivateOrganization(organization.tenantId))}>
-                            {`Reactivate ${organization.slug}`}
+                            {t('organizations.reactivate', { slug: organization.slug })}
                           </Button>
                         ) : (
-                          <Button type="button" size="small" color="error" disabled={isBusy} onClick={() => arm(`suspend:${organization.tenantId}`, { kind: 'suspend', organization })}>
-                            {`Suspend ${organization.slug}`}
+                          <Button type="button" size="small" color="error" disabled={isBusy} onClick={() => arm(`suspend:${organization.tenantId}`, { kind: pendingActionKind.suspend, organization })}>
+                            {t('organizations.suspend', { slug: organization.slug })}
                           </Button>
                         )}
                       </Stack>
@@ -310,7 +329,7 @@ export function PlatformPanel() {
             }}
           >
             <Stack spacing={2}>
-              <Typography variant="body2">{`Suspend ${pendingAction.organization.slug}?`}</Typography>
+              <Typography variant="body2">{t('suspension.prompt', { slug: pendingAction.organization.slug })}</Typography>
               <ProblemMessage
                 problem={actionProblemFor(`suspend:${pendingAction.organization.tenantId}`)}
                 autoFocus
@@ -326,28 +345,28 @@ export function PlatformPanel() {
                 </NativeSelect>
               </FormControl>
               <Stack direction="row" spacing={1} useFlexGap sx={buttons}>
-                <Button type="submit" variant="outlined" color="error" disabled={isBusy}>Confirm suspension</Button>
-                <Button type="button" onClick={cancelPending}>Cancel</Button>
+                <Button type="submit" variant="outlined" color="error" disabled={isBusy}>{t('suspension.confirm')}</Button>
+                <Button type="button" onClick={cancelPending}>{t('panel.cancel')}</Button>
               </Stack>
             </Stack>
           </Paper>
         )}
 
         {organizations.data?.nextCursor && (
-          <Button type="button" variant="outlined" disabled={organizations.status === 'loading'} sx={{ alignSelf: 'flex-start' }} onClick={() => organizations.refresh(organizations.data.nextCursor)}>More organizations</Button>
+          <Button type="button" variant="outlined" disabled={organizations.status === 'loading'} sx={{ alignSelf: 'flex-start' }} onClick={() => organizations.refresh(organizations.data.nextCursor)}>{t('organizations.more')}</Button>
         )}
       </Stack>
 
       <Stack spacing={2} aria-busy={administrators.status === 'loading'}>
-        <Typography id="platform-administrators-heading" component="h2" variant="subtitle1">Administrators</Typography>
+        <Typography id="platform-administrators-heading" component="h2" variant="subtitle1">{t('administrators.title')}</Typography>
         <ProblemMessage problem={administrators.problem} />
         {administrators.status === 'errored' && (
-          <Button type="button" variant="outlined" sx={{ alignSelf: 'flex-start' }} onClick={() => administrators.refresh(undefined)}>Try again</Button>
+          <Button type="button" variant="outlined" sx={{ alignSelf: 'flex-start' }} onClick={() => administrators.refresh(undefined)}>{t('common:actions.tryAgain')}</Button>
         )}
         {administrators.status === 'loading' && administrators.data === null ? (
           <Placeholder />
         ) : administrators.data === null ? null : administratorRows.length === 0 ? (
-          <EmptyBlock>No administrators are listed here.</EmptyBlock>
+          <EmptyBlock>{t('administrators.empty')}</EmptyBlock>
         ) : (
           <TableContainer component={Paper} variant="outlined">
             <Table size="small" aria-labelledby="platform-administrators-heading">
@@ -375,8 +394,8 @@ export function PlatformPanel() {
                     <TableCell><StatusChip status={administrator.mfaStatus} label={t(`enums:mfaStatus.${administrator.mfaStatus}`)} /></TableCell>
                     <TableCell align="right">
                       <Stack direction="row" spacing={1} useFlexGap sx={rowActions}>
-                        <Button type="button" size="small" color="error" disabled={isBusy} onClick={() => arm(`revoke:${administrator.membershipId}`, { kind: 'revoke', administrator })}>
-                          {`Revoke ${administrator.normalizedEmail}`}
+                        <Button type="button" size="small" color="error" disabled={isBusy} onClick={() => arm(`revoke:${administrator.membershipId}`, { kind: pendingActionKind.revoke, administrator })}>
+                          {t('administrators.revoke', { email: administrator.normalizedEmail })}
                         </Button>
                       </Stack>
                     </TableCell>
@@ -400,14 +419,14 @@ export function PlatformPanel() {
             }}
           >
             <Stack spacing={2}>
-              <Typography variant="body2">{`Revoke ${pendingAction.administrator.normalizedEmail}?`}</Typography>
+              <Typography variant="body2">{t('revocation.prompt', { email: pendingAction.administrator.normalizedEmail })}</Typography>
               <ProblemMessage
                 problem={actionProblemFor(`revoke:${pendingAction.administrator.membershipId}`)}
                 autoFocus
               />
               <Stack direction="row" spacing={1} useFlexGap sx={buttons}>
-                <Button type="submit" variant="outlined" color="error" disabled={isBusy}>Confirm revocation</Button>
-                <Button type="button" onClick={cancelPending}>Cancel</Button>
+                <Button type="submit" variant="outlined" color="error" disabled={isBusy}>{t('revocation.confirm')}</Button>
+                <Button type="button" onClick={cancelPending}>{t('panel.cancel')}</Button>
               </Stack>
             </Stack>
           </Paper>
@@ -427,17 +446,17 @@ export function PlatformPanel() {
             if (isBusy) return;
             const submittedEmail = inviteEmail;
             setInviteOutcome(null);
-            run('invite', () => platform.inviteAdministrator(submittedEmail), () => {
-              setInviteOutcome('sent');
+            run(actionTargetKind.invite, () => platform.inviteAdministrator(submittedEmail), () => {
+              setInviteOutcome(inviteOutcomeKind.sent);
               setInviteEmail((current) => current === submittedEmail ? '' : current);
             });
           }}
         >
           <Stack spacing={2}>
-            <ProblemMessage problem={actionProblemFor('invite')} autoFocus />
-            {inviteOutcome === 'sent' && (
+            <ProblemMessage problem={inviteProblem} claimedFields={inviteFields} autoFocus />
+            {inviteOutcome === inviteOutcomeKind.sent && (
               <Alert severity="success" role="status">
-                If that address can be invited, an invitation is on its way
+                {t('invite.acknowledgement')}
               </Alert>
             )}
             <TextField
@@ -448,12 +467,12 @@ export function PlatformPanel() {
               fullWidth
               slotProps={requiredField}
               inputRef={inviteEmailRef}
-              {...fieldError(actionProblem, 'email', t)}
+              {...fieldError(inviteProblem, inviteFieldName, t)}
               value={inviteEmail}
               onChange={(event) => {
                 setInviteEmail(event.target.value);
                 setInviteOutcome(null);
-                if (actionTarget === 'invite') clearProblem();
+                if (actionTarget === actionTargetKind.invite) clearProblem();
               }}
             />
             <Button type="submit" variant="contained" disabled={isBusy} sx={{ alignSelf: 'flex-start' }}>{t('invite.submit')}</Button>
@@ -462,15 +481,15 @@ export function PlatformPanel() {
       )}
 
       <Stack spacing={2} aria-busy={audit.status === 'loading'}>
-        <Typography component="h2" variant="subtitle1">Audit</Typography>
+        <Typography component="h2" variant="subtitle1">{t('audit.title')}</Typography>
         <ProblemMessage problem={audit.problem} />
         {audit.status === 'errored' && (
-          <Button type="button" variant="outlined" sx={{ alignSelf: 'flex-start' }} onClick={() => audit.refresh(undefined)}>Try again</Button>
+          <Button type="button" variant="outlined" sx={{ alignSelf: 'flex-start' }} onClick={() => audit.refresh(undefined)}>{t('common:actions.tryAgain')}</Button>
         )}
         {audit.status === 'loading' && audit.data === null ? (
           <Placeholder />
         ) : audit.data === null ? null : auditRows.length === 0 ? (
-          <EmptyBlock>Nothing has been recorded here yet.</EmptyBlock>
+          <EmptyBlock>{t('audit.empty')}</EmptyBlock>
         ) : (
           <Paper variant="outlined">
             <List aria-label={t('audit.label')} dense disablePadding>

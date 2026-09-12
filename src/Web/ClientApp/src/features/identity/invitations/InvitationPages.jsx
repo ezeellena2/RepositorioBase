@@ -35,6 +35,7 @@ const supporting = { mt: 0.5 };
 const waiting = { alignItems: 'center' };
 const selfStart = { alignSelf: 'flex-start' };
 const emptyToken = '';
+const passwordFieldName = 'password';
 const identityRoute = '/identity';
 
 /**
@@ -97,7 +98,7 @@ export function RegisterFromInvitationPage() {
             fullWidth
             slotProps={requiredField}
             error={Boolean(passwordErrors.password)}
-            helperText={fieldErrorText(passwordErrors, 'password', t) || undefined}
+            helperText={fieldErrorText(passwordErrors, passwordFieldName, t) || undefined}
             value={password}
             onChange={(event) => setPassword(event.target.value)}
           />

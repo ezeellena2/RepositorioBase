@@ -34,6 +34,7 @@
     <PackageVersion Include="Shouldly" Version="4.3.0" />
     <PackageVersion Include="System.IdentityModel.Tokens.Jwt" Version="8.22.0" />
     <PackageVersion Include="Microsoft.Playwright" Version="1.62.0" Condition="'$(ClientFramework)' != 'ApiOnly'" />
+    <PackageVersion Include="Reqnroll.ExternalData" Version="3.3.4" Condition="'$(ClientFramework)' != 'ApiOnly'" />
     <PackageVersion Include="Reqnroll.NUnit" Version="3.3.4" Condition="'$(ClientFramework)' != 'ApiOnly'" />
     <PackageVersion Include="Aspire.Npgsql.EntityFrameworkCore.PostgreSQL" Version="13.5.3" />
     <PackageVersion Include="Aspire.Hosting.Azure.PostgreSQL" Version="13.5.3" />

@@ -1,32 +1,28 @@
 {
   "format": { "dateUnavailable": "Fecha no disponible" },
-  "counter": {
-    "title": "Contador",
-    "description": "Este es un ejemplo sencillo de un componente de React.",
-    "increment": "Incrementar",
-    "currentCount": "Recuento actual:"
-  },
   "language": { "label": "Idioma", "en": "English", "es": "Español" },
+  "actions": { "tryAgain": "Intentar de nuevo" },
+  "errors": {
+    "pageCrash": "Algo salió mal en esta página. Vuelva a cargarla para continuar.",
+    "reload": "Volver a cargar",
+    "notFound": "Esa página no existe"
+  },
   "navigation": {
     "accountSection": "Su cuenta",
     "yourAccess": "Su acceso",
     "yourProfile": "Su perfil",
-    "yourAccount": "Su cuenta",
     "yourDevices": "Sus dispositivos",
     "yourPassword": "Su contraseña",
     "signInProviders": "Proveedores de inicio de sesión",
-    "organizationsSection": "Organizaciones",
     "organizations": "Organizaciones",
+    "addOrganization": "Agregar una organización",
     "roles": "Roles",
     "members": "Miembros",
     "inviteMember": "Invitar a un miembro",
-    "platformSection": "Plataforma",
     "platform": "Plataforma",
     "platformIdentities": "Identidades de la Plataforma",
     "retention": "Conservación",
-    "examplesSection": "Ejemplos",
     "home": "Inicio",
-    "counter": "Contador",
     "logOut": "Cerrar sesión",
     "changeOrganization": "Cambiar de espacio de trabajo",
     "noOrganizationSelected": "Ningún espacio de trabajo seleccionado",
@@ -34,8 +30,11 @@
     "organization": "Organización",
     "accountEntry": "Acceso a la cuenta",
     "logIn": "Iniciar sesión",
+    "signIn": "Iniciar sesión",
     "register": "Registrarse",
     "openNavigation": "Abrir navegación",
+    "collapseNavigation": "Contraer navegación",
+    "expandNavigation": "Expandir navegación",
     "brand": "Clean Architecture",
     "primaryNavigation": "Navegación principal"
   }

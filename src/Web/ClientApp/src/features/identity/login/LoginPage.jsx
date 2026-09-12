@@ -104,7 +104,7 @@ export function LoginPage() {
 
         <ProblemMessage problem={problem ?? providerProblem ?? identity?.contextProblem} />
         {refused && problem === null && providerProblem === null && !identity?.contextProblem && (
-          <Alert severity="error">Those details did not sign you in. Check them and try again.</Alert>
+          <Alert severity="error">{t('login.failed')}</Alert>
         )}
 
         {/* Two ways in, in the order they are chosen: the provider round trip first, then the credentials this

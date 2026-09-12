@@ -1,32 +1,28 @@
 {
   "format": { "dateUnavailable": "Date unavailable" },
   "language": { "label": "Language", "en": "English", "es": "Español" },
-  "counter": {
-    "title": "Counter",
-    "description": "This is a simple example of a React component.",
-    "increment": "Increment",
-    "currentCount": "Current count:"
+  "actions": { "tryAgain": "Try again" },
+  "errors": {
+    "pageCrash": "Something went wrong on this page. Reload to continue.",
+    "reload": "Reload",
+    "notFound": "That page does not exist"
   },
   "navigation": {
     "accountSection": "Your account",
     "yourAccess": "Your access",
     "yourProfile": "Your profile",
-    "yourAccount": "Your account",
     "yourDevices": "Your devices",
     "yourPassword": "Your password",
     "signInProviders": "Sign-in providers",
-    "organizationsSection": "Organizations",
     "organizations": "Organizations",
+    "addOrganization": "Add an organization",
     "roles": "Roles",
     "members": "Members",
     "inviteMember": "Invite a member",
-    "platformSection": "Platform",
     "platform": "Platform",
     "platformIdentities": "Platform identities",
     "retention": "Retention",
-    "examplesSection": "Examples",
     "home": "Home",
-    "counter": "Counter",
     "logOut": "Log out",
     "changeOrganization": "Change workspace",
     "noOrganizationSelected": "No workspace selected",
@@ -34,8 +30,11 @@
     "organization": "Organization",
     "accountEntry": "Account entry",
     "logIn": "Log in",
+    "signIn": "Sign in",
     "register": "Register",
     "openNavigation": "Open navigation",
+    "collapseNavigation": "Collapse navigation",
+    "expandNavigation": "Expand navigation",
     "brand": "Clean Architecture",
     "primaryNavigation": "Primary navigation"
   }

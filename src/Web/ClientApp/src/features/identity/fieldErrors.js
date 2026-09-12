@@ -110,6 +110,11 @@ export function fieldIdFor(fieldIds, serverField) {
     .find(([field]) => sameFieldName(field, serverField))?.[1];
 }
 
+export function fieldNameFor(fieldIds, serverField) {
+  return Object.keys(fieldIds ?? {})
+    .find((field) => sameFieldName(field, serverField)) ?? serverField;
+}
+
 export function clearFieldError(errors, field) {
   const matching = Object.keys(errors ?? {}).filter((candidate) => sameFieldName(candidate, field));
   if (matching.length === 0) return errors;

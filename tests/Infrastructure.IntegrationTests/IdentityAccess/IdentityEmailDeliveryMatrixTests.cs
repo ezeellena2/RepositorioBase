@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Resources;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using CleanArchitecture.Application.Common.Interfaces;
@@ -16,6 +17,7 @@ using CleanArchitecture.Domain.IdentityAccess.Tenants;
 using CleanArchitecture.Infrastructure.Data;
 using CleanArchitecture.Infrastructure.Email;
 using CleanArchitecture.Infrastructure.Identity;
+using CleanArchitecture.Infrastructure.Localization;
 using CleanArchitecture.Infrastructure.Outbox;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -33,6 +35,9 @@ public sealed class IdentityEmailDeliveryMatrixTests
 {
     private const string Origin = "https://app.example.test";
     private const string Token = "phase-four-matrix-token";
+    private static readonly ResourceManager EmailResources = new(
+        "CleanArchitecture.Infrastructure.Localization.Emails",
+        typeof(IdentityEmailLocalizer).Assembly);
 
     [Test]
     public async Task Every_registered_identity_email_variant_renders_in_every_supported_language()
@@ -96,12 +101,29 @@ public sealed class IdentityEmailDeliveryMatrixTests
                             email.ShouldNotBeNull(scenario.Name);
                             email.Language.ShouldBe(language, scenario.Name);
                             email.Recipient.ShouldBe(scenario.Recipient, scenario.Name);
-                            email.Subject.ShouldBe(language == "es" ? scenario.SpanishSubject : scenario.EnglishSubject, scenario.Name);
+                            var expectedSubject = language switch
+                            {
+                                "en" => scenario.EnglishSubject,
+                                "es" => scenario.SpanishSubject,
+                                _ => ResourceValue(scenario.ResourcePrefix, "Subject", language)
+                            };
+                            var expectedLead = language switch
+                            {
+                                "en" => scenario.EnglishLead,
+                                "es" => scenario.SpanishLead,
+                                _ => ResourceLead(scenario.ResourcePrefix, language)
+                            };
+                            email.Subject.ShouldBe(expectedSubject, scenario.Name);
                             Assert.That(
                                 email.Body,
-                                Does.StartWith(language == "es" ? scenario.SpanishLead : scenario.EnglishLead),
+                                Does.StartWith(expectedLead),
                                 scenario.Name);
-                            var exactBody = language == "es" ? scenario.SpanishBody : scenario.EnglishBody;
+                            var exactBody = language switch
+                            {
+                                "en" => scenario.EnglishBody,
+                                "es" => scenario.SpanishBody,
+                                _ => null
+                            };
                             if (exactBody is not null) email.Body.ShouldBe(exactBody, scenario.Name);
                             Assert.That(email.Body, Does.Contain($"{Origin}{scenario.Path}"), scenario.Name);
                             Regex.IsMatch(email.Subject, @"\{\d+[^}]*\}").ShouldBeFalse(scenario.Name);
@@ -278,7 +300,7 @@ public sealed class IdentityEmailDeliveryMatrixTests
         string defaultLanguage)
     {
         var snapshotLanguage = LocalizationRegistry.SupportedLanguages
-            .Single(language => language != defaultLanguage);
+            .First(language => language != defaultLanguage);
 
         await AssertSnapshotHierarchyAsync(
             context,
@@ -407,95 +429,95 @@ public sealed class IdentityEmailDeliveryMatrixTests
     [
         new("organization invitation", "identity.invitation.requested",
             JsonSerializer.Serialize(new { InvitationId = seeded.OrganizationInvitation.Id.Value }),
-            seeded.OrganizationInvitation.NormalizedEmail, true, "/invitations/accept",
+            seeded.OrganizationInvitation.NormalizedEmail, true, "/invitations/accept", "Invitation",
             "You have been invited", "Tiene una invitación",
             "Open this link to accept:", "Abra este enlace para aceptar la invitación:"),
         new("ordinary confirmation", "identity.confirmation.requested",
             JsonSerializer.Serialize(new { IdentityId = seeded.Account.Id }),
-            seeded.Account.Email!, true, "/confirm-email",
+            seeded.Account.Email!, true, "/confirm-email", "Confirmation",
             "Confirm your email", "Confirme su correo electrónico",
             "Open this link to confirm:", "Abra este enlace para confirmar su correo electrónico:"),
         new("invited confirmation", "identity.invitation.confirmation.requested",
             JsonSerializer.Serialize(new { IdentityId = seeded.InvitedAccount.Id, InvitationId = seeded.OrganizationInvitation.Id.Value }),
-            seeded.InvitedAccount.Email!, true, "/confirm-email",
+            seeded.InvitedAccount.Email!, true, "/confirm-email", "Confirmation",
             "Confirm your email", "Confirme su correo electrónico",
             "Open this link to confirm:", "Abra este enlace para confirmar su correo electrónico:"),
         new("invited existing-account sign-in", "identity.invitation.signin.notice.requested",
             JsonSerializer.Serialize(new { IdentityId = seeded.InvitedAccount.Id, InvitationId = seeded.OrganizationInvitation.Id.Value }),
-            seeded.InvitedAccount.Email!, false, "/login",
+            seeded.InvitedAccount.Email!, false, "/login", "SignInNotice",
             "Sign in to your account", "Inicie sesión en su cuenta",
             "Someone tried to register with your email", "Alguien intentó registrarse con su correo electrónico",
             $"Someone tried to register with your email. You can sign in at {Origin}/login.",
             $"Alguien intentó registrarse con su correo electrónico. Puede iniciar sesión en {Origin}/login."),
         new("organization registration confirmation", "identity.registration.confirmation.requested",
             JsonSerializer.Serialize(new { IntentId = seeded.OrganizationConfirmation.Id }),
-            seeded.OrganizationConfirmation.NormalizedEmail, true, "/confirm-email",
+            seeded.OrganizationConfirmation.NormalizedEmail, true, "/confirm-email", "OrganizationRegistrationConfirmation",
             "Confirm your email", "Confirme su correo electrónico",
             "Open this link to finish registering your organization:", "Abra este enlace para terminar de registrar su organización:"),
         new("organization registration sign-in", "identity.registration.signin.notice.requested",
             JsonSerializer.Serialize(new { IntentId = seeded.OrganizationSignIn.Id }),
-            seeded.OrganizationSignIn.NormalizedEmail, false, "/login",
+            seeded.OrganizationSignIn.NormalizedEmail, false, "/login", "OrganizationRegistrationSignIn",
             "Sign in to your account", "Inicie sesión en su cuenta",
             "Someone tried to register an organization", "Alguien intentó registrar una organización"),
         new("personal registration confirmation", "identity.personal.confirmation.requested",
             JsonSerializer.Serialize(new { IntentId = seeded.PersonalConfirmation.Id }),
-            seeded.PersonalConfirmation.NormalizedEmail, true, "/confirm-email",
+            seeded.PersonalConfirmation.NormalizedEmail, true, "/confirm-email", "PersonalRegistrationConfirmation",
             "Confirm your email", "Confirme su correo electrónico",
             "Open this link to finish setting up your personal account:", "Abra este enlace para terminar de configurar su cuenta personal:"),
         new("personal registration sign-in", "identity.personal.signin.notice.requested",
             JsonSerializer.Serialize(new { IntentId = seeded.PersonalSignIn.Id }),
-            seeded.PersonalSignIn.NormalizedEmail, false, "/login",
+            seeded.PersonalSignIn.NormalizedEmail, false, "/login", "PersonalRegistrationSignIn",
             "Sign in to your account", "Inicie sesión en su cuenta",
             "Someone tried to set up a personal account", "Alguien intentó configurar una cuenta personal",
             $"Someone tried to set up a personal account with your email. Your account already exists; sign in at {Origin}/login and set up your personal account there.",
             $"Alguien intentó configurar una cuenta personal con su correo electrónico. Su cuenta ya existe; inicie sesión en {Origin}/login y configure ahí su cuenta personal."),
         new("password recovery", "identity.password.recovery.requested",
             JsonSerializer.Serialize(new { RequestId = seeded.PasswordReset.Id }),
-            seeded.Account.Email!, true, "/credentials/reset",
+            seeded.Account.Email!, true, "/credentials/reset", "PasswordRecovery",
             "Reset your password", "Restablezca su contraseña",
             "Open this link to choose a new password:", "Abra este enlace para elegir una contraseña nueva:"),
         new("account reactivation request", "identity.reactivation.requested",
             JsonSerializer.Serialize(new { RequestId = seeded.Reactivation.Id }),
-            seeded.Account.Email!, true, "/account/reactivate",
+            seeded.Account.Email!, true, "/account/reactivate", "AccountReactivation",
             "Reactivate your account", "Reactive su cuenta",
             "Open this link and enter your current password", "Abra este enlace e ingrese su contraseña actual"),
         new("self-deactivation notice", "identity.lifecycle.self.deactivated.notice.requested",
             JsonSerializer.Serialize(new { IdentityId = seeded.Account.Id }),
-            seeded.Account.Email!, false, "/account/reactivation-request",
+            seeded.Account.Email!, false, "/account/reactivation-request", "AccountSelfDeactivated",
             "Your account was deactivated", "Su cuenta fue desactivada",
             "Your account was deactivated", "Su cuenta fue desactivada",
             $"Your account was deactivated and all your sessions were closed. To request reactivation, visit {Origin}/account/reactivation-request",
             $"Su cuenta fue desactivada y se cerraron todas sus sesiones. Para solicitar la reactivación, visite {Origin}/account/reactivation-request"),
         new("administrative suspension notice", "identity.lifecycle.administratively.suspended.notice.requested",
             JsonSerializer.Serialize(new { IdentityId = seeded.Account.Id }),
-            seeded.Account.Email!, false, "/login",
+            seeded.Account.Email!, false, "/login", "AccountAdministrativelySuspended",
             "Your account status changed", "El estado de su cuenta cambió",
             "An administrator suspended your account", "Un administrador suspendió su cuenta"),
         new("administrative reactivation notice", "identity.lifecycle.reactivated.notice.requested",
             JsonSerializer.Serialize(new { IdentityId = seeded.Account.Id }),
-            seeded.Account.Email!, false, "/login",
+            seeded.Account.Email!, false, "/login", "AccountReactivated",
             "Your account status changed", "El estado de su cuenta cambió",
             "An administrator lifted your account suspension", "Un administrador levantó la suspensión de su cuenta"),
         new("Platform owner invitation", "platform.invitation.requested",
             JsonSerializer.Serialize(new { InvitationId = seeded.PlatformOwner.Id.Value }),
-            seeded.PlatformOwner.NormalizedEmail, true, "/platform/invitations/register",
+            seeded.PlatformOwner.NormalizedEmail, true, "/platform/invitations/register", "PlatformOwnerInvitation",
             "You have been invited to Platform", "Tiene una invitación a la Plataforma",
             "You have been invited to become the Platform owner", "Recibió una invitación para asumir el rol de propietario de la Plataforma"),
         new("Platform administrator invitation", "platform.invitation.requested",
             JsonSerializer.Serialize(new { InvitationId = seeded.PlatformAdministrator.Id.Value }),
-            seeded.PlatformAdministrator.NormalizedEmail, true, "/platform/invitations/register",
+            seeded.PlatformAdministrator.NormalizedEmail, true, "/platform/invitations/register", "PlatformAdministratorInvitation",
             "You have been invited to Platform", "Tiene una invitación a la Plataforma",
             "You have been invited to become a Platform administrator", "Recibió una invitación para asumir el rol de administrador de la Plataforma"),
         new("Platform confirmation", "platform.invitation.confirmation.requested",
             JsonSerializer.Serialize(new { IdentityId = seeded.PlatformAccount.Id, InvitationId = seeded.PlatformAdministrator.Id.Value }),
-            seeded.PlatformAccount.Email!, true, "/platform/invitations/confirm",
+            seeded.PlatformAccount.Email!, true, "/platform/invitations/confirm", "PlatformConfirmation",
             "Confirm your Platform email address", "Confirme su correo electrónico de la Plataforma",
             "Open this link to confirm your address:", "Abra este enlace para confirmar su dirección:",
             $"Open this link to confirm your address: {Origin}/platform/invitations/confirm#token={Uri.EscapeDataString(Token)}",
             $"Abra este enlace para confirmar su dirección: {Origin}/platform/invitations/confirm#token={Uri.EscapeDataString(Token)}"),
         new("Platform sign-in notice", "platform.invitation.signin.notice.requested",
             JsonSerializer.Serialize(new { IdentityId = seeded.PlatformAccount.Id, InvitationId = seeded.PlatformAdministrator.Id.Value }),
-            seeded.PlatformAccount.Email!, false, "/login",
+            seeded.PlatformAccount.Email!, false, "/login", "PlatformSignIn",
             "Sign in to your account", "Inicie sesión en su cuenta",
             "Someone tried to register with your email", "Alguien intentó registrarse con su correo electrónico")
     ];
@@ -523,11 +545,23 @@ public sealed class IdentityEmailDeliveryMatrixTests
         string Recipient,
         bool RequiresSecret,
         string Path,
+        string ResourcePrefix,
         string EnglishSubject,
         string SpanishSubject,
         string EnglishLead,
         string SpanishLead,
         string? EnglishBody = null,
         string? SpanishBody = null);
+
+    private static string ResourceValue(string resourcePrefix, string suffix, string language) =>
+        EmailResources.GetString($"{resourcePrefix}{suffix}", CultureInfo.GetCultureInfo(language))
+        ?? throw new InvalidOperationException($"Email resource '{resourcePrefix}{suffix}' is missing for '{language}'.");
+
+    private static string ResourceLead(string resourcePrefix, string language)
+    {
+        var template = ResourceValue(resourcePrefix, "Body", language);
+        var placeholder = template.IndexOf('{', StringComparison.Ordinal);
+        return placeholder < 0 ? template : template[..placeholder];
+    }
 
 }

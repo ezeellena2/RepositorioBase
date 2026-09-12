@@ -1,4 +1,3 @@
-/* eslint-disable i18next/no-literal-string -- API contract fixture codes are not UI copy. */
 import { act, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { i18n } from '../../i18n';
@@ -12,20 +11,24 @@ afterEach(async () => {
 
 describe('ProblemMessage', () => {
   it('omits case-insensitively claimed errors and links rendered field errors without exposing raw keys', () => {
+    const recoveryCodeLabel = 'Recovery code';
+    const problem = {
+      code: 'validation_failed',
+      errors: {
+        NewPassword: [{ code: 'too_long', params: { max: 12 } }],
+        RecoveryCode: [{ code: 'required', params: {} }],
+        request: [{ code: 'invalid', params: {} }],
+      },
+    };
+    const claimedFields = ['newPassword'];
+    const fieldIds = { recoveryCode: 'recovery-code' };
     render(
       <>
-        <input id="recovery-code" aria-label="Recovery code" />
+        <input id="recovery-code" aria-label={recoveryCodeLabel} />
         <ProblemMessage
-          problem={{
-            code: 'validation_failed',
-            errors: {
-              NewPassword: [{ code: 'too_long', params: { max: 12 } }],
-              RecoveryCode: [{ code: 'required', params: {} }],
-              request: [{ code: 'invalid', params: {} }],
-            },
-          }}
-          claimedFields={['newPassword']}
-          fieldIds={{ recoveryCode: 'recovery-code' }}
+          problem={problem}
+          claimedFields={claimedFields}
+          fieldIds={fieldIds}
         />
       </>,
     );
@@ -35,7 +38,7 @@ describe('ProblemMessage', () => {
     expect(alert).not.toHaveTextContent('NewPassword');
     expect(alert).not.toHaveTextContent('RecoveryCode');
     expect(alert).not.toHaveTextContent('request:');
-    expect(screen.getByRole('link', { name: 'Recovery code: This field is required.' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Recovery code: This value is required.' })).toHaveAttribute(
       'href',
       '#recovery-code',
     );
@@ -59,13 +62,15 @@ describe('ProblemMessage', () => {
   });
 
   it('keeps an intentional generic fallback for an unreadable code', () => {
-    render(<ProblemMessage problem={{ code: 'not-from-this-contract' }} />);
+    const problem = { code: 'not-from-this-contract' };
+    render(<ProblemMessage problem={problem} />);
 
     expect(screen.getByRole('alert')).toHaveTextContent('That request could not be completed.');
   });
 
   it('shows one selectable opaque reference inside the single alert for a server 500', () => {
-    render(<ProblemMessage problem={{ status: 500, code: 'internal_server_error', traceId: 'trace-500' }} />);
+    const problem = { status: 500, code: 'internal_server_error', traceId: 'trace-500' };
+    render(<ProblemMessage problem={problem} />);
 
     const alert = screen.getByRole('alert');
     expect(screen.getAllByRole('alert')).toHaveLength(1);
@@ -75,7 +80,8 @@ describe('ProblemMessage', () => {
   });
 
   it('does not show a support reference for a 4xx refusal', () => {
-    render(<ProblemMessage problem={{ status: 403, code: 'permission_denied', traceId: 'trace-403' }} />);
+    const problem = { status: 403, code: 'permission_denied', traceId: 'trace-403' };
+    render(<ProblemMessage problem={problem} />);
 
     expect(screen.getByRole('alert')).not.toHaveTextContent('Reference:');
   });
@@ -84,9 +90,10 @@ describe('ProblemMessage', () => {
     const scrollIntoView = vi.fn();
     const previous = HTMLElement.prototype.scrollIntoView;
     HTMLElement.prototype.scrollIntoView = scrollIntoView;
+    const problem = { status: 409, code: 'invitation_conflict' };
 
     try {
-      render(<ProblemMessage problem={{ status: 409, code: 'invitation_conflict' }} autoFocus />);
+      render(<ProblemMessage problem={problem} autoFocus />);
 
       const alert = screen.getByRole('alert');
       expect(alert).toHaveAttribute('tabindex', '-1');
@@ -102,7 +109,8 @@ describe('ProblemMessage', () => {
     document.body.append(before);
     before.focus();
 
-    render(<ProblemMessage problem={{ status: 403, code: 'permission_denied' }} />);
+    const problem = { status: 403, code: 'permission_denied' };
+    render(<ProblemMessage problem={problem} />);
 
     expect(screen.getByRole('alert')).toHaveAttribute('tabindex', '-1');
     expect(before).toHaveFocus();
@@ -139,11 +147,12 @@ describe('ProblemMessage validation details', () => {
     ['es', 'Correo electrónico: Debe tener como máximo 256 caracteres.'],
   ])('renders the translated field label and interpolated validation code in %s', async (language, expected) => {
     await i18n.changeLanguage(language);
-    render(<ProblemMessage problem={{
+    const problem = {
       code: 'validation_failed',
       status: 400,
       errors: { email: [{ code: 'too_long', params: { max: 256 } }] },
-    }} />);
+    };
+    render(<ProblemMessage problem={problem} />);
 
     expect(screen.getByText(expected)).toBeInTheDocument();
   });

@@ -1,5 +1,6 @@
 using CleanArchitecture.Application.FunctionalTests.Infrastructure;
 using CleanArchitecture.Application.Common.Models;
+using CleanArchitecture.Application.Common.Validation;
 using CleanArchitecture.Application.IdentityAccess.Organizations.ConfirmEmail;
 using CleanArchitecture.Application.IdentityAccess.Organizations.RegisterOrganization;
 using CleanArchitecture.Infrastructure.Identity;
@@ -346,17 +347,16 @@ public sealed class RegistrationTests : TestBase
         free.Error!.Code.ShouldBe("validation_failed");
         free.Error.Category.ShouldBe(ApplicationErrorCategory.Validation);
         free.Error.ValidationErrors.Keys.ShouldBe(["password"]);
-        free.Error.ValidationErrors["password"].ShouldBe([
-            "Passwords must be at least 12 characters.",
-            "Passwords must have at least one non alphanumeric character.",
-            "Passwords must have at least one digit ('0'-'9').",
-            "Passwords must have at least one uppercase ('A'-'Z')."
-        ]);
+        var freePolicy = free.Error.ValidationErrors["password"].ShouldHaveSingleItem();
+        freePolicy.Code.ShouldBe(ValidationErrorCodes.PasswordPolicy);
+        freePolicy.Params.ShouldBeEmpty();
         taken.IsFailure.ShouldBeTrue("a weak password must not double as an address-existence oracle");
         taken.Error!.Code.ShouldBe(free.Error.Code);
         taken.Error.Category.ShouldBe(free.Error.Category);
         taken.Error.ValidationErrors.Keys.ShouldBe(free.Error.ValidationErrors.Keys);
-        taken.Error.ValidationErrors["password"].ShouldBe(free.Error.ValidationErrors["password"]);
+        var takenPolicy = taken.Error.ValidationErrors["password"].ShouldHaveSingleItem();
+        takenPolicy.Code.ShouldBe(freePolicy.Code);
+        takenPolicy.Params.ShouldBeEmpty();
         (await TestApp.CountAsync<Tenant>()).ShouldBe(0, "neither refusal creates an organization");
         (await TestApp.CountAsync<ApplicationUser>()).ShouldBe(1, "the only identity is the one seeded before the test");
     }

@@ -3,7 +3,15 @@ import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
-import { i18n, resolveLanguage, roleName, setLanguage, useFormat } from './index';
+import {
+  i18n,
+  PSEUDO_LANGUAGE,
+  resolveLanguage,
+  roleName,
+  setLanguage,
+  supportedLanguages,
+  useFormat,
+} from './index';
 import languages from './languages.json';
 import { appTheme, missingMuiLocaleMappings, muiLocaleByLanguage, themeFor } from '../theme';
 import { esES } from '@mui/material/locale';
@@ -107,6 +115,40 @@ describe('Spanish language selection', () => {
     await act(() => setLanguage('fr'));
     expect(i18n.resolvedLanguage).toBe('es');
     expect(document.cookie).toContain('c=es|uic=es');
+  });
+
+  it('keeps the exact development pseudo query out of the selector, account, and culture cookie', async () => {
+    let preferenceWrites = 0;
+    await act(() => setLanguage('en'));
+    expect(document.cookie).toContain('c=en|uic=en');
+    window.history.replaceState({}, '', '/?lng=en-XA');
+    server.use(
+      antiforgery(),
+      contextIs(signedInContext({ preferredLanguage: 'es' })),
+      http.put('/api/identity/context/language', () => {
+        preferenceWrites += 1;
+        return HttpResponse.json(signedInContext({ preferredLanguage: 'es' }));
+      }),
+    );
+
+    render(<MemoryRouter><IdentityProvider><NavMenu /></IdentityProvider></MemoryRouter>);
+    await waitFor(() => expect(i18n.resolvedLanguage).toBe(PSEUDO_LANGUAGE));
+    const pseudoAccessLabel = i18n.t('navigation.yourAccess');
+    expect(pseudoAccessLabel).not.toBe('Your access');
+    await screen.findByRole('link', { name: pseudoAccessLabel, current: false });
+
+    const selector = screen.getByRole('combobox');
+    expect(selector).toBeDisabled();
+    expect(selector).toHaveValue('en');
+    expect([...selector.options].map((option) => option.value)).toEqual(supportedLanguages);
+    expect([...selector.options].map((option) => option.value)).not.toContain(PSEUDO_LANGUAGE);
+    await userEvent.selectOptions(selector, 'es');
+
+    expect(i18n.resolvedLanguage).toBe(PSEUDO_LANGUAGE);
+    expect(document.documentElement.lang).toBe(PSEUDO_LANGUAGE);
+    expect(document.cookie).toContain('c=en|uic=en');
+    expect(document.cookie).not.toContain(PSEUDO_LANGUAGE);
+    expect(preferenceWrites).toBe(0);
   });
 
   it('composes MUI locales while retaining the original English visual theme', () => {

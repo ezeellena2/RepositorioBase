@@ -57,10 +57,10 @@ describe('organization registration', () => {
     expect(submissions).toHaveLength(0);
     expect(legalName).toHaveFocus();
     expect(legalName).toHaveAttribute('aria-invalid', 'true');
-    expect(legalName).toHaveAccessibleDescription('A legal name is required.');
-    expect(screen.getByLabelText('CUIT')).toHaveAccessibleDescription('A CUIT is required.');
-    expect(screen.getByLabelText('Email')).toHaveAccessibleDescription('Enter an email address.');
-    expect(screen.getByLabelText('Password')).toHaveAccessibleDescription('A password is required.');
+    expect(legalName).toHaveAccessibleDescription('This value is required.');
+    expect(screen.getByLabelText('CUIT')).toHaveAccessibleDescription('This value is required.');
+    expect(screen.getByLabelText('Email')).toHaveAccessibleDescription('This value is required.');
+    expect(screen.getByLabelText('Password')).toHaveAccessibleDescription('This value is required.');
   });
 
   it('binds exact server errors, summarizes only unclaimed errors, focuses, and clears one edited field', async () => {
@@ -68,11 +68,11 @@ describe('organization registration', () => {
     server.use(http.post('/api/identity/organizations/register', () => problem(400, 'validation_failed', {
       status: 400,
       errors: {
-        legalName: ['A legal name is required.'],
-        cuit: ['The CUIT must contain exactly eleven digits and may use only digits, hyphens, and whitespace.'],
-        email: ['Enter an email address.'],
-        password: ['Passwords must be at least 12 characters.'],
-        request: ['Registration is temporarily unavailable.'],
+        legalName: [{ code: 'required', params: {} }],
+        cuit: [{ code: 'invalid', params: {} }],
+        email: [{ code: 'invalid', params: {} }],
+        password: [{ code: 'password_policy', params: {} }],
+        request: [{ code: 'invalid', params: {} }],
       },
     })));
 
@@ -86,20 +86,20 @@ describe('organization registration', () => {
     const passwordField = screen.getByLabelText('Password');
     await waitFor(() => expect(legalName).toHaveFocus());
     expect(legalName).toHaveAttribute('aria-invalid', 'true');
-    expect(legalName).toHaveAccessibleDescription('A legal name is required.');
-    expect(cuit).toHaveAccessibleDescription('The CUIT must contain exactly eleven digits and may use only digits, hyphens, and whitespace.');
-    expect(email).toHaveAccessibleDescription('Enter an email address.');
-    expect(passwordField).toHaveAccessibleDescription('Passwords must be at least 12 characters.');
+    expect(legalName).toHaveAccessibleDescription('This value is required.');
+    expect(cuit).toHaveAccessibleDescription('This value is not valid.');
+    expect(email).toHaveAccessibleDescription('This value is not valid.');
+    expect(passwordField).toHaveAccessibleDescription('This password does not meet the requirements.');
 
     const alert = screen.getByRole('alert');
-    expect(alert).toHaveTextContent('Registration is temporarily unavailable.');
+    expect(alert).toHaveTextContent('Request: This value is not valid.');
     expect(alert).not.toHaveTextContent('request:');
-    expect(alert).not.toHaveTextContent('A legal name is required.');
-    expect(alert).not.toHaveTextContent('Passwords must be at least 12 characters.');
+    expect(alert).not.toHaveTextContent('Legal name: This value is required.');
+    expect(alert).not.toHaveTextContent('Password: This password does not meet the requirements.');
 
     await userEvent.type(email, 'x');
     expect(email).not.toHaveAttribute('aria-invalid', 'true');
-    expect(email).not.toHaveAccessibleDescription('Enter an email address.');
+    expect(email).not.toHaveAccessibleDescription('This value is not valid.');
     expect(cuit).toHaveAttribute('aria-invalid', 'true');
   });
 
@@ -121,7 +121,7 @@ describe('organization registration', () => {
     expect(submissions).toHaveLength(0);
     const cuit = screen.getByLabelText('CUIT');
     expect(cuit).toHaveAttribute('aria-invalid', 'true');
-    expect(cuit).toHaveAccessibleDescription("That CUIT's check digit does not match. Check the number.");
+    expect(cuit).toHaveAccessibleDescription('This value is not valid.');
     expect(cuit).toHaveFocus();
   });
 
@@ -186,7 +186,7 @@ describe('organization registration', () => {
     server.use(antiforgery(), contextIs(signedInContext()));
     server.use(http.post('/api/identity/organizations/register', () => problem(400, 'validation_failed', {
       status: 400,
-      errors: { cuit: ["That CUIT's check digit does not match. Check the number."] },
+      errors: { cuit: [{ code: 'invalid', params: {} }] },
     })));
 
     renderPage();
@@ -199,8 +199,8 @@ describe('organization registration', () => {
     const cuit = screen.getByLabelText('CUIT');
     await waitFor(() => expect(cuit).toHaveFocus());
     expect(cuit).toHaveAttribute('aria-invalid', 'true');
-    expect(cuit).toHaveAccessibleDescription("That CUIT's check digit does not match. Check the number.");
-    expect(screen.getByRole('alert')).not.toHaveTextContent(/check digit/i);
+    expect(cuit).toHaveAccessibleDescription('This value is not valid.');
+    expect(screen.getByRole('alert')).not.toHaveTextContent('This value is not valid.');
     expect(screen.queryByLabelText('Email')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Password')).not.toBeInTheDocument();
   });

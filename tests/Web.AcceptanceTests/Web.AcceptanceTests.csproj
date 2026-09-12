@@ -10,6 +10,7 @@
         <PackageReference Include="Aspire.Hosting.Testing" />
         <PackageReference Include="Microsoft.NET.Test.Sdk" />
         <PackageReference Include="Microsoft.Playwright" />
+        <PackageReference Include="Reqnroll.ExternalData" />
         <PackageReference Include="Reqnroll.NUnit" />
         <PackageReference Include="Shouldly" />
         <PackageReference Include="nunit" />

@@ -16,6 +16,7 @@ import { useIdentity } from '../context/IdentityProvider';
 import { ProblemMessage } from '../ProblemMessage';
 import { useIdentityProof } from '../useIdentityProof';
 import { useRead } from '../useRead';
+import { Trans, useFormat, useTranslation } from '../../../i18n';
 
 /**
  * A width this screen chooses rather than inherits. It is a hybrid — one proof field and a handful of rows, never
@@ -49,6 +50,7 @@ const sessionOperation = {
   revokeOthers: { proofAction: 'sessions.revoke-others', operation: 'revoke-others' },
   revokeOne: { proofAction: 'sessions.revoke-one', operation: 'revoke-one' },
 };
+const allSessionsTarget = 'all';
 const listItemTextSlots = { primary: { component: 'div' } };
 
 /**
@@ -107,15 +109,15 @@ export function SessionsPage() {
     // first act, and doing that inside an effect body is what turns one render into a cascade.
     const resume = (act) => { void Promise.resolve().then(act); };
 
-    if (waiting.operation === 'revoke-others') {
-      resume(() => run('all', null, () => identity.client.revokeOtherSessions()));
+    if (waiting.operation === sessionOperation.revokeOthers.operation) {
+      resume(() => run(allSessionsTarget, null, () => identity.client.revokeOtherSessions()));
       return;
     }
 
     // The device has to still be listed, and still be another one. Between leaving and coming back it may have
     // expired, been ended elsewhere, or become the one being used.
     const target = sessions.find((session) => session.sessionRef === waiting.target);
-    if (waiting.operation !== 'revoke-one' || target === undefined || target.isCurrent) return;
+    if (waiting.operation !== sessionOperation.revokeOne.operation || target === undefined || target.isCurrent) return;
     resume(() => run(`session:${target.sessionRef}`, null, () => identity.client.revokeSession(target.sessionRef)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [waiting, sessions, proof.isReady]);
@@ -134,7 +136,7 @@ export function SessionsPage() {
             Nothing here is `contained`: this screen has no constructive primary action to spend it on. */}
         {proof.canProve && (
           <Stack spacing={1} sx={bulkAction}>
-            <ProblemMessage problem={actionTarget === 'all' ? actionProblem : null} autoFocus />
+            <ProblemMessage problem={actionTarget === allSessionsTarget ? actionProblem : null} autoFocus />
             <Button
               type="button"
               variant="outlined"
@@ -142,12 +144,12 @@ export function SessionsPage() {
               disabled={isBusy || !proof.canBegin(password)}
               sx={bulkAction}
               onClick={() => run(
-                'all',
-                'sessions.revoke-others',
+                allSessionsTarget,
+                sessionOperation.revokeOthers.proofAction,
                 () => identity.client.revokeOtherSessions(),
-                { returnTo: SessionsPath, operation: 'revoke-others' })}
+                { returnTo: SessionsPath, operation: sessionOperation.revokeOthers.operation })}
             >
-              End every other device
+              {t('sessions.endEveryOther')}
             </Button>
           </Stack>
         )}
@@ -187,11 +189,11 @@ export function SessionsPage() {
       <ProblemMessage problem={read.problem} />
       {read.status === 'errored' && (
         <Button type="button" variant="outlined" sx={deviceAction} onClick={() => read.refresh(undefined)}>
-          Try again
+          {t('common:actions.tryAgain')}
         </Button>
       )}
       {read.status === 'loading' && read.data === null ? (
-        <Stack spacing={1} role="status" aria-label="Loading">
+        <Stack spacing={1} role="status" aria-label={t('sessions.loading')}>
           {[0, 1, 2].map((placeholder) => <Skeleton key={placeholder} variant="rounded" height={rowHeight} />)}
         </Stack>
       ) : sessions === null ? null : sessions.length === 0 ? (
@@ -237,11 +239,11 @@ export function SessionsPage() {
                       sx={deviceAction}
                       onClick={() => run(
                         `session:${session.sessionRef}`,
-                        'sessions.revoke-one',
+                        sessionOperation.revokeOne.proofAction,
                         () => identity.client.revokeSession(session.sessionRef),
-                        { returnTo: SessionsPath, operation: 'revoke-one', target: session.sessionRef })}
+                        { returnTo: SessionsPath, operation: sessionOperation.revokeOne.operation, target: session.sessionRef })}
                     >
-                      End this device
+                      {t('sessions.endThis')}
                     </Button>
                   </Stack>
                 )}
