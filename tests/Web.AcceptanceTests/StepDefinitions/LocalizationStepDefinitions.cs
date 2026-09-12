@@ -29,17 +29,17 @@ public sealed class LocalizationStepDefinitions
         await page.GotoAsync();
     }
 
-    [When("the visitor chooses Español and signs in through the Spanish form")]
-    public async Task WhenTheVisitorChoosesSpanish()
+    [When("the visitor chooses (.*) and signs in through the localized form")]
+    public async Task WhenTheVisitorChoosesLanguage(string language)
     {
-        await page.ChooseSpanishAsync();
-        await page.SignInSpanishAsync(identity.Email, IdentityAccessFixtures.Password);
+        await page.ChooseLanguageAsync(language);
+        await page.SignInAsync(identity.Email, IdentityAccessFixtures.Password);
     }
 
-    [Then("the Spanish access page survives a full-page navigation without raw catalog keys")]
-    public async Task ThenSpanishPersists()
+    [Then("the localized access page survives a full-page navigation without raw catalog keys")]
+    public async Task ThenTheLanguagePersists()
     {
         await page.OpenAccessAgainAsync();
-        await page.AssertSpanishAccessAsync();
+        await page.AssertLocalizedAccessAsync();
     }
 }

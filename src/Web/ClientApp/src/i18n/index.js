@@ -59,9 +59,9 @@ const currentPseudoLanguage = () => resolvePseudoLanguage({
   search: typeof window === 'undefined' ? '' : window.location.search,
 });
 
-export const isPseudoLanguageOverrideActive = () => currentPseudoLanguage() === PSEUDO_LANGUAGE;
-
 const initialPseudoLanguage = currentPseudoLanguage();
+export const isPseudoLanguageOverrideActive = () => initialPseudoLanguage === PSEUDO_LANGUAGE;
+
 const resources = initialPseudoLanguage === null
   ? catalogResources
   : { ...catalogResources, [PSEUDO_LANGUAGE]: createPseudoResources(catalogResources[sourceLanguage]) };
@@ -69,21 +69,26 @@ const runtimeSupportedLanguages = initialPseudoLanguage === null
   ? supportedLanguages
   : [...supportedLanguages, PSEUDO_LANGUAGE];
 
-export const isSupportedLanguage = (candidate) => {
-  if (!candidate) return false;
-  return supportedLanguages.includes(candidate);
+const canonicalRegisteredLanguage = (candidate, registeredLanguages) => {
+  const comparison = candidate.toLowerCase();
+  return registeredLanguages.find((language) => language.toLowerCase() === comparison) ?? null;
 };
 
-const normalizeLanguage = (value) => {
+export const isSupportedLanguage = (candidate) => candidate
+  ? canonicalRegisteredLanguage(candidate.trim(), supportedLanguages) !== null
+  : false;
+
+export const normalizeLanguage = (value, registeredLanguages = supportedLanguages) => {
   if (!value) return null;
 
-  const normalized = value.trim().toLowerCase();
-  if (isSupportedLanguage(normalized)) return normalized;
+  const normalized = value.trim();
+  const exact = canonicalRegisteredLanguage(normalized, registeredLanguages);
+  if (exact) return exact;
 
   const dash = normalized.indexOf('-');
   if (dash >= 0) {
     const base = normalized.substring(0, dash);
-    if (isSupportedLanguage(base)) return base;
+    return canonicalRegisteredLanguage(base, registeredLanguages);
   }
 
   return null;
@@ -181,8 +186,10 @@ export const setLanguage = (language) => {
           true,
         );
       }
-      i18n.options.supportedLngs = [...supportedLanguages, PSEUDO_LANGUAGE];
     }
+    const pseudoSupportedLanguages = [...supportedLanguages, PSEUDO_LANGUAGE, 'cimode'];
+    i18n.options.supportedLngs = pseudoSupportedLanguages;
+    i18n.services.languageUtils.supportedLngs = pseudoSupportedLanguages;
     i18n.changeLanguage(PSEUDO_LANGUAGE);
     if (typeof document !== 'undefined' && document.documentElement) {
       document.documentElement.lang = PSEUDO_LANGUAGE;

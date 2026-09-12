@@ -1,25 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import languages from './languages.json';
-import commonEn from './locales/en/common.json';
-import errorsEn from './locales/en/errors.json';
-import enumsEn from './locales/en/enums.json';
-import identityEn from './locales/en/identity.json';
-import platformEn from './locales/en/platform.json';
-import commonEs from './locales/es/common.json';
-import errorsEs from './locales/es/errors.json';
-import enumsEs from './locales/es/enums.json';
-import identityEs from './locales/es/identity.json';
-import platformEs from './locales/es/platform.json';
 import validationErrorSchema from '../../../../Application/Common/Validation/validationErrorSchema.json';
 import { VALIDATION_CODE_SCHEMA } from '../features/identity/api/problemDetails';
+import { assembleCatalogResources, normalizeLanguage } from './index';
+import { staticUnusedNamespaces } from './staticUnusedNamespaces';
 
 const namespaces = ['common', 'errors', 'enums', 'identity', 'platform'];
 const pluralSuffix = /_(zero|one|two|few|many|other)$/;
 
-const catalogs = {
-  en: { common: commonEn, errors: errorsEn, enums: enumsEn, identity: identityEn, platform: platformEn },
-  es: { common: commonEs, errors: errorsEs, enums: enumsEs, identity: identityEs, platform: platformEs },
-};
+const catalogModules = import.meta.glob('./locales/*/*.json', { eager: true, import: 'default' });
+const catalogs = assembleCatalogResources(catalogModules);
 
 function flatten(value, prefix = '', entries = new Map()) {
   for (const [key, child] of Object.entries(value)) {
@@ -110,6 +100,54 @@ describe('language registry contract', () => {
     expect(languages.inProgress.some((language) => languages.supported.includes(language))).toBe(false);
   });
 
+  it('derives a unique canonical journey row for every supported target language', () => {
+    const journeyLanguages = languages.journeys.map(({ language }) => language);
+    const targetLanguages = languages.supported.filter((language) => language !== languages.source);
+    expect(new Set(journeyLanguages).size).toBe(journeyLanguages.length);
+    expect(journeyLanguages.map((language) => Intl.getCanonicalLocales(language)[0])).toEqual(journeyLanguages);
+    expect([...journeyLanguages].sort()).toEqual([...targetLanguages].sort());
+  });
+
+  it('matches registered tags case-insensitively while returning their canonical spelling', () => {
+    const registeredLanguages = ['en', 'es', 'pt', 'pt-BR', 'zh', 'zh-Hans'];
+
+    expect(normalizeLanguage('PT-br', registeredLanguages)).toBe('pt-BR');
+    expect(normalizeLanguage('ZH-hANS', registeredLanguages)).toBe('zh-Hans');
+    expect(normalizeLanguage('pt-PT', registeredLanguages)).toBe('pt');
+    expect(normalizeLanguage('es-AR', registeredLanguages)).toBe('es');
+    expect(normalizeLanguage('fr-FR', registeredLanguages)).toBeNull();
+  });
+
+  it('assembles registered catalogs dynamically, failing supported gaps but allowing in-progress gaps', () => {
+    const modules = {
+      './locales/en/common.json': { title: 'Title' },
+      './locales/es/common.json': { title: 'Título' },
+    };
+    expect(assembleCatalogResources(modules, {
+      source: 'en',
+      default: 'en',
+      supported: ['en', 'es'],
+      inProgress: ['fr'],
+    }, ['common'])).toEqual({
+      en: { common: { title: 'Title' } },
+      es: { common: { title: 'Título' } },
+    });
+    expect(() => assembleCatalogResources({
+      './locales/en/common.json': { title: 'Title' },
+    }, {
+      source: 'en',
+      default: 'en',
+      supported: ['en', 'es'],
+      inProgress: [],
+    }, ['common'])).toThrow('Supported locale catalog is missing: es/common');
+  });
+
+  it('limits unused-key scanning to the exact static namespace gate', () => {
+    expect(staticUnusedNamespaces).toEqual(['common', 'identity', 'platform']);
+    expect(staticUnusedNamespaces).not.toContain('errors');
+    expect(staticUnusedNamespaces).not.toContain('enums');
+  });
+
   for (const language of languages.supported) {
     for (const namespace of namespaces) {
       it(`${language}/${namespace} matches the English source catalog`, () => {
@@ -133,7 +171,7 @@ describe('language registry contract', () => {
   for (const language of languages.inProgress) {
     for (const namespace of namespaces) {
       it(`reports ${language}/${namespace} gaps without making the language selectable`, () => {
-        const violations = catalogViolations(catalogs.en[namespace], catalogs[language][namespace], language);
+        const violations = catalogViolations(catalogs.en[namespace], catalogs[language]?.[namespace] ?? {}, language);
         expect(languages.supported).not.toContain(language);
         if (violations.length > 0) console.info(`In-progress catalog ${language}/${namespace}: ${violations.join(', ')}`);
       });

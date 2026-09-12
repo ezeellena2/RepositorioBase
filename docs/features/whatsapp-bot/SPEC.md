@@ -168,6 +168,13 @@ Provider-derived setup state and degradation alerting are specified in WA-REQ-05
   Determinism is not trust. A returned identifier originates in the client and MUST be validated exactly as a model selection is under WA-REQ-028: it must reference something this server issued into this conversation, its capability must still pass the full resolution chain of WA-REQ-029, and its payload must validate against the capability's parameter schema. Authorization is never skipped; only interpretation is.
 
   Both paths converge before any effect. A capability reached deterministically is subject to the same confirmation rules, including the acting-tenant disclosure of WA-REQ-054 — tapping a button is not itself an approval of a summary the person has not seen.
+
+### Localization
+
+- **WA-REQ-058:** inbound message content and every other user-authored value MUST be preserved exactly as authored; it is never translated, pseudo-localized, or used as a translation key. Provider message identifiers, reply-button and list identifiers, flow tokens, capability codes, routes, URLs, audit values, and other protocol data remain invariant machine data across every language.
+- **WA-REQ-059:** every system-owned outbound variant MUST be rendered at the delivery boundary from backend resources under an explicit recipient language. Resolution order is the recipient account preference, then a durable invitation, intent, run, or delivery snapshot where that concept exists, then the configured default. A retry reuses the durable resolved language and MUST render the same variant in that language regardless of ambient request, worker, machine, or thread culture.
+- **WA-REQ-060:** the transactional outbox payload and delivery envelope for a system-owned outbound message carry identifiers only; they MUST NOT carry `DeliveryLanguage`, rendered prose, or user-authored inbound content. At delivery, the recipient language is loaded from durable account, snapshot, or outbox-row metadata outside that payload and envelope. Retained inbound message content remains in the owning WhatsApp message table under WA-REQ-044. Every outbound resource set must match the English source names, non-empty values, and placeholders, and a delivery matrix must render every registered outbound variant in every supported language before release.
+
 ## 5. Data model
 
 Fourteen new tables. No identity-access table is altered; only the references that cross into them are shown.
@@ -308,6 +315,7 @@ Routes are contractual drafts; generated OpenAPI becomes the source of truth.
 - **Application:** routing validation, permission intersection, two-phase invariants, idempotency, "not understood" outcomes, with TDD.
 - **Functional:** use case, pipeline, EF Core, real PostgreSQL, including cross-tenant and replay matrices.
 - **Infrastructure:** signature verification against captured raw bodies, phone normalization, encrypted envelopes, outbox delivery, reconciliation on `Unknown`.
+- **Localization:** resource-name/value/placeholder parity; recipient account → durable snapshot → configured-default resolution; retry-stable delivery language; every outbound variant × every supported language; invariant inbound, protocol, audit, and outbox data.
 - **HTTP:** webhook challenge and rejection, Problem Details, OpenAPI drift.
 - **Model routing:** a fixture set of questions asserting the selected capability and parameters, run on catalog change.
 - **Architecture:** no capability bypasses `AuthorizationBehaviour`; no `Action` carries a declarative statement; no module declares an irreversible capability without reconciliation.
@@ -487,6 +495,28 @@ Scenario: A personal link never reaches organization data
   When the identity operates through a link bound to the Personal tenant
   Then only Personal-scoped capabilities are offered
   And no Organization A data is reachable in either direction
+
+Scenario: User-authored and protocol data remain invariant
+  Given an inbound message contains authored text and a reply identifier
+  When the message is retained and processed in each supported language
+  Then the authored text is unchanged in the owning message record
+  And the reply identifier, capability code, route, URL, and audit values are unchanged
+  And none of those values is passed through a translation catalog
+
+Scenario: A localized outbound retry keeps its durable language
+  Given a system-owned outbound variant whose recipient has no account preference
+  And its owning run captured a supported language
+  When delivery is retried under a different ambient worker culture
+  Then both attempts render the same resource variant in the captured language
+  And the ambient culture does not affect resource lookup or formatting
+
+Scenario: The outbox stores identifiers while the language matrix renders at delivery
+  Given every registered outbound variant and every supported language
+  When the localization delivery matrix runs
+  Then every resource exists with non-empty text and matching placeholders
+  And each variant renders successfully under its explicit language
+  And the outbox payload and delivery envelope contain identifiers only, with no delivery language, rendered prose, or inbound content
+  And delivery loads the language from durable state or metadata outside that payload and envelope
 ```
 
 ## 10. Decisions
@@ -517,4 +547,4 @@ It is deliberately left open rather than designed on assumption, because whether
 
 ## 11. Definition of Done per slice
 
-Inherits the identity-access definition, and adds: signature verification proven against a captured raw body; replay proven for webhook, confirmation, and worker lease; the cross-tenant matrix covered; secrets absent from every projection and log; the model routing fixture green; and any external module proven to reconcile before it may declare an irreversible capability.
+Inherits the identity-access definition, and adds: signature verification proven against a captured raw body; replay proven for webhook, confirmation, and worker lease; the cross-tenant matrix covered; secrets absent from every projection and log; the model routing fixture green; every system-owned outbound variant covered by resource, placeholder, resolution, retry-stability, and supported-language delivery matrices; user-authored and protocol data proven invariant; outbox payloads and delivery envelopes proven identifiers-only, with language loaded from durable state or metadata outside them; and any external module proven to reconcile before it may declare an irreversible capability.

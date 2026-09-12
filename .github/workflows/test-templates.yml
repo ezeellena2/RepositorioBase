@@ -53,6 +53,26 @@ jobs:
           --output generated \
           --no-update-check
 
+    - name: Inspect framework-specific localization assets
+      if: matrix.client-framework != 'none'
+      shell: bash
+      run: |
+        set -euo pipefail
+        localization_paths=(
+          generated/tests/Web.AcceptanceTests/Features/Localization.feature
+          generated/tests/Web.AcceptanceTests/Pages/LocalizationPage.cs
+          generated/tests/Web.AcceptanceTests/StepDefinitions/LocalizationStepDefinitions.cs
+        )
+        if [[ "${{ matrix.client-framework }}" == "react" ]]; then
+          for path in "${localization_paths[@]}"; do test -f "$path"; done
+          grep -F '<PackageReference Include="Reqnroll.ExternalData"' generated/tests/Web.AcceptanceTests/Web.AcceptanceTests.csproj
+          grep -F '<PackageVersion Include="Reqnroll.ExternalData"' generated/Directory.Packages.props
+        else
+          for path in "${localization_paths[@]}"; do test ! -e "$path"; done
+          ! grep -F '<PackageReference Include="Reqnroll.ExternalData"' generated/tests/Web.AcceptanceTests/Web.AcceptanceTests.csproj
+          ! grep -F '<PackageVersion Include="Reqnroll.ExternalData"' generated/Directory.Packages.props
+        fi
+
     - name: Generate and inspect command and query use cases
       working-directory: generated/src/Application
       run: |

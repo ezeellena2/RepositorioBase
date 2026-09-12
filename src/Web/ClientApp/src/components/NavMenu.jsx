@@ -47,7 +47,12 @@ import Typography from '@mui/material/Typography';
 import { useIdentity } from '../features/identity/context/IdentityProvider';
 import { ProblemMessage } from '../features/identity/ProblemMessage';
 import { useSubmit } from '../features/identity/useSubmit';
-import { supportedLanguages, useTranslation } from '../i18n';
+import {
+  isPseudoLanguageOverrideActive,
+  sourceLanguage,
+  supportedLanguages,
+  useTranslation,
+} from '../i18n';
 
 export const drawerWidth = 264;
 /** Two rows keep localized controls visible on phones; every fixed-bar spacer uses the same height. */
@@ -100,7 +105,10 @@ const languageControlSize = 'small';
 function LanguageSelector() {
   const identity = useIdentity();
   const { t, i18n } = useTranslation('common');
-  const displayedLanguage = identity.pendingLanguage ?? i18n.resolvedLanguage;
+  const pseudoLanguageOverride = isPseudoLanguageOverrideActive();
+  const displayedLanguage = pseudoLanguageOverride
+    ? sourceLanguage
+    : identity.pendingLanguage ?? i18n.resolvedLanguage;
   return (
     <>
       <FormControl size={languageControlSize} sx={{ minWidth: 96, flexShrink: 0 }}>
@@ -111,7 +119,7 @@ function LanguageSelector() {
             'aria-busy': identity.pendingLanguage !== null ? true : undefined,
           }}
           value={displayedLanguage}
-          disabled={identity.isLoading}
+          disabled={identity.isLoading || pseudoLanguageOverride}
           onChange={(event) => {
             void identity.changeLanguage(event.target.value).catch(() => undefined);
           }}

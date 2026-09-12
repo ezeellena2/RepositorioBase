@@ -57,6 +57,9 @@ jobs:
 
     - name: Lint SPA
       run: npx eslint src/
+
+    - name: Reject unused static localization keys
+      run: npm run i18n:unused
   #endif
 
   build:

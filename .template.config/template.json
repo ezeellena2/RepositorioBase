@@ -305,7 +305,10 @@
           "condition": "(UseAngular)",
           "exclude": [
             "src/Web/ClientApp/**",
-            "src/Web/Web-webapi.http"
+            "src/Web/Web-webapi.http",
+            "tests/Web.AcceptanceTests/Features/Localization.feature",
+            "tests/Web.AcceptanceTests/Pages/LocalizationPage.cs",
+            "tests/Web.AcceptanceTests/StepDefinitions/LocalizationStepDefinitions.cs"
           ],
           "rename": {
             "ClientApp-Angular": "ClientApp",

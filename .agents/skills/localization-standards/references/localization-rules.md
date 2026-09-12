@@ -44,11 +44,13 @@ src/Web/ClientApp/src/i18n/
         └── platform.json
 ```
 
-`index.js` registers only bundled catalog files under `src/i18n/locales/<language>/*.json` synchronously, under the
-namespace named by each filename: `common`, `errors`, `enums`, `identity`, or `platform`. `languages.json` is registry
-metadata and is never registered or exposed as a translation namespace. Bind the owning feature namespace in a
-component, then use lower-camel dotted local keys. Qualify another namespace with standard i18next `namespace:key`
-syntax. Reserve these entries for protocol-backed values:
+`index.js` uses one eager `import.meta.glob('./locales/*/*.json')` seam to discover bundled catalogs synchronously.
+It validates every discovered language against `languages.json` and requires all five namespaces for each supported
+language; a missing in-progress catalog remains report-only. The filename supplies the namespace: `common`,
+`errors`, `enums`, `identity`, or `platform`. `languages.json` is registry metadata and is never registered or
+exposed as a translation namespace. Bind the owning feature namespace in a component, then use lower-camel dotted
+local keys. Qualify another namespace with standard i18next `namespace:key` syntax. Reserve these entries for
+protocol-backed values:
 
 - `errors:<code>` for API errors;
 - `errors:validation.<code>` for validation errors;
@@ -127,12 +129,17 @@ timestamps in UTC and numbers in invariant machine form; components never rely o
 ## Catalog and UI contracts
 
 - During extraction, copy each existing English string into `en` verbatim. Extraction is not permission to edit.
+- Enforce `i18next/no-literal-string` as an error across the SPA. A narrow suppression may identify a test-harness
+  probe or invariant protocol value only; never add a broad test override or weaken the global severity.
 - Require every supported catalog to contain every `en` semantic key with a non-empty value and identical named
   interpolation placeholders. For each pluralized semantic key, every catalog must provide every category its own
   language requires; categories do not need to match across languages. Report the same facts for `inProgress`
   languages without making them selectable.
-- Run SPA tests in deterministic `en`. A supported non-English language receives a smoke journey before promotion.
-- Keep `appTheme` exported while `themeFor(language)` composes the matching MUI locale.
+- Run SPA tests in deterministic `en`. The `languages.json` `journeys` object array must contain each supported
+  non-source language exactly once, so Reqnroll.ExternalData generates the smoke matrix without language-specific
+  Gherkin or C# copy.
+- Keep `appTheme` exported while `themeFor(language)` composes the matching MUI locale. The explicit
+  `muiLocaleByLanguage` keys must equal the supported-language set exactly, with a defined MUI locale value for each.
 - Preserve `id`, `name`, `data-testid`, `role`, heading level, `type`, `autoComplete`, `required`, disabled logic,
   and established accessible names. Translation changes another language's value; a copy change updates all languages.
 
@@ -150,6 +157,18 @@ resolution. After sign-in, the SPA obtains `PreferredLanguage` from the identity
 cookie, so subsequent server requests receive the account preference through that cookie. Persist a signed-in choice
 to the account, set the SPA document's `<html lang>` to the resolved language, and keep locale and time-zone selection
 separate even when their initial values are derived from the language.
+
+## Development pseudo-language
+
+`en-XA` is generated recursively from the English resources only when a development build opens with the exact
+query `?lng=en-XA`. Accent and expand literal catalog text while preserving interpolation tokens, rich-text or
+HTML-like tags, whitespace, keys, non-string values, and the English source objects.
+
+`en-XA` is developer tooling, not language data. Never add it to `supported`, `inProgress`, the native selector,
+the MUI map, the journey dataset, backend registries or resources, cookies, account preferences, delivery snapshots,
+outbox payloads, or database constraints. Ignore the query in production. While the development override is active,
+account/context preference application must not replace it, and the disabled selector must continue to expose only
+real supported languages.
 
 ## Backend resources and delivery
 
@@ -188,8 +207,10 @@ invariant English.
 | Problem-code coverage | Every code exposed through `x-problem-codes` has `errors:<code>` in every supported catalog. |
 | Backend parity | Every supported culture resource has every source name, non-empty, with matching placeholders. |
 | Delivery matrix | Every server-delivered message type renders successfully in every supported language. |
-| SPA PR gate | SPA tests run deterministically in `en`, and lint runs on every pull request. |
-| Journey gate | Existing journeys stay deterministic in `en`; each supported non-English language has a smoke journey. |
+| MUI locale mapping | `muiLocaleByLanguage` has exactly one defined entry for every supported language and no extra key. |
+| Static unused keys | `i18next-cli status <source> --unused --namespace <namespace>` exits nonzero on unused keys and runs read-only for exactly `common`, `identity`, and `platform`; preserve only justified dynamic static keys such as `common:language.*`. Dynamic `errors` and `enums` keys stay excluded and use their dedicated coverage gates. |
+| SPA CI gate | SPA tests run deterministically in `en`, global localization lint runs at error severity, and the scoped static-unused gate runs on every push to `main` and on every pull request when pull-request validation is enabled. |
+| Journey gate | Existing journeys stay deterministic in `en`; `languages.json.journeys` equals supported minus source, and generates one smoke journey for each row. |
 
 ## Add-a-key checklist
 
@@ -201,3 +222,20 @@ invariant English.
 - [ ] Preserve named placeholders and rich-text components; provide every plural form the target language requires.
 - [ ] Use `t()`, `Trans`, `useFormat()`, or an explicitly cultured backend resource at the delivery boundary.
 - [ ] Preserve accessible and test contracts, then run every applicable gate above.
+
+## Add-a-language checklist
+
+- [ ] Confirm a business request, canonical language tag, translation owner, and MUI locale availability.
+- [ ] Add the tag to `inProgress` in both SPA and backend registries; never expose or persist it in that state.
+- [ ] Create all five SPA catalogs and `Emails.<language>.resx`; add the new autonym key to every supported
+      `common.json`.
+- [ ] Translate and review every value while supported-language gates continue to ignore only the declared
+      in-progress gaps.
+- [ ] Add the explicit MUI mapping and `languages.json.journeys` row in the same change that moves both registries
+      from in-progress to supported.
+- [ ] Update all six current EF model language constraints and generate/apply the matching migration; registry
+      promotion is not migration-free.
+- [ ] Run catalog, problem-code, backend-resource, email-delivery, registry, MUI, journey, static-unused, lint,
+      build, full .NET, and `git diff --check` gates from
+      `docs/features/localization/ADDING-A-LANGUAGE.md`.
+- [ ] Keep `en-XA` out of this workflow, and plan persisted-data handling before any post-deployment demotion.

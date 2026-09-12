@@ -1,7 +1,8 @@
 import { defineConfig } from 'i18next-cli';
 import languages from './src/i18n/languages.json' with { type: 'json' };
+import { staticUnusedNamespaces } from './src/i18n/staticUnusedNamespaces.js';
 
-export const staticUnusedNamespaces = Object.freeze(['common', 'identity', 'platform']);
+export { staticUnusedNamespaces };
 
 export default defineConfig({
   locales: [...languages.supported, ...languages.inProgress],

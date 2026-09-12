@@ -5,6 +5,39 @@ param (
 $outputPath = Join-Path (Split-Path $PSScriptRoot -Parent) "artifacts\template-tests"
 $results = @()
 
+function AssertLocalizationTemplateShape {
+    param (
+        [string]$clientFramework,
+        [string]$projectPath
+    )
+
+    if ($clientFramework -eq "none") {
+        return
+    }
+
+    $expectsLocalizationJourney = $clientFramework -eq "react"
+    $reactOnlyPaths = @(
+        "tests/Web.AcceptanceTests/Features/Localization.feature",
+        "tests/Web.AcceptanceTests/Pages/LocalizationPage.cs",
+        "tests/Web.AcceptanceTests/StepDefinitions/LocalizationStepDefinitions.cs"
+    )
+
+    foreach ($relativePath in $reactOnlyPaths) {
+        $exists = Test-Path (Join-Path $projectPath $relativePath)
+        if ($exists -ne $expectsLocalizationJourney) {
+            throw "Unexpected React localization asset shape for $($clientFramework): $relativePath"
+        }
+    }
+
+    $acceptanceProject = Get-Content (Join-Path $projectPath "tests/Web.AcceptanceTests/Web.AcceptanceTests.csproj") -Raw
+    $centralPackages = Get-Content (Join-Path $projectPath "Directory.Packages.props") -Raw
+    $hasExternalDataReference = $acceptanceProject.Contains('<PackageReference Include="Reqnroll.ExternalData"')
+    $hasExternalDataVersion = $centralPackages.Contains('<PackageVersion Include="Reqnroll.ExternalData"')
+    if ($hasExternalDataReference -ne $expectsLocalizationJourney -or $hasExternalDataVersion -ne $expectsLocalizationJourney) {
+        throw "Unexpected Reqnroll.ExternalData shape for $clientFramework"
+    }
+}
+
 function CreateAndTestProject {
     param (
         [string]$clientFramework,
@@ -25,6 +58,7 @@ function CreateAndTestProject {
 
         dotnet new ca-sln --client-framework $clientFramework --database $database --name CleanArchitecture --output $projectPath --no-update-check
         if ($LASTEXITCODE -ne 0) { throw "dotnet new ca-sln failed for $name" }
+        AssertLocalizationTemplateShape -clientFramework $clientFramework -projectPath $projectPath
 
         $exitCode = 0
         Push-Location $projectPath

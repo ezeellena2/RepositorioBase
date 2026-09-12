@@ -3,7 +3,15 @@ import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
-import { i18n, resolveLanguage, roleName, setLanguage, useFormat } from './index';
+import {
+  i18n,
+  isPseudoLanguageOverrideActive,
+  PSEUDO_LANGUAGE,
+  resolveLanguage,
+  roleName,
+  setLanguage,
+  useFormat,
+} from './index';
 import languages from './languages.json';
 import { appTheme, missingMuiLocaleMappings, muiLocaleByLanguage, themeFor } from '../theme';
 import { esES } from '@mui/material/locale';
@@ -107,6 +115,19 @@ describe('Spanish language selection', () => {
     await act(() => setLanguage('fr'));
     expect(i18n.resolvedLanguage).toBe('es');
     expect(document.cookie).toContain('c=es|uic=es');
+  });
+
+  it('requires a reload before a pseudo query added after startup can activate', async () => {
+    await act(() => setLanguage('en'));
+    window.history.replaceState({}, '', '/?lng=en-XA');
+
+    expect(isPseudoLanguageOverrideActive()).toBe(false);
+    await act(() => setLanguage('es'));
+
+    expect(i18n.resolvedLanguage).toBe('es');
+    expect(document.documentElement.lang).toBe('es');
+    expect(document.cookie).toContain('c=es|uic=es');
+    expect(document.cookie).not.toContain(PSEUDO_LANGUAGE);
   });
 
   it('composes MUI locales while retaining the original English visual theme', () => {
