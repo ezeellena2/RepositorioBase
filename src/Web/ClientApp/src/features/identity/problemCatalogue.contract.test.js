@@ -1,31 +1,48 @@
 import { describe, expect, it } from 'vitest';
 import { problem } from '../../test/identityServer';
+import enErrors from '../../i18n/locales/en/errors.json';
+import esErrors from '../../i18n/locales/es/errors.json';
 import problemCodes from './problemCodes.json';
-import { CLIENT_CODES, MESSAGES } from './problemMessages';
+
+const CLIENT_CODES = [
+  'client_failure',
+  'network_unavailable',
+  'request_timeout',
+  'unreadable_response',
+];
+const PRESENTATION_KEYS = new Set(['reference', 'retryAfter', 'unknown', 'validation']);
+const VOCABULARY = [...Object.keys(problemCodes), ...CLIENT_CODES].sort();
+
+const messageKeys = (catalogue) => Object.keys(catalogue)
+  .filter((key) => !PRESENTATION_KEYS.has(key))
+  .sort();
+
+const keyTree = (value, prefix = '') => Object.entries(value).flatMap(([key, child]) => {
+  const path = prefix ? `${prefix}.${key}` : key;
+  return child && typeof child === 'object' && !Array.isArray(child)
+    ? keyTree(child, path)
+    : [path];
+}).sort();
 
 describe('problem catalogue contract', () => {
-  it('keeps server codes server-only and makes the UI catalogue their union with four client codes', () => {
+  it('keeps transport-only codes out of the API catalogue', () => {
     expect(problemCodes.recovery_admission_closed).toBe(503);
-    expect(MESSAGES.recovery_admission_closed).toBe(
-      'The service is not accepting requests right now. Try again shortly.',
-    );
-    expect(MESSAGES.invalid_role_operation).toBe('That role change was not accepted.');
-    expect(MESSAGES.invalid_membership_operation).toBe('That membership change was not accepted.');
-    expect(MESSAGES.invalid_confirmation).toBe('That confirmation link is not usable.');
-    expect(MESSAGES.registration_conflict).toBe(
-      'That organization registration cannot be completed. If you already have an account at this address, sign in; otherwise start registration again.',
-    );
-    expect(Object.keys(problemCodes)).toHaveLength(53);
-    expect(CLIENT_CODES).toEqual([
-      'network_unavailable',
-      'request_timeout',
-      'unreadable_response',
-      'client_failure',
-    ]);
-    expect(CLIENT_CODES.every((code) => !(code in problemCodes))).toBe(true);
-    expect(Object.keys(MESSAGES).sort()).toEqual([...Object.keys(problemCodes), ...CLIENT_CODES].sort());
-    expect(Object.keys(MESSAGES)).toHaveLength(57);
-    expect(Object.values(MESSAGES).every((message) => message.trim().length > 0)).toBe(true);
+    expect(CLIENT_CODES.filter((code) => code in problemCodes)).toEqual([]);
+  });
+
+  it.each([
+    ['English', enErrors],
+    ['Spanish', esErrors],
+  ])('covers the complete API and client vocabulary in %s without orphaned message keys', (_language, errors) => {
+    expect(messageKeys(errors)).toEqual(VOCABULARY);
+    expect(VOCABULARY.every((code) => (
+      typeof errors[code] === 'string' && errors[code].trim().length > 0
+    ))).toBe(true);
+  });
+
+  it('keeps the localized error catalogues structurally identical', () => {
+    expect(keyTree(esErrors)).toEqual(keyTree(enErrors));
+    for (const key of PRESENTATION_KEYS) expect(enErrors[key]).toBeDefined();
   });
 
   it('allows MSW fixtures only for status and code pairs declared by the API', () => {

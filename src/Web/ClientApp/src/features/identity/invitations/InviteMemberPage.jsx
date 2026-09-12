@@ -21,6 +21,7 @@ import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
+import { roleName, useFormat, useTranslation } from '../../../i18n';
 import { toProblem } from '../api/apiTransport';
 import { useIdentity } from '../context/IdentityProvider';
 import { claimedFieldNames, fieldErrorText, selectFieldErrors } from '../fieldErrors';
@@ -68,7 +69,8 @@ const spinner = (busy) => (busy ? <CircularProgress size={16} color="inherit" />
  * to the same neutral chip instead of being guessed at.
  */
 const statusColor = { Accepted: 'success', Cancelled: 'error', Expired: 'warning' };
-const invitationFields = ['email', 'roleIds'];
+const invitationFieldNames = { email: 'email', roleIds: 'roleIds' };
+const invitationFields = [invitationFieldNames.email, invitationFieldNames.roleIds];
 const appendInvitations = (current, next) => ({
   ...next,
   items: [...current.items, ...next.items],
@@ -172,7 +174,9 @@ export function InviteMemberPage() {
     setRoleIds((current) => current.includes(roleId)
       ? current.filter((held) => held !== roleId)
       : [...current, roleId]);
-    setClearedServerFields((current) => current.includes('roleIds') ? current : [...current, 'roleIds']);
+    setClearedServerFields((current) => current.includes(invitationFieldNames.roleIds)
+      ? current
+      : [...current, invitationFieldNames.roleIds]);
   };
 
   // A dead end rather than a failure, and it is still this screen: the same title and the sentence that says what
@@ -194,7 +198,10 @@ export function InviteMemberPage() {
     );
   }
 
-  const nameOf = (roleId) => roles?.find((role) => role.roleId === roleId)?.name ?? roleId;
+  const nameOf = (roleId) => {
+    const role = roles?.find((candidate) => candidate.roleId === roleId);
+    return role ? roleName(role, t) : roleId;
+  };
   const sendProblem = actionTarget === 'send' ? actionProblem : null;
   const sendClaimedFields = claimedFieldNames(sendProblem, invitationFields);
   const cannotReadRoles = rolesRead.status === 'refused' && rolesRead.problem?.code === 'permission_denied';
@@ -240,10 +247,12 @@ export function InviteMemberPage() {
               value={email}
               onChange={(event) => {
                 setEmail(event.target.value);
-                setClearedServerFields((current) => current.includes('email') ? current : [...current, 'email']);
+                setClearedServerFields((current) => current.includes(invitationFieldNames.email)
+                  ? current
+                  : [...current, invitationFieldNames.email]);
               }}
               error={Boolean(fieldErrors.email)}
-              helperText={fieldErrorText(fieldErrors, 'email', t) || undefined}
+              helperText={fieldErrorText(fieldErrors, invitationFieldNames.email, t) || undefined}
             />
 
             <FormControl
@@ -254,7 +263,7 @@ export function InviteMemberPage() {
               aria-invalid={Boolean(fieldErrors.roleIds)}
               aria-describedby={fieldErrors.roleIds ? 'invite-role-ids-error' : undefined}
             >
-              <FormLabel component="legend">Roles to offer</FormLabel>
+              <FormLabel component="legend">{t('identity:invitations.member.rolesToOffer')}</FormLabel>
               {rolesRead.status === 'loading' && rolesRead.data === null && (
                 <Stack spacing={1} sx={note}>
                   {[0, 1].map((placeholder) => <Skeleton key={placeholder} variant="rounded" height={38} />)}
@@ -265,7 +274,7 @@ export function InviteMemberPage() {
                   <ProblemMessage problem={rolesRead.problem} />
                   {rolesRead.status === 'errored' && (
                     <Button type="button" variant="outlined" onClick={() => rolesRead.refresh(undefined)} sx={start}>
-                      Try again
+                      {t('common:actions.tryAgain')}
                     </Button>
                   )}
                 </Stack>
@@ -299,7 +308,7 @@ export function InviteMemberPage() {
               </FormGroup>
               {fieldErrors.roleIds && (
                 <FormHelperText id="invite-role-ids-error">
-                  {fieldErrorText(fieldErrors, 'roleIds', t)}
+                  {fieldErrorText(fieldErrors, invitationFieldNames.roleIds, t)}
                 </FormHelperText>
               )}
             </FormControl>
@@ -327,7 +336,7 @@ export function InviteMemberPage() {
         )}
         {invitationReadTarget === 'list' && invitationsRead.status === 'errored' && (
           <Button type="button" variant="outlined" onClick={() => invitationsRead.refresh(undefined)} sx={start}>
-            Try again
+            {t('common:actions.tryAgain')}
           </Button>
         )}
 
@@ -463,7 +472,7 @@ export function InviteMemberPage() {
             onClick={() => invitationsRead.refresh(nextCursor, appendInvitations)}
             sx={start}
           >
-            Try again
+            {t('common:actions.tryAgain')}
           </Button>
         )}
       </Stack>

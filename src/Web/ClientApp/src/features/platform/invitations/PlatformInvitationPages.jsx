@@ -27,8 +27,11 @@ import { useTranslation } from '../../../i18n';
 
 /** Required without the asterisk MUI would add, which would rename the field for everything that reads its label. */
 const requiredField = { inputLabel: { required: false } };
-const passwordField = ['password'];
+const passwordFieldName = 'password';
+const passwordField = [passwordFieldName];
 const passwordFieldIds = { password: 'platform-password' };
+const codeFieldName = 'code';
+const codeFields = [codeFieldName];
 
 /**
  * The public entrance is a single raised card; the screens inside the shell are sections under a heading.
@@ -116,7 +119,7 @@ export function RegisterPlatformInviteePage() {
   }, [passwordErrors]);
 
   return (
-    <EntranceCard headingId="platform-register-heading" title={t('invitations.register.title')}>
+    <EntranceCard headingId={invitationHeadings.register} title={t('invitations.register.title')}>
       {!token && (
         <Typography variant="body2">
           {t('invitations.register.missingToken')}
@@ -156,7 +159,7 @@ export function RegisterPlatformInviteePage() {
               fullWidth
               slotProps={requiredField}
               error={Boolean(passwordErrors.password)}
-              helperText={fieldErrorText(passwordErrors, 'password', t) || undefined}
+              helperText={fieldErrorText(passwordErrors, passwordFieldName, t) || undefined}
               value={password}
               onChange={(event) => setPassword(event.target.value)}
             />
@@ -305,7 +308,7 @@ function PlatformSecondFactor({ token }) {
     await identity.selectTenant(platformTenant.id);
   });
   const codeError = fieldError(problem, 'code', t);
-  const invalidCode = firstInvalid(problem, ['code']) === 'code';
+  const invalidCode = firstInvalid(problem, codeFields) === codeFieldName;
   const invalidMfaCode = problem?.code === 'invalid_mfa_code';
 
   useEffect(() => {
@@ -316,7 +319,7 @@ function PlatformSecondFactor({ token }) {
     <Stack spacing={3}>
       <ProblemMessage
         problem={invalidMfaCode ? null : problem}
-        claimedFields={['code']}
+        claimedFields={codeFields}
         autoFocus={!invalidCode}
       />
       <ProblemMessage problem={housekeepingProblem} />
@@ -391,7 +394,7 @@ function PlatformSecondFactor({ token }) {
             type="text"
             required
             fullWidth
-            slotProps={{ ...requiredField, htmlInput: { inputMode: 'numeric' } }}
+            slotProps={mfaCodeFieldSlots}
             error={invalidCode || invalidMfaCode}
             helperText={invalidMfaCode ? t('errors:invalid_mfa_code') : codeError.helperText}
             value={code}

@@ -46,7 +46,8 @@
   },
   "invite": {
     "label": "Invite an administrator",
-    "submit": "Invite"
+    "submit": "Invite",
+    "success": "If that address can be invited, an invitation is on its way."
   },
   "audit": {
     "title": "Audit",
@@ -86,6 +87,7 @@
   "invitations": {
     "register": {
       "title": "Set up your Platform account",
+      "missingToken": "This invitation link is incomplete. Open it again from the invitation email.",
       "success": "Check your email. If that invitation is still open, we have sent you what you need to continue. Confirm your address, sign in, then open this invitation link again to set up your second factor.",
       "password": "Choose a password",
       "continue": "Continue"

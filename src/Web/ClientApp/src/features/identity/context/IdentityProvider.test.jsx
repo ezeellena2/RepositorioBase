@@ -147,7 +147,7 @@ describe('identity provider', () => {
     server.use(
       http.get('/api/identity/antiforgery', () => {
         bootstraps += 1;
-        return bootstraps === 1
+        return bootstraps <= 2
           ? HttpResponse.json({ requestToken: ANTIFORGERY_TOKEN })
           : HttpResponse.error();
       }),
@@ -169,6 +169,7 @@ describe('identity provider', () => {
 
     await waitFor(() => expect(screen.getByTestId('authenticated')).toHaveTextContent('true'));
     expect(screen.getByTestId('problem')).toHaveTextContent('');
+    expect(bootstraps).toBe(3);
     expect(signIns).toBe(1);
     expect(contextReads).toBe(2);
   });

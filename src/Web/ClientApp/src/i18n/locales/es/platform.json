@@ -46,7 +46,8 @@
   },
   "invite": {
     "label": "Invitar a un administrador",
-    "submit": "Invitar"
+    "submit": "Invitar",
+    "success": "Si se puede invitar a esa dirección, la invitación está en camino."
   },
   "audit": {
     "title": "Auditoría",
@@ -86,6 +87,7 @@
   "invitations": {
     "register": {
       "title": "Configurar su cuenta de la Plataforma",
+      "missingToken": "Este enlace de invitación está incompleto. Ábralo de nuevo desde el correo de invitación.",
       "success": "Revise su correo electrónico. Si esa invitación sigue abierta, le hemos enviado lo necesario para continuar. Confirme su dirección, inicie sesión y luego abra este enlace de invitación de nuevo para configurar su segundo factor.",
       "password": "Elegir una contraseña",
       "continue": "Continuar"

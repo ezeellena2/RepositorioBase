@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using CleanArchitecture.Application.Common.Validation;
 using CleanArchitecture.Application.FunctionalTests.Infrastructure;
 using CleanArchitecture.Application.IdentityAccess.Organizations;
 using CleanArchitecture.Domain.IdentityAccess.Auditing;
@@ -96,10 +97,10 @@ public sealed class RegistrationHttpValidationTests : TestBase
             "/organizations/register",
             new { email = string.Empty, password = string.Empty, legalName = " ", cuit = string.Empty },
             Errors(
-                ("email", "Enter an email address."),
-                ("password", "A password is required."),
-                ("legalName", "A legal name is required."),
-                ("cuit", "A CUIT is required.")),
+                Error("email", ValidationErrorCodes.Required),
+                Error("password", ValidationErrorCodes.Required),
+                Error("legalName", ValidationErrorCodes.Required),
+                Error("cuit", ValidationErrorCodes.Required)),
             Array.Empty<string>()).SetName("Organization_required_fields_have_exact_wire_errors");
 
         var organizationEmail = new string('e', 257);
@@ -110,10 +111,10 @@ public sealed class RegistrationHttpValidationTests : TestBase
             "/organizations/register",
             new { email = organizationEmail, password = organizationPassword, legalName, cuit = longCuit },
             Errors(
-                ("email", "The email address must be 256 characters or fewer."),
-                ("password", "The password must be 256 characters or fewer."),
-                ("legalName", "The legal name must be 256 characters or fewer."),
-                ("cuit", "The CUIT must be 32 characters or fewer.")),
+                Error("email", ValidationErrorCodes.TooLong, ("max", 256)),
+                Error("password", ValidationErrorCodes.TooLong, ("max", 256)),
+                Error("legalName", ValidationErrorCodes.TooLong, ("max", 256)),
+                Error("cuit", ValidationErrorCodes.TooLong, ("max", 32))),
             new[] { organizationEmail, organizationPassword, legalName, longCuit }).SetName("Organization_length_rules_have_exact_wire_errors");
 
         const string organizationInvalidEmail = "organization-address-sentinel";
@@ -122,26 +123,26 @@ public sealed class RegistrationHttpValidationTests : TestBase
             "/organizations/register",
             new { email = organizationInvalidEmail, password = "Testing1234!", legalName = "Northwind", cuit = invalidCuit },
             Errors(
-                ("email", "Enter an email address."),
-                ("cuit", "The CUIT must contain exactly eleven digits and may use only digits, hyphens, and whitespace.")),
+                Error("email", ValidationErrorCodes.Invalid),
+                Error("cuit", ValidationErrorCodes.Invalid)),
             new[] { organizationInvalidEmail, "Testing1234!", "Northwind", invalidCuit }).SetName("Organization_shape_rules_have_exact_wire_errors");
 
         const string wrongCheckDigit = "30-12345678-9";
         yield return new TestCaseData(
             "/organizations/register",
             new { email = "owner@example.test", password = "Testing1234!", legalName = "Northwind", cuit = wrongCheckDigit },
-            Errors(("cuit", "That CUIT's check digit does not match. Check the number.")),
+            Errors(Error("cuit", ValidationErrorCodes.Invalid)),
             new[] { wrongCheckDigit, "12345678" }).SetName("Organization_check_digit_rule_has_exact_wire_error");
 
         yield return new TestCaseData(
             "/personal/register",
             new { email = string.Empty, password = string.Empty, fullName = " ", displayName = " ", documentNumber = string.Empty },
             Errors(
-                ("email", "Enter an email address."),
-                ("password", "A password is required."),
-                ("fullName", "A full name is required."),
-                ("displayName", "A display name is required."),
-                ("documentNumber", "A document number is required.")),
+                Error("email", ValidationErrorCodes.Required),
+                Error("password", ValidationErrorCodes.Required),
+                Error("fullName", ValidationErrorCodes.Required),
+                Error("displayName", ValidationErrorCodes.Required),
+                Error("documentNumber", ValidationErrorCodes.Required)),
             Array.Empty<string>()).SetName("Personal_required_fields_have_exact_wire_errors");
 
         var personalEmail = new string('e', 257);
@@ -153,11 +154,11 @@ public sealed class RegistrationHttpValidationTests : TestBase
             "/personal/register",
             new { email = personalEmail, password = personalPassword, fullName, displayName, documentNumber = longDocument },
             Errors(
-                ("email", "The email address must be 256 characters or fewer."),
-                ("password", "The password must be 256 characters or fewer."),
-                ("fullName", "The full name must be 200 characters or fewer."),
-                ("displayName", "The display name must be 60 characters or fewer."),
-                ("documentNumber", "The document number must be 32 characters or fewer.")),
+                Error("email", ValidationErrorCodes.TooLong, ("max", 256)),
+                Error("password", ValidationErrorCodes.TooLong, ("max", 256)),
+                Error("fullName", ValidationErrorCodes.TooLong, ("max", 200)),
+                Error("displayName", ValidationErrorCodes.TooLong, ("max", 60)),
+                Error("documentNumber", ValidationErrorCodes.TooLong, ("max", 32))),
             new[] { personalEmail, personalPassword, fullName, displayName, longDocument }).SetName("Personal_length_rules_have_exact_wire_errors");
 
         const string personalInvalidEmail = "personal-address-sentinel";
@@ -166,8 +167,8 @@ public sealed class RegistrationHttpValidationTests : TestBase
             "/personal/register",
             new { email = personalInvalidEmail, password = "Testing1234!", fullName = "Ada Lovelace", displayName = "Ada", documentNumber = invalidDocument },
             Errors(
-                ("email", "Enter an email address."),
-                ("documentNumber", "An Argentine DNI must contain seven or eight digits and may use only digits, dots, hyphens, and whitespace.")),
+                Error("email", ValidationErrorCodes.Invalid),
+                Error("documentNumber", ValidationErrorCodes.Invalid)),
             new[] { personalInvalidEmail, "Testing1234!", "Ada Lovelace", "Ada", invalidDocument }).SetName("Personal_shape_rules_have_exact_wire_errors");
     }
 
@@ -175,7 +176,7 @@ public sealed class RegistrationHttpValidationTests : TestBase
     public async Task Valid_antiforgery_registration_rejects_invalid_input_without_effects_or_secret_echoes(
         string path,
         object payload,
-        IReadOnlyDictionary<string, string[]> expectedErrors,
+        IReadOnlyDictionary<string, ValidationErrorDetail[]> expectedErrors,
         string[] forbiddenValues)
     {
         var host = $"https://registration-input-{Guid.NewGuid():N}.localhost";
@@ -209,13 +210,7 @@ public sealed class RegistrationHttpValidationTests : TestBase
         var host = $"https://registration-parity-{Guid.NewGuid():N}.localhost";
         var antiforgery = await IdentityHttpHarness.GetAntiforgeryAsync(harness.Client, host);
         var before = await RegistrationDurableCountsAsync();
-        string[] expectedPolicyErrors = [
-            "Passwords must be at least 12 characters.",
-            "Passwords must have at least one non alphanumeric character.",
-            "Passwords must have at least one digit ('0'-'9').",
-            "Passwords must have at least one uppercase ('A'-'Z')."
-        ];
-        var expectedErrors = Errors(("password", expectedPolicyErrors));
+        var expectedErrors = Errors(Error("password", ValidationErrorCodes.PasswordPolicy));
 
         using var knownRequest = IdentityHttpHarness.JsonRequest(
             HttpMethod.Post,
@@ -315,7 +310,7 @@ public sealed class RegistrationHttpValidationTests : TestBase
         var host = $"https://registration-cuit-parity-{Guid.NewGuid():N}.localhost";
         var antiforgery = await IdentityHttpHarness.GetAntiforgeryAsync(harness.Client, host);
         var before = await RegistrationDurableCountsAsync();
-        var expectedErrors = Errors(("cuit", "That CUIT's check digit does not match. Check the number."));
+        var expectedErrors = Errors(Error("cuit", ValidationErrorCodes.Invalid));
 
         using var takenRequest = IdentityHttpHarness.JsonRequest(
             HttpMethod.Post,
@@ -371,11 +366,17 @@ public sealed class RegistrationHttpValidationTests : TestBase
         (await TestApp.CountAsync<RegistrationSubmission>()).ShouldBe(0);
     }
 
-    private static IReadOnlyDictionary<string, string[]> Errors(params (string Field, string Message)[] errors) =>
-        errors.ToDictionary(error => error.Field, error => new[] { error.Message }, StringComparer.Ordinal);
+    private static KeyValuePair<string, ValidationErrorDetail[]> Error(
+        string field,
+        string code,
+        params (string Name, int Value)[] parameters) =>
+        new(field, [new ValidationErrorDetail(
+            code,
+            parameters.ToDictionary(parameter => parameter.Name, parameter => parameter.Value, StringComparer.Ordinal))]);
 
-    private static IReadOnlyDictionary<string, string[]> Errors(params (string Field, string[] Messages)[] errors) =>
-        errors.ToDictionary(error => error.Field, error => error.Messages, StringComparer.Ordinal);
+    private static IReadOnlyDictionary<string, ValidationErrorDetail[]> Errors(
+        params KeyValuePair<string, ValidationErrorDetail[]>[] errors) =>
+        errors.ToDictionary(error => error.Key, error => error.Value, StringComparer.Ordinal);
 
     private static object RegistrationPayload(string route, string email, string password) =>
         route.EndsWith("/personal/register", StringComparison.Ordinal)
@@ -385,7 +386,7 @@ public sealed class RegistrationHttpValidationTests : TestBase
     private static async Task<string> AssertValidationProblemAsync(
         HttpResponseMessage response,
         string instance,
-        IReadOnlyDictionary<string, string[]> expectedErrors,
+        IReadOnlyDictionary<string, ValidationErrorDetail[]> expectedErrors,
         params string[] forbiddenValues)
     {
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
@@ -405,8 +406,12 @@ public sealed class RegistrationHttpValidationTests : TestBase
             .ShouldBe(expectedErrors.Keys.OrderBy(name => name, StringComparer.Ordinal));
         foreach (var expected in expectedErrors)
         {
-            errors.GetProperty(expected.Key).EnumerateArray().Select(message => message.GetString())
-                .ShouldBe(expected.Value);
+            var actualDetails = errors.GetProperty(expected.Key).EnumerateArray().ToArray();
+            actualDetails.Length.ShouldBe(expected.Value.Length);
+            for (var index = 0; index < expected.Value.Length; index++)
+            {
+                AssertValidationDetail(actualDetails[index], expected.Value[index]);
+            }
         }
 
         foreach (var value in forbiddenValues.Where(value => !string.IsNullOrEmpty(value)))
@@ -415,6 +420,22 @@ public sealed class RegistrationHttpValidationTests : TestBase
         }
 
         return raw;
+    }
+
+    private static void AssertValidationDetail(JsonElement actual, ValidationErrorDetail expected)
+    {
+        actual.ValueKind.ShouldBe(JsonValueKind.Object);
+        actual.EnumerateObject().Select(property => property.Name).ShouldBe(["code", "params"]);
+        actual.GetProperty("code").GetString().ShouldBe(expected.Code);
+
+        var parameters = actual.GetProperty("params");
+        parameters.ValueKind.ShouldBe(JsonValueKind.Object);
+        parameters.EnumerateObject().Select(property => property.Name).OrderBy(name => name, StringComparer.Ordinal)
+            .ShouldBe(expected.Params.Keys.OrderBy(name => name, StringComparer.Ordinal));
+        foreach (var expectedParameter in expected.Params)
+        {
+            parameters.GetProperty(expectedParameter.Key).GetInt32().ShouldBe(expectedParameter.Value);
+        }
     }
 
     private static string StableProblemBody(string raw)
@@ -511,19 +532,27 @@ public sealed class RegistrationHttpValidationTests : TestBase
         public Task<IdentityAccountCreationResult> CreatePendingAsync(
             string normalizedEmail,
             string password,
+            string preferredLanguage,
             CancellationToken cancellationToken) =>
-            inner.CreatePendingAsync(normalizedEmail, password, cancellationToken);
+            inner.CreatePendingAsync(normalizedEmail, password, preferredLanguage, cancellationToken);
 
         public string HashPassword(string password) => inner.HashPassword(password);
 
         public Task<IdentityAccountCreationResult> CreatePendingFromHashAsync(
             string normalizedEmail,
             string passwordHash,
+            string preferredLanguage,
             CancellationToken cancellationToken) =>
-            inner.CreatePendingFromHashAsync(normalizedEmail, passwordHash, cancellationToken);
+            inner.CreatePendingFromHashAsync(normalizedEmail, passwordHash, preferredLanguage, cancellationToken);
 
         public Task ActivateAsync(Guid identityId, CancellationToken cancellationToken) =>
             inner.ActivateAsync(identityId, cancellationToken);
+
+        public Task<bool> SetPreferredLanguageAsync(
+            Guid identityId,
+            string language,
+            CancellationToken cancellationToken) =>
+            inner.SetPreferredLanguageAsync(identityId, language, cancellationToken);
 
         public Task<bool> VerifyPasswordAsync(Guid identityId, string password, CancellationToken cancellationToken) =>
             inner.VerifyPasswordAsync(identityId, password, cancellationToken);

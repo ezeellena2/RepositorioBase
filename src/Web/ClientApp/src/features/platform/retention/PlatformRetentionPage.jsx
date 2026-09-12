@@ -249,9 +249,11 @@ export function PlatformRetentionPage() {
   // proof instead of asking for a policy it would only be refused. It renders in place of the data, not beside it.
   if (owesFactor) {
     return (
-      <Stack component="section" aria-labelledby="platform-retention-heading" spacing={3}>
-        <Typography id="platform-retention-heading" component="h1" variant="h5">Retention</Typography>
-        {stepUp.problem && !fieldOwnsStepUpProblem && <Box sx={column}><ProblemMessage problem={stepUp.problem} /></Box>}
+      <Stack component="section" aria-labelledby={retentionHeadingId} spacing={3}>
+        <Typography id={retentionHeadingId} component="h1" variant="h5">{t('retention.title')}</Typography>
+        {stepUp.problem && !fieldOwnsStepUpProblem && (
+          <Box sx={column}><ProblemMessage problem={stepUp.problem} claimedFields={['code']} /></Box>
+        )}
         <Paper variant="outlined" sx={narrowSection}>
           <Stack spacing={2}>
             <Typography variant="body2" color="text.secondary">
@@ -401,16 +403,16 @@ export function PlatformRetentionPage() {
                           columns after them are closed sets the server owns, and all three are stated the same
                           way — a chip. Two of them being bare words next to a chipped third was the table
                           disagreeing with itself about which of its own answers count as domain state. */}
-                      <TableCell data-mobile-label="Category">
-                        <Box component="span" sx={mobileValue}>{rule.category}</Box>
+                      <TableCell data-mobile-label={t('retention.columns.category')}>
+                        <Box component="span" sx={mobileValue}>{t(`enums:retentionCategory.${rule.category}`)}</Box>
                       </TableCell>
-                      <TableCell data-mobile-label="Retention period">
+                      <TableCell data-mobile-label={t('retention.columns.period')}>
                         <Box component="span" sx={mobileValue}>{rule.retentionPeriod}</Box>
                       </TableCell>
-                      <TableCell data-mobile-label="Trigger">
-                        <Chip size="small" variant="outlined" label={rule.trigger} />
+                      <TableCell data-mobile-label={t('retention.columns.trigger')}>
+                        <Chip size="small" variant="outlined" label={t(`enums:retentionTrigger.${rule.trigger}`)} />
                       </TableCell>
-                      <TableCell data-mobile-label="Action">
+                      <TableCell data-mobile-label={t('retention.columns.action')}>
                         <Chip
                           size="small"
                           variant="outlined"
@@ -418,7 +420,7 @@ export function PlatformRetentionPage() {
                           color={actionColor[rule.action] ?? neutralChipColor}
                         />
                       </TableCell>
-                      <TableCell data-mobile-label="Evidence required">
+                      <TableCell data-mobile-label={t('retention.columns.evidenceRequired')}>
                         <Chip
                           size="small"
                           variant="outlined"

@@ -1,5 +1,7 @@
 {
   "format": { "dateUnavailable": "Date unavailable" },
+  "actions": { "tryAgain": "Try again", "reload": "Reload" },
+  "errorBoundary": { "message": "Something went wrong on this page. Reload to continue." },
   "language": { "label": "Language", "en": "English", "es": "Español" },
   "counter": {
     "title": "Counter",
@@ -17,6 +19,7 @@
     "signInProviders": "Sign-in providers",
     "organizationsSection": "Organizations",
     "organizations": "Organizations",
+    "addOrganization": "Add an organization",
     "roles": "Roles",
     "members": "Members",
     "inviteMember": "Invite a member",
@@ -36,6 +39,9 @@
     "logIn": "Log in",
     "register": "Register",
     "openNavigation": "Open navigation",
+    "collapseNavigation": "Collapse navigation",
+    "expandNavigation": "Expand navigation",
+    "notFound": "That page does not exist",
     "brand": "Clean Architecture",
     "primaryNavigation": "Primary navigation"
   }

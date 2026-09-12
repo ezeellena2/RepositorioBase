@@ -1,4 +1,6 @@
 using System.Net;
+using System.Text.Json;
+using CleanArchitecture.Application.Common.Validation;
 using CleanArchitecture.Application.FunctionalTests.Infrastructure;
 using CleanArchitecture.Application.IdentityAccess.Authorization;
 using CleanArchitecture.Application.IdentityAccess.Invitations.InviteMember;
@@ -135,17 +137,16 @@ public sealed class RegisterInvitedUserTests : TestBase
         live.IsFailure.ShouldBeTrue();
         live.Error!.Code.ShouldBe("validation_failed");
         live.Error.ValidationErrors.Keys.ShouldBe(["password"]);
-        live.Error.ValidationErrors["password"].ShouldBe([
-            "Passwords must be at least 12 characters.",
-            "Passwords must have at least one non alphanumeric character.",
-            "Passwords must have at least one digit ('0'-'9').",
-            "Passwords must have at least one uppercase ('A'-'Z')."
-        ]);
-        string.Join(' ', live.Error.ValidationErrors["password"]).ShouldNotContain(PolicyViolatingPassword);
+        var livePassword = live.Error.ValidationErrors["password"].ShouldHaveSingleItem();
+        livePassword.Code.ShouldBe(ValidationErrorCodes.PasswordPolicy);
+        livePassword.Params.ShouldBeEmpty();
+        JsonSerializer.Serialize(live.Error.ValidationErrors).ShouldNotContain(PolicyViolatingPassword);
         dead.IsFailure.ShouldBeTrue();
         dead.Error!.Code.ShouldBe(live.Error.Code, "a weak password must not double as a token-validity oracle");
         dead.Error.Category.ShouldBe(live.Error.Category);
-        dead.Error.ValidationErrors["password"].ShouldBe(live.Error.ValidationErrors["password"]);
+        var deadPassword = dead.Error.ValidationErrors["password"].ShouldHaveSingleItem();
+        deadPassword.Code.ShouldBe(ValidationErrorCodes.PasswordPolicy);
+        deadPassword.Params.ShouldBeEmpty();
         TestApp.ConfirmationTokenHashInvocationCount.ShouldBe(0, "a refused password is decided before the token is read at all");
         (await TestApp.CountAsync<ApplicationUser>()).ShouldBe(identitiesBefore);
         (await TestApp.CountAsync<Domain.IdentityAccess.Outbox.OutboxMessage>()).ShouldBe(messagesBefore);

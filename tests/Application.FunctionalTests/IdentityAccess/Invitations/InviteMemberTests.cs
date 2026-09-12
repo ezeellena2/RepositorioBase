@@ -1,5 +1,6 @@
 using CleanArchitecture.Application.FunctionalTests.Infrastructure;
 using CleanArchitecture.Application.Common.Exceptions;
+using CleanArchitecture.Application.Common.Validation;
 using CleanArchitecture.Application.IdentityAccess.Authorization;
 using CleanArchitecture.Application.IdentityAccess.Invitations.InviteMember;
 using CleanArchitecture.Domain.IdentityAccess.Auditing;
@@ -133,7 +134,9 @@ public sealed class InviteMemberTests : TestBase
             () => TestApp.SendAsync(NewCommand(organization) with { RoleIds = [] }));
 
         exception.Errors.Keys.ShouldBe(["roleIds"]);
-        exception.Errors["roleIds"].ShouldBe(["Choose at least one role."]);
+        var roleIdsError = exception.Errors["roleIds"].ShouldHaveSingleItem();
+        roleIdsError.Code.ShouldBe(ValidationErrorCodes.Required);
+        roleIdsError.Params.ShouldBeEmpty();
         await InvitationScenario.AssertNoInvitationEffectsAsync();
     }
 
@@ -147,7 +150,9 @@ public sealed class InviteMemberTests : TestBase
             () => TestApp.SendAsync(NewCommand(organization) with { Email = "not-an-address" }));
 
         exception.Errors.Keys.ShouldBe(["email"]);
-        exception.Errors["email"].ShouldBe(["Enter an email address."]);
+        var emailError = exception.Errors["email"].ShouldHaveSingleItem();
+        emailError.Code.ShouldBe(ValidationErrorCodes.Invalid);
+        emailError.Params.ShouldBeEmpty();
         await InvitationScenario.AssertNoInvitationEffectsAsync();
     }
 

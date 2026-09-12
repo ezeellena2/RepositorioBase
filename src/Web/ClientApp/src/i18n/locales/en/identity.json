@@ -5,6 +5,7 @@
     "email": "Email",
     "password": "Password",
     "submit": "Sign in",
+    "refused": "Those details did not sign you in. Check them and try again.",
     "forgotPassword": "Forgot your password?",
     "reactivateAccount": "Reactivate your account"
   },
@@ -31,6 +32,8 @@
     "organization": {
       "title": "Register an organization",
       "acknowledgement": "If that address can register, we have sent it a confirmation link. Check the inbox.",
+      "existingAccountNext": "If you already have an account, we emailed you instead with instructions to sign in and add the organization. <signIn>Sign in</signIn> now.",
+      "deliveryHelp": "Didn't get an email? Check your spam folder and wait a few minutes.",
       "legalName": "Legal name",
       "cuit": "CUIT",
       "email": "Email",
@@ -78,12 +81,15 @@
     "externalReturn": {
       "title": "Finishing up",
       "loading": "One moment…",
-      "refused": "Nothing was changed. You can try again."
+      "refused": "Nothing was changed. You can try again.",
+      "backToSignIn": "Back to sign in",
+      "backToProviders": "Back to sign-in providers"
     }
   },
   "invitations": {
     "register": {
       "title": "Set up your account",
+      "missingToken": "This invitation link is incomplete. Open it again from the invitation email.",
       "success": "Check your email. If that invitation is still open, we have sent you what you need to continue.",
       "choosePassword": "Choose a password",
       "continue": "Continue"

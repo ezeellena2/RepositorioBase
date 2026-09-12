@@ -1,4 +1,5 @@
 using CleanArchitecture.Application.Common.Validation;
+using CleanArchitecture.Application.IdentityAccess.Sessions;
 using FluentValidation;
 using NUnit.Framework;
 using Shouldly;
@@ -12,15 +13,14 @@ public sealed class ValidationCodeVocabularyTests
     {
         var validators = typeof(ValidationErrorCodes).Assembly.GetTypes()
             .Where(type => !type.IsAbstract && typeof(IValidator).IsAssignableFrom(type))
-            .Select(type => (Type: type, Validator: (IValidator?)Activator.CreateInstance(type)))
-            .Where(candidate => candidate.Validator is not null)
+            .Select(type => (Type: type, Validator: CreateValidator(type)))
             .ToArray();
 
         validators.ShouldNotBeEmpty();
         var componentCount = 0;
         foreach (var (type, validator) in validators)
         {
-            foreach (var member in validator!.CreateDescriptor().GetMembersWithValidators())
+            foreach (var member in validator.CreateDescriptor().GetMembersWithValidators())
             {
                 foreach (var (propertyValidator, options) in member)
                 {
@@ -74,6 +74,25 @@ public sealed class ValidationCodeVocabularyTests
         foreach (var code in ValidationErrorCodes.Schema.Keys.Where(code => code != ValidationErrorCodes.TooLong))
             ValidationErrorCodes.Schema[code].ShouldBeEmpty();
     }
+
+    private static IValidator CreateValidator(Type type)
+    {
+        var constructor = type.GetConstructors().Single();
+        var arguments = constructor.GetParameters()
+            .Select(parameter => parameter.ParameterType == typeof(IValidatedOptionalSession)
+                ? AnonymousSession
+                : throw new InvalidOperationException(
+                    $"{type.FullName} has an unsupported validator dependency {parameter.ParameterType.FullName}."))
+            .ToArray();
+
+        return (IValidator)(constructor.Invoke(arguments)
+            ?? throw new InvalidOperationException($"Could not construct validator {type.FullName}."));
+    }
+
+    private static readonly IValidatedOptionalSession AnonymousSession = new SessionStub(null, null);
+
+    private sealed record SessionStub(Guid? IdentityId, string? Email, bool IsInvalid = false)
+        : IValidatedOptionalSession;
 
     private static string GetRepositoryPath(params string[] parts)
     {

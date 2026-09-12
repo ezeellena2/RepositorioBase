@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using CleanArchitecture.Application.Common.Validation;
 using CleanArchitecture.Application.FunctionalTests.Infrastructure;
 using CleanArchitecture.Application.IdentityAccess.Platform.Invitations;
 using CleanArchitecture.Application.IdentityAccess.Platform.Mfa;
@@ -179,14 +180,27 @@ public sealed class PlatformMfaAuthenticationTests : TestBase
             .Select(property => property.Name)
             .ToArray();
         schemaKeys.ShouldBe(["token", "code"]);
-        errors.EnumerateObject().Select(property => property.Name).ShouldBe(schemaKeys);
-        errors.GetProperty("token").EnumerateArray().Select(message => message.GetString()).ShouldBe(
-            ["The invitation token must be 256 characters or fewer."]);
-        errors.GetProperty("code").EnumerateArray().Select(message => message.GetString()).ShouldBe(
-            ["The authenticator code must be 16 characters or fewer."]);
+        errors.EnumerateObject().Select(property => property.Name).ShouldBe(["code", "token"]);
+        AssertTooLong(errors.GetProperty("code"), 16);
+        AssertTooLong(errors.GetProperty("token"), 256);
         payload.GetRawText().ShouldNotContain("token-secret", Case.Insensitive);
         payload.GetRawText().ShouldNotContain("code-secret", Case.Insensitive);
         (await TestApp.CountAsync<PlatformMfaEnrollment>()).ShouldBe(initialEnrollments);
+
+        static void AssertTooLong(JsonElement fieldErrors, int max)
+        {
+            fieldErrors.ValueKind.ShouldBe(JsonValueKind.Array);
+            var details = fieldErrors.EnumerateArray().ToArray();
+            details.Length.ShouldBe(1);
+            var detail = details[0];
+            detail.ValueKind.ShouldBe(JsonValueKind.Object);
+            detail.EnumerateObject().Select(property => property.Name).ShouldBe(["code", "params"]);
+            detail.GetProperty("code").GetString().ShouldBe(ValidationErrorCodes.TooLong);
+            var parameters = detail.GetProperty("params");
+            parameters.ValueKind.ShouldBe(JsonValueKind.Object);
+            parameters.EnumerateObject().Select(property => property.Name).ShouldBe(["max"]);
+            parameters.GetProperty("max").GetInt32().ShouldBe(max);
+        }
     }
 
     /// <summary>Every state-changing Platform route requires antiforgery; none may be normalized to a business answer.</summary>

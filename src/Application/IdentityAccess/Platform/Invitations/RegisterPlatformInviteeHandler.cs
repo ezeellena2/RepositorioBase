@@ -2,6 +2,7 @@ using System.Text.Json;
 using CleanArchitecture.Application.Common.Interfaces;
 using CleanArchitecture.Application.Common.Localization;
 using CleanArchitecture.Application.Common.Models;
+using CleanArchitecture.Application.Common.Validation;
 using CleanArchitecture.Application.IdentityAccess.Common;
 using CleanArchitecture.Application.IdentityAccess.Organizations;
 using CleanArchitecture.Application.IdentityAccess.Organizations.RegisterOrganization;
@@ -44,7 +45,10 @@ public sealed class RegisterPlatformInviteeCommandHandler(
         if (!passwordValidation.IsValid)
         {
             return Result.Failure(IdentityAccessErrors.PasswordPolicyFailed(
-                new Dictionary<string, string[]> { ["password"] = [.. passwordValidation.Errors] }));
+                new Dictionary<string, ValidationErrorDetail[]>(StringComparer.Ordinal)
+                {
+                    ["password"] = [new ValidationErrorDetail(ValidationErrorCodes.PasswordPolicy, new Dictionary<string, int>())]
+                }));
         }
 
         try

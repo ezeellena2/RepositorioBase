@@ -46,6 +46,7 @@ const leading = { alignSelf: 'flex-start' };
 const recoveryHeadingId = 'mfa-recovery-heading';
 const recoveryAction = 'platform.mfa.recover';
 const emptyFieldValue = '';
+const recoveryClaimedFields = ['password', 'recoveryCode'];
 
 /**
  * Getting a second factor back after losing the authenticator that held it (IA-REQ-041, C6).
@@ -158,7 +159,7 @@ export function MfaRecoveryPage() {
         <>
           <ProblemMessage
             problem={directFieldProblem ? null : problem}
-            claimedFields={['password', 'recoveryCode']}
+            claimedFields={recoveryClaimedFields}
             autoFocus={!invalidField}
           />
           <Paper

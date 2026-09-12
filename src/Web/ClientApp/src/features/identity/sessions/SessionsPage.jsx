@@ -11,6 +11,7 @@ import Skeleton from '@mui/material/Skeleton';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
+import { Trans, useFormat, useTranslation } from '../../../i18n';
 import { toProblem } from '../api/apiTransport';
 import { useIdentity } from '../context/IdentityProvider';
 import { ProblemMessage } from '../ProblemMessage';
@@ -46,7 +47,7 @@ const empty = { p: 4, textAlign: 'center' };
  */
 const rowHeight = 4 + 6 + 20 + 20 + 6 + 4;
 const sessionOperation = {
-  revokeOthers: { proofAction: 'sessions.revoke-others', operation: 'revoke-others' },
+  revokeOthers: { target: 'all', proofAction: 'sessions.revoke-others', operation: 'revoke-others' },
   revokeOne: { proofAction: 'sessions.revoke-one', operation: 'revoke-one' },
 };
 const listItemTextSlots = { primary: { component: 'div' } };
@@ -108,7 +109,7 @@ export function SessionsPage() {
     const resume = (act) => { void Promise.resolve().then(act); };
 
     if (waiting.operation === 'revoke-others') {
-      resume(() => run('all', null, () => identity.client.revokeOtherSessions()));
+      resume(() => run(sessionOperation.revokeOthers.target, null, () => identity.client.revokeOtherSessions()));
       return;
     }
 
@@ -142,12 +143,12 @@ export function SessionsPage() {
               disabled={isBusy || !proof.canBegin(password)}
               sx={bulkAction}
               onClick={() => run(
-                'all',
-                'sessions.revoke-others',
+                sessionOperation.revokeOthers.target,
+                sessionOperation.revokeOthers.proofAction,
                 () => identity.client.revokeOtherSessions(),
-                { returnTo: SessionsPath, operation: 'revoke-others' })}
+                { returnTo: SessionsPath, operation: sessionOperation.revokeOthers.operation })}
             >
-              End every other device
+              {t('sessions.endEveryOther')}
             </Button>
           </Stack>
         )}
@@ -187,11 +188,11 @@ export function SessionsPage() {
       <ProblemMessage problem={read.problem} />
       {read.status === 'errored' && (
         <Button type="button" variant="outlined" sx={deviceAction} onClick={() => read.refresh(undefined)}>
-          Try again
+          {t('common:actions.tryAgain')}
         </Button>
       )}
       {read.status === 'loading' && read.data === null ? (
-        <Stack spacing={1} role="status" aria-label="Loading">
+        <Stack spacing={1} role="status" aria-label={t('sessions.loading')}>
           {[0, 1, 2].map((placeholder) => <Skeleton key={placeholder} variant="rounded" height={rowHeight} />)}
         </Stack>
       ) : sessions === null ? null : sessions.length === 0 ? (
@@ -237,11 +238,11 @@ export function SessionsPage() {
                       sx={deviceAction}
                       onClick={() => run(
                         `session:${session.sessionRef}`,
-                        'sessions.revoke-one',
+                        sessionOperation.revokeOne.proofAction,
                         () => identity.client.revokeSession(session.sessionRef),
-                        { returnTo: SessionsPath, operation: 'revoke-one', target: session.sessionRef })}
+                        { returnTo: SessionsPath, operation: sessionOperation.revokeOne.operation, target: session.sessionRef })}
                     >
-                      End this device
+                      {t('sessions.endThis')}
                     </Button>
                   </Stack>
                 )}

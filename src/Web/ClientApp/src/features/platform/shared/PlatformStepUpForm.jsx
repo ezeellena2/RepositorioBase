@@ -46,7 +46,7 @@ export function PlatformStepUpForm({ inputId, code, onCodeChange, onSubmit, isBu
         type="text"
         required
         fullWidth
-        slotProps={{ inputLabel: { required: false }, htmlInput: { inputMode: 'numeric' } }}
+        slotProps={stepUpFieldSlots}
         error={invalid}
         helperText={invalidMfaCode ? t('errors:invalid_mfa_code') : structured.helperText}
         value={code}

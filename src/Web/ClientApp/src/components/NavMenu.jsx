@@ -61,6 +61,12 @@ const toolbarSx = {
 };
 const collapsedDrawerWidth = 72;
 const mobileDrawerWidth = 320;
+const rightTooltipPlacement = 'right';
+const navigationCollapseTimeout = 'auto';
+const signOutProblemPlacement = 'right-end';
+const contextProblemPlacement = 'bottom-start';
+const navItemTextSlots = { primary: { variant: 'body2', component: 'span', noWrap: true } };
+const navGroupTextSlots = { primary: { variant: 'overline', component: 'span', noWrap: true } };
 
 const accountRoutes = new Set([
   '/identity',
@@ -153,7 +159,7 @@ function NavItem({ to, label, icon: Icon, onNavigate, collapsible = false, expan
 
   return (
     <ListItem disablePadding>
-      <Tooltip title={label} placement="right" describeChild>
+      <Tooltip title={label} placement={rightTooltipPlacement} describeChild>
         <ListItemButton
           component={RouterLink}
           to={to}
@@ -164,12 +170,12 @@ function NavItem({ to, label, icon: Icon, onNavigate, collapsible = false, expan
           sx={navigationButtonLayout(collapsible, expanded)}
         >
           <ListItemIcon sx={{ minWidth: 0, justifyContent: 'center', color: 'inherit' }}>
-            <Icon aria-hidden="true" size={20} strokeWidth={2} />
+            <Icon aria-hidden size={20} strokeWidth={2} />
           </ListItemIcon>
           <ListItemText
             primary={label}
             sx={navigationLabelLayout(collapsible, expanded)}
-            slotProps={{ primary: { variant: 'body2', component: 'span', noWrap: true } }}
+            slotProps={navItemTextSlots}
           />
         </ListItemButton>
       </Tooltip>
@@ -198,7 +204,7 @@ function ExpandableGroup({ label, routes, icon: Icon, children, collapsible = fa
 
   return (
     <ListItem disablePadding sx={{ display: 'block' }}>
-      <Tooltip title={label} placement="right" describeChild>
+      <Tooltip title={label} placement={rightTooltipPlacement} describeChild>
         <ListItemButton
           aria-label={label}
           aria-controls={panelId}
@@ -207,18 +213,18 @@ function ExpandableGroup({ label, routes, icon: Icon, children, collapsible = fa
           sx={navigationButtonLayout(collapsible, navigationExpanded)}
         >
           <ListItemIcon sx={{ minWidth: 0, justifyContent: 'center', color: 'inherit' }}>
-            <Icon aria-hidden="true" size={20} strokeWidth={2} />
+            <Icon aria-hidden size={20} strokeWidth={2} />
           </ListItemIcon>
           <ListItemText
             primary={label}
             sx={navigationLabelLayout(collapsible, navigationExpanded)}
-            slotProps={{ primary: { variant: 'overline', component: 'span', noWrap: true } }}
+            slotProps={navGroupTextSlots}
           />
           {expanded
             ? (
               <Box
                 component={ChevronUp}
-                aria-hidden="true"
+                aria-hidden
                 size={18}
                 strokeWidth={2}
                 sx={disclosureIconLayout(collapsible, navigationExpanded)}
@@ -227,7 +233,7 @@ function ExpandableGroup({ label, routes, icon: Icon, children, collapsible = fa
             : (
               <Box
                 component={ChevronDown}
-                aria-hidden="true"
+                aria-hidden
                 size={18}
                 strokeWidth={2}
                 sx={disclosureIconLayout(collapsible, navigationExpanded)}
@@ -235,7 +241,7 @@ function ExpandableGroup({ label, routes, icon: Icon, children, collapsible = fa
             )}
         </ListItemButton>
       </Tooltip>
-      <Collapse id={panelId} in={expanded} timeout="auto">
+      <Collapse id={panelId} in={expanded} timeout={navigationCollapseTimeout}>
         <List
           dense
           disablePadding
@@ -357,7 +363,7 @@ function NavContents({ onNavigate, collapsible = false, expanded = true }) {
 
         <Divider component="li" />
         <ListItem disablePadding>
-          <Tooltip title={t('navigation.logOut')} placement="right" describeChild>
+          <Tooltip title={t('navigation.logOut')} placement={rightTooltipPlacement} describeChild>
             <ListItemButton
               component="a"
               href="/login"
@@ -367,12 +373,12 @@ function NavContents({ onNavigate, collapsible = false, expanded = true }) {
               sx={navigationButtonLayout(collapsible, expanded)}
             >
               <ListItemIcon sx={{ minWidth: 0, justifyContent: 'center', color: 'inherit' }}>
-                <LogOut aria-hidden="true" size={20} strokeWidth={2} />
+                <LogOut aria-hidden size={20} strokeWidth={2} />
               </ListItemIcon>
               <ListItemText
                 primary={t('navigation.logOut')}
                 sx={navigationLabelLayout(collapsible, expanded)}
-                slotProps={{ primary: { variant: 'body2', component: 'span', noWrap: true } }}
+                slotProps={navItemTextSlots}
               />
             </ListItemButton>
           </Tooltip>
@@ -382,7 +388,7 @@ function NavContents({ onNavigate, collapsible = false, expanded = true }) {
         <Popper
           open
           anchorEl={signOutTrigger}
-          placement="right-end"
+          placement={signOutProblemPlacement}
           sx={(theme) => ({ zIndex: theme.zIndex.snackbar })}
         >
           <ProblemMessage problem={signOutProblem} />
@@ -445,8 +451,8 @@ function DrawerContents({
             onClick={onToggle}
           >
             {expanded
-              ? <PanelLeftClose aria-hidden="true" size={20} strokeWidth={2} />
-              : <PanelLeftOpen aria-hidden="true" size={20} strokeWidth={2} />}
+              ? <PanelLeftClose aria-hidden size={20} strokeWidth={2} />
+              : <PanelLeftOpen aria-hidden size={20} strokeWidth={2} />}
           </IconButton>
         </Box>
       )}
@@ -501,7 +507,7 @@ function ContextSwitcher() {
         sx={switcherTrigger}
       >
         <Box component="span" sx={switcherLabel}>
-          {active ? active.name : 'No organization selected'}
+          {active ? active.name : t('navigation.noOrganizationSelected')}
         </Box>
       </Button>
       <Menu anchorEl={anchor} open={anchor !== null} onClose={() => setAnchor(null)}>
@@ -518,7 +524,7 @@ function ContextSwitcher() {
         <Popper
           open
           anchorEl={trigger}
-          placement="bottom-start"
+          placement={contextProblemPlacement}
           sx={(theme) => ({ zIndex: theme.zIndex.snackbar })}
         >
           <ProblemMessage problem={problem} />
@@ -595,7 +601,7 @@ export function NavMenu() {
               onClick={() => setMobileOpen(true)}
               sx={hideAtWide}
             >
-              <MenuIcon aria-hidden="true" size={22} strokeWidth={2} />
+              <MenuIcon aria-hidden size={22} strokeWidth={2} />
             </IconButton>
           )}
           {signedIn

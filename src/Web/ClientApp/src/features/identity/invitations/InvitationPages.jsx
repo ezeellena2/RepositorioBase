@@ -18,7 +18,8 @@ import { Trans, useTranslation } from '../../../i18n';
 
 /** Required without the asterisk MUI would add, which would rename the field for everything that reads its label. */
 const requiredField = { inputLabel: { required: false } };
-const passwordField = ['password'];
+const passwordFieldName = 'password';
+const passwordField = [passwordFieldName];
 const passwordFieldIds = { password: 'invitation-password' };
 
 /**
@@ -97,7 +98,7 @@ export function RegisterFromInvitationPage() {
             fullWidth
             slotProps={requiredField}
             error={Boolean(passwordErrors.password)}
-            helperText={fieldErrorText(passwordErrors, 'password', t) || undefined}
+            helperText={fieldErrorText(passwordErrors, passwordFieldName, t) || undefined}
             value={password}
             onChange={(event) => setPassword(event.target.value)}
           />

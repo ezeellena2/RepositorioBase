@@ -5,6 +5,7 @@
     "email": "Correo electrónico",
     "password": "Contraseña",
     "submit": "Iniciar sesión",
+    "refused": "Esos datos no permitieron iniciar sesión. Revíselos y vuelva a intentarlo.",
     "forgotPassword": "¿Olvidó su contraseña?",
     "reactivateAccount": "Reactivar su cuenta"
   },
@@ -31,6 +32,8 @@
     "organization": {
       "title": "Registrar una organización",
       "acknowledgement": "Si esa dirección puede registrarse, le hemos enviado un enlace de confirmación. Revise la bandeja de entrada.",
+      "existingAccountNext": "Si ya tiene una cuenta, le enviamos un correo con instrucciones para iniciar sesión y añadir la organización. <signIn>Inicie sesión</signIn> ahora.",
+      "deliveryHelp": "¿No recibió el correo? Revise la carpeta de correo no deseado y espere unos minutos.",
       "legalName": "Razón social",
       "cuit": "CUIT",
       "email": "Correo electrónico",
@@ -78,12 +81,15 @@
     "externalReturn": {
       "title": "Finalizando",
       "loading": "Un momento…",
-      "refused": "No se realizó ningún cambio. Puede volver a intentarlo."
+      "refused": "No se realizó ningún cambio. Puede volver a intentarlo.",
+      "backToSignIn": "Volver al inicio de sesión",
+      "backToProviders": "Volver a los proveedores de inicio de sesión"
     }
   },
   "invitations": {
     "register": {
       "title": "Configurar su cuenta",
+      "missingToken": "Este enlace de invitación está incompleto. Ábralo de nuevo desde el correo de invitación.",
       "success": "Revise su correo electrónico. Si esa invitación sigue abierta, le hemos enviado lo necesario para continuar.",
       "choosePassword": "Elegir una contraseña",
       "continue": "Continuar"

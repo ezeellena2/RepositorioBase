@@ -1,5 +1,7 @@
 {
   "format": { "dateUnavailable": "Fecha no disponible" },
+  "actions": { "tryAgain": "Volver a intentar", "reload": "Recargar" },
+  "errorBoundary": { "message": "Se produjo un error en esta página. Recárguela para continuar." },
   "counter": {
     "title": "Contador",
     "description": "Este es un ejemplo sencillo de un componente de React.",
@@ -17,6 +19,7 @@
     "signInProviders": "Proveedores de inicio de sesión",
     "organizationsSection": "Organizaciones",
     "organizations": "Organizaciones",
+    "addOrganization": "Añadir una organización",
     "roles": "Roles",
     "members": "Miembros",
     "inviteMember": "Invitar a un miembro",
@@ -36,6 +39,9 @@
     "logIn": "Iniciar sesión",
     "register": "Registrarse",
     "openNavigation": "Abrir navegación",
+    "collapseNavigation": "Contraer navegación",
+    "expandNavigation": "Expandir navegación",
+    "notFound": "Esa página no existe",
     "brand": "Clean Architecture",
     "primaryNavigation": "Navegación principal"
   }

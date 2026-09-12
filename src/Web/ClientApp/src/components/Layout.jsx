@@ -53,7 +53,7 @@ export function Layout({ children }) {
         }}
       >
         <Box
-          aria-hidden="true"
+          aria-hidden
           sx={{
             display: { xs: 'none', lg: 'flex' },
             alignItems: 'flex-start',

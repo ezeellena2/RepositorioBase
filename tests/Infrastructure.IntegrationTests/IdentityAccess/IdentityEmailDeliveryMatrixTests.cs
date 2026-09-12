@@ -164,7 +164,7 @@ public sealed class IdentityEmailDeliveryMatrixTests
             organizationConfirmationSubmission.Id,
             $"org-confirm-{Guid.NewGuid():N}@example.test",
             "Acme S.A.",
-            NormalizedCuit.From("30-71234567-4"),
+            NormalizedCuit.From("30-71234567-1"),
             "password-hash",
             "es",
             now,
@@ -174,7 +174,7 @@ public sealed class IdentityEmailDeliveryMatrixTests
             organizationSignInSubmission.Id,
             $"org-signin-{Guid.NewGuid():N}@example.test",
             "Acme S.A.",
-            NormalizedCuit.From("30-71234567-4"),
+            NormalizedCuit.From("30-71234567-1"),
             "es",
             now,
             now.AddDays(1));

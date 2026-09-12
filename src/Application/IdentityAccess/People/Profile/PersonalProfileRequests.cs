@@ -1,6 +1,7 @@
 using System.Globalization;
 using CleanArchitecture.Application.Common.Models;
 using CleanArchitecture.Application.Common.Security;
+using CleanArchitecture.Application.Common.Validation;
 using CleanArchitecture.Application.IdentityAccess.Authorization;
 
 namespace CleanArchitecture.Application.IdentityAccess.People.Profile;
@@ -22,20 +23,20 @@ public sealed class UpdatePersonalProfileCommandValidator : AbstractValidator<Up
     {
         RuleFor(command => command.FullName)
             .Cascade(CascadeMode.Stop)
-            .NotEmpty().WithMessage("A full name is required.")
-            .MaximumLength(200).WithMessage("The full name must be 200 characters or fewer.")
+            .NotEmpty().WithErrorCode(ValidationErrorCodes.Required).WithMessage("A full name is required.")
+            .MaximumLength(200).WithErrorCode(ValidationErrorCodes.TooLong).WithMessage("The full name must be 200 characters or fewer.")
             .OverridePropertyName("fullName");
 
         RuleFor(command => command.DisplayName)
             .Cascade(CascadeMode.Stop)
-            .NotEmpty().WithMessage("A display name is required.")
-            .MaximumLength(60).WithMessage("The display name must be 60 characters or fewer.")
+            .NotEmpty().WithErrorCode(ValidationErrorCodes.Required).WithMessage("A display name is required.")
+            .MaximumLength(60).WithErrorCode(ValidationErrorCodes.TooLong).WithMessage("The display name must be 60 characters or fewer.")
             .OverridePropertyName("displayName");
 
         RuleFor(command => command.Version)
             .Cascade(CascadeMode.Stop)
-            .NotEmpty().WithMessage("A profile version is required.")
-            .Must(IsCanonicalUnsignedDecimal).WithMessage("The profile version must be an unsigned decimal token.")
+            .NotEmpty().WithErrorCode(ValidationErrorCodes.Required).WithMessage("A profile version is required.")
+            .Must(IsCanonicalUnsignedDecimal).WithErrorCode(ValidationErrorCodes.Invalid).WithMessage("The profile version must be an unsigned decimal token.")
             .OverridePropertyName("version");
     }
 

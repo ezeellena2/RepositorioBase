@@ -8,6 +8,13 @@ import { useTranslation } from '../../i18n';
 import { VALIDATION_CODE_SCHEMA } from './api/problemDetails';
 import { fieldIdFor, unclaimedFieldErrors } from './fieldErrors';
 
+const validationFieldKey = (i18n, field) => {
+  const catalog = i18n.getResource(i18n.resolvedLanguage, 'errors', 'validation.fields');
+  const canonical = Object.keys(catalog ?? {})
+    .find((candidate) => candidate.toLowerCase() === field.toLowerCase());
+  return canonical ? `errors:validation.fields.${canonical}` : 'errors:validation.fields.unknown';
+};
+
 /**
  * Shows what the API said and nothing more. The stable code decides the message, so the wording is ours and the
  * server's diagnostics stay where they belong; field errors are shown only where the API indexed them.
@@ -70,13 +77,13 @@ export function ProblemMessage({ problem, claimedFields = [], fieldIds = {}, aut
       {fields.length > 0 && (
         <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
           {fields.flatMap(([field, details]) => details.map((detail, index) => {
-            const fieldKey = `errors:validation.fields.${field}`;
+            const fieldKey = validationFieldKey(i18n, field);
             const detailKey = Object.hasOwn(VALIDATION_CODE_SCHEMA, detail.code)
               && i18n.exists(`errors:validation.${detail.code}`)
               ? `errors:validation.${detail.code}`
               : 'errors:validation.unknown';
             const message = t('errors:validation.fieldMessage', {
-              field: i18n.exists(fieldKey) ? t(fieldKey) : t('errors:validation.fields.unknown'),
+              field: t(fieldKey),
               message: t(detailKey, { replace: detail.params }),
             });
             const fieldId = fieldIdFor(fieldIds, field);

@@ -19,9 +19,11 @@ import TableRow from '@mui/material/TableRow';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import visuallyHidden from '@mui/utils/visuallyHidden';
+import { roleName, useTranslation } from '../../../i18n';
 import { toProblem } from '../api/apiTransport';
 import { useIdentity } from '../context/IdentityProvider';
 import { claimedFieldNames, fieldErrorText, selectFieldErrors } from '../fieldErrors';
+import { PermissionLabel } from '../PermissionLabel';
 import { ProblemMessage } from '../ProblemMessage';
 import { useIdentityProof } from '../useIdentityProof';
 import { useRead } from '../useRead';
@@ -89,7 +91,9 @@ const responsiveTable = (theme) => ({
 const ROW_HEIGHT = 6 + 40 + 6 + 1;
 
 const EMPTY_DRAFT = { roleId: null, name: '', permissions: [], version: null };
-const roleFields = ['name'];
+const roleFieldName = 'name';
+const roleListReadTarget = 'list';
+const roleFields = [roleFieldName];
 const appendRoles = (current, loaded) => ({
   ...loaded,
   catalog: current.catalog,
@@ -124,7 +128,7 @@ export function RolesPage() {
   const [password, setPassword] = useState('');
   const [actionProblem, setActionProblem] = useState(null);
   const [actionTarget, setActionTarget] = useState(null);
-  const [readTarget, setReadTarget] = useState('list');
+  const [readTarget, setReadTarget] = useState(roleListReadTarget);
   const [clearedServerFields, setClearedServerFields] = useState([]);
   const [isBusy, setIsBusy] = useState(false);
   const load = useCallback(async ({ cursor, signal }) => {
@@ -161,7 +165,7 @@ export function RolesPage() {
       await act();
       setPassword('');
       setDraft(EMPTY_DRAFT);
-      setReadTarget('list');
+      setReadTarget(roleListReadTarget);
       await read.refresh(undefined);
     } catch (error) {
       setActionProblem(toProblem(error));
@@ -387,15 +391,15 @@ export function RolesPage() {
           only content is three skeletons announces nothing when it changes. */}
       <ProblemMessage problem={unclaimedProblem} autoFocus />
 
-      {readTarget === 'list' && <ProblemMessage problem={read.problem} />}
-      {readTarget === 'list' && read.status === 'errored' && (
+      {readTarget === roleListReadTarget && <ProblemMessage problem={read.problem} />}
+      {readTarget === roleListReadTarget && read.status === 'errored' && (
         <Button
           type="button"
           variant="outlined"
-          onClick={() => { setReadTarget('list'); read.refresh(undefined); }}
+          onClick={() => { setReadTarget(roleListReadTarget); read.refresh(undefined); }}
           sx={start}
         >
-          Try again
+          {t('common:actions.tryAgain')}
         </Button>
       )}
       {read.status === 'loading' && read.data === null ? (
@@ -430,11 +434,11 @@ export function RolesPage() {
           {readTarget === 'pagination' && <ProblemMessage problem={read.problem} />}
           {readTarget === 'pagination' && read.status === 'errored' ? (
             <Button type="button" variant="outlined" disabled={isBusy} onClick={showMore} sx={start}>
-              Try again
+              {t('common:actions.tryAgain')}
             </Button>
           ) : nextCursor !== null ? (
             <Button type="button" variant="outlined" disabled={isBusy} onClick={showMore} sx={start}>
-              Show more roles
+              {t('roles.showMore')}
             </Button>
           ) : null}
         </Stack>
@@ -468,10 +472,12 @@ export function RolesPage() {
             value={draft.name}
             onChange={(event) => {
               setDraft({ ...draft, name: event.target.value });
-              setClearedServerFields((current) => current.includes('name') ? current : [...current, 'name']);
+              setClearedServerFields((current) => current.includes(roleFieldName)
+                ? current
+                : [...current, roleFieldName]);
             }}
             error={Boolean(fieldErrors.name)}
-            helperText={fieldErrorText(fieldErrors, 'name', t) || undefined}
+            helperText={fieldErrorText(fieldErrors, roleFieldName, t) || undefined}
           />
 
           <FormControl component="fieldset">
@@ -522,7 +528,7 @@ export function RolesPage() {
                   setDraft(EMPTY_DRAFT);
                 }}
               >
-                Cancel
+                {t('roles.cancel')}
               </Button>
             )}
           </Stack>

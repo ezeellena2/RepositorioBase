@@ -39,11 +39,8 @@ describe('organization invitation registration page', () => {
     expect(submissions).toHaveLength(0);
   });
 
-  it("puts the server's password policy descriptions on the password and focuses it", async () => {
-    const descriptions = [
-      'Passwords must be at least 12 characters.',
-      "Passwords must have at least one digit ('0'-'9').",
-    ];
+  it("puts the server's password policy code on the password and focuses it", async () => {
+    const description = 'This password does not meet the requirements.';
     const submissions = [];
     server.use(
       antiforgery(),
@@ -54,7 +51,7 @@ describe('organization invitation registration page', () => {
           status: 400,
           type: 'about:blank',
           title: 'Bad Request',
-          errors: { password: descriptions },
+          errors: { password: [{ code: 'password_policy', params: {} }] },
         });
       }),
     );
@@ -66,11 +63,11 @@ describe('organization invitation registration page', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
 
     await waitFor(() => expect(password).toHaveAttribute('aria-invalid', 'true'));
-    expect(password).toHaveAccessibleDescription(descriptions.join(' '));
+    expect(password).toHaveAccessibleDescription(description);
     expect(password).toHaveFocus();
     const alert = screen.getByRole('alert');
     expect(alert).toHaveTextContent('Some of what you sent was not accepted. Check the details and try again.');
-    expect(alert).not.toHaveTextContent(descriptions[0]);
+    expect(alert).not.toHaveTextContent(description);
     expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled();
     expect(submissions).toEqual([{ token: 'organization-invitation-token', password: 'short' }]);
   });

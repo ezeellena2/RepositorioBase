@@ -16,7 +16,7 @@ public sealed class RegistrationIntentLanguageTests
             Guid.NewGuid(),
             "ana@example.test",
             "Acme S.A.",
-            NormalizedCuit.From("30-71234567-4"),
+            NormalizedCuit.From("30-71234567-1"),
             "password-hash",
             "es",
             Now,
@@ -34,7 +34,7 @@ public sealed class RegistrationIntentLanguageTests
             Guid.NewGuid(),
             "ana@example.test",
             "Acme S.A.",
-            NormalizedCuit.From("30-71234567-4"),
+            NormalizedCuit.From("30-71234567-1"),
             "es",
             Now,
             Now.AddDays(1));

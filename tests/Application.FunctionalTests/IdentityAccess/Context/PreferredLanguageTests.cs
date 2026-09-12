@@ -237,7 +237,7 @@ public sealed class PreferredLanguageTests : TestBase
             $"new-language-{Guid.NewGuid():N}@example.test",
             "Testing1234!",
             "Language Snapshot",
-            "30-12345678-9");
+            "30-12345678-1");
 
         (await TestApp.SendAsync(command)).IsSuccess.ShouldBeTrue();
         (await TestApp.ListAsync<PendingRegistrationIntent>()).Single().Language.ShouldBe("es");
@@ -265,7 +265,7 @@ public sealed class PreferredLanguageTests : TestBase
             email,
             "Testing1234!",
             "Existing Language",
-            "30-12345678-9"))).IsSuccess.ShouldBeTrue();
+            "30-12345678-1"))).IsSuccess.ShouldBeTrue();
 
         (await TestApp.FindAsync<ApplicationUser>(identityId))!.PreferredLanguage.ShouldBe("en");
     }

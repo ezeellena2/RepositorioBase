@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using CleanArchitecture.Application.Common.Validation;
 using CleanArchitecture.Application.FunctionalTests.IdentityAccess.Organizations;
 using CleanArchitecture.Application.FunctionalTests.Infrastructure;
 using CleanArchitecture.Application.IdentityAccess.Authorization;
@@ -57,7 +58,7 @@ public sealed class RoleAdministrationTests : TestBase
 
         await scenario.Owner.ProveAsync(ProofActions.RoleChange);
         using var blank = await CreateRoleAsync(scenario.Owner, scenario, " ", [], prove: false);
-        await AssertNameValidationAsync(blank, createPath, "A role name is required.");
+        await AssertNameValidationAsync(blank, createPath, ValidationDetail(ValidationErrorCodes.Required));
         (await TestApp.CountAsync<Role>()).ShouldBe(before);
 
         using var validCreate = await CreateRoleAsync(scenario.Owner, scenario, "Proof survives validation", [], prove: false);
@@ -68,14 +69,14 @@ public sealed class RoleAdministrationTests : TestBase
 
         using var createOversized = await CreateRoleAsync(scenario.Owner, scenario, new string('r', 129), []);
         await AssertNameValidationAsync(
-            createOversized, createPath, "The role name must be 128 characters or fewer.", new string('r', 129));
+            createOversized, createPath, ValidationDetail(ValidationErrorCodes.TooLong, 128), new string('r', 129));
         (await TestApp.CountAsync<Role>()).ShouldBe(before + 1);
 
         var updatePath = $"/api/tenants/{scenario.TenantId.Value}/roles/{created.RoleId}";
         await scenario.Owner.ProveAsync(ProofActions.RoleChange);
         using var updateBlank = await UpdateRoleAsync(
             scenario.Owner, scenario, created.RoleId, " ", created.Permissions, created.Version, prove: false);
-        await AssertNameValidationAsync(updateBlank, updatePath, "A role name is required.");
+        await AssertNameValidationAsync(updateBlank, updatePath, ValidationDetail(ValidationErrorCodes.Required));
 
         using var validUpdate = await UpdateRoleAsync(
             scenario.Owner, scenario, created.RoleId, "Proof reused after validation", created.Permissions, created.Version, prove: false);
@@ -86,7 +87,7 @@ public sealed class RoleAdministrationTests : TestBase
         using var oversized = await UpdateRoleAsync(
             scenario.Owner, scenario, updated.RoleId, new string('r', 129), updated.Permissions, updated.Version);
         await AssertNameValidationAsync(
-            oversized, updatePath, "The role name must be 128 characters or fewer.", new string('r', 129));
+            oversized, updatePath, ValidationDetail(ValidationErrorCodes.TooLong, 128), new string('r', 129));
 
         (await TestApp.CountAsync<Role>()).ShouldBe(before + 1, "invalid names must reach no role write");
         (await GetRoleAsync(scenario.Owner, scenario, updated.RoleId)).Name.ShouldBe("Proof reused after validation");
@@ -368,7 +369,7 @@ public sealed class RoleAdministrationTests : TestBase
     private static async Task AssertNameValidationAsync(
         HttpResponseMessage response,
         string instance,
-        string message,
+        ValidationErrorDetail expectedDetail,
         params string[] submittedValues)
     {
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
@@ -384,7 +385,24 @@ public sealed class RoleAdministrationTests : TestBase
         problem.GetProperty("traceId").GetString().ShouldNotBeNullOrWhiteSpace();
         var errors = problem.GetProperty("errors");
         errors.EnumerateObject().Select(property => property.Name).ShouldBe(["name"]);
-        errors.GetProperty("name").EnumerateArray().Select(entry => entry.GetString()).ShouldBe([message]);
+        var details = errors.GetProperty("name").EnumerateArray().ToArray();
+        details.Length.ShouldBe(1);
+        var detail = details[0];
+        detail.ValueKind.ShouldBe(System.Text.Json.JsonValueKind.Object);
+        detail.EnumerateObject().Select(property => property.Name).ShouldBe(["code", "params"]);
+        detail.GetProperty("code").GetString().ShouldBe(expectedDetail.Code);
+        var parameters = detail.GetProperty("params");
+        parameters.ValueKind.ShouldBe(System.Text.Json.JsonValueKind.Object);
+        parameters.EnumerateObject().Select(property => property.Name).ShouldBe(expectedDetail.Params.Keys);
+        foreach (var expectedParameter in expectedDetail.Params)
+        {
+            parameters.GetProperty(expectedParameter.Key).GetInt32().ShouldBe(expectedParameter.Value);
+        }
         foreach (var value in submittedValues) raw.ShouldNotContain(value);
     }
+
+    private static ValidationErrorDetail ValidationDetail(string code, int? max = null) =>
+        new(code, max is null
+            ? new Dictionary<string, int>()
+            : new Dictionary<string, int> { ["max"] = max.Value });
 }

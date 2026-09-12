@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using CleanArchitecture.Application.Common.Interfaces;
 using CleanArchitecture.Application.Common.Models;
+using CleanArchitecture.Application.Common.Validation;
 using CleanArchitecture.Application.IdentityAccess.Common;
 using CleanArchitecture.Application.IdentityAccess.Organizations;
 using CleanArchitecture.Application.IdentityAccess.Organizations.RegisterOrganization;
@@ -60,7 +61,10 @@ public sealed class RegisterPersonalCommandHandler(
         if (!password.IsValid)
         {
             return Result.Failure(IdentityAccessErrors.PasswordPolicyFailed(
-                new Dictionary<string, string[]> { ["password"] = password.Errors.ToArray() }));
+                new Dictionary<string, ValidationErrorDetail[]>(StringComparer.Ordinal)
+                {
+                    ["password"] = [new ValidationErrorDetail(ValidationErrorCodes.PasswordPolicy, new Dictionary<string, int>())]
+                }));
         }
 
         return await transaction.ExecuteAsync(async ct =>

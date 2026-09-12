@@ -1,4 +1,6 @@
 using System.Net;
+using System.Text.Json;
+using CleanArchitecture.Application.Common.Validation;
 using CleanArchitecture.Application.FunctionalTests.Infrastructure;
 using CleanArchitecture.Application.IdentityAccess.Platform.Invitations;
 using CleanArchitecture.Domain.IdentityAccess.Memberships;
@@ -75,17 +77,16 @@ public sealed class PlatformInvitationOnboardingTests : TestBase
         real.IsFailure.ShouldBeTrue();
         real.Error!.Code.ShouldBe("validation_failed");
         real.Error.ValidationErrors.Keys.ShouldBe(["password"]);
-        real.Error.ValidationErrors["password"].ShouldBe([
-            "Passwords must be at least 12 characters.",
-            "Passwords must have at least one non alphanumeric character.",
-            "Passwords must have at least one digit ('0'-'9').",
-            "Passwords must have at least one uppercase ('A'-'Z')."
-        ]);
-        string.Join(' ', real.Error.ValidationErrors["password"]).ShouldNotContain(PolicyViolatingPassword);
+        var realPassword = real.Error.ValidationErrors["password"].ShouldHaveSingleItem();
+        realPassword.Code.ShouldBe(ValidationErrorCodes.PasswordPolicy);
+        realPassword.Params.ShouldBeEmpty();
+        JsonSerializer.Serialize(real.Error.ValidationErrors).ShouldNotContain(PolicyViolatingPassword);
         unknown.IsFailure.ShouldBeTrue();
         unknown.Error!.Code.ShouldBe(real.Error.Code);
         unknown.Error.Category.ShouldBe(real.Error.Category);
-        unknown.Error.ValidationErrors["password"].ShouldBe(real.Error.ValidationErrors["password"]);
+        var unknownPassword = unknown.Error.ValidationErrors["password"].ShouldHaveSingleItem();
+        unknownPassword.Code.ShouldBe(ValidationErrorCodes.PasswordPolicy);
+        unknownPassword.Params.ShouldBeEmpty();
         TestApp.ConfirmationTokenHashInvocationCount.ShouldBe(0, "a refused password is decided before the token is read at all");
         (await TestApp.CountAsync<ApplicationUser>()).ShouldBe(identitiesBefore, "a refused password creates nothing.");
         (await TestApp.CountAsync<OutboxMessage>()).ShouldBe(messagesBefore);

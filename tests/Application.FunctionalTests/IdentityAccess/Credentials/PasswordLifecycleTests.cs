@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using CleanArchitecture.Application.Common.Validation;
 using CleanArchitecture.Application.FunctionalTests.Infrastructure;
 using CleanArchitecture.Application.IdentityAccess.Organizations;
 using CleanArchitecture.Application.IdentityAccess.Sessions;
@@ -351,14 +352,15 @@ public sealed class PasswordLifecycleTests : TestBase
             hasErrors: true);
         payload.GetProperty("instance").GetString().ShouldBe("/api/identity/credentials/password");
         payload.GetProperty("errors").EnumerateObject().Select(error => error.Name).ShouldBe(["newPassword"]);
-        payload.GetProperty("errors").GetProperty("newPassword").EnumerateArray()
-            .Select(message => message.GetString())
-            .ShouldBe([
-                "Passwords must be at least 12 characters.",
-                "Passwords must have at least one non alphanumeric character.",
-                "Passwords must have at least one digit ('0'-'9').",
-                "Passwords must have at least one uppercase ('A'-'Z')."
-            ]);
+        var details = payload.GetProperty("errors").GetProperty("newPassword").EnumerateArray().ToArray();
+        details.Length.ShouldBe(1);
+        var detail = details[0];
+        detail.ValueKind.ShouldBe(System.Text.Json.JsonValueKind.Object);
+        detail.EnumerateObject().Select(property => property.Name).ShouldBe(["code", "params"]);
+        detail.GetProperty("code").GetString().ShouldBe(ValidationErrorCodes.PasswordPolicy);
+        var parameters = detail.GetProperty("params");
+        parameters.ValueKind.ShouldBe(System.Text.Json.JsonValueKind.Object);
+        parameters.EnumerateObject().ShouldBeEmpty();
         payload.GetRawText().ShouldNotContain("short", Case.Insensitive);
         (await ContextAsync(client, host, cookie)).StatusCode.ShouldBe(HttpStatusCode.OK, "the session that asked is untouched");
         await SignInAsync(client, host, email, Password);

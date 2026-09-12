@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using CleanArchitecture.Application.Common.Validation;
 using CleanArchitecture.Application.FunctionalTests.Infrastructure;
 using CleanArchitecture.Application.IdentityAccess.Authorization;
 using CleanArchitecture.Application.IdentityAccess.Context.SelectTenant;
@@ -249,44 +250,43 @@ public sealed class PersonalJourneyTests : TestBase
             {
                 fullName = " ", displayName = "Jane", documentNumber = "12345678"
             }, antiforgery),
-            "/api/identity/personal", "fullName", "A full name is required.", "invalid-personal-value");
+            "/api/identity/personal", "fullName", ValidationDetail(ValidationErrorCodes.Required), "invalid-personal-value");
         await AssertFieldValidationAsync(
             await SendPersonalJsonAsync(HttpMethod.Post, host, "/api/identity/personal", new
             {
                 fullName = new string('f', 201), displayName = "Jane", documentNumber = "12345678"
             }, antiforgery),
-            "/api/identity/personal", "fullName", "The full name must be 200 characters or fewer.", new string('f', 201));
+            "/api/identity/personal", "fullName", ValidationDetail(ValidationErrorCodes.TooLong, 200), new string('f', 201));
         await AssertFieldValidationAsync(
             await SendPersonalJsonAsync(HttpMethod.Post, host, "/api/identity/personal", new
             {
                 fullName = "Jane Doe", displayName = " ", documentNumber = "12345678"
             }, antiforgery),
-            "/api/identity/personal", "displayName", "A display name is required.");
+            "/api/identity/personal", "displayName", ValidationDetail(ValidationErrorCodes.Required));
         await AssertFieldValidationAsync(
             await SendPersonalJsonAsync(HttpMethod.Post, host, "/api/identity/personal", new
             {
                 fullName = "Jane Doe", displayName = new string('d', 61), documentNumber = "12345678"
             }, antiforgery),
-            "/api/identity/personal", "displayName", "The display name must be 60 characters or fewer.", new string('d', 61));
+            "/api/identity/personal", "displayName", ValidationDetail(ValidationErrorCodes.TooLong, 60), new string('d', 61));
         await AssertFieldValidationAsync(
             await SendPersonalJsonAsync(HttpMethod.Post, host, "/api/identity/personal", new
             {
                 fullName = "Jane Doe", displayName = "Jane", documentNumber = " "
             }, antiforgery),
-            "/api/identity/personal", "documentNumber", "A document number is required.");
+            "/api/identity/personal", "documentNumber", ValidationDetail(ValidationErrorCodes.Required));
         await AssertFieldValidationAsync(
             await SendPersonalJsonAsync(HttpMethod.Post, host, "/api/identity/personal", new
             {
                 fullName = "Jane Doe", displayName = "Jane", documentNumber = new string('1', 33)
             }, antiforgery),
-            "/api/identity/personal", "documentNumber", "The document number must be 32 characters or fewer.", new string('1', 33));
+            "/api/identity/personal", "documentNumber", ValidationDetail(ValidationErrorCodes.TooLong, 32), new string('1', 33));
         await AssertFieldValidationAsync(
             await SendPersonalJsonAsync(HttpMethod.Post, host, "/api/identity/personal", new
             {
                 fullName = "Jane Doe", displayName = "Jane", documentNumber = "12x"
             }, antiforgery),
-            "/api/identity/personal", "documentNumber",
-            "An Argentine DNI must contain seven or eight digits and may use only digits, dots, hyphens, and whitespace.", "12x");
+            "/api/identity/personal", "documentNumber", ValidationDetail(ValidationErrorCodes.Invalid), "12x");
 
         new[] {
             await TestApp.CountAsync<Tenant>(),
@@ -412,37 +412,37 @@ public sealed class PersonalJourneyTests : TestBase
             {
                 fullName = " ", displayName = "Jane", version = original.Version
             }, antiforgery),
-            "/api/identity/profile", "fullName", "A full name is required.", "forbidden-full-name");
+            "/api/identity/profile", "fullName", ValidationDetail(ValidationErrorCodes.Required), "forbidden-full-name");
         await AssertFieldValidationAsync(
             await SendPersonalJsonAsync(HttpMethod.Put, host, "/api/identity/profile", new
             {
                 fullName = new string('f', 201), displayName = "Jane", version = original.Version
             }, antiforgery),
-            "/api/identity/profile", "fullName", "The full name must be 200 characters or fewer.", new string('f', 201));
+            "/api/identity/profile", "fullName", ValidationDetail(ValidationErrorCodes.TooLong, 200), new string('f', 201));
         await AssertFieldValidationAsync(
             await SendPersonalJsonAsync(HttpMethod.Put, host, "/api/identity/profile", new
             {
                 fullName = "Jane Doe", displayName = " ", version = original.Version
             }, antiforgery),
-            "/api/identity/profile", "displayName", "A display name is required.");
+            "/api/identity/profile", "displayName", ValidationDetail(ValidationErrorCodes.Required));
         await AssertFieldValidationAsync(
             await SendPersonalJsonAsync(HttpMethod.Put, host, "/api/identity/profile", new
             {
                 fullName = "Jane Doe", displayName = new string('d', 61), version = original.Version
             }, antiforgery),
-            "/api/identity/profile", "displayName", "The display name must be 60 characters or fewer.", new string('d', 61));
+            "/api/identity/profile", "displayName", ValidationDetail(ValidationErrorCodes.TooLong, 60), new string('d', 61));
         await AssertFieldValidationAsync(
             await SendPersonalJsonAsync(HttpMethod.Put, host, "/api/identity/profile", new
             {
                 fullName = "Jane Doe", displayName = "Jane", version = " "
             }, antiforgery),
-            "/api/identity/profile", "version", "A profile version is required.");
+            "/api/identity/profile", "version", ValidationDetail(ValidationErrorCodes.Required));
         await AssertFieldValidationAsync(
             await SendPersonalJsonAsync(HttpMethod.Put, host, "/api/identity/profile", new
             {
                 fullName = "Jane Doe", displayName = "Jane", version = "01"
             }, antiforgery),
-            "/api/identity/profile", "version", "The profile version must be an unsigned decimal token.", "01");
+            "/api/identity/profile", "version", ValidationDetail(ValidationErrorCodes.Invalid), "01");
 
         await AssertBindingValidationAsync(
             await SendPersonalJsonAsync(HttpMethod.Put, host, "/api/identity/profile", new
@@ -600,7 +600,7 @@ public sealed class PersonalJourneyTests : TestBase
         HttpResponseMessage response,
         string instance,
         string field,
-        string message,
+        ValidationErrorDetail expectedDetail,
         params string[] submittedValues)
     {
         using (response)
@@ -618,8 +618,29 @@ public sealed class PersonalJourneyTests : TestBase
             AssertSafeTraceId(problem);
             var errors = problem.GetProperty("errors");
             errors.EnumerateObject().Select(property => property.Name).ShouldBe([field]);
-            errors.GetProperty(field).EnumerateArray().Select(entry => entry.GetString()).ShouldBe([message]);
+            var details = errors.GetProperty(field).EnumerateArray().ToArray();
+            details.Length.ShouldBe(1);
+            AssertValidationDetail(details[0], expectedDetail);
             AssertDoesNotEchoSubmittedValuesOutsideTraceId(problem, submittedValues);
+        }
+    }
+
+    private static ValidationErrorDetail ValidationDetail(string code, int? max = null) =>
+        new(code, max is null
+            ? new Dictionary<string, int>()
+            : new Dictionary<string, int> { ["max"] = max.Value });
+
+    private static void AssertValidationDetail(JsonElement actual, ValidationErrorDetail expected)
+    {
+        actual.ValueKind.ShouldBe(JsonValueKind.Object);
+        actual.EnumerateObject().Select(property => property.Name).ShouldBe(["code", "params"]);
+        actual.GetProperty("code").GetString().ShouldBe(expected.Code);
+        var parameters = actual.GetProperty("params");
+        parameters.ValueKind.ShouldBe(JsonValueKind.Object);
+        parameters.EnumerateObject().Select(property => property.Name).ShouldBe(expected.Params.Keys);
+        foreach (var expectedParameter in expected.Params)
+        {
+            parameters.GetProperty(expectedParameter.Key).GetInt32().ShouldBe(expectedParameter.Value);
         }
     }
 

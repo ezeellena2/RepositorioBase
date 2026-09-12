@@ -1,5 +1,6 @@
 using CleanArchitecture.Application.Common.Models;
 using CleanArchitecture.Application.Common.Security;
+using CleanArchitecture.Application.Common.Validation;
 using CleanArchitecture.Application.IdentityAccess.Authorization;
 using CleanArchitecture.Domain.IdentityAccess.Tenants;
 
@@ -45,8 +46,8 @@ public sealed class CreateRoleCommandValidator : AbstractValidator<CreateRoleCom
 
     private static void AddNameRules(IRuleBuilderInitial<CreateRoleCommand, string?> rule) => rule
         .Cascade(CascadeMode.Stop)
-        .NotEmpty().WithMessage("A role name is required.")
-        .MaximumLength(128).WithMessage("The role name must be 128 characters or fewer.")
+        .NotEmpty().WithErrorCode(ValidationErrorCodes.Required).WithMessage("A role name is required.")
+        .MaximumLength(128).WithErrorCode(ValidationErrorCodes.TooLong).WithMessage("The role name must be 128 characters or fewer.")
         .OverridePropertyName("name");
 }
 
@@ -54,7 +55,7 @@ public sealed class UpdateRoleCommandValidator : AbstractValidator<UpdateRoleCom
 {
     public UpdateRoleCommandValidator() => RuleFor(command => command.Name)
         .Cascade(CascadeMode.Stop)
-        .NotEmpty().WithMessage("A role name is required.")
-        .MaximumLength(128).WithMessage("The role name must be 128 characters or fewer.")
+        .NotEmpty().WithErrorCode(ValidationErrorCodes.Required).WithMessage("A role name is required.")
+        .MaximumLength(128).WithErrorCode(ValidationErrorCodes.TooLong).WithMessage("The role name must be 128 characters or fewer.")
         .OverridePropertyName("name");
 }

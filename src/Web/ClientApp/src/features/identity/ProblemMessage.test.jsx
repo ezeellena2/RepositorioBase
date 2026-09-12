@@ -35,7 +35,7 @@ describe('ProblemMessage', () => {
     expect(alert).not.toHaveTextContent('NewPassword');
     expect(alert).not.toHaveTextContent('RecoveryCode');
     expect(alert).not.toHaveTextContent('request:');
-    expect(screen.getByRole('link', { name: 'Recovery code: This field is required.' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Recovery code: This value is required.' })).toHaveAttribute(
       'href',
       '#recovery-code',
     );

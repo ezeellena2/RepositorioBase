@@ -71,11 +71,16 @@ public sealed class ProblemDetailsContractTests : TestBase
     [Test]
     public void Validation_problem_normalizes_member_paths_to_wire_names_without_losing_message_order()
     {
-        var errors = new Dictionary<string, string[]>(StringComparer.Ordinal)
+        var errors = new Dictionary<string, ValidationErrorDetail[]>(StringComparer.Ordinal)
         {
-            ["Token"] = ["first", "repeated"],
-            ["token"] = ["repeated", "last"],
-            ["Items[0].Code"] = ["nested"]
+            ["Token"] = [
+                new ValidationErrorDetail(ValidationErrorCodes.Required, new Dictionary<string, int>()),
+                new ValidationErrorDetail(ValidationErrorCodes.TooLong, new Dictionary<string, int> { ["max"] = 12 })],
+            ["token"] = [
+                new ValidationErrorDetail(ValidationErrorCodes.TooLong, new Dictionary<string, int> { ["max"] = 12 }),
+                new ValidationErrorDetail(ValidationErrorCodes.Invalid, new Dictionary<string, int>())],
+            ["Items[0].Code"] = [
+                new ValidationErrorDetail(ValidationErrorCodes.UnsupportedValue, new Dictionary<string, int>())]
         };
         var context = new DefaultHttpContext();
         context.Request.Path = "/api/platform/mfa/verify";
@@ -85,9 +90,20 @@ public sealed class ProblemDetailsContractTests : TestBase
             new ApplicationError("validation_failed", ApplicationErrorCategory.Validation, validationErrors: errors));
 
         problem.Errors.ShouldNotBeNull();
-        problem.Errors.Keys.ToArray().ShouldBe(["token", "items[0].code"]);
-        problem.Errors["token"].ShouldBe(["first", "repeated", "repeated", "last"]);
-        problem.Errors["items[0].code"].ShouldBe(["nested"]);
+        problem.Errors.Keys.ToArray().ShouldBe(["items[0].code", "token"]);
+        var tokenErrors = problem.Errors["token"];
+        tokenErrors.Select(detail => detail.Code).ShouldBe([
+            ValidationErrorCodes.Invalid,
+            ValidationErrorCodes.Required,
+            ValidationErrorCodes.TooLong]);
+        tokenErrors.Single(detail => detail.Code == ValidationErrorCodes.Invalid).Params.ShouldBeEmpty();
+        tokenErrors.Single(detail => detail.Code == ValidationErrorCodes.Required).Params.ShouldBeEmpty();
+        var tooLong = tokenErrors.Single(detail => detail.Code == ValidationErrorCodes.TooLong);
+        tooLong.Params.Count.ShouldBe(1);
+        tooLong.Params["max"].ShouldBe(12);
+        var itemCode = problem.Errors["items[0].code"].ShouldHaveSingleItem();
+        itemCode.Code.ShouldBe(ValidationErrorCodes.UnsupportedValue);
+        itemCode.Params.ShouldBeEmpty();
     }
 
     [TestCase("GET", "/api/route-that-does-not-exist")]

@@ -1,5 +1,6 @@
 using CleanArchitecture.Application.Common.Models;
 using CleanArchitecture.Application.Common.Security;
+using CleanArchitecture.Application.Common.Validation;
 using CleanArchitecture.Application.IdentityAccess.Authorization;
 using CleanArchitecture.Domain.IdentityAccess.Invitations;
 using CleanArchitecture.Domain.IdentityAccess.Tenants;
@@ -19,15 +20,16 @@ public sealed class InviteMemberCommandValidator : AbstractValidator<InviteMembe
     {
         RuleFor(command => command.Email)
             .Cascade(CascadeMode.Stop)
-            .NotEmpty().WithMessage("Enter an email address.")
-            .MaximumLength(256).WithMessage("The email address must be 256 characters or fewer.")
-            .Must(HasSupportedEmailShape).WithMessage("Enter an email address.")
+            .NotEmpty().WithErrorCode(ValidationErrorCodes.Required).WithMessage("Enter an email address.")
+            .MaximumLength(256).WithErrorCode(ValidationErrorCodes.TooLong).WithMessage("The email address must be 256 characters or fewer.")
+            .Must(HasSupportedEmailShape).WithErrorCode(ValidationErrorCodes.Invalid).WithMessage("Enter an email address.")
             .OverridePropertyName("email");
 
         RuleFor(command => command.RoleIds)
             .Cascade(CascadeMode.Stop)
-            .NotEmpty().WithMessage("Choose at least one role.")
+            .NotEmpty().WithErrorCode(ValidationErrorCodes.Required).WithMessage("Choose at least one role.")
             .Must(roleIds => roleIds is not null && roleIds.All(roleId => roleId != Guid.Empty))
+            .WithErrorCode(ValidationErrorCodes.Invalid)
             .WithMessage("Choose valid roles.")
             .OverridePropertyName("roleIds");
     }
