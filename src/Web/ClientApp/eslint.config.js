@@ -27,7 +27,7 @@ export default [
       // The capitalised exception already covered imports; a table-driven test that takes the component as a
       // parameter needs the same accommodation, so the two patterns say the same thing about the same names.
       'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]', argsIgnorePattern: '^(_|[A-Z])' }],
-      'i18next/no-literal-string': ['warn', { mode: 'jsx-only' }],
+      'i18next/no-literal-string': ['error', { mode: 'jsx-only' }],
     },
   },
   {

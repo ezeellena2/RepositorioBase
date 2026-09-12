@@ -45,8 +45,10 @@ const themeOptions = {
 };
 
 export const appTheme = createTheme(themeOptions);
-const localizedThemes = {
-  en: createTheme(themeOptions, enUS),
-  es: createTheme(themeOptions, esES),
-};
+export const muiLocaleByLanguage = Object.freeze({ en: enUS, es: esES });
+export const missingMuiLocaleMappings = (supportedLanguages, mappings = muiLocaleByLanguage) =>
+  supportedLanguages.filter((language) => mappings[language] === undefined);
+const localizedThemes = Object.fromEntries(
+  Object.entries(muiLocaleByLanguage).map(([language, locale]) => [language, createTheme(themeOptions, locale)]),
+);
 export const themeFor = (language) => localizedThemes[language] ?? localizedThemes.en;

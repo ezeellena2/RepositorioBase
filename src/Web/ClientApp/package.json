@@ -30,6 +30,7 @@
     "eslint-plugin-react-hooks": "^7.0.0",
     "eslint-plugin-react-refresh": "^0.5.0",
     "globals": "^17.0.0",
+    "i18next-cli": "1.73.2",
     "jsdom": "^30.0.1",
     "msw": "^2.15.0",
     "nswag": "latest",
@@ -44,6 +45,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint ./src/",
+    "i18n:unused": "i18next-cli status en --unused --namespace common && i18next-cli status en --unused --namespace identity && i18next-cli status en --unused --namespace platform",
     "test": "vitest run",
     "test:watch": "vitest",
     "generate-api": "nswag run /runtime:Net100"

@@ -1,6 +1,11 @@
 import { createContext, startTransition, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { createIdentityClient, IdentityProblem } from '../api/identityClient';
-import { setLanguage } from '../../../i18n';
+import {
+  isPseudoLanguageOverrideActive,
+  isSupportedLanguage,
+  PSEUDO_LANGUAGE,
+  setLanguage,
+} from '../../../i18n';
 
 const IdentityContext = createContext(null);
 
@@ -158,6 +163,11 @@ export function IdentityProvider({ children, client }) {
 
   const changeLanguage = useCallback(async (language) => {
     if (isLoading) return null;
+    if (isPseudoLanguageOverrideActive()) {
+      setLanguage(PSEUDO_LANGUAGE);
+      return null;
+    }
+    if (!isSupportedLanguage(language)) return null;
 
     const revision = ++languageRequestRevision.current;
     const session = sessionRevision.current;
