@@ -4,20 +4,173 @@ using System.Text.Json;
 using CleanArchitecture.Application.Common.Models;
 using CleanArchitecture.Application.Common.Validation;
 using CleanArchitecture.Application.FunctionalTests.Infrastructure;
-using CleanArchitecture.Web.Infrastructure;
+using CleanArchitecture.Application.IdentityAccess.Lifecycle;
 using CleanArchitecture.Domain.IdentityAccess.Auditing;
 using CleanArchitecture.Domain.IdentityAccess.Authorization;
 using CleanArchitecture.Domain.IdentityAccess.Memberships;
 using CleanArchitecture.Domain.IdentityAccess.Tenants;
 using CleanArchitecture.Infrastructure.Identity;
+using CleanArchitecture.Web.Infrastructure;
 using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 
 namespace CleanArchitecture.Application.FunctionalTests.IdentityAccess.Api;
 
 public sealed class ProblemDetailsContractTests : TestBase
 {
+    private const string SpaIndexSentinel = "functional-spa-index";
+
+    [TestCase("status")]
+    [TestCase("type")]
+    [TestCase("title")]
+    [TestCase("instance")]
+    [TestCase("code")]
+    [TestCase("traceId")]
+    public void Shared_problem_reader_rejects_an_invalid_required_member(string member)
+    {
+        var body = new Dictionary<string, object?>
+        {
+            ["status"] = StatusCodes.Status400BadRequest,
+            ["type"] = "about:blank",
+            ["title"] = "Bad Request",
+            ["instance"] = "/api/test",
+            ["code"] = "invalid_request",
+            ["traceId"] = "trace-test"
+        };
+        body[member] = member == "status" ? StatusCodes.Status409Conflict : string.Empty;
+        using var response = ProblemResponse(body, HttpStatusCode.BadRequest);
+
+        Assert.ThrowsAsync<Shouldly.ShouldAssertException>(
+            async () => await IdentityHttpHarness.ReadProblemAsync(response));
+    }
+
+    [Test]
+    public async Task Expected_problem_accepts_any_nonempty_title_instead_of_the_transport_reason_phrase()
+    {
+        var body = new Dictionary<string, object?>
+        {
+            ["status"] = StatusCodes.Status400BadRequest,
+            ["type"] = "about:blank",
+            ["title"] = "Localized request refusal",
+            ["instance"] = "/api/test",
+            ["code"] = "invalid_request",
+            ["traceId"] = "trace-test"
+        };
+        using var response = ProblemResponse(body, HttpStatusCode.BadRequest);
+        response.ReasonPhrase = "Transport reason phrase";
+
+        await IdentityHttpHarness.AssertProblemAsync(response, HttpStatusCode.BadRequest, "invalid_request");
+    }
+
+    [Test]
+    public void Dead_route_body_mismatch_contract_is_absent() =>
+        typeof(ApiProblemMetadata).GetField("RouteBodyIdMismatch").ShouldBeNull();
+
+    [Test]
+    public void Validation_problem_normalizes_member_paths_to_wire_names_without_losing_message_order()
+    {
+        var errors = new Dictionary<string, string[]>(StringComparer.Ordinal)
+        {
+            ["Token"] = ["first", "repeated"],
+            ["token"] = ["repeated", "last"],
+            ["Items[0].Code"] = ["nested"]
+        };
+        var context = new DefaultHttpContext();
+        context.Request.Path = "/api/platform/mfa/verify";
+
+        var problem = new ApiProblemDetailsMapper().Create(
+            context,
+            new ApplicationError("validation_failed", ApplicationErrorCategory.Validation, validationErrors: errors));
+
+        problem.Errors.ShouldNotBeNull();
+        problem.Errors.Keys.ToArray().ShouldBe(["token", "items[0].code"]);
+        problem.Errors["token"].ShouldBe(["first", "repeated", "repeated", "last"]);
+        problem.Errors["items[0].code"].ShouldBe(["nested"]);
+    }
+
+    [TestCase("GET", "/api/route-that-does-not-exist")]
+    [TestCase("POST", "/api/route-that-does-not-exist")]
+    [TestCase("OPTIONS", "/api/route-that-does-not-exist")]
+    [TestCase("GET", "/api/tenants/not-a-guid/roles")]
+    public async Task Unmatched_api_routes_return_the_shared_not_found_problem(string method, string path)
+    {
+        using var request = new HttpRequestMessage(new HttpMethod(method), $"https://api-routing.localhost{path}");
+        using var response = await FunctionalTestSetup.HttpClient.SendAsync(request);
+
+        var payload = await AssertProblemAsync(response, HttpStatusCode.NotFound, "not_found");
+
+        payload.GetProperty("instance").GetString().ShouldBe(path);
+        payload.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal).ShouldBe(
+            ["code", "instance", "status", "title", "traceId", "type"]);
+        payload.GetRawText().ShouldNotContain("<html", Case.Insensitive);
+    }
+
+    [TestCase("PATCH", "/api/identity/antiforgery", "GET")]
+    [TestCase("GET", "/api/identity/confirm-email", "POST")]
+    public async Task A_known_api_path_with_the_wrong_method_keeps_the_framework_405(
+        string method,
+        string path,
+        string allowedMethod)
+    {
+        using var request = new HttpRequestMessage(new HttpMethod(method), $"https://api-routing.localhost{path}");
+        using var response = await FunctionalTestSetup.HttpClient.SendAsync(request);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.MethodNotAllowed);
+        response.Content.Headers.Allow.ShouldContain(allowedMethod);
+        response.Content.Headers.ContentType?.MediaType.ShouldNotBe(ApiProblemMetadata.ProblemContentType);
+    }
+
+    [Test]
+    public async Task Head_for_an_unknown_api_route_keeps_the_404_headers_and_has_no_entity_body()
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Head, "https://api-routing.localhost/api/route-that-does-not-exist");
+        using var response = await FunctionalTestSetup.HttpClient.SendAsync(request);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        response.Content.Headers.ContentType!.MediaType.ShouldBe(ApiProblemMetadata.ProblemContentType);
+        (await response.Content.ReadAsByteArrayAsync()).ShouldBeEmpty();
+    }
+
+    [TestCase("/a-client-route-that-does-not-exist")]
+    [TestCase("/apiary")]
+    public async Task Unknown_non_api_client_routes_are_served_by_the_spa_fallback(string path)
+    {
+        using var response = await FunctionalTestSetup.HttpClient.GetAsync(
+            $"https://api-routing.localhost{path}");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK, path);
+        response.Content.Headers.ContentType!.MediaType.ShouldBe("text/html", path);
+        (await response.Content.ReadAsStringAsync()).ShouldContain(SpaIndexSentinel);
+    }
+
+    [Test]
+    public async Task Head_for_a_non_api_client_route_has_the_spa_success_headers_and_no_entity_body()
+    {
+        using var request = new HttpRequestMessage(
+            HttpMethod.Head,
+            "https://api-routing.localhost/a-client-route-that-does-not-exist");
+        using var response = await FunctionalTestSetup.HttpClient.SendAsync(request);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        response.Content.Headers.ContentType!.MediaType.ShouldBe("text/html");
+        response.Content.Headers.ContentLength.ShouldNotBeNull();
+        response.Content.Headers.ContentLength!.Value.ShouldBeGreaterThan(0);
+        (await response.Content.ReadAsByteArrayAsync()).ShouldBeEmpty();
+    }
+
+    [Test]
+    public async Task A_file_like_unknown_non_api_path_is_not_rewritten_to_the_spa_index()
+    {
+        using var response = await FunctionalTestSetup.HttpClient.GetAsync(
+            "https://api-routing.localhost/missing.js");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        response.Content.Headers.ContentType?.MediaType.ShouldNotBe("text/html");
+        (await response.Content.ReadAsStringAsync()).ShouldNotContain(SpaIndexSentinel);
+    }
+
     [Test]
     public async Task Registration_antiforgery_endpoint_returns_no_store_and_the_host_cookie_contract()
     {
@@ -121,7 +274,7 @@ public sealed class ProblemDetailsContractTests : TestBase
         var antiforgery = await GetAntiforgeryAsync(host);
         using var registration = new HttpRequestMessage(HttpMethod.Post, $"{host}/api/identity/organizations/register")
         {
-            Content = JsonContent.Create(new { email = $"http-{suffix}@example.test", password = "Testing1234!", legalName = "HTTP Confirmation", cuit = "30-12345678-9" })
+            Content = JsonContent.Create(new { email = $"http-{suffix}@example.test", password = "Testing1234!", legalName = "HTTP Confirmation", cuit = "30-12345678-1" })
         };
         registration.Headers.Add("Origin", host);
         registration.Headers.Add("X-CSRF-TOKEN", antiforgery.RequestToken);
@@ -287,6 +440,117 @@ public sealed class ProblemDetailsContractTests : TestBase
             "antiforgery_validation_failed");
     }
 
+    [Test]
+    public async Task Expected_validation_authentication_and_authorization_refusals_write_no_error_record()
+    {
+        const string host = "https://expected-refusal-logs.localhost";
+        var antiforgery = (await GetAntiforgeryAsync(host)).RequestToken;
+        TestApp.ResetCapturedLogs();
+
+        using var malformedRegistration = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"{host}/api/identity/organizations/register")
+        {
+            Content = JsonContent.Create(new
+            {
+                email = "not-an-email",
+                password = "short",
+                legalName = "",
+                cuit = "30-12345678-9"
+            })
+        };
+        malformedRegistration.Headers.Add("Origin", host);
+        malformedRegistration.Headers.Add("X-CSRF-TOKEN", antiforgery);
+        await AssertProblemAsync(
+            await FunctionalTestSetup.HttpClient.SendAsync(malformedRegistration),
+            HttpStatusCode.BadRequest,
+            "validation_failed",
+            hasErrors: true);
+        ErrorRecords().ShouldBeEmpty("an expected validation refusal is not an operational fault");
+
+        TestApp.ResetCapturedLogs();
+        await AssertProblemAsync(
+            await SendInvitationAsync(host, "/api/invitations/accept", new { token = TestApp.RawTokenAt(2) }, antiforgery),
+            HttpStatusCode.Unauthorized,
+            "authentication_required");
+        ErrorRecords().ShouldBeEmpty("an authentication challenge is not an operational fault");
+
+        await TestApp.RunAsDefaultUserAsync();
+        TestApp.SetHttpAuthorizationGranted(false);
+        antiforgery = (await GetAntiforgeryAsync(host)).RequestToken;
+        TestApp.ResetCapturedLogs();
+        await AssertProblemAsync(
+            await SendInvitationAsync(host, "/api/invitations/accept", new { token = TestApp.RawTokenAt(2) }, antiforgery),
+            HttpStatusCode.Forbidden,
+            "permission_denied");
+        ErrorRecords().ShouldBeEmpty("an authorization refusal is not an operational fault");
+    }
+
+    [TestCase(true, "System.Text.Json.JsonException", "downstream-json-secret")]
+    [TestCase(false, "Microsoft.AspNetCore.Http.BadHttpRequestException", "downstream-bad-request-secret")]
+    public async Task Binding_shaped_exception_thrown_after_neutral_body_binding_is_a_safe_500(
+        bool jsonFailure,
+        string exceptionType,
+        string secret)
+    {
+        var host = $"https://neutral-downstream-{jsonFailure.ToString().ToLowerInvariant()}.localhost";
+        var antiforgery = (await GetAntiforgeryAsync(host)).RequestToken;
+        TestApp.ResetCapturedLogs();
+        if (jsonFailure)
+        {
+            TestApp.ForceDownstreamJsonFailure();
+        }
+        else
+        {
+            TestApp.ForceDownstreamBadRequestFailure();
+        }
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"{host}/api/identity/sessions")
+        {
+            Content = JsonContent.Create(new { email = "unknown@example.test", password = "not-a-secret" })
+        };
+        request.Headers.Add("Origin", host);
+        request.Headers.Add("X-CSRF-TOKEN", antiforgery);
+
+        var response = await FunctionalTestSetup.HttpClient.SendAsync(request);
+
+        var problem = await AssertProblemAsync(response, HttpStatusCode.InternalServerError, "internal_server_error");
+        var record = ErrorRecords().ShouldHaveSingleItem(
+            "a downstream binding-shaped failure belongs only to the terminal boundary");
+        record.ShouldStartWith("[Error] CleanArchitecture.Web.Infrastructure.ProblemDetailsExceptionHandler:");
+        record.ShouldContain("unexpected_failure");
+        record.ShouldContain(problem.GetProperty("traceId").GetString()!);
+        record.ShouldContain(exceptionType);
+        record.ShouldNotContain(secret);
+        TestApp.CapturedLogs.ShouldAllBe(entry => !entry.Contains(secret, StringComparison.Ordinal));
+    }
+
+    [Test]
+    public async Task Terminal_exception_boundary_covers_recovery_admission_before_files_and_endpoints()
+    {
+        using var harness = IdentityHttpHarness.CreateProductionHarness(
+            configureTestServices: services =>
+            {
+                services.RemoveAll<IRecoveryAdmission>();
+                services.AddSingleton<IRecoveryAdmission, ThrowingRecoveryAdmission>();
+            });
+        TestApp.ResetCapturedLogs();
+
+        using var response = await harness.Client.GetAsync(
+            "https://terminal-boundary.localhost/api/identity/antiforgery");
+
+        var problem = await AssertProblemAsync(response, HttpStatusCode.InternalServerError, "internal_server_error");
+        var record = ErrorRecords().ShouldHaveSingleItem(
+            "the terminal exception boundary must also own failures from recovery admission");
+        record.ShouldStartWith("[Error] CleanArchitecture.Web.Infrastructure.ProblemDetailsExceptionHandler:");
+        record.ShouldContain("unexpected_failure");
+        record.ShouldContain(problem.GetProperty("traceId").GetString()!);
+        record.ShouldContain("System.InvalidOperationException");
+        record.ShouldNotContain(ThrowingRecoveryAdmission.Secret);
+        TestApp.CapturedLogs.ShouldAllBe(
+            entry => !entry.Contains(ThrowingRecoveryAdmission.Secret, StringComparison.Ordinal));
+    }
+
     /// <summary>
     /// A token that resolves to nothing is refused as <c>invalid_invitation</c>, and an unexpected fault on the
     /// same route is a sanitized 500 that discloses nothing — including the token the caller submitted.
@@ -303,10 +567,10 @@ public sealed class ProblemDetailsContractTests : TestBase
         // The pair is bootstrapped after the authentication state settles: the server rotates it whenever that
         // state changes, so one fetched earlier would be rejected before the business decision under test.
         var antiforgery = (await GetAntiforgeryAsync(host)).RequestToken;
-        var token = TestApp.RawTokenAt(2);
+        var unusableToken = TestApp.RawTokenAt(2);
 
         await AssertProblemAsync(
-            await SendInvitationAsync(host, "/api/invitations/accept", new { token }, antiforgery),
+            await SendInvitationAsync(host, "/api/invitations/accept", new { token = unusableToken }, antiforgery),
             HttpStatusCode.BadRequest,
             "invalid_invitation");
 
@@ -318,16 +582,30 @@ public sealed class ProblemDetailsContractTests : TestBase
         TestApp.SetCurrentTenant(organization.TenantId);
         // Switching the acting identity rotates the antiforgery pair, so the second request bootstraps its own.
         var issuerAntiforgery = (await GetAntiforgeryAsync(host)).RequestToken;
+        var submittedAddress = $"pii-sentinel-{Guid.NewGuid():N}@example.test";
+        var faultedRequestToken = $"token-sentinel-{Guid.NewGuid():N}";
+        // InviteMemberRequest deliberately has no token member. This extra JSON property exercises raw-body
+        // non-logging; the PostgresException/42P01 assertions below prove binding still reached provider failure.
+        var faultedRequest = new
+        {
+            email = submittedAddress,
+            roleIds = new[] { organization.RoleId },
+            token = faultedRequestToken
+        };
+        JsonSerializer.Serialize(faultedRequest).ShouldContain($"\"token\":\"{faultedRequestToken}\"");
+        TestApp.ResetCapturedLogs();
         TestApp.ForceUnexpectedFailure();
         var faulted = await SendInvitationAsync(
             host,
             $"/api/tenants/{organization.TenantId.Value}/invitations",
-            new { email = $"invitee-{Guid.NewGuid():N}@example.test", roleIds = new[] { organization.RoleId } },
+            faultedRequest,
             issuerAntiforgery);
 
         var payload = await AssertProblemAsync(faulted, HttpStatusCode.InternalServerError, "internal_server_error");
+        var traceId = payload.GetProperty("traceId").GetString()!;
         var body = payload.GetRawText();
-        body.ShouldNotContain(token, Case.Insensitive);
+        const string efFailureMessage = "An error occurred while saving the entity changes";
+        body.ShouldNotContain(faultedRequestToken, Case.Insensitive);
         body.ShouldNotContain("password", Case.Insensitive);
         // A safe 500 may carry a detail or none at all; what it may never carry is anything about the fault.
         if (payload.TryGetProperty("detail", out var detail))
@@ -336,6 +614,63 @@ public sealed class ProblemDetailsContractTests : TestBase
             text.ShouldNotContain("Exception", Case.Insensitive);
             text.ShouldNotContain("password", Case.Insensitive);
         }
+
+        var record = ErrorRecords().ShouldHaveSingleItem(
+            "the terminal boundary must own the only Error record, including framework and provider logs");
+        record.ShouldStartWith("[Error] CleanArchitecture.Web.Infrastructure.ProblemDetailsExceptionHandler:");
+        record.ShouldContain("unexpected_failure");
+        record.ShouldContain(traceId);
+        record.ShouldContain("invitations");
+        record.ShouldContain("Npgsql.PostgresException");
+        record.ShouldContain("42P01");
+        record.ShouldContain("Npgsql");
+        record.ShouldContain("ExceptionTypes");
+        record.ShouldContain("StackFrames");
+        record.ShouldNotContain(TestProviderFailureInterceptor.SecretSentinel);
+        record.ShouldNotContain(TestProviderFailureInterceptor.ParameterName);
+        record.ShouldNotContain(TestProviderFailureInterceptor.ParameterSentinel);
+        record.ShouldNotContain("does not exist", Case.Insensitive);
+        record.ShouldNotContain(efFailureMessage, Case.Insensitive);
+        record.ShouldNotContain("SELECT * FROM", Case.Insensitive);
+        record.ShouldNotContain(submittedAddress);
+        record.ShouldNotContain(faultedRequestToken);
+        TestApp.CapturedLogs.ShouldAllBe(
+            entry => !entry.Contains(TestProviderFailureInterceptor.SecretSentinel, StringComparison.Ordinal),
+            "neither the provider message nor its failed SQL may escape through any logger");
+        TestApp.CapturedLogs.ShouldAllBe(
+            entry => !entry.Contains(TestProviderFailureInterceptor.ParameterName, StringComparison.Ordinal) &&
+                     !entry.Contains(TestProviderFailureInterceptor.ParameterSentinel, StringComparison.Ordinal),
+            "neither the failed command's parameter name nor value may escape through any logger");
+        TestApp.CapturedLogs.ShouldAllBe(
+            entry => !entry.Contains("does not exist", StringComparison.OrdinalIgnoreCase),
+            "the raw PostgreSQL message must not escape through any logger");
+        TestApp.CapturedLogs.ShouldAllBe(
+            entry => !entry.Contains(efFailureMessage, StringComparison.OrdinalIgnoreCase) &&
+                     !entry.Contains("Exception data:", StringComparison.OrdinalIgnoreCase) &&
+                     !entry.Contains("MessageText:", StringComparison.OrdinalIgnoreCase) &&
+                     !entry.Contains("Boolean async", StringComparison.Ordinal),
+            "no exception message, Data values or raw stack arguments may escape through any logger");
+        TestApp.CapturedLogs.ShouldAllBe(
+            entry => !entry.Contains($"SELECT * FROM \"{TestProviderFailureInterceptor.SecretSentinel}\" WHERE", StringComparison.Ordinal),
+            "the failed SQL text must not escape through any logger");
+        TestApp.CapturedLogs.ShouldAllBe(
+            entry => !entry.Contains(submittedAddress, StringComparison.OrdinalIgnoreCase),
+            "the submitted address must not be recorded by any provider");
+        TestApp.CapturedLogs.ShouldAllBe(
+            entry => !entry.Contains(faultedRequestToken, StringComparison.Ordinal),
+            "the submitted token must not be recorded by any provider");
+    }
+
+    private static string[] ErrorRecords() =>
+        TestApp.CapturedLogs
+            .Where(entry => entry.StartsWith("[Error] ", StringComparison.Ordinal))
+            .ToArray();
+
+    private sealed class ThrowingRecoveryAdmission : IRecoveryAdmission
+    {
+        internal const string Secret = "recovery-admission-secret";
+
+        public RecoveryAdmission Current => throw new InvalidOperationException(Secret);
     }
 
     private static Task<HttpResponseMessage> SendInvitationAsync(string host, string path, object body, string antiforgeryToken)
@@ -378,18 +713,24 @@ public sealed class ProblemDetailsContractTests : TestBase
         return request;
     }
 
+    private static HttpResponseMessage ProblemResponse(
+        IReadOnlyDictionary<string, object?> body,
+        HttpStatusCode status)
+    {
+        var response = new HttpResponseMessage(status)
+        {
+            Content = new StringContent(JsonSerializer.Serialize(body))
+        };
+        response.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/problem+json");
+        return response;
+    }
+
     private static async Task<JsonElement> AssertProblemAsync(HttpResponseMessage response, HttpStatusCode statusCode, string code, bool hasErrors = false)
     {
-        response.StatusCode.ShouldBe(statusCode);
-        response.Content.Headers.ContentType!.MediaType.ShouldBe("application/problem+json");
-        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        var payload = document.RootElement.Clone();
-        payload.GetProperty("code").GetString().ShouldBe(code);
-        string.IsNullOrWhiteSpace(payload.GetProperty("traceId").GetString()).ShouldBeFalse();
+        var payload = await IdentityHttpHarness.AssertProblemAsync(response, statusCode, code, hasErrors);
         payload.TryGetProperty("success", out _).ShouldBeFalse();
         payload.TryGetProperty("data", out _).ShouldBeFalse();
         payload.TryGetProperty("error", out _).ShouldBeFalse();
-        payload.TryGetProperty("errors", out _).ShouldBe(hasErrors);
         return payload;
     }
 }

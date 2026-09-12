@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link as RouterLink, Navigate, useLocation, useSearchParams } from 'react-router-dom';
+import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Divider from '@mui/material/Divider';
@@ -8,6 +9,7 @@ import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
+import { toProblem } from '../api/apiTransport';
 import { useIdentity } from '../context/IdentityProvider';
 import { ProblemMessage } from '../ProblemMessage';
 import { useSubmit } from '../useSubmit';
@@ -56,8 +58,26 @@ export function LoginPage() {
     : '/identity';
   const { submit, problem, isBusy } = useSubmit((...args) => identity.signIn(...args));
   const [providerProblem, setProviderProblem] = useState(null);
+  const [refused, setRefused] = useState(false);
 
   if (identity?.isAuthenticated) return <Navigate to={returnUrl} replace state={{ from: location }} />;
+
+  /**
+   * A refused sign-in is not a failed request. The server answers every refusal a stranger can provoke with the
+   * same neutral `204` — a wrong password, a locked account and a deactivated one are indistinguishable on
+   * purpose (SPEC section 6) — so nothing is thrown and no problem document arrives. What separates the two
+   * outcomes is whether a session now exists, which is exactly what the context read that follows reports:
+   * `signIn` hands back the loaded context, or `null` when there was none to load.
+   *
+   * Saying so is this page's job rather than the context's. The provider records `authentication_required` for
+   * nobody, because it is what the endpoint answers every visitor who has yet to sign in, and printing it put a
+   * refusal at the top of the card before anybody had asked for anything. Somebody who just pressed the button
+   * did ask, and is owed an answer — as neutral as the server's, because this page knows no more than it does.
+   */
+  const signIn = async () => {
+    setRefused(false);
+    if (await submit(email, password) === null) setRefused(true);
+  };
 
   // Nothing is chosen for the visitor here: pressing this asks the server where to go, and the account it ends
   // up at is the one that provider account is linked to — never one that merely shares an address.
@@ -67,7 +87,7 @@ export function LoginPage() {
       const { authorizationRequestUri } = await identity.client.startExternalLogin('Google');
       externalNavigation.leaveFor(authorizationRequestUri);
     } catch (error) {
-      setProviderProblem(error.problem ?? { code: 'unexpected' });
+      setProviderProblem(toProblem(error));
     }
   };
 
@@ -83,6 +103,9 @@ export function LoginPage() {
         </Box>
 
         <ProblemMessage problem={problem ?? providerProblem ?? identity?.contextProblem} />
+        {refused && problem === null && providerProblem === null && !identity?.contextProblem && (
+          <Alert severity="error">Those details did not sign you in. Check them and try again.</Alert>
+        )}
 
         {/* Two ways in, in the order they are chosen: the provider round trip first, then the credentials this
             card can take itself. The rule dividing them is what makes them read as alternatives. */}
@@ -94,7 +117,7 @@ export function LoginPage() {
         <Stack
           component="form"
           spacing={2}
-          onSubmit={(event) => { event.preventDefault(); submit(email, password); }}
+          onSubmit={(event) => { event.preventDefault(); void signIn(); }}
         >
           <TextField
             id="login-email"

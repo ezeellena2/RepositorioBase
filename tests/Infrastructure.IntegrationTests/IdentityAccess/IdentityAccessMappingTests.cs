@@ -1,3 +1,4 @@
+using CleanArchitecture.Domain.IdentityAccess.Organizations;
 using CleanArchitecture.Infrastructure.Data;
 using CleanArchitecture.Infrastructure.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -9,6 +10,23 @@ namespace CleanArchitecture.Infrastructure.IntegrationTests.IdentityAccess;
 
 public sealed class IdentityAccessMappingTests
 {
+    [Test]
+    public void Cuit_converters_materialize_legacy_stored_digits_without_reapplying_input_validation()
+    {
+        using var scope = TestServices.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var model = context.GetService<IDesignTimeModel>().Model;
+
+        foreach (var entityType in new[] { typeof(OrganizationProfile), typeof(PendingRegistrationIntent) })
+        {
+            var converter = model.FindEntityType(entityType)!.FindProperty("Cuit")!.GetValueConverter();
+
+            var materialized = (NormalizedCuit)converter!.ConvertFromProvider("30123456789")!;
+
+            materialized.Value.ShouldBe("30123456789");
+        }
+    }
+
     [Test]
     public void Model_maps_core_identity_access_entities_with_uuid_keys()
     {

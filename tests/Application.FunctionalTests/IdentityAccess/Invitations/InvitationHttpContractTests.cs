@@ -1,8 +1,16 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using CleanArchitecture.Application.FunctionalTests.Infrastructure;
+using CleanArchitecture.Application.FunctionalTests.IdentityAccess.Platform;
 using CleanArchitecture.Application.IdentityAccess.Authorization;
+using CleanArchitecture.Domain.IdentityAccess.Auditing;
+using CleanArchitecture.Domain.IdentityAccess.Invitations;
+using CleanArchitecture.Domain.IdentityAccess.Memberships;
+using CleanArchitecture.Domain.IdentityAccess.Outbox;
+using CleanArchitecture.Domain.IdentityAccess.Platform;
+using CleanArchitecture.Infrastructure.Identity;
 using CleanArchitecture.Web.Endpoints;
 using Microsoft.AspNetCore.Http;
 
@@ -43,6 +51,88 @@ public sealed class InvitationHttpContractTests : TestBase
         response.Headers.Location!.ToString().ShouldContain(body.GetProperty("invitationId").GetGuid().ToString());
     }
 
+    [Test]
+    public async Task Issuing_refuses_invalid_email_and_role_selection_as_exact_field_validation_without_effects()
+    {
+        var organization = await InvitationScenario.SeedOrganizationAsync(Permissions.MembersInvite);
+        await AuthenticateAsync(organization.InviterIdentityId, organization);
+        var antiforgery = await AntiforgeryAsync();
+        var before = await RegistrationDurableCountsAsync();
+
+        using var nullEmail = await SendAsync(
+            HttpMethod.Post,
+            $"/api/tenants/{organization.TenantId.Value}/invitations",
+            new { email = (string?)null, roleIds = new[] { organization.RoleId } },
+            antiforgery);
+        await AssertValidationProblemAsync(
+            nullEmail,
+            $"/api/tenants/{organization.TenantId.Value}/invitations",
+            "email",
+            ["Enter an email address."]);
+
+        using var emptyEmail = await SendAsync(
+            HttpMethod.Post,
+            $"/api/tenants/{organization.TenantId.Value}/invitations",
+            new { email = string.Empty, roleIds = new[] { organization.RoleId } },
+            antiforgery);
+        await AssertValidationProblemAsync(
+            emptyEmail,
+            $"/api/tenants/{organization.TenantId.Value}/invitations",
+            "email",
+            ["Enter an email address."]);
+
+        using var email = await SendAsync(
+            HttpMethod.Post,
+            $"/api/tenants/{organization.TenantId.Value}/invitations",
+            new { email = "not-an-email", roleIds = new[] { organization.RoleId } },
+            antiforgery);
+        await AssertValidationProblemAsync(
+            email,
+            $"/api/tenants/{organization.TenantId.Value}/invitations",
+            "email",
+            ["Enter an email address."],
+            "not-an-email");
+
+        using var roles = await SendAsync(
+            HttpMethod.Post,
+            $"/api/tenants/{organization.TenantId.Value}/invitations",
+            new { email = "valid@example.test", roleIds = Array.Empty<Guid>() },
+            antiforgery);
+        await AssertValidationProblemAsync(
+            roles,
+            $"/api/tenants/{organization.TenantId.Value}/invitations",
+            "roleIds",
+            ["Choose at least one role."],
+            "valid@example.test");
+
+        using var nullRoles = await SendAsync(
+            HttpMethod.Post,
+            $"/api/tenants/{organization.TenantId.Value}/invitations",
+            new { email = "valid@example.test", roleIds = (Guid[]?)null },
+            antiforgery);
+        await AssertValidationProblemAsync(
+            nullRoles,
+            $"/api/tenants/{organization.TenantId.Value}/invitations",
+            "roleIds",
+            ["Choose at least one role."],
+            "valid@example.test");
+
+        using var emptyRole = await SendAsync(
+            HttpMethod.Post,
+            $"/api/tenants/{organization.TenantId.Value}/invitations",
+            new { email = "valid@example.test", roleIds = new[] { Guid.Empty } },
+            antiforgery);
+        await AssertValidationProblemAsync(
+            emptyRole,
+            $"/api/tenants/{organization.TenantId.Value}/invitations",
+            "roleIds",
+            ["Choose valid roles."],
+            "valid@example.test");
+
+        (await RegistrationDurableCountsAsync()).ShouldBe(before,
+            "request-only invitation validation must create no invitation, secret or outbox effect");
+    }
+
     /// <summary>
     /// The public registration route is bodyless and neutral by declaration, so an unknown token gets exactly what
     /// a live one gets. A 404 or a 400 here would turn the endpoint into a token oracle.
@@ -60,6 +150,94 @@ public sealed class InvitationHttpContractTests : TestBase
 
         response.StatusCode.ShouldBe(HttpStatusCode.Accepted);
         (await response.Content.ReadAsStringAsync()).ShouldBeEmpty("the neutral 202 carries no body to read state out of");
+    }
+
+    /// <summary>
+    /// The only non-antiforgery refusals this public endpoint exposes are decided from the submitted token shape
+    /// and password alone. The same weak password therefore has the same bytes for a live and a dead token, while
+    /// neither request reaches token hashing or changes any durable onboarding state.
+    /// </summary>
+    [TestCase(false, "/api/invitations/register")]
+    [TestCase(true, "/api/platform/invitations/register")]
+    public async Task Invitation_registration_returns_exact_request_only_field_errors_before_any_lookup(
+        bool platform,
+        string route)
+    {
+        string liveToken;
+        if (platform)
+        {
+            (_, liveToken) = await PlatformScenario.PendingInvitationAsync();
+        }
+        else
+        {
+            await IssuedInvitationAsync();
+            liveToken = TestApp.RawTokenAt(0);
+        }
+
+        PlatformScenario.RunAnonymously();
+        var before = await RegistrationDurableCountsAsync();
+        var antiforgery = await AntiforgeryAsync();
+        TestApp.ResetConfirmationTokenHashInvocationCount();
+
+        using var missing = await SendAsync(HttpMethod.Post, route, new { password = "Testing1234!" }, antiforgery);
+        await AssertValidationProblemAsync(
+            missing,
+            route,
+            "token",
+            ["An invitation token is required."]);
+
+        var overlongToken = new string('t', 257);
+        using var overlong = await SendAsync(
+            HttpMethod.Post,
+            route,
+            new { token = overlongToken, password = "Testing1234!" },
+            antiforgery);
+        await AssertValidationProblemAsync(
+            overlong,
+            route,
+            "token",
+            ["The invitation token must be 256 characters or fewer."],
+            overlongToken);
+
+        string[] policyDescriptions = [
+            "Passwords must be at least 12 characters.",
+            "Passwords must have at least one non alphanumeric character.",
+            "Passwords must have at least one digit ('0'-'9').",
+            "Passwords must have at least one uppercase ('A'-'Z')."
+        ];
+        using var live = await SendAsync(
+            HttpMethod.Post,
+            route,
+            new { token = liveToken, password = "short" },
+            antiforgery);
+        var liveBody = await AssertValidationProblemAsync(live, route, "password", policyDescriptions, liveToken, "short");
+
+        var deadToken = TestApp.RawTokenAt(9);
+        using var dead = await SendAsync(
+            HttpMethod.Post,
+            route,
+            new { token = deadToken, password = "short" },
+            antiforgery);
+        var deadBody = await AssertValidationProblemAsync(dead, route, "password", policyDescriptions, deadToken, "short");
+
+        StableProblemBody(deadBody).ShouldBe(
+            StableProblemBody(liveBody),
+            "a request-only password refusal must not reveal whether the invitation token resolves");
+        TestApp.ConfirmationTokenHashInvocationCount.ShouldBe(0, "shape and password policy run before token lookup");
+        (await RegistrationDurableCountsAsync()).ShouldBe(before);
+
+        if (platform)
+        {
+            var invitation = await PlatformScenario.SingleInvitationAsync();
+            invitation.Status.ShouldBe(PlatformAdminInvitationStatus.Pending);
+            invitation.BoundIdentityId.ShouldBeNull();
+        }
+        else
+        {
+            var invitation = await InvitationScenario.SingleInvitationAsync();
+            invitation.Status.ShouldBe(InvitationStatus.Pending);
+            invitation.AcceptedByIdentityId.ShouldBeNull();
+        }
     }
 
     [Test]
@@ -117,6 +295,7 @@ public sealed class InvitationHttpContractTests : TestBase
         var other = await InvitationScenario.SeedOrganizationAsync();
         await AuthenticateAsync(administered.InviterIdentityId, administered);
         var antiforgery = await AntiforgeryAsync();
+        var before = await RegistrationDurableCountsAsync();
 
         var response = await SendAsync(
             HttpMethod.Post,
@@ -124,9 +303,12 @@ public sealed class InvitationHttpContractTests : TestBase
             new { email = $"invitee-{Guid.NewGuid():N}@example.test", roleIds = new[] { administered.RoleId } },
             antiforgery);
 
-        response.StatusCode.ShouldBeOneOf(HttpStatusCode.BadRequest, HttpStatusCode.Forbidden, HttpStatusCode.NotFound);
-        response.Content.Headers.ContentType!.MediaType.ShouldBe("application/problem+json");
-        (await TestApp.CountAsync<Domain.IdentityAccess.Invitations.Invitation>()).ShouldBe(0);
+        var problem = await IdentityHttpHarness.AssertProblemAsync(
+            response,
+            HttpStatusCode.BadRequest,
+            "invalid_invitation");
+        problem.TryGetProperty("errors", out _).ShouldBeFalse();
+        (await RegistrationDurableCountsAsync()).ShouldBe(before);
     }
 
     /// <summary>
@@ -134,26 +316,51 @@ public sealed class InvitationHttpContractTests : TestBase
     /// the strongly-typed identifier factory with it throws, and the caller would read <c>internal_server_error</c>
     /// for input the boundary could have refused.
     /// </summary>
-    [TestCase("00000000-0000-0000-0000-000000000000", "role")]
-    [TestCase("tenant", "00000000-0000-0000-0000-000000000000")]
-    public async Task An_empty_identifier_is_a_declared_400_and_never_an_internal_error(string emptyTenant, string emptyRole)
+    [Test]
+    public async Task An_empty_route_tenant_is_invalid_invitation_and_never_an_internal_error()
     {
         var organization = await InvitationScenario.SeedOrganizationAsync(Permissions.MembersInvite);
         await AuthenticateAsync(organization.InviterIdentityId, organization);
         var antiforgery = await AntiforgeryAsync();
-        var tenantId = emptyTenant == "tenant" ? organization.TenantId.Value : Guid.Empty;
-        var roleId = emptyRole == "role" ? organization.RoleId : Guid.Empty;
+        var before = await RegistrationDurableCountsAsync();
 
         var response = await SendAsync(
             HttpMethod.Post,
-            $"/api/tenants/{tenantId}/invitations",
-            new { email = $"invitee-{Guid.NewGuid():N}@example.test", roleIds = new[] { roleId } },
+            $"/api/tenants/{Guid.Empty}/invitations",
+            new { email = $"invitee-{Guid.NewGuid():N}@example.test", roleIds = new[] { organization.RoleId } },
             antiforgery);
 
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
         response.Content.Headers.ContentType!.MediaType.ShouldBe("application/problem+json");
-        (await ReadJsonAsync(response)).GetProperty("code").GetString().ShouldBe("invalid_invitation");
-        (await TestApp.CountAsync<Domain.IdentityAccess.Invitations.Invitation>()).ShouldBe(0);
+        var problem = await ReadJsonAsync(response);
+        problem.GetProperty("status").GetInt32().ShouldBe(StatusCodes.Status400BadRequest);
+        problem.GetProperty("code").GetString().ShouldBe("invalid_invitation");
+        problem.TryGetProperty("errors", out _).ShouldBeFalse();
+        (await RegistrationDurableCountsAsync()).ShouldBe(before);
+    }
+
+    [Test]
+    public async Task An_empty_role_identifier_is_exact_field_validation_and_never_an_internal_error()
+    {
+        var organization = await InvitationScenario.SeedOrganizationAsync(Permissions.MembersInvite);
+        await AuthenticateAsync(organization.InviterIdentityId, organization);
+        var antiforgery = await AntiforgeryAsync();
+        var before = await RegistrationDurableCountsAsync();
+        var path = $"/api/tenants/{organization.TenantId.Value}/invitations";
+
+        using var response = await SendAsync(
+            HttpMethod.Post,
+            path,
+            new { email = "valid@example.test", roleIds = new[] { Guid.Empty } },
+            antiforgery);
+
+        await AssertValidationProblemAsync(
+            response,
+            path,
+            "roleIds",
+            ["Choose valid roles."],
+            "valid@example.test");
+        (await RegistrationDurableCountsAsync()).ShouldBe(before);
     }
 
     /// <summary>
@@ -239,8 +446,10 @@ public sealed class InvitationHttpContractTests : TestBase
             new { },
             antiforgery);
 
-        response.StatusCode.ShouldBeOneOf(HttpStatusCode.BadRequest, HttpStatusCode.Forbidden, HttpStatusCode.NotFound);
-        response.Content.Headers.ContentType!.MediaType.ShouldBe("application/problem+json");
+        await IdentityHttpHarness.AssertProblemAsync(
+            response,
+            HttpStatusCode.BadRequest,
+            "invalid_invitation");
         (await InvitationScenario.SingleInvitationAsync()).Status
             .ShouldBe(Domain.IdentityAccess.Invitations.InvitationStatus.Pending);
     }
@@ -286,4 +495,55 @@ public sealed class InvitationHttpContractTests : TestBase
         using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         return document.RootElement.Clone();
     }
+
+    private static async Task<string> AssertValidationProblemAsync(
+        HttpResponseMessage response,
+        string instance,
+        string field,
+        string[] messages,
+        params string[] secretValues)
+    {
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        response.Content.Headers.ContentType!.MediaType.ShouldBe("application/problem+json");
+        var raw = await response.Content.ReadAsStringAsync();
+        using var document = JsonDocument.Parse(raw);
+        var problem = document.RootElement;
+        problem.GetProperty("status").GetInt32().ShouldBe(StatusCodes.Status400BadRequest);
+        problem.GetProperty("type").GetString().ShouldBe("about:blank");
+        problem.GetProperty("title").GetString().ShouldBe("Bad Request");
+        problem.GetProperty("instance").GetString().ShouldBe(instance);
+        problem.GetProperty("code").GetString().ShouldBe("validation_failed");
+        problem.GetProperty("traceId").GetString().ShouldNotBeNullOrWhiteSpace();
+        var errors = problem.GetProperty("errors");
+        errors.EnumerateObject().Select(property => property.Name).ShouldBe([field]);
+        errors.GetProperty(field).EnumerateArray().Select(message => message.GetString()).ShouldBe(messages);
+        foreach (var secret in secretValues) raw.ShouldNotContain(secret);
+        return raw;
+    }
+
+    private static string StableProblemBody(string raw)
+    {
+        var problem = JsonNode.Parse(raw)!.AsObject();
+        problem.Remove("traceId");
+        problem.Remove("instance");
+        return problem.ToJsonString();
+    }
+
+    private static async Task<RegistrationDurableCounts> RegistrationDurableCountsAsync() => new(
+        await TestApp.CountAsync<ApplicationUser>(),
+        await TestApp.CountAsync<TenantMembership>(),
+        await TestApp.CountAsync<Invitation>(),
+        await TestApp.CountAsync<PlatformAdminInvitation>(),
+        await TestApp.CountAsync<OutboxMessage>(),
+        await TestApp.CountAsync<OutboxSecret>(),
+        await TestApp.CountAsync<AuditEvent>());
+
+    private sealed record RegistrationDurableCounts(
+        int Identities,
+        int Memberships,
+        int Invitations,
+        int PlatformInvitations,
+        int OutboxMessages,
+        int OutboxSecrets,
+        int AuditEvents);
 }

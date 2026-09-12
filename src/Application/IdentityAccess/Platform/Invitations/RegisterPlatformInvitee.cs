@@ -23,10 +23,13 @@ public sealed class RegisterPlatformInviteeCommandValidator : AbstractValidator<
     public RegisterPlatformInviteeCommandValidator()
     {
         RuleFor(command => command.Token)
-            .NotEmpty().WithErrorCode(ValidationErrorCodes.Required)
-            .MaximumLength(256).WithErrorCode(ValidationErrorCodes.TooLong);
+            .NotEmpty().WithErrorCode(ValidationErrorCodes.Required).WithMessage("An invitation token is required.")
+            .MaximumLength(256).WithErrorCode(ValidationErrorCodes.TooLong).WithMessage("The invitation token must be 256 characters or fewer.")
+            .OverridePropertyName("token");
+
         RuleFor(command => command.Password)
-            .NotEmpty().WithErrorCode(ValidationErrorCodes.Required)
-            .MaximumLength(256).WithErrorCode(ValidationErrorCodes.TooLong);
+            .NotEmpty().WithErrorCode(ValidationErrorCodes.Required).WithMessage("A password is required.")
+            .MaximumLength(256).WithErrorCode(ValidationErrorCodes.TooLong).WithMessage("The password must be 256 characters or fewer.")
+            .OverridePropertyName("password");
     }
 }

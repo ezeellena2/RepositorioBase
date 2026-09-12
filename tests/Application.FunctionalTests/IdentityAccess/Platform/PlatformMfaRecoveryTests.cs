@@ -1,8 +1,10 @@
 using System.Net;
 using System.Net.Http.Json;
 using CleanArchitecture.Application.FunctionalTests.Infrastructure;
+using CleanArchitecture.Application.Common.Models;
 using CleanArchitecture.Application.IdentityAccess.Credentials;
 using CleanArchitecture.Application.IdentityAccess.Credentials.Reauthenticate;
+using CleanArchitecture.Application.IdentityAccess.Platform;
 using CleanArchitecture.Application.IdentityAccess.Platform.Administrators;
 using CleanArchitecture.Application.IdentityAccess.Platform.Mfa;
 using CleanArchitecture.Application.IdentityAccess.Sessions.CreateSession;
@@ -87,7 +89,7 @@ public sealed class PlatformMfaRecoveryTests : TestBase
         var replayed = await TestApp.SendAsync(new RecoverPlatformMfaCommand(codes[0]));
 
         replayed.IsFailure.ShouldBeTrue();
-        replayed.Error!.Code.ShouldBe("invalid_credential_proof");
+        AssertInvalidRecoveryCode(replayed.Error!);
     }
 
     /// <summary>
@@ -106,7 +108,7 @@ public sealed class PlatformMfaRecoveryTests : TestBase
         var stale = await TestApp.SendAsync(new RecoverPlatformMfaCommand(codes[1]));
 
         stale.IsFailure.ShouldBeTrue();
-        stale.Error!.Code.ShouldBe("invalid_credential_proof");
+        AssertInvalidRecoveryCode(stale.Error!);
     }
 
     [Test]
@@ -190,7 +192,38 @@ public sealed class PlatformMfaRecoveryTests : TestBase
         var refused = await TestApp.SendAsync(new RecoverPlatformMfaCommand(begun.Value!.RecoveryCodes[0]));
 
         refused.IsFailure.ShouldBeTrue();
-        refused.Error!.Code.ShouldBe("invalid_credential_proof");
+        AssertInvalidRecoveryCode(refused.Error!);
+    }
+
+    [Test]
+    public async Task No_enrollment_is_the_same_recovery_code_refusal()
+    {
+        var invitee = await PlatformMfaTests.ConfirmedInviteeAsync();
+        PlatformScenario.RunAnonymously();
+        var signedIn = await TestApp.SendAsync(new CreateSessionCommand(invitee.Email, PlatformScenario.ValidPassword));
+        signedIn.IsSuccess.ShouldBeTrue(signedIn.Error?.Code);
+        TestApp.SetUserId(invitee.IdentityId);
+        TestApp.SetSessionId(signedIn.Value!.SessionId);
+        TestApp.SetCurrentTenant(null);
+        TestApp.SetApplicationPermissionGranted(true);
+        await ProveAsync();
+
+        var refused = await TestApp.SendAsync(new RecoverPlatformMfaCommand("not-a-recovery-code"));
+
+        AssertInvalidRecoveryCode(refused.Error!);
+    }
+
+    [Test]
+    public async Task Recovery_keeps_invalid_session_for_a_genuine_session_failure()
+    {
+        TestApp.SetUserId(Guid.NewGuid());
+        TestApp.SetSessionId(null);
+        TestApp.SetApplicationPermissionGranted(true);
+
+        var refused = await TestApp.SendAsync(new RecoverPlatformMfaCommand("not-a-recovery-code"));
+
+        refused.Error!.Code.ShouldBe("invalid_session");
+        refused.Error.Category.ShouldBe(ApplicationErrorCategory.Authentication);
     }
 
     /// <summary>
@@ -203,22 +236,19 @@ public sealed class PlatformMfaRecoveryTests : TestBase
         var owner = await PlatformScenario.ActiveOwnerAsync();
         await SignInForRealAsync(owner);
 
-        string? exhausted = null;
-        var retryAfter = 0;
-        for (var attempt = 0; attempt < 25 && exhausted is null; attempt++)
+        for (var attempt = 0; attempt < PlatformAttemptBudgets.MfaAttempt.Limit; attempt++)
         {
             await ProveAsync();
             var refused = await TestApp.SendAsync(new RecoverPlatformMfaCommand($"not-a-code-{attempt}"));
             refused.IsFailure.ShouldBeTrue();
-            if (refused.Error!.Code == "rate_limit_exceeded")
-            {
-                exhausted = refused.Error.Code;
-                retryAfter = refused.Error.RetryAfterSeconds ?? 0;
-            }
+            AssertInvalidRecoveryCode(refused.Error!);
         }
 
-        exhausted.ShouldBe("rate_limit_exceeded", "an unbounded recovery route is a guessing game with a fixed cost");
-        retryAfter.ShouldBeGreaterThan(0, "a caller told to wait has to be told how long");
+        await ProveAsync();
+        var exhausted = await TestApp.SendAsync(new RecoverPlatformMfaCommand("not-a-code-over-budget"));
+        exhausted.Error!.Code.ShouldBe("rate_limit_exceeded", "an unbounded recovery route is a guessing game with a fixed cost");
+        exhausted.Error.RetryAfterSeconds.ShouldNotBeNull();
+        exhausted.Error.RetryAfterSeconds!.Value.ShouldBeGreaterThan(0, "a caller told to wait has to be told how long");
         await FactorIsUnchangedAsync();
     }
 
@@ -370,5 +400,14 @@ public sealed class PlatformMfaRecoveryTests : TestBase
         var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var upper = normalizedEmail.ToUpperInvariant();
         return (await context.Users.AsNoTracking().SingleAsync(user => user.NormalizedEmail == upper)).Id;
+    }
+
+    private static void AssertInvalidRecoveryCode(ApplicationError error)
+    {
+        error.Code.ShouldBe("invalid_recovery_code");
+        error.Category.ShouldBe(ApplicationErrorCategory.Validation);
+        error.Detail.ShouldBe("The recovery code is not valid.");
+        error.ValidationErrors.ShouldBeEmpty();
+        error.RetryAfterSeconds.ShouldBeNull();
     }
 }

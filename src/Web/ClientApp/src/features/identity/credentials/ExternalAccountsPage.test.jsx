@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { MemoryRouter } from 'react-router-dom';
@@ -81,7 +81,11 @@ describe('external accounts page', () => {
     await userEvent.type(await screen.findByLabelText('Password'), 'Wrong1234!');
     await userEvent.click(screen.getByRole('button', { name: 'Link Google' }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/that password was not accepted/i);
+    const row = screen.getByRole('button', { name: 'Link Google' }).closest('li');
+    const alert = await within(row).findByRole('alert');
+    expect(alert).toHaveTextContent(/that password was not accepted/i);
+    expect(alert).toHaveFocus();
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
     expect(left).toEqual([]);
   });
 
@@ -95,8 +99,31 @@ describe('external accounts page', () => {
     await userEvent.type(await screen.findByLabelText('Password'), 'Testing1234!');
     await userEvent.click(screen.getByRole('button', { name: 'Unlink Google' }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/only way to sign in/i);
+    const row = screen.getByRole('button', { name: 'Unlink Google' }).closest('li');
+    const alert = await within(row).findByRole('alert');
+    expect(alert).toHaveTextContent(/only way to sign in/i);
+    expect(alert).toHaveFocus();
     expect(screen.getByRole('button', { name: 'Unlink Google' })).toBeInTheDocument();
+  });
+
+  it('replaces the combined initial wait with a retryable error and retries both provider facts', async () => {
+    let attempts = 0;
+    server.use(antiforgery(), contextIs(signedInContext()), credentialsAre(true));
+    server.use(http.get('/api/identity/external', () => {
+      attempts += 1;
+      return attempts === 1
+        ? problem(500, 'internal_server_error', { traceId: 'trace-external' })
+        : HttpResponse.json({ items: [], available: ['Google'] });
+    }));
+
+    renderAt(<ExternalAccountsPage />);
+
+    expect(await screen.findByText('Reference: trace-external')).toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+
+    expect(await screen.findByRole('button', { name: 'Link Google' })).toBeInTheDocument();
+    expect(attempts).toBe(2);
   });
 
   /**
@@ -207,8 +234,28 @@ describe('external return page', () => {
 
     renderAt(<ExternalReturnPage />, '/external/return?outcome=signed_in');
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/could not be completed/i);
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/could not be completed/i);
+    expect(alert).toHaveFocus();
+    expect(screen.getByRole('link', { name: 'Back to sign in' })).toHaveAttribute('href', '/login');
   });
+
+  it.each(['linked', 'proved'])(
+    'returns a failed %s round trip to the sign-in providers page',
+    async (outcome) => {
+      server.use(antiforgery(), contextIs(signedInContext()));
+      server.use(http.post('/api/identity/external/complete', () => problem(400, 'invalid_external_login')));
+
+      renderAt(<ExternalReturnPage />, `/external/return?outcome=${outcome}`);
+
+      await screen.findByRole('alert');
+      expect(screen.getByRole('link', { name: 'Back to sign-in providers' })).toHaveAttribute(
+        'href',
+        '/identity/external',
+      );
+      expect(screen.queryByRole('link', { name: 'Back to sign in' })).not.toBeInTheDocument();
+    },
+  );
 
   /**
    * The slug is written by the server's own redirect, but it arrives in a URL anybody can craft, while the

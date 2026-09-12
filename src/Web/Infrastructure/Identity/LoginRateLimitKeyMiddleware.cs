@@ -25,6 +25,9 @@ public sealed class LoginRateLimitKeyMiddleware(RequestDelegate next)
     /// <summary>Shared account partition for bodies larger than <see cref="MaxBodyBytes"/>.</summary>
     public const string OversizedBodyPartition = "oversized-body";
 
+    /// <summary>Marks a body that exceeded the transport inspection limit so downstream handling preserves it.</summary>
+    public const string OversizedBodyItem = "identity.login.oversized-body";
+
     /// <summary>Shared account partition for bodies whose declared charset cannot be decoded.</summary>
     public const string UndecodableBodyPartition = "undecodable-body";
 
@@ -46,6 +49,11 @@ public sealed class LoginRateLimitKeyMiddleware(RequestDelegate next)
             }
             else if (account.Sentinel is not null)
             {
+                if (string.Equals(account.Sentinel, OversizedBodyPartition, StringComparison.Ordinal))
+                {
+                    context.Items[OversizedBodyItem] = true;
+                }
+
                 context.Items[AccountKeyItem] = LoginRateLimitPartitioner.SentinelKey(account.Sentinel);
             }
         }
@@ -104,7 +112,7 @@ public sealed class LoginRateLimitKeyMiddleware(RequestDelegate next)
         }
         catch (JsonException)
         {
-            // Malformed JSON is the endpoint's 400 to report; no credential attempt happens.
+            // The endpoint owns its malformed-body contract; this middleware assigns no account partition.
             return AccountReading.None;
         }
         catch (DecoderFallbackException)

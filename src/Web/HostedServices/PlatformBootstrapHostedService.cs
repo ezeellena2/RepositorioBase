@@ -1,3 +1,4 @@
+using CleanArchitecture.Application.Common.Logging;
 using CleanArchitecture.Application.IdentityAccess.Platform.Bootstrap;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -33,9 +34,7 @@ public sealed class PlatformBootstrapHostedService(
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            // Deliberately no detail beyond the type: the one interesting value in scope is a configured email,
-            // and a startup log is not the place for it (IA-REQ-029).
-            logger.LogError("Platform bootstrap did not complete: {Failure}.", exception.GetType().Name);
+            logger.LogSafeFailure(SafeFailure.Describe(exception, "platform.bootstrap"));
         }
     }
 

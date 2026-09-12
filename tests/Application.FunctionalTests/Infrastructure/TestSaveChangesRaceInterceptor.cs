@@ -10,11 +10,6 @@ public sealed class TestSaveChangesRaceInterceptor : SaveChangesInterceptor
 {
     public override async ValueTask<InterceptionResult<int>> SavingChangesAsync(DbContextEventData eventData, InterceptionResult<int> result, CancellationToken cancellationToken = default)
     {
-        if (TestApp.ConsumeForcedUnexpectedFailure())
-        {
-            throw new InvalidOperationException("provider password=must-not-reach-the-client");
-        }
-
         if (eventData.Context?.ChangeTracker.Entries<CleanArchitecture.Domain.IdentityAccess.Tenants.Tenant>()
             .Any(entry => entry.State == EntityState.Added) == true &&
             TestApp.ConsumeForcedRegistrationRollbackAfterPersistedEffects())

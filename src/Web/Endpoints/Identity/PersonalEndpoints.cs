@@ -1,3 +1,6 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using CleanArchitecture.Application.IdentityAccess.Common;
 using CleanArchitecture.Application.IdentityAccess.People.CreatePersonalContext;
 using CleanArchitecture.Application.IdentityAccess.People.Profile;
 using CleanArchitecture.Application.IdentityAccess.People.RegisterPersonal;
@@ -13,42 +16,33 @@ namespace CleanArchitecture.Web.IdentityEndpoints;
 /// </summary>
 internal static class PersonalEndpoints
 {
-    /// <summary>
-    /// The two answers a bounded route owes. They are declared together everywhere the claim budget is spent, so a
-    /// client can tell "you tried too often" from "we are not answering right now".
-    /// </summary>
-    private static readonly ApiProblemContract[] BoundedClaim =
-    [
-        ApiProblemMetadata.RateLimitExceeded,
-        ApiProblemMetadata.ServiceUnavailable
-    ];
-
     internal static void Map(RouteGroupBuilder group)
     {
         group.MapPost("/personal/register", Register)
             .Produces(StatusCodes.Status202Accepted)
             .WithApiProblemDetails([
                 ApiProblemMetadata.AntiforgeryValidationFailed,
+                ApiProblemMetadata.ValidationFailed,
                 ApiProblemMetadata.InvalidRegistration,
                 ApiProblemMetadata.InvalidSession,
                 ApiProblemMetadata.PersonalRegistrationConflict,
-                ApiProblemMetadata.InternalServerError,
-                .. BoundedClaim])
-            .WithBodyBindingFailureCode(ApiProblemMetadata.InvalidRegistration.Code);
+                ApiProblemMetadata.InternalServerError])
+            .WithInvalidOptionalSessionRefusal()
+            .WithBodyBindingFailureCode(ApiProblemMetadata.ValidationFailed.Code);
 
         group.MapPost("/personal", Create)
             .RequireAuthorization()
             .Produces(StatusCodes.Status204NoContent)
             .WithApiProblemDetails([
                 ApiProblemMetadata.AntiforgeryValidationFailed,
-                ApiProblemMetadata.InvalidRegistration,
+                ApiProblemMetadata.ValidationFailed,
                 ApiProblemMetadata.AuthenticationRequired,
                 ApiProblemMetadata.InvalidSession,
                 ApiProblemMetadata.PermissionDenied,
                 ApiProblemMetadata.PersonalRegistrationConflict,
                 ApiProblemMetadata.InternalServerError,
-                .. BoundedClaim])
-            .WithBodyBindingFailureCode(ApiProblemMetadata.InvalidRegistration.Code);
+                .. ApiProblemMetadata.BoundedAttempt])
+            .WithBodyBindingFailureCode(ApiProblemMetadata.ValidationFailed.Code);
 
         group.MapGet("/profile", GetProfile)
             .RequireAuthorization()
@@ -65,6 +59,7 @@ internal static class PersonalEndpoints
             .Produces<PersonalProfileResponse>(StatusCodes.Status200OK)
             .WithApiProblemDetails(
                 ApiProblemMetadata.AntiforgeryValidationFailed,
+                ApiProblemMetadata.ValidationFailed,
                 ApiProblemMetadata.AuthenticationRequired,
                 ApiProblemMetadata.InvalidSession,
                 ApiProblemMetadata.PermissionDenied,
@@ -72,12 +67,12 @@ internal static class PersonalEndpoints
                 ApiProblemMetadata.PersonalProfileNotFound,
                 ApiProblemMetadata.PersonalProfileConcurrencyConflict,
                 ApiProblemMetadata.InternalServerError)
-            .WithBodyBindingFailureCode(ApiProblemMetadata.ProfileFieldNotEditable.Code);
+            .WithBodyBindingFailureCode(ApiProblemMetadata.ValidationFailed.Code);
     }
 
     private static async Task<IResult> Register(HttpContext context, IAntiforgery antiforgery, ISender sender, ApiProblemDetailsMapper problems, RegisterPersonalCommand command)
     {
-        var antiforgeryFailure = await Identity.ValidateAntiforgery(context, antiforgery, problems, rejectInvalidOptionalSession: true);
+        var antiforgeryFailure = await Identity.ValidateAntiforgery(context, antiforgery, problems);
         if (antiforgeryFailure is not null) return antiforgeryFailure;
         var result = await sender.Send(command, context.RequestAborted);
         return result.IsSuccess ? Results.StatusCode(StatusCodes.Status202Accepted) : problems.ToHttpResult(result.Error!);
@@ -97,11 +92,27 @@ internal static class PersonalEndpoints
         return result.IsSuccess ? Results.Ok(result.Value!) : problems.ToHttpResult(result.Error!);
     }
 
-    private static async Task<IResult> UpdateProfile(HttpContext context, IAntiforgery antiforgery, ISender sender, ApiProblemDetailsMapper problems, UpdatePersonalProfileCommand command)
+    private static async Task<IResult> UpdateProfile(HttpContext context, IAntiforgery antiforgery, ISender sender, ApiProblemDetailsMapper problems, UpdatePersonalProfileRequest request)
     {
         var antiforgeryFailure = await Identity.ValidateAntiforgery(context, antiforgery, problems);
         if (antiforgeryFailure is not null) return antiforgeryFailure;
+
+        var unknownMember = request.AdditionalMembers?.Keys.Order(StringComparer.Ordinal).FirstOrDefault();
+        if (unknownMember is not null)
+            return problems.ToHttpResult(IdentityAccessErrors.ProfileFieldNotEditable(unknownMember));
+
+        var command = new UpdatePersonalProfileCommand(request.FullName!, request.DisplayName!, request.Version!);
         var result = await sender.Send(command, context.RequestAborted);
         return result.IsSuccess ? Results.Ok(result.Value!) : problems.ToHttpResult(result.Error!);
+    }
+
+    private sealed class UpdatePersonalProfileRequest
+    {
+        public string? FullName { get; init; }
+        public string? DisplayName { get; init; }
+        public string? Version { get; init; }
+
+        [JsonExtensionData]
+        public IDictionary<string, JsonElement>? AdditionalMembers { get; init; }
     }
 }

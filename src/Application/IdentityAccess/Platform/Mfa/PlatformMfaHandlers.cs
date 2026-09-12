@@ -96,8 +96,8 @@ public sealed class VerifyPlatformMfaEnrollmentCommandHandler(
             if (PlatformAttemptBudgets.MfaRefusal(decision) is { } refusal) return Result.Failure(refusal);
 
             var enrollment = await PlatformMfaGate.FindEnrollmentAsync(context, admission.Value.IdentityId, ct);
-            if (enrollment is null) return Result.Failure(IdentityAccessErrors.InvalidInvitation());
-            if (!verifier.Verify(enrollment.EncryptedSecret, request.Code, now)) return Result.Failure(IdentityAccessErrors.InvalidInvitation());
+            if (enrollment is null) return Result.Failure(IdentityAccessErrors.InvalidMfaCode());
+            if (!verifier.Verify(enrollment.EncryptedSecret, request.Code, now)) return Result.Failure(IdentityAccessErrors.InvalidMfaCode());
 
             enrollment.Verify(admission.Value.SessionId, now);
             await context.SaveChangesAsync(ct);
@@ -216,12 +216,12 @@ public sealed class StepUpPlatformMfaCommandHandler(
             // acquire freshness for authority the caller was never granted.
             if (enrollment is null || enrollment.Status != PlatformMfaEnrollmentStatus.Active)
             {
-                return Result.Failure(IdentityAccessErrors.InvalidSession());
+                return Result.Failure(IdentityAccessErrors.InvalidMfaCode());
             }
 
             if (!verifier.Verify(enrollment.EncryptedSecret, request.Code, now))
             {
-                return Result.Failure(IdentityAccessErrors.InvalidSession());
+                return Result.Failure(IdentityAccessErrors.InvalidMfaCode());
             }
 
             enrollment.RecordStepUp(sessionId.Value, now);

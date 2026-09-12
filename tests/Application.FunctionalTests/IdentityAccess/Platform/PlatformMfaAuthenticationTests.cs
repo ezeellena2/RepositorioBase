@@ -1,10 +1,12 @@
 using System.Net;
+using System.Text.Json;
 using CleanArchitecture.Application.FunctionalTests.Infrastructure;
 using CleanArchitecture.Application.IdentityAccess.Platform.Invitations;
 using CleanArchitecture.Application.IdentityAccess.Platform.Mfa;
 using CleanArchitecture.Domain.IdentityAccess.Memberships;
 using CleanArchitecture.Domain.IdentityAccess.Platform;
 using CleanArchitecture.Infrastructure.Identity;
+using CleanArchitecture.Web.PlatformEndpoints.Contracts;
 
 namespace CleanArchitecture.Application.FunctionalTests.IdentityAccess.Platform;
 
@@ -122,6 +124,69 @@ public sealed class PlatformMfaAuthenticationTests : TestBase
 
         response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
         response.Content.Headers.ContentType!.MediaType.ShouldBe("application/problem+json");
+    }
+
+    [Test]
+    public async Task Mfa_verification_validation_uses_request_schema_keys_and_safe_explicit_messages()
+    {
+        const string password = PlatformScenario.ValidPassword;
+        var email = $"mfa-validation-{Guid.NewGuid():N}@example.test";
+        await IdentityHttpHarness.SeedConfirmedUserAsync(email, password);
+        using var harness = IdentityHttpHarness.CreateProductionHarness();
+        const string host = "https://platform-validation.localhost";
+        await IdentityHttpHarness.SignInAsync(harness.Client, host, email, password);
+        var antiforgery = await IdentityHttpHarness.GetAntiforgeryAsync(harness.Client, host);
+        var submitted = new PlatformMfaVerificationRequest(
+            $"token-secret-{new string('t', 244)}",
+            $"code-secret-{new string('1', 7)}");
+        var initialEnrollments = await TestApp.CountAsync<PlatformMfaEnrollment>();
+
+        using var request = IdentityHttpHarness.JsonRequest(
+            HttpMethod.Post,
+            $"{host}/api/platform/mfa/verify",
+            submitted,
+            antiforgery);
+        var response = await harness.Client.SendAsync(request);
+
+        var payload = await IdentityHttpHarness.AssertProblemAsync(
+            response,
+            HttpStatusCode.BadRequest,
+            "validation_failed",
+            hasErrors: true);
+        payload.GetProperty("instance").GetString().ShouldBe("/api/platform/mfa/verify");
+
+        var errors = payload.GetProperty("errors");
+        var contractResponse = await harness.Client.GetAsync($"{host}/openapi/v1.json");
+        contractResponse.EnsureSuccessStatusCode();
+        using var contract = JsonDocument.Parse(await contractResponse.Content.ReadAsStringAsync());
+        var document = contract.RootElement;
+        var requestSchema = document.GetProperty("paths")
+            .GetProperty("/api/platform/mfa/verify")
+            .GetProperty("post")
+            .GetProperty("requestBody")
+            .GetProperty("content")
+            .GetProperty("application/json")
+            .GetProperty("schema");
+        if (requestSchema.TryGetProperty("$ref", out var reference))
+        {
+            requestSchema = document.GetProperty("components")
+                .GetProperty("schemas")
+                .GetProperty(reference.GetString()!.Split('/')[^1]);
+        }
+
+        var schemaKeys = requestSchema.GetProperty("properties")
+            .EnumerateObject()
+            .Select(property => property.Name)
+            .ToArray();
+        schemaKeys.ShouldBe(["token", "code"]);
+        errors.EnumerateObject().Select(property => property.Name).ShouldBe(schemaKeys);
+        errors.GetProperty("token").EnumerateArray().Select(message => message.GetString()).ShouldBe(
+            ["The invitation token must be 256 characters or fewer."]);
+        errors.GetProperty("code").EnumerateArray().Select(message => message.GetString()).ShouldBe(
+            ["The authenticator code must be 16 characters or fewer."]);
+        payload.GetRawText().ShouldNotContain("token-secret", Case.Insensitive);
+        payload.GetRawText().ShouldNotContain("code-secret", Case.Insensitive);
+        (await TestApp.CountAsync<PlatformMfaEnrollment>()).ShouldBe(initialEnrollments);
     }
 
     /// <summary>Every state-changing Platform route requires antiforgery; none may be normalized to a business answer.</summary>

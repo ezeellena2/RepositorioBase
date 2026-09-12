@@ -2,13 +2,17 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Security.Claims;
 using CleanArchitecture.Application.FunctionalTests.Infrastructure;
+using CleanArchitecture.Domain.IdentityAccess.Credentials;
+using CleanArchitecture.Domain.IdentityAccess.Identities;
 using CleanArchitecture.Domain.IdentityAccess.Memberships;
 using CleanArchitecture.Domain.IdentityAccess.Auditing;
 using CleanArchitecture.Domain.IdentityAccess.Organizations;
+using CleanArchitecture.Domain.IdentityAccess.Outbox;
 using CleanArchitecture.Domain.IdentityAccess.Sessions;
 using CleanArchitecture.Domain.IdentityAccess.Tenants;
 using CleanArchitecture.Infrastructure.Data;
 using CleanArchitecture.Infrastructure.Identity;
+using CleanArchitecture.Web.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -190,14 +194,14 @@ public sealed class SessionTests : TestBase
         var client = harness.Client;
         var host = "https://session-registration-trust.localhost";
         var email = "session-registration@example.test";
-        await SeedConfirmedUserAsync(email, "Testing1234!");
+        var identityId = await SeedConfirmedUserAsync(email, "Testing1234!");
         var beforeSignIn = await GetAntiforgeryAsync(client, host);
         using (var signIn = JsonRequest(HttpMethod.Post, $"{host}/api/identity/sessions", new { email, password = "Testing1234!" }, beforeSignIn))
         {
             (await client.SendAsync(signIn)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
         }
 
-        using (var oldPair = JsonRequest(HttpMethod.Post, $"{host}/api/identity/organizations/register", new { email, password = "Testing1234!", legalName = "Trusted Registration", cuit = "30-12345678-9" }, beforeSignIn))
+        using (var oldPair = JsonRequest(HttpMethod.Post, $"{host}/api/identity/organizations/register", new { email, password = "Testing1234!", legalName = "Trusted Registration", cuit = "30-12345678-1" }, beforeSignIn))
         {
             var response = await client.SendAsync(oldPair);
             response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
@@ -205,21 +209,45 @@ public sealed class SessionTests : TestBase
         }
 
         var afterSignIn = await GetAntiforgeryAsync(client, host);
-        using (var matchingRegistration = JsonRequest(HttpMethod.Post, $"{host}/api/identity/organizations/register", new { email, password = "Testing1234!", legalName = "Trusted Registration", cuit = "30-12345678-9" }, afterSignIn))
+        using (var matchingRegistration = JsonRequest(HttpMethod.Post, $"{host}/api/identity/organizations/register", new { email = string.Empty, password = string.Empty, legalName = "Trusted Registration", cuit = "30-12345678-1" }, afterSignIn))
         {
-            (await client.SendAsync(matchingRegistration)).StatusCode.ShouldBe(HttpStatusCode.Accepted);
+            var response = await client.SendAsync(matchingRegistration);
+            response.StatusCode.ShouldBe(HttpStatusCode.Accepted);
+            (await response.Content.ReadAsStringAsync()).ShouldBeEmpty();
         }
 
         (await CountAsync<OrganizationProfile>()).ShouldBe(1);
         (await CountAsync<TenantMembership>()).ShouldBe(1);
 
         var secondToken = await GetAntiforgeryAsync(client, host);
-        using var mismatchedRegistration = JsonRequest(HttpMethod.Post, $"{host}/api/identity/organizations/register", new { email = "other@example.test", password = "Testing1234!", legalName = "Mismatched Registration", cuit = "30-87654321-0" }, secondToken);
-        var mismatch = await client.SendAsync(mismatchedRegistration);
-        mismatch.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
-        (await mismatch.Content.ReadFromJsonAsync<CleanArchitecture.Web.Infrastructure.ApiProblemDetails>())!.Code.ShouldBe("invalid_registration");
-        (await CountAsync<OrganizationProfile>()).ShouldBe(1);
-        (await CountAsync<TenantMembership>()).ShouldBe(1);
+        var beforeSpoof = (
+            Identities: await CountAsync<ApplicationUser>(),
+            Submissions: await CountAsync<RegistrationSubmission>(),
+            Tenants: await CountAsync<Tenant>(),
+            Organizations: await CountAsync<OrganizationProfile>(),
+            Memberships: await CountAsync<TenantMembership>(),
+            OutboxMessages: await CountAsync<OutboxMessage>(),
+            AuditEvents: await CountAsync<AuditEvent>());
+        const string spoofedEmail = "other@example.test";
+        var spoofedPassword = new string('p', 512);
+        using var spoofedRegistration = JsonRequest(HttpMethod.Post, $"{host}/api/identity/organizations/register", new { email = spoofedEmail, password = spoofedPassword, legalName = "Session-bound Registration", cuit = "30-87654321-0" }, secondToken);
+        var spoofed = await client.SendAsync(spoofedRegistration);
+        spoofed.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        var spoofedProblem = await ReadProblemAsync(spoofed);
+        spoofedProblem.GetProperty("code").GetString().ShouldBe("invalid_registration");
+        var afterSpoof = (
+            Identities: await CountAsync<ApplicationUser>(),
+            Submissions: await CountAsync<RegistrationSubmission>(),
+            Tenants: await CountAsync<Tenant>(),
+            Organizations: await CountAsync<OrganizationProfile>(),
+            Memberships: await CountAsync<TenantMembership>(),
+            OutboxMessages: await CountAsync<OutboxMessage>(),
+            AuditEvents: await CountAsync<AuditEvent>());
+        afterSpoof.ShouldBe(beforeSpoof);
+        (await ListAsync<TenantMembership>()).Single().IdentityId.ShouldBe(identityId);
+        (await ListAsync<OutboxMessage>()).ShouldAllBe(message =>
+            !message.Payload.Contains(spoofedEmail, StringComparison.Ordinal)
+            && !message.Payload.Contains(spoofedPassword, StringComparison.Ordinal));
     }
 
     [Test]
@@ -266,7 +294,7 @@ public sealed class SessionTests : TestBase
         await SignInAsync(client, host, email, "Testing1234!");
         var antiforgery = await GetAntiforgeryAsync(client, host);
         await ApplyFailureStateAsync(identityId, failure, clock);
-        using var request = JsonRequest(HttpMethod.Post, $"{host}/api/identity/organizations/register", new { email, password = "Testing1234!", legalName = "Invalidated Session", cuit = "30-12345678-9" }, antiforgery);
+        using var request = JsonRequest(HttpMethod.Post, $"{host}/api/identity/organizations/register", new { email, password = "Testing1234!", legalName = "Invalidated Session", cuit = "30-12345678-1" }, antiforgery);
 
         var response = await client.SendAsync(request);
 
@@ -343,7 +371,7 @@ public sealed class SessionTests : TestBase
 
         using var staleClient = harness.Factory.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions { HandleCookies = false, AllowAutoRedirect = false });
         staleClient.DefaultRequestHeaders.Add("Cookie", $"{oldAuthCookie}; {oldAntiforgeryCookie}");
-        using var staleRegistration = JsonRequest(HttpMethod.Post, $"{host}/api/identity/organizations/register", new { email, password = "Testing1234!", legalName = "Revoked Registration", cuit = "30-12345678-9" }, oldRequestToken);
+        using var staleRegistration = JsonRequest(HttpMethod.Post, $"{host}/api/identity/organizations/register", new { email, password = "Testing1234!", legalName = "Revoked Registration", cuit = "30-12345678-1" }, oldRequestToken);
         var response = await staleClient.SendAsync(staleRegistration);
 
         response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
@@ -433,7 +461,7 @@ public sealed class SessionTests : TestBase
             email = "after-expiry@example.test",
             password = "Testing1234!",
             legalName = "After Expiry",
-            cuit = "30-71234567-4"
+            cuit = "30-71234567-1"
         }, fresh);
         var registered = await client.SendAsync(registration);
 
@@ -891,28 +919,363 @@ public sealed class SessionTests : TestBase
         (await response.Content.ReadFromJsonAsync<CleanArchitecture.Web.Infrastructure.ApiProblemDetails>())!.Code.ShouldBe("authentication_required");
     }
 
-    [TestCase("{")]
-    [TestCase("{\"email\": 123, \"password\": []}")]
-    public async Task Sign_in_with_a_malformed_body_is_a_safe_400_invalid_request_without_session_or_audit(string malformedJson)
+    [TestCase("/api/identity/sessions", HttpStatusCode.NoContent, "{")]
+    [TestCase("/api/identity/sessions", HttpStatusCode.NoContent, "{\"email\": 123, \"password\": []}")]
+    [TestCase("/api/identity/sessions", HttpStatusCode.NoContent, null)]
+    [TestCase("/api/identity/credentials/password/recovery", HttpStatusCode.Accepted, "{")]
+    [TestCase("/api/identity/credentials/password/recovery", HttpStatusCode.Accepted, "{\"email\": 123}")]
+    [TestCase("/api/identity/credentials/password/recovery", HttpStatusCode.Accepted, null)]
+    [TestCase("/api/identity/account/reactivation-requests", HttpStatusCode.Accepted, "{")]
+    [TestCase("/api/identity/account/reactivation-requests", HttpStatusCode.Accepted, "{\"email\": 123}")]
+    [TestCase("/api/identity/account/reactivation-requests", HttpStatusCode.Accepted, null)]
+    public async Task Neutral_public_entry_points_keep_malformed_wrong_typed_and_missing_bodies_bodyless_without_identity_effects(
+        string path,
+        HttpStatusCode expectedStatus,
+        string? requestBody)
     {
         using var harness = CreateProductionHarness();
         var client = harness.Client;
-        var host = "https://session-malformed.localhost";
+        var host = $"https://neutral-binding-{Guid.NewGuid():N}.localhost";
         var antiforgery = await GetAntiforgeryAsync(client, host);
-        using var request = new HttpRequestMessage(HttpMethod.Post, $"{host}/api/identity/sessions")
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"{host}{path}");
+        if (requestBody is not null)
         {
-            Content = new StringContent(malformedJson, System.Text.Encoding.UTF8, "application/json")
+            request.Content = new StringContent(requestBody, System.Text.Encoding.UTF8, "application/json");
+        }
+        request.Headers.Add("Origin", host);
+        request.Headers.Add("X-CSRF-TOKEN", antiforgery);
+
+        var response = await client.SendAsync(request);
+
+        response.StatusCode.ShouldBe(expectedStatus);
+        (await response.Content.ReadAsByteArrayAsync()).ShouldBeEmpty();
+        response.Content.Headers.ContentType.ShouldBeNull();
+        (await CountAsync<ApplicationUser>()).ShouldBe(0);
+        (await CountAsync<UserSession>()).ShouldBe(0);
+        (await CountAsync<PasswordResetRequest>()).ShouldBe(0);
+        (await CountAsync<AccountReactivationRequest>()).ShouldBe(0);
+        (await ListAsync<OutboxMessage>()).ShouldBeEmpty();
+        (await ListAsync<AuditEvent>()).ShouldBeEmpty();
+        response.Headers.TryGetValues("Set-Cookie", out _).ShouldBeFalse();
+    }
+
+    [TestCase("/api/identity/sessions", "oversized", HttpStatusCode.BadRequest, "invalid_request")]
+    [TestCase("/api/identity/sessions", "unsupported-media", HttpStatusCode.UnsupportedMediaType, null)]
+    [TestCase("/api/identity/credentials/password/recovery", "oversized", HttpStatusCode.BadRequest, "invalid_request")]
+    [TestCase("/api/identity/credentials/password/recovery", "unsupported-media", HttpStatusCode.UnsupportedMediaType, null)]
+    [TestCase("/api/identity/account/reactivation-requests", "oversized", HttpStatusCode.BadRequest, "invalid_request")]
+    [TestCase("/api/identity/account/reactivation-requests", "unsupported-media", HttpStatusCode.UnsupportedMediaType, null)]
+    public async Task Neutral_public_entry_point_oversized_and_unsupported_media_refusals_keep_their_existing_transport_contract(
+        string path,
+        string refusal,
+        HttpStatusCode expectedStatus,
+        string? expectedProblemCode)
+    {
+        using var harness = CreateProductionHarness();
+        var client = harness.Client;
+        var host = $"https://neutral-transport-{Guid.NewGuid():N}.localhost";
+        var antiforgery = await GetAntiforgeryAsync(client, host);
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"{host}{path}")
+        {
+            Content = refusal == "oversized"
+                ? new StringContent(
+                    $"{{\"email\":\"someone@example.test\",\"password\":\"Testing1234!\",\"padding\":\"{new string('x', LoginRateLimitKeyMiddleware.MaxBodyBytes + 1)}\"}}",
+                    System.Text.Encoding.UTF8,
+                    "application/json")
+                : new StringContent("{\"email\":\"someone@example.test\",\"password\":\"Testing1234!\"}", System.Text.Encoding.UTF8, "text/plain")
         };
         request.Headers.Add("Origin", host);
         request.Headers.Add("X-CSRF-TOKEN", antiforgery);
 
         var response = await client.SendAsync(request);
 
-        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
-        (await response.Content.ReadFromJsonAsync<CleanArchitecture.Web.Infrastructure.ApiProblemDetails>())!.Code.ShouldBe("invalid_request");
+        if (expectedProblemCode is null)
+        {
+            response.StatusCode.ShouldBe(expectedStatus);
+            (await response.Content.ReadAsByteArrayAsync()).ShouldBeEmpty();
+            response.Content.Headers.ContentType.ShouldBeNull();
+        }
+        else
+        {
+            await AssertProblemAsync(response, expectedStatus, expectedProblemCode);
+            await AssertEndpointDeclaresProblemCodeAsync(path, expectedStatus, expectedProblemCode);
+        }
+        (await CountAsync<ApplicationUser>()).ShouldBe(0);
         (await CountAsync<UserSession>()).ShouldBe(0);
+        (await CountAsync<PasswordResetRequest>()).ShouldBe(0);
+        (await CountAsync<AccountReactivationRequest>()).ShouldBe(0);
+        (await ListAsync<OutboxMessage>()).ShouldBeEmpty();
         (await ListAsync<AuditEvent>()).ShouldBeEmpty();
         response.Headers.TryGetValues("Set-Cookie", out _).ShouldBeFalse();
+    }
+
+    [TestCase("/api/identity/sessions", true)]
+    [TestCase("/api/identity/sessions", false)]
+    [TestCase("/api/identity/credentials/password/recovery", true)]
+    [TestCase("/api/identity/credentials/password/recovery", false)]
+    [TestCase("/api/identity/account/reactivation-requests", true)]
+    [TestCase("/api/identity/account/reactivation-requests", false)]
+    public async Task Neutral_body_binding_still_runs_origin_and_antiforgery_preflight_before_its_success(
+        string path,
+        bool missingOrigin)
+    {
+        using var harness = CreateProductionHarness();
+        var client = harness.Client;
+        var host = $"https://neutral-preflight-{Guid.NewGuid():N}.localhost";
+        var antiforgery = await GetAntiforgeryAsync(client, host);
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"{host}{path}")
+        {
+            Content = new StringContent("{", System.Text.Encoding.UTF8, "application/json")
+        };
+        if (missingOrigin)
+        {
+            request.Headers.Add("X-CSRF-TOKEN", antiforgery);
+        }
+        else
+        {
+            request.Headers.Add("Origin", host);
+            request.Headers.Add("X-CSRF-TOKEN", "invalid-antiforgery-token");
+        }
+
+        var response = await client.SendAsync(request);
+
+        await AssertProblemAsync(response, HttpStatusCode.BadRequest, "antiforgery_validation_failed");
+        (await CountAsync<ApplicationUser>()).ShouldBe(0);
+        (await CountAsync<UserSession>()).ShouldBe(0);
+        (await CountAsync<PasswordResetRequest>()).ShouldBe(0);
+        (await CountAsync<AccountReactivationRequest>()).ShouldBe(0);
+        (await ListAsync<OutboxMessage>()).ShouldBeEmpty();
+        (await ListAsync<AuditEvent>()).ShouldBeEmpty();
+        response.Headers.TryGetValues("Set-Cookie", out _).ShouldBeFalse();
+    }
+
+    [TestCase("/api/identity/credentials/password/recovery")]
+    [TestCase("/api/identity/account/reactivation-requests")]
+    public async Task Neutral_body_binding_still_rejects_an_invalid_optional_session_before_its_success(string path)
+    {
+        var clock = new ControlledTimeProvider(new DateTimeOffset(2030, 9, 12, 0, 0, 0, TimeSpan.Zero));
+        using var harness = CreateProductionHarness(clock);
+        var client = harness.Client;
+        var host = $"https://neutral-invalid-session-{Guid.NewGuid():N}.localhost";
+        var email = $"neutral-invalid-session-{Guid.NewGuid():N}@example.test";
+        var identityId = await SeedConfirmedUserAsync(email, "Testing1234!");
+        await SignInAsync(client, host, email, "Testing1234!");
+        var antiforgery = await GetAntiforgeryAsync(client, host);
+        await ApplyFailureStateAsync(identityId, SessionFailure.Revoked, clock);
+        var before = (
+            Users: await CountAsync<ApplicationUser>(),
+            Sessions: await CountAsync<UserSession>(),
+            PasswordRequests: await CountAsync<PasswordResetRequest>(),
+            ReactivationRequests: await CountAsync<AccountReactivationRequest>(),
+            Outbox: await CountAsync<OutboxMessage>(),
+            Audits: await CountAsync<AuditEvent>());
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"{host}{path}")
+        {
+            Content = new StringContent("{", System.Text.Encoding.UTF8, "application/json")
+        };
+        request.Headers.Add("Origin", host);
+        request.Headers.Add("X-CSRF-TOKEN", antiforgery);
+
+        var response = await client.SendAsync(request);
+
+        await AssertProblemAsync(response, HttpStatusCode.Unauthorized, "invalid_session");
+        response.Headers.TryGetValues("Set-Cookie", out var deletions).ShouldBeTrue();
+        deletions!.ShouldContain(value => value.StartsWith($"{SessionCookieEvents.CookieName}=;", StringComparison.Ordinal));
+        var after = (
+            Users: await CountAsync<ApplicationUser>(),
+            Sessions: await CountAsync<UserSession>(),
+            PasswordRequests: await CountAsync<PasswordResetRequest>(),
+            ReactivationRequests: await CountAsync<AccountReactivationRequest>(),
+            Outbox: await CountAsync<OutboxMessage>(),
+            Audits: await CountAsync<AuditEvent>());
+        after.ShouldBe(before);
+    }
+
+    [TestCase("/api/identity/credentials/password/recovery")]
+    [TestCase("/api/identity/account/reactivation-requests")]
+    public async Task Neutral_body_binding_checks_exact_origin_before_invalid_optional_session(string path)
+    {
+        var clock = new ControlledTimeProvider(new DateTimeOffset(2030, 9, 12, 1, 0, 0, TimeSpan.Zero));
+        using var harness = CreateProductionHarness(clock);
+        var client = harness.Client;
+        var host = $"https://neutral-origin-first-{Guid.NewGuid():N}.localhost";
+        var email = $"neutral-origin-first-{Guid.NewGuid():N}@example.test";
+        var identityId = await SeedConfirmedUserAsync(email, "Testing1234!");
+        await SignInAsync(client, host, email, "Testing1234!");
+        var antiforgery = await GetAntiforgeryAsync(client, host);
+        await ApplyFailureStateAsync(identityId, SessionFailure.Revoked, clock);
+        var before = (
+            Users: await CountAsync<ApplicationUser>(),
+            Sessions: await CountAsync<UserSession>(),
+            PasswordRequests: await CountAsync<PasswordResetRequest>(),
+            ReactivationRequests: await CountAsync<AccountReactivationRequest>(),
+            Outbox: await CountAsync<OutboxMessage>(),
+            Audits: await CountAsync<AuditEvent>());
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"{host}{path}")
+        {
+            Content = new StringContent("{", System.Text.Encoding.UTF8, "application/json")
+        };
+        request.Headers.Add("X-CSRF-TOKEN", antiforgery);
+
+        var response = await client.SendAsync(request);
+
+        await AssertProblemAsync(response, HttpStatusCode.BadRequest, "antiforgery_validation_failed");
+        response.Headers.TryGetValues("Set-Cookie", out var deletions).ShouldBeTrue();
+        deletions!.ShouldContain(value => value.StartsWith($"{SessionCookieEvents.CookieName}=;", StringComparison.Ordinal));
+        var after = (
+            Users: await CountAsync<ApplicationUser>(),
+            Sessions: await CountAsync<UserSession>(),
+            PasswordRequests: await CountAsync<PasswordResetRequest>(),
+            ReactivationRequests: await CountAsync<AccountReactivationRequest>(),
+            Outbox: await CountAsync<OutboxMessage>(),
+            Audits: await CountAsync<AuditEvent>());
+        after.ShouldBe(before);
+    }
+
+    [TestCase("/api/identity/credentials/password/recovery")]
+    [TestCase("/api/identity/account/reactivation-requests")]
+    public async Task Unsupported_media_on_a_neutral_optional_session_route_keeps_empty_415_and_deletes_the_invalid_cookie(string path)
+    {
+        var clock = new ControlledTimeProvider(new DateTimeOffset(2030, 9, 12, 2, 0, 0, TimeSpan.Zero));
+        using var harness = CreateProductionHarness(clock);
+        var client = harness.Client;
+        var host = $"https://neutral-unsupported-invalid-session-{Guid.NewGuid():N}.localhost";
+        var email = $"neutral-unsupported-invalid-session-{Guid.NewGuid():N}@example.test";
+        var identityId = await SeedConfirmedUserAsync(email, "Testing1234!");
+        await SignInAsync(client, host, email, "Testing1234!");
+        var antiforgery = await GetAntiforgeryAsync(client, host);
+        await ApplyFailureStateAsync(identityId, SessionFailure.Revoked, clock);
+        var before = (
+            Users: await CountAsync<ApplicationUser>(),
+            Sessions: await CountAsync<UserSession>(),
+            PasswordRequests: await CountAsync<PasswordResetRequest>(),
+            ReactivationRequests: await CountAsync<AccountReactivationRequest>(),
+            Outbox: await CountAsync<OutboxMessage>(),
+            Audits: await CountAsync<AuditEvent>());
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"{host}{path}")
+        {
+            Content = new StringContent("not-json", System.Text.Encoding.UTF8, "text/plain")
+        };
+        request.Headers.Add("Origin", host);
+        request.Headers.Add("X-CSRF-TOKEN", antiforgery);
+
+        var response = await client.SendAsync(request);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.UnsupportedMediaType);
+        (await response.Content.ReadAsByteArrayAsync()).ShouldBeEmpty();
+        response.Content.Headers.ContentType.ShouldBeNull();
+        response.Headers.TryGetValues("Set-Cookie", out var deletions).ShouldBeTrue();
+        deletions!.ShouldContain(value => value.StartsWith($"{SessionCookieEvents.CookieName}=;", StringComparison.Ordinal));
+        var after = (
+            Users: await CountAsync<ApplicationUser>(),
+            Sessions: await CountAsync<UserSession>(),
+            PasswordRequests: await CountAsync<PasswordResetRequest>(),
+            ReactivationRequests: await CountAsync<AccountReactivationRequest>(),
+            Outbox: await CountAsync<OutboxMessage>(),
+            Audits: await CountAsync<AuditEvent>());
+        after.ShouldBe(before);
+    }
+
+    [Test]
+    [Category("LoginControls")]
+    public async Task Malformed_sign_in_is_neutral_within_the_caller_budget_then_keeps_its_429_boundary()
+    {
+        var clock = new ControlledTimeProvider(new DateTimeOffset(2030, 9, 13, 0, 0, 0, TimeSpan.Zero));
+        using var harness = CreateProductionHarness(clock);
+        var client = harness.Client;
+        const string host = "https://malformed-budget.localhost";
+        const string attacker = "203.0.113.90";
+        var antiforgery = await GetAntiforgeryAsync(client, host);
+
+        for (var attempt = 1; attempt <= LoginRateLimiting.ClientPermitLimit; attempt++)
+        {
+            using var admitted = MalformedLoginRequest(host, antiforgery, attacker);
+            var response = await client.SendAsync(admitted);
+            response.StatusCode.ShouldBe(HttpStatusCode.NoContent, $"malformed attempt {attempt} remains neutral while admitted");
+            (await response.Content.ReadAsByteArrayAsync()).ShouldBeEmpty();
+        }
+
+        using var exhausted = MalformedLoginRequest(host, antiforgery, attacker);
+        await AssertRateLimitedAsync(
+            await client.SendAsync(exhausted),
+            maxRetryAfterSeconds: 300,
+            attacker);
+        (await CountAsync<ApplicationUser>()).ShouldBe(0);
+        (await CountAsync<UserSession>()).ShouldBe(0);
+        (await CountAsync<PasswordResetRequest>()).ShouldBe(0);
+        (await CountAsync<AccountReactivationRequest>()).ShouldBe(0);
+        (await ListAsync<OutboxMessage>()).ShouldBeEmpty();
+        (await ListAsync<AuditEvent>()).ShouldBeEmpty();
+    }
+
+    [Test]
+    [Category("LoginControls")]
+    public async Task Malformed_sign_in_keeps_the_fail_closed_503_when_the_budget_store_is_unavailable()
+    {
+        using var harness = CreateProductionHarness();
+        var client = harness.Client;
+        const string host = "https://malformed-budget-unavailable.localhost";
+        const string attacker = "203.0.113.91";
+        var antiforgery = await GetAntiforgeryAsync(client, host);
+        TestApp.ForceAttemptBudgetUnavailable();
+        using var request = MalformedLoginRequest(host, antiforgery, attacker);
+
+        var response = await client.SendAsync(request);
+
+        await AssertProblemAsync(response, HttpStatusCode.ServiceUnavailable, "service_unavailable");
+        response.Headers.RetryAfter.ShouldNotBeNull();
+        (await CountAsync<ApplicationUser>()).ShouldBe(0);
+        (await CountAsync<UserSession>()).ShouldBe(0);
+        (await CountAsync<PasswordResetRequest>()).ShouldBe(0);
+        (await CountAsync<AccountReactivationRequest>()).ShouldBe(0);
+        (await ListAsync<OutboxMessage>()).ShouldBeEmpty();
+        (await ListAsync<AuditEvent>()).ShouldBeEmpty();
+    }
+
+    [TestCase("/api/identity/credentials/password/recovery")]
+    [TestCase("/api/identity/credentials/password/reset")]
+    [TestCase("/api/identity/account/reactivation-requests")]
+    [TestCase("/api/identity/account/reactivate")]
+    public async Task Public_optional_session_routes_emit_only_the_declared_invalid_session_without_business_effects(string path)
+    {
+        var clock = new ControlledTimeProvider(new DateTimeOffset(2030, 9, 11, 0, 0, 0, TimeSpan.Zero));
+        using var harness = CreateProductionHarness(clock);
+        var client = harness.Client;
+        var host = $"https://optional-session-{Guid.NewGuid():N}.localhost";
+        var email = $"optional-session-{Guid.NewGuid():N}@example.test";
+        var identityId = await SeedConfirmedUserAsync(email, "Testing1234!");
+        await SignInAsync(client, host, email, "Testing1234!");
+        var antiforgery = await GetAntiforgeryAsync(client, host);
+        await ApplyFailureStateAsync(identityId, SessionFailure.Revoked, clock);
+        object body = path switch
+        {
+            "/api/identity/credentials/password/recovery" => new { email },
+            "/api/identity/credentials/password/reset" => (object)new { token = "stale-session-token", newPassword = "Different1234!" },
+            "/api/identity/account/reactivation-requests" => new { email },
+            "/api/identity/account/reactivate" => new { reactivationToken = "stale-session-token", password = "Testing1234!" },
+            _ => throw new ArgumentOutOfRangeException(nameof(path), path, null)
+        };
+        var before = (
+            Users: await CountAsync<ApplicationUser>(),
+            Sessions: await CountAsync<UserSession>(),
+            PasswordRequests: await CountAsync<PasswordResetRequest>(),
+            ReactivationRequests: await CountAsync<AccountReactivationRequest>(),
+            Outbox: await CountAsync<OutboxMessage>(),
+            Audits: await CountAsync<AuditEvent>());
+        using var request = JsonRequest(HttpMethod.Post, $"{host}{path}", body, antiforgery);
+
+        var response = await client.SendAsync(request);
+
+        await AssertProblemAsync(response, HttpStatusCode.Unauthorized, "invalid_session");
+        await AssertEndpointDeclaresProblemCodeAsync(path, HttpStatusCode.Unauthorized, "invalid_session");
+        var after = (
+            Users: await CountAsync<ApplicationUser>(),
+            Sessions: await CountAsync<UserSession>(),
+            PasswordRequests: await CountAsync<PasswordResetRequest>(),
+            ReactivationRequests: await CountAsync<AccountReactivationRequest>(),
+            Outbox: await CountAsync<OutboxMessage>(),
+            Audits: await CountAsync<AuditEvent>());
+        after.ShouldBe(before);
     }
 
     [TestCase("DELETE", "/api/identity/sessions/current", true)]
@@ -1354,6 +1717,18 @@ public sealed class SessionTests : TestBase
         return request;
     }
 
+    private static HttpRequestMessage MalformedLoginRequest(string host, string antiforgery, string forwardedFor)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, $"{host}/api/identity/sessions")
+        {
+            Content = new StringContent("{", System.Text.Encoding.UTF8, "application/json")
+        };
+        request.Headers.Add("Origin", host);
+        request.Headers.Add("X-CSRF-TOKEN", antiforgery);
+        request.Headers.Add("X-Forwarded-For", forwardedFor);
+        return request;
+    }
+
     // A former test armed three competing failures against the old three-attempt optimistic loop and asserted
     // only `AccessFailedCount >= 3`. That threshold was satisfiable by the very defect it was meant to catch, and
     // the atomic conditional update has no "lost attempt" to reproduce at all. Its evidence now lives in
@@ -1440,6 +1815,24 @@ public sealed class SessionTests : TestBase
             new Claim(ClaimTypes.Sid, sessionId.ToString())
         ], IdentityConstants.ApplicationScheme));
         return $"__Host-ia-auth={options.TicketDataFormat.Protect(new AuthenticationTicket(principal, new AuthenticationProperties(), IdentityConstants.ApplicationScheme))}";
+    }
+
+    private static async Task AssertEndpointDeclaresProblemCodeAsync(
+        string path,
+        HttpStatusCode status,
+        string code)
+    {
+        using var openApi = System.Text.Json.JsonDocument.Parse(
+            await FunctionalTestSetup.HttpClient.GetStringAsync("/openapi/v1.json"));
+        openApi.RootElement.GetProperty("paths")
+            .GetProperty(path)
+            .GetProperty("post")
+            .GetProperty("responses")
+            .GetProperty(((int)status).ToString(System.Globalization.CultureInfo.InvariantCulture))
+            .GetProperty("x-problem-codes")
+            .EnumerateArray()
+            .Select(element => element.GetString())
+            .ShouldContain(code, $"POST {path} emitted {(int)status} {code}");
     }
 
     private static async Task AssertRateLimitedAsync(HttpResponseMessage response, int maxRetryAfterSeconds, params string[] secrets)

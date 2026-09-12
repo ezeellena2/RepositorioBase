@@ -2,10 +2,11 @@ using CleanArchitecture.Infrastructure;
 using CleanArchitecture.OutboxWorker;
 using CleanArchitecture.Infrastructure.Outbox;
 
-var builder = Host.CreateApplicationBuilder(args);
+var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
 builder.AddOutboxWorkerServices();
+builder.Services.AddOutboxWorkerRuntime(builder.Configuration);
 // A worker that is not delivering says so once, at start. Silence is the worst possible answer here: the
 // symptom of a worker that never dispatched is a message nobody received, which looks exactly like a broken
 // application rather than like a switch that was never turned on.
@@ -24,7 +25,9 @@ else
 // deployment with no policy already does nothing.
 builder.Services.AddHostedService<CleanArchitecture.Infrastructure.IdentityAccess.Lifecycle.LifecycleMaintenanceService>();
 
-builder.Build().Run();
+var app = builder.Build();
+app.MapDefaultEndpoints();
+app.Run();
 
 /// <summary>Says, once, that delivery is switched off — so an idle worker is never a silent one.</summary>
 internal sealed class IdleAnnouncement(ILogger<IdleAnnouncement> logger) : IHostedService

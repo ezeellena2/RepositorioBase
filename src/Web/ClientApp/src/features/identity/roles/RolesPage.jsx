@@ -18,11 +18,13 @@ import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
-import { roleName, useTranslation } from '../../../i18n';
-import { PermissionLabel } from '../PermissionLabel';
+import visuallyHidden from '@mui/utils/visuallyHidden';
+import { toProblem } from '../api/apiTransport';
 import { useIdentity } from '../context/IdentityProvider';
+import { claimedFieldNames, fieldErrorText, selectFieldErrors } from '../fieldErrors';
 import { ProblemMessage } from '../ProblemMessage';
 import { useIdentityProof } from '../useIdentityProof';
+import { useRead } from '../useRead';
 
 /** Required without the asterisk MUI would add, which would rename the field for everything that reads its label. */
 const requiredField = { inputLabel: { required: false } };
@@ -41,20 +43,58 @@ const chips = { flexWrap: 'wrap' };
  */
 const permissionChips = { flexWrap: 'wrap', maxWidth: 360, maxHeight: 40 * 3 + 4 * 2, overflowY: 'auto' };
 
-const rowActions = { flexWrap: 'wrap', justifyContent: 'flex-end' };
+const rowActions = { flexWrap: 'wrap', justifyContent: { xs: 'flex-start', sm: 'flex-end' } };
 const row = { flexWrap: 'wrap', alignItems: 'center' };
 const start = { alignSelf: 'flex-start' };
 /** Clears the legend the same way the checkbox rows it stands in for do. */
 const catalogWait = { mt: 1 };
+const responsiveTable = (theme) => ({
+  '& .MuiTableHead-root, & .MuiTableHead-root .MuiTableRow-root': {
+    [theme.breakpoints.down('sm')]: { display: 'block', height: 0 },
+  },
+  '& .MuiTableHead-root .MuiTableCell-root': {
+    [theme.breakpoints.down('sm')]: visuallyHidden,
+  },
+  '& .MuiTableBody-root': { display: { xs: 'block', sm: 'table-row-group' } },
+  '& .MuiTableBody-root .MuiTableRow-root': {
+    display: { xs: 'grid', sm: 'table-row' },
+    gridTemplateColumns: { xs: 'minmax(0, 1fr) auto' },
+    gap: { xs: 1, sm: 0 },
+    minHeight: 44,
+    p: { xs: 2, sm: 0 },
+  },
+  '& .MuiTableBody-root .MuiTableRow-root:not(:last-of-type)': {
+    borderBottom: { xs: 1, sm: 0 },
+    borderColor: 'divider',
+  },
+  '& .MuiTableBody-root .MuiTableCell-root': {
+    display: { xs: 'block', sm: 'table-cell' },
+    height: { xs: 'auto', sm: 44 },
+    p: { xs: 0, sm: '6px 12px' },
+    borderBottom: { xs: 0, sm: 1 },
+    borderColor: 'divider',
+  },
+  '& .MuiTableBody-root .MuiTableCell-root:nth-of-type(-n + 2)': {
+    gridColumn: { xs: '1 / -1', sm: 'auto' },
+  },
+  '& .MuiTableBody-root .MuiTableCell-root:first-of-type': {
+    fontWeight: { xs: 600, sm: 400 },
+  },
+});
 
 /**
- * A `Table size="small"` row is as tall as its tallest cell — a `Chip size="small"` at 24px — plus the 6px that
- * `TableCell` puts above and below it and the 1px divider underneath. The wait is drawn at that height so the
- * table arrives into the space already held for it rather than pushing the page down.
+ * An action-bearing row grows to hold the theme's 40px control, the 6px cell padding above and below it, and the
+ * 1px divider. The wait reserves that shape so the table arrives without pushing the page down.
  */
-const ROW_HEIGHT = 24 + 6 + 6 + 1;
+const ROW_HEIGHT = 6 + 40 + 6 + 1;
 
 const EMPTY_DRAFT = { roleId: null, name: '', permissions: [], version: null };
+const roleFields = ['name'];
+const appendRoles = (current, loaded) => ({
+  ...loaded,
+  catalog: current.catalog,
+  items: [...current.items, ...loaded.items],
+});
 
 /**
  * Custom roles inside the organization the session is operating in (IA-REQ-053).
@@ -80,44 +120,39 @@ export function RolesPage() {
   const identity = useIdentity();
   const proof = useIdentityProof();
   const tenantId = identity.context?.activeTenant?.id ?? null;
-  const [roles, setRoles] = useState(null);
-  const [nextCursor, setNextCursor] = useState(null);
-  // `undefined` is "not asked yet" and `[]` is the server's answer. Seeding this as `[]` made the editor state a
-  // refusal the server had not made — "You hold no permissions that can be put into a role." on every first paint,
-  // above an empty group that then filled in and pushed the submit down.
-  const [catalog, setCatalog] = useState(undefined);
   const [draft, setDraft] = useState(EMPTY_DRAFT);
   const [password, setPassword] = useState('');
-  const [problem, setProblem] = useState(null);
+  const [actionProblem, setActionProblem] = useState(null);
+  const [actionTarget, setActionTarget] = useState(null);
+  const [readTarget, setReadTarget] = useState('list');
+  const [clearedServerFields, setClearedServerFields] = useState([]);
   const [isBusy, setIsBusy] = useState(false);
-
-  const load = useCallback(async () => {
-    if (tenantId === null) return;
-    try {
-      const [listed, entries] = await Promise.all([
-        identity.client.listRoles(tenantId),
-        identity.client.listPermissionCatalog(tenantId),
-      ]);
-      setRoles(listed.items);
-      setNextCursor(listed.nextCursor ?? null);
-      setCatalog(entries);
-      setProblem(null);
-    } catch (error) {
-      setProblem(error.problem ?? { code: 'unexpected' });
-    }
-  }, [identity, tenantId]);
+  const load = useCallback(async ({ cursor, signal }) => {
+    const [listed, entries] = await Promise.all([
+      identity.client.listRoles(tenantId, cursor, { signal }),
+      identity.client.listPermissionCatalog(tenantId, { signal }),
+    ]);
+    return { ...listed, catalog: entries };
+  }, [identity.client, tenantId]);
+  const read = useRead(load, tenantId !== null);
+  const roles = read.data?.items ?? null;
+  const nextCursor = read.data?.nextCursor ?? null;
+  const catalog = read.data?.catalog;
+  const editorProblem = actionTarget === 'role-editor' ? actionProblem : null;
+  const fieldErrors = selectFieldErrors(
+    editorProblem,
+    roleFields.filter((field) => !clearedServerFields.includes(field)),
+  );
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      if (!cancelled) await load();
-    })();
-    return () => { cancelled = true; };
-  }, [load]);
+    if (selectFieldErrors(editorProblem, roleFields).name) document.getElementById('role-name')?.focus();
+  }, [editorProblem]);
 
-  const run = async (action, act, intent = null) => {
+  const run = async (target, action, act, intent = null) => {
     setIsBusy(true);
-    setProblem(null);
+    setActionTarget(target);
+    setActionProblem(null);
+    setClearedServerFields([]);
     try {
       // The proof is bought immediately before the change and spent by it. It is single-use, so each change
       // asks again — which is what "recent" has to mean to be worth anything. A provider proof leaves for the
@@ -126,15 +161,17 @@ export function RolesPage() {
       await act();
       setPassword('');
       setDraft(EMPTY_DRAFT);
-      await load();
+      setReadTarget('list');
+      await read.refresh(undefined);
     } catch (error) {
-      setProblem(error.problem ?? { code: 'unexpected' });
+      setActionProblem(toProblem(error));
     } finally {
       setIsBusy(false);
     }
   };
 
   const save = () => run(
+    'role-editor',
     'roles.change',
     () => (draft.roleId === null
       ? identity.client.createRole(tenantId, draft.name, draft.permissions)
@@ -142,6 +179,7 @@ export function RolesPage() {
     { returnTo: RolesPath, operation: draft.roleId === null ? 'create' : 'update', draft });
 
   const retire = (role) => run(
+    `retire:${role.roleId}`,
     'roles.change',
     () => identity.client.retireRole(tenantId, role.roleId, role.version),
     { returnTo: RolesPath, operation: 'retire', draft: { roleId: role.roleId, version: role.version } });
@@ -156,12 +194,14 @@ export function RolesPage() {
     void Promise.resolve().then(async () => {
       if (cancelled) return;
       setIsBusy(true);
-      setProblem(null);
+      const target = waiting.operation === 'retire' ? `retire:${waiting.draft?.roleId}` : 'role-editor';
+      setActionTarget(target);
+      setActionProblem(null);
       try {
         const pending = waiting.draft ?? {};
         if (waiting.operation === 'create') {
           proof.forget();
-          await run(null, () => identity.client.createRole(tenantId, pending.name, pending.permissions));
+          await run('role-editor', null, () => identity.client.createRole(tenantId, pending.name, pending.permissions));
           return;
         }
 
@@ -178,12 +218,12 @@ export function RolesPage() {
         proof.forget();
         if (role === undefined || role.isSystem || role.isRetired) return;
         if (waiting.operation === 'retire') {
-          await run(null, () => identity.client.retireRole(tenantId, pending.roleId, pending.version));
+          await run(target, null, () => identity.client.retireRole(tenantId, pending.roleId, pending.version));
         } else if (waiting.operation === 'update') {
-          await run(null, () => identity.client.updateRole(tenantId, pending.roleId, pending.name, pending.permissions, pending.version));
+          await run('role-editor', null, () => identity.client.updateRole(tenantId, pending.roleId, pending.name, pending.permissions, pending.version));
         }
       } catch (error) {
-        if (!cancelled) setProblem(error.problem ?? { code: 'unexpected' });
+        if (!cancelled) setActionProblem(toProblem(error));
       } finally {
         if (!cancelled) setIsBusy(false);
       }
@@ -196,13 +236,9 @@ export function RolesPage() {
   // page the server hands out is disjoint from the last, so nothing can appear twice.
   const showMore = async () => {
     setIsBusy(true);
-    setProblem(null);
     try {
-      const next = await identity.client.listRoles(tenantId, nextCursor);
-      setRoles((current) => [...(current ?? []), ...next.items]);
-      setNextCursor(next.nextCursor ?? null);
-    } catch (error) {
-      setProblem(error.problem ?? { code: 'unexpected' });
+      setReadTarget('pagination');
+      await read.refresh(nextCursor, appendRoles);
     } finally {
       setIsBusy(false);
     }
@@ -249,11 +285,19 @@ export function RolesPage() {
       <TableCell align="right">
         {!role.isSystem && !role.isRetired && (
           <Stack direction="row" spacing={1} useFlexGap sx={rowActions}>
+            <ProblemMessage
+              problem={actionTarget === `retire:${role.roleId}` ? actionProblem : null}
+              autoFocus
+            />
             <Button
               type="button"
               size="small"
               disabled={isBusy}
-              onClick={() => setDraft({ roleId: role.roleId, name: role.name, permissions: [...role.permissions], version: role.version })}
+              onClick={() => {
+                setActionProblem(null);
+                setActionTarget(null);
+                setDraft({ roleId: role.roleId, name: role.name, permissions: [...role.permissions], version: role.version });
+              }}
             >
               {t('roles.edit', { name: role.name })}
             </Button>
@@ -277,7 +321,14 @@ export function RolesPage() {
   // lists it. The password is listed by value and not as the boolean above it, because a retirement spends the
   // password that was in the field at the moment it was pressed.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  [roles, isBusy, canProve, canRetire, password, identity, tenantId, t]);
+  [roles, isBusy, canProve, canRetire, password, identity, tenantId, actionProblem, actionTarget]);
+
+  // The editor is always drawn, so a refusal aimed at it always reports. A retirement is drawn in the role's own
+  // row, which exists only while that role is on a page that has been read — and a resumed retirement comes back
+  // to page one. What no row can carry is said for the screen rather than lost.
+  const claimedByRegion = actionTarget === 'role-editor'
+    || (roles ?? []).some((role) => actionTarget === `retire:${role.roleId}` && !role.isSystem && !role.isRetired);
+  const unclaimedProblem = claimedByRegion ? null : actionProblem;
 
   if (tenantId === null) {
     // Reached inside the shell, so it is composed as a screen and not as the raised card the public entrance
@@ -308,8 +359,6 @@ export function RolesPage() {
         </Typography>
       </Box>
 
-      <ProblemMessage problem={problem} />
-
       {/* What every change on this screen is bought with, in a section of its own. The field used to float on the
           page background between the refusal and the table while silently gating both the Retire buttons and the
           submit; framing it says that it belongs to all of them rather than to whatever it happens to sit above. */}
@@ -336,12 +385,25 @@ export function RolesPage() {
       {/* The wait keeps the shape of what is coming, so the table does not arrive by pushing the editor down. The
           word stays, and stays visible: it is what a reader of the status region is told, and a live region whose
           only content is three skeletons announces nothing when it changes. */}
-      {roles === null || !proof.isReady ? (
+      <ProblemMessage problem={unclaimedProblem} autoFocus />
+
+      {readTarget === 'list' && <ProblemMessage problem={read.problem} />}
+      {readTarget === 'list' && read.status === 'errored' && (
+        <Button
+          type="button"
+          variant="outlined"
+          onClick={() => { setReadTarget('list'); read.refresh(undefined); }}
+          sx={start}
+        >
+          Try again
+        </Button>
+      )}
+      {read.status === 'loading' && read.data === null ? (
         <Stack spacing={1} role="status">
           <Typography variant="body2" color="text.secondary">{t('roles.loading')}</Typography>
           {[0, 1, 2].map((placeholder) => <Skeleton key={placeholder} variant="rounded" height={ROW_HEIGHT} />)}
         </Stack>
-      ) : roles.length === 0 ? (
+      ) : roles === null ? null : roles.length === 0 ? (
         <Paper variant="outlined" sx={empty}>
           <Typography variant="body2" color="text.secondary">
             {t('roles.empty')}
@@ -349,7 +411,7 @@ export function RolesPage() {
         </Paper>
       ) : (
         <TableContainer component={Paper} variant="outlined">
-          <Table size="small">
+          <Table size="small" sx={responsiveTable}>
             <TableHead>
               <TableRow>
                 <TableCell component="th" scope="col">{t('roles.columns.role')}</TableCell>
@@ -363,10 +425,19 @@ export function RolesPage() {
         </TableContainer>
       )}
 
-      {nextCursor !== null && (
-        <Button type="button" variant="outlined" disabled={isBusy} onClick={showMore} sx={start}>
-          {t('roles.showMore')}
-        </Button>
+      {(nextCursor !== null || (readTarget === 'pagination' && read.problem)) && (
+        <Stack spacing={1} sx={start}>
+          {readTarget === 'pagination' && <ProblemMessage problem={read.problem} />}
+          {readTarget === 'pagination' && read.status === 'errored' ? (
+            <Button type="button" variant="outlined" disabled={isBusy} onClick={showMore} sx={start}>
+              Try again
+            </Button>
+          ) : nextCursor !== null ? (
+            <Button type="button" variant="outlined" disabled={isBusy} onClick={showMore} sx={start}>
+              Show more roles
+            </Button>
+          ) : null}
+        </Stack>
       )}
 
       <Paper
@@ -382,6 +453,12 @@ export function RolesPage() {
             {draft.roleId === null ? t('roles.new') : t('roles.editing', { name: draft.name })}
           </Typography>
 
+          <ProblemMessage
+            problem={editorProblem}
+            claimedFields={claimedFieldNames(editorProblem, roleFields)}
+            autoFocus={!fieldErrors.name}
+          />
+
           <TextField
             id="role-name"
             label={t('roles.name')}
@@ -389,7 +466,12 @@ export function RolesPage() {
             fullWidth
             slotProps={requiredField}
             value={draft.name}
-            onChange={(event) => setDraft({ ...draft, name: event.target.value })}
+            onChange={(event) => {
+              setDraft({ ...draft, name: event.target.value });
+              setClearedServerFields((current) => current.includes('name') ? current : [...current, 'name']);
+            }}
+            error={Boolean(fieldErrors.name)}
+            helperText={fieldErrorText(fieldErrors, 'name', t) || undefined}
           />
 
           <FormControl component="fieldset">
@@ -398,9 +480,11 @@ export function RolesPage() {
                 sentence waits for the server to have actually said it. A catalogue still in flight and a
                 catalogue that came back empty are different facts and must not read alike. */}
             {catalog === undefined ? (
-              <Stack spacing={1} sx={catalogWait}>
-                {[0, 1].map((placeholder) => <Skeleton key={placeholder} variant="rounded" height={38} />)}
-              </Stack>
+              read.status === 'loading' && read.data === null ? (
+                <Stack spacing={1} sx={catalogWait}>
+                  {[0, 1].map((placeholder) => <Skeleton key={placeholder} variant="rounded" height={44} />)}
+                </Stack>
+              ) : null
             ) : grantable.length === 0 && (
               <Typography variant="body2" color="text.secondary">{t('roles.noneGrantable')}</Typography>
             )}
@@ -428,7 +512,18 @@ export function RolesPage() {
               {draft.roleId === null ? t('roles.create') : t('roles.save')}
             </Button>
             {draft.roleId !== null && (
-              <Button type="button" variant="outlined" disabled={isBusy} onClick={() => setDraft(EMPTY_DRAFT)}>{t('roles.cancel')}</Button>
+              <Button
+                type="button"
+                variant="outlined"
+                disabled={isBusy}
+                onClick={() => {
+                  setActionProblem(null);
+                  setActionTarget(null);
+                  setDraft(EMPTY_DRAFT);
+                }}
+              >
+                Cancel
+              </Button>
             )}
           </Stack>
         </Stack>

@@ -91,7 +91,7 @@ public sealed class OrganizationOwnerAuthorityTests : TestBase
     {
         await IdentityHttpHarness.SeedPermissionCatalogAsync();
         var email = $"owner-{Guid.NewGuid():N}@example.test";
-        (await TestApp.SendAsync(new RegisterOrganizationCommand(email, "Testing1234!", "Owner Org", "30-12345678-9")))
+        (await TestApp.SendAsync(new RegisterOrganizationCommand(email, "Testing1234!", "Owner Org", "30-12345678-1")))
             .IsSuccess.ShouldBeTrue();
         (await TestApp.SendAsync(new ConfirmEmailCommand(TestApp.GetRegistrationRawToken()))).IsSuccess.ShouldBeTrue();
 

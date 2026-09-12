@@ -5,16 +5,6 @@ namespace CleanArchitecture.Application.IdentityAccess.Common;
 
 public static class IdentityAccessErrors
 {
-    public static ApplicationError UserCreationFailed() => new(
-        "identity_user_creation_failed",
-        ApplicationErrorCategory.Validation,
-        "The identity could not be created.");
-
-    public static ApplicationError UserDeletionFailed() => new(
-        "identity_user_deletion_failed",
-        ApplicationErrorCategory.Validation,
-        "The identity could not be deleted.");
-
     public static ApplicationError InvalidRegistration() => new("invalid_registration", ApplicationErrorCategory.Validation, "The registration request is invalid.");
     public static ApplicationError InvalidConfirmation() => new("invalid_confirmation", ApplicationErrorCategory.Validation, "The confirmation request is invalid.");
     public static ApplicationError InvalidSession() => new("invalid_session", ApplicationErrorCategory.Authentication, "The supplied session is not valid.");
@@ -27,6 +17,22 @@ public static class IdentityAccessErrors
     /// (IA-REQ-029, SPEC section 6).
     /// </summary>
     public static ApplicationError InvalidInvitation() => new("invalid_invitation", ApplicationErrorCategory.Validation, "The invitation request is invalid.");
+
+    /// <summary>
+    /// Once invitation or session admission has succeeded, a missing enrollment, an unfinished enrollment
+    /// presented to step-up, and a rejected authenticator code are one answer. Distinguishing them would disclose
+    /// second-factor state without helping the caller recover (IA-REQ-041).
+    /// </summary>
+    public static ApplicationError InvalidMfaCode() =>
+        new("invalid_mfa_code", ApplicationErrorCategory.Validation, "The authenticator code is not valid.");
+
+    /// <summary>
+    /// Once the authenticated caller has supplied the required primary proof, a missing or unfinished enrollment
+    /// and a wrong, spent or stale recovery code are one answer. No factor or code state is disclosed
+    /// (IA-REQ-041).
+    /// </summary>
+    public static ApplicationError InvalidRecoveryCode() =>
+        new("invalid_recovery_code", ApplicationErrorCategory.Validation, "The recovery code is not valid.");
 
     /// <summary>
     /// The request was well formed and the caller was entitled to make it, but the invitation's current state

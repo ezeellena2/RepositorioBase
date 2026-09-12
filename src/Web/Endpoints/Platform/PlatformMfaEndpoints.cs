@@ -17,57 +17,65 @@ internal static class PlatformMfaEndpoints
         group.MapPost("/mfa/enroll", Enroll)
             .RequireAuthorization()
             .Produces<PlatformMfaEnrollmentResponse>(StatusCodes.Status200OK)
-            .WithApiProblemDetails(Gate)
+            .WithApiProblemDetails(InvitationGate)
             .WithBodyBindingFailureCode(ApiProblemMetadata.InvalidInvitation.Code);
 
         group.MapPost("/mfa/verify", Verify)
             .RequireAuthorization()
             .Produces(StatusCodes.Status204NoContent)
-            .WithApiProblemDetails(CodeGate)
+            .WithApiProblemDetails(VerificationGate)
             .WithBodyBindingFailureCode(ApiProblemMetadata.InvalidInvitation.Code);
 
         group.MapPost("/mfa/recovery-acknowledge", Acknowledge)
             .RequireAuthorization()
             .Produces(StatusCodes.Status204NoContent)
-            .WithApiProblemDetails(Gate)
+            .WithApiProblemDetails(InvitationGate)
             .WithBodyBindingFailureCode(ApiProblemMetadata.InvalidInvitation.Code);
 
         group.MapPost("/mfa/step-up", StepUp)
             .RequireAuthorization()
             .Produces(StatusCodes.Status204NoContent)
-            .WithApiProblemDetails(CodeGate)
+            .WithApiProblemDetails(StepUpGate)
             .WithBodyBindingFailureCode(ApiProblemMetadata.InvalidInvitation.Code);
 
         group.MapPost("/mfa/recover", Recover)
             .RequireAuthorization()
             .Produces<PlatformMfaEnrollmentResponse>(StatusCodes.Status200OK)
-            .WithApiProblemDetails([
-                .. CodeGate,
-                ApiProblemMetadata.RecentProofRequired,
-                ApiProblemMetadata.InvalidCredentialProof,
-                ApiProblemMetadata.PlatformMfaConcurrencyConflict])
+            .WithApiProblemDetails(RecoveryGate)
             .WithBodyBindingFailureCode(ApiProblemMetadata.InvalidCredentialProof.Code);
     }
 
-    /// <summary>The same set for every gate, because every gate can fail in the same ways.</summary>
-    private static readonly ApiProblemContract[] Gate =
+    private static readonly ApiProblemContract[] Protected =
     [
         ApiProblemMetadata.AntiforgeryValidationFailed,
         ApiProblemMetadata.ValidationFailed,
-        ApiProblemMetadata.InvalidInvitation,
         ApiProblemMetadata.AuthenticationRequired,
         ApiProblemMetadata.InvalidSession,
         ApiProblemMetadata.PermissionDenied,
-        ApiProblemMetadata.InvitationConflict,
         ApiProblemMetadata.InternalServerError
     ];
 
-    /// <summary>
-    /// The two gates that accept an authenticator code answer everything the others do, plus the bounded-attempt
-    /// refusal — the one answer a client must be able to tell apart from a wrong code (IA-REQ-041).
-    /// </summary>
-    private static readonly ApiProblemContract[] CodeGate =
-        [.. Gate, ApiProblemMetadata.RateLimitExceeded, ApiProblemMetadata.ServiceUnavailable];
+    /// <summary>Enrollment and acknowledgement still operate on the invitation and can meet its conflict.</summary>
+    private static readonly ApiProblemContract[] InvitationGate =
+        [.. Protected, ApiProblemMetadata.InvalidInvitation, ApiProblemMetadata.InvitationConflict];
+
+    /// <summary>Verification is invitation-bound, but a valid invitation never produces an invitation conflict.</summary>
+    private static readonly ApiProblemContract[] VerificationGate =
+        [.. Protected, ApiProblemMetadata.InvalidInvitation, ApiProblemMetadata.InvalidMfaCode, .. ApiProblemMetadata.BoundedAttempt];
+
+    /// <summary>Step-up operates on the authenticated identity's factor, not on an invitation.</summary>
+    private static readonly ApiProblemContract[] StepUpGate =
+        [.. Protected, ApiProblemMetadata.InvalidMfaCode, .. ApiProblemMetadata.BoundedAttempt];
+
+    /// <summary>Recovery operates on a recent proof and the identity's recovery material, not on an invitation.</summary>
+    private static readonly ApiProblemContract[] RecoveryGate =
+    [
+        .. Protected,
+        ApiProblemMetadata.RecentProofRequired,
+        ApiProblemMetadata.InvalidRecoveryCode,
+        ApiProblemMetadata.PlatformMfaConcurrencyConflict,
+        .. ApiProblemMetadata.BoundedAttempt
+    ];
 
     private static async Task<IResult> Enroll(
         HttpContext context,

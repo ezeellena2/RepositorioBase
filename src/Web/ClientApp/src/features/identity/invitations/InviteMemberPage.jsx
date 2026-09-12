@@ -8,6 +8,7 @@ import CircularProgress from '@mui/material/CircularProgress';
 import FormControl from '@mui/material/FormControl';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import FormGroup from '@mui/material/FormGroup';
+import FormHelperText from '@mui/material/FormHelperText';
 import FormLabel from '@mui/material/FormLabel';
 import Paper from '@mui/material/Paper';
 import Skeleton from '@mui/material/Skeleton';
@@ -20,9 +21,11 @@ import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
+import { toProblem } from '../api/apiTransport';
 import { useIdentity } from '../context/IdentityProvider';
+import { claimedFieldNames, fieldErrorText, selectFieldErrors } from '../fieldErrors';
 import { ProblemMessage } from '../ProblemMessage';
-import { roleName, useFormat, useTranslation } from '../../../i18n';
+import { useRead } from '../useRead';
 
 /** Required without the asterisk MUI would add, which would rename the field for everything that reads its label. */
 const requiredField = { inputLabel: { required: false } };
@@ -65,6 +68,11 @@ const spinner = (busy) => (busy ? <CircularProgress size={16} color="inherit" />
  * to the same neutral chip instead of being guessed at.
  */
 const statusColor = { Accepted: 'success', Cancelled: 'error', Expired: 'warning' };
+const invitationFields = ['email', 'roleIds'];
+const appendInvitations = (current, next) => ({
+  ...next,
+  items: [...current.items, ...next.items],
+});
 
 /**
  * Offering somebody a place in the organization, and everything that can still happen to that offer
@@ -84,63 +92,53 @@ export function InviteMemberPage() {
   const identity = useIdentity();
   const { t } = useTranslation();
   const tenantId = identity.context?.activeTenant?.id ?? null;
-  // Three answers, not two: `undefined` is "not asked yet" and holds the shape of what is coming, `null` is the
-  // refusal this screen says out loud, and an array is the part of the organization this inviter may read.
-  const [roles, setRoles] = useState(undefined);
-  const [invitations, setInvitations] = useState(undefined);
-  const [nextCursor, setNextCursor] = useState(null);
   const [roleIds, setRoleIds] = useState([]);
   const [email, setEmail] = useState('');
-  const [problem, setProblem] = useState(null);
+  const [actionProblem, setActionProblem] = useState(null);
+  const [actionTarget, setActionTarget] = useState(null);
+  const [invitationReadTarget, setInvitationReadTarget] = useState('list');
+  const [clearedServerFields, setClearedServerFields] = useState([]);
   const [sent, setSent] = useState(null);
   // What is running, not merely that something is. Every control still waits for whatever it is — a resend
   // reloads the list the other rows are drawn from — but the wait is shown where it was asked for.
   const [pending, setPending] = useState(null);
   const isBusy = pending !== null;
+  const fieldErrors = selectFieldErrors(
+    actionTarget === 'send' ? actionProblem : null,
+    invitationFields.filter((field) => !clearedServerFields.includes(field)),
+  );
 
-  // A refused list is answered with null rather than thrown: an inviter may hold `members.invite` without
-  // `roles.read` or `members.read`, and losing the whole screen over a part of it they were never promised
-  // would be this component inventing a rule the server did not state.
-  const read = useCallback(async () => {
-    if (tenantId === null) return null;
-    const [available, offered] = await Promise.all([
-      identity.client.listRoles(tenantId).then((page) => page.items.filter((role) => !role.isRetired), () => null),
-      identity.client.listTenantInvitations(tenantId).then((page) => page, () => null),
-    ]);
-    // `null` keeps meaning "you may not see the offers here", so only a page that really arrived carries a
-    // cursor: a refused read must not leave a continuation control pointing at nothing.
-    return { roles: available, invitations: offered?.items ?? null, cursor: offered?.nextCursor ?? null };
-  }, [identity, tenantId]);
-
-  const load = useCallback(async () => {
-    const state = await read();
-    if (state === null) return;
-    setRoles(state.roles);
-    setInvitations(state.invitations);
-    setNextCursor(state.cursor);
-  }, [read]);
+  const rolesRead = useRead(useCallback(async ({ signal }) => {
+    const page = await identity.client.listRoles(tenantId, null, { signal });
+    return page.items.filter((role) => !role.isRetired);
+  }, [identity.client, tenantId]), tenantId !== null);
+  const invitationsRead = useRead(useCallback(
+    ({ cursor, signal }) => identity.client.listTenantInvitations(tenantId, cursor ?? null, { signal }),
+    [identity.client, tenantId],
+  ), tenantId !== null);
+  const roles = rolesRead.data;
+  const invitations = invitationsRead.data?.items ?? null;
+  const nextCursor = invitationsRead.data?.nextCursor ?? null;
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const state = await read();
-      if (cancelled || state === null) return;
-      setRoles(state.roles);
-      setInvitations(state.invitations);
-      setNextCursor(state.cursor);
-    })();
-    return () => { cancelled = true; };
-  }, [read]);
+    if (actionTarget !== 'send') return;
+    const next = selectFieldErrors(actionProblem, invitationFields);
+    if (next.email) document.getElementById('invite-email')?.focus();
+    else if (next.roleIds) document.getElementById('invite-role-ids')?.focus();
+  }, [actionProblem, actionTarget]);
 
   const run = async (token, act) => {
     setPending(token);
-    setProblem(null);
+    setActionTarget(token);
+    setActionProblem(null);
+    setClearedServerFields([]);
     try {
       const value = await act();
-      await load();
+      setInvitationReadTarget('list');
+      await invitationsRead.refresh(undefined);
       return value;
     } catch (error) {
-      setProblem(error.problem ?? { code: 'unexpected' });
+      setActionProblem(toProblem(error));
       return undefined;
     } finally {
       setPending(null);
@@ -161,21 +159,21 @@ export function InviteMemberPage() {
   // A continuation appends, so every offer the reader has seen stays on screen. Each page the server hands out
   // is disjoint from the last, so an offer cannot be listed twice.
   const showMore = async () => {
-    setPending(pendingAction.more);
-    setProblem(null);
+    setPending('more');
+    setInvitationReadTarget('pagination');
     try {
-      const next = await identity.client.listTenantInvitations(tenantId, nextCursor);
-      setInvitations((current) => [...(current ?? []), ...next.items]);
-      setNextCursor(next.nextCursor ?? null);
-    } catch (error) {
-      setProblem(error.problem ?? { code: 'unexpected' });
+      await invitationsRead.refresh(nextCursor, appendInvitations);
     } finally {
       setPending(null);
     }
   };
 
-  const toggleRole = (roleId) => setRoleIds((current) =>
-    current.includes(roleId) ? current.filter((held) => held !== roleId) : [...current, roleId]);
+  const toggleRole = (roleId) => {
+    setRoleIds((current) => current.includes(roleId)
+      ? current.filter((held) => held !== roleId)
+      : [...current, roleId]);
+    setClearedServerFields((current) => current.includes('roleIds') ? current : [...current, 'roleIds']);
+  };
 
   // A dead end rather than a failure, and it is still this screen: the same title and the sentence that says what
   // is missing. It is framed as the single-object screen it is — the raised card belongs to the public entrance,
@@ -196,10 +194,12 @@ export function InviteMemberPage() {
     );
   }
 
-  const nameOf = (roleId) => {
-    const role = roles?.find((candidate) => candidate.roleId === roleId);
-    return role ? roleName(role, t) : roleId;
-  };
+  const nameOf = (roleId) => roles?.find((role) => role.roleId === roleId)?.name ?? roleId;
+  const sendProblem = actionTarget === 'send' ? actionProblem : null;
+  const sendClaimedFields = claimedFieldNames(sendProblem, invitationFields);
+  const cannotReadRoles = rolesRead.status === 'refused' && rolesRead.problem?.code === 'permission_denied';
+  const cannotReadInvitations = invitationsRead.status === 'refused'
+    && invitationsRead.problem?.code === 'permission_denied';
 
   return (
     <Stack component="section" aria-labelledby="invite-heading" spacing={3}>
@@ -217,7 +217,6 @@ export function InviteMemberPage() {
           above it, and a refusal is about the request that field just made, so both share the form's column
           instead of being announced across the whole shell. */}
       <Stack spacing={2} sx={compose}>
-        <ProblemMessage problem={problem} />
         {sent && (
           <Alert severity="success" role="status">
             {t('identity:invitations.member.sent', { expiresAt: formatDate(sent.expiresAt) })}
@@ -226,6 +225,11 @@ export function InviteMemberPage() {
 
         <Paper variant="outlined" component="form" onSubmit={invite} sx={form}>
           <Stack spacing={2}>
+            <ProblemMessage
+              problem={sendProblem}
+              claimedFields={sendClaimedFields}
+              autoFocus={sendClaimedFields.length === 0}
+            />
             <TextField
               id="invite-email"
               label={t('identity:login.email')}
@@ -234,20 +238,42 @@ export function InviteMemberPage() {
               fullWidth
               slotProps={requiredField}
               value={email}
-              onChange={(event) => setEmail(event.target.value)}
+              onChange={(event) => {
+                setEmail(event.target.value);
+                setClearedServerFields((current) => current.includes('email') ? current : [...current, 'email']);
+              }}
+              error={Boolean(fieldErrors.email)}
+              helperText={fieldErrorText(fieldErrors, 'email', t) || undefined}
             />
 
-            <FormControl component="fieldset">
-              <FormLabel component="legend">{t('identity:invitations.member.rolesToOffer')}</FormLabel>
-              {roles === undefined && (
+            <FormControl
+              component="fieldset"
+              id="invite-role-ids"
+              tabIndex={-1}
+              error={Boolean(fieldErrors.roleIds)}
+              aria-invalid={Boolean(fieldErrors.roleIds)}
+              aria-describedby={fieldErrors.roleIds ? 'invite-role-ids-error' : undefined}
+            >
+              <FormLabel component="legend">Roles to offer</FormLabel>
+              {rolesRead.status === 'loading' && rolesRead.data === null && (
                 <Stack spacing={1} sx={note}>
                   {[0, 1].map((placeholder) => <Skeleton key={placeholder} variant="rounded" height={38} />)}
+                </Stack>
+              )}
+              {rolesRead.problem && !cannotReadRoles && (
+                <Stack spacing={1} sx={note}>
+                  <ProblemMessage problem={rolesRead.problem} />
+                  {rolesRead.status === 'errored' && (
+                    <Button type="button" variant="outlined" onClick={() => rolesRead.refresh(undefined)} sx={start}>
+                      Try again
+                    </Button>
+                  )}
                 </Stack>
               )}
               {/* A refusal and an empty catalogue are different facts and must not read alike. What this reader
                   may not see is said at its own weight; an organization that simply has no roles yet stays a
                   quiet aside, because that one is about the organization rather than about them. */}
-              {roles === null && (
+              {cannotReadRoles && (
                 <Typography component="p" variant="subtitle2" sx={note}>
                   {t('identity:invitations.member.rolesRefused')}
                 </Typography>
@@ -271,6 +297,11 @@ export function InviteMemberPage() {
                   />
                 ))}
               </FormGroup>
+              {fieldErrors.roleIds && (
+                <FormHelperText id="invite-role-ids-error">
+                  {fieldErrorText(fieldErrors, 'roleIds', t)}
+                </FormHelperText>
+              )}
             </FormControl>
 
             <Button
@@ -291,13 +322,22 @@ export function InviteMemberPage() {
             how loudly it is set, not where it sits in the outline. */}
         <Typography component="h2" variant="subtitle1">{t('identity:invitations.member.listTitle')}</Typography>
 
+        {invitationReadTarget === 'list' && invitationsRead.problem && !cannotReadInvitations && (
+          <ProblemMessage problem={invitationsRead.problem} />
+        )}
+        {invitationReadTarget === 'list' && invitationsRead.status === 'errored' && (
+          <Button type="button" variant="outlined" onClick={() => invitationsRead.refresh(undefined)} sx={start}>
+            Try again
+          </Button>
+        )}
+
         {/* The wait holds the shape of the offers rather than saying a word about itself, so the list does not
             arrive by pushing the form up the page. */}
-        {invitations === undefined ? (
+        {invitationsRead.status === 'loading' && invitationsRead.data === null ? (
           <Stack spacing={1}>
             {[0, 1, 2].map((placeholder) => <Skeleton key={placeholder} variant="rounded" height={57} />)}
           </Stack>
-        ) : invitations === null ? (
+        ) : cannotReadInvitations ? (
           // Deliberately not the empty block. An organization that has never invited anybody and an organization
           // whose offers this reader may not see are two different facts, and the centred, quiet block that says
           // "there is nothing here" would make them look like one. The refusal is set left, tight and at its own
@@ -305,7 +345,7 @@ export function InviteMemberPage() {
           <Paper variant="outlined" sx={refusal}>
             <Typography component="p" variant="subtitle2">{t('identity:invitations.member.invitationsRefused')}</Typography>
           </Paper>
-        ) : invitations.length === 0 ? (
+        ) : invitations === null ? null : invitations.length === 0 ? (
           <Paper variant="outlined" sx={empty}>
             <Typography variant="body2" color="text.secondary">{t('identity:invitations.member.noInvitations')}</Typography>
           </Paper>
@@ -347,6 +387,13 @@ export function InviteMemberPage() {
                       )}
                     </TableCell>
                     <TableCell align="right">
+                      <ProblemMessage
+                        problem={[
+                          `resend:${invitation.invitationId}`,
+                          `withdraw:${invitation.invitationId}`,
+                        ].includes(actionTarget) ? actionProblem : null}
+                        autoFocus
+                      />
                       {/* Only a standing offer can be reissued or withdrawn. One already accepted or already withdrawn
                           is shown because it happened, not because there is anything left to do to it. */}
                       <Stack direction="row" spacing={1} useFlexGap sx={rowActions}>
@@ -356,9 +403,9 @@ export function InviteMemberPage() {
                               type="button"
                               size="small"
                               disabled={isBusy}
-                              startIcon={spinner(pending === pendingAction.resend(invitation.invitationId))}
+                              startIcon={spinner(pending === `resend:${invitation.invitationId}`)}
                               onClick={() => run(
-                                pendingAction.resend(invitation.invitationId),
+                                `resend:${invitation.invitationId}`,
                                 () => identity.client.resendInvitation(tenantId, invitation.invitationId),
                               )}
                             >
@@ -369,13 +416,13 @@ export function InviteMemberPage() {
                               size="small"
                               color="error"
                               disabled={isBusy}
-                              startIcon={spinner(pending === pendingAction.withdraw(invitation.invitationId))}
+                              startIcon={spinner(pending === `withdraw:${invitation.invitationId}`)}
                               onClick={() => {
                                 // The browser's own confirmation, deliberately: ending somebody's way in is asked
                                 // for by the browser rather than by the page.
                                 if (window.confirm(t('identity:invitations.member.withdrawConfirm', { email: invitation.normalizedEmail }))) {
                                   run(
-                                    pendingAction.withdraw(invitation.invitationId),
+                                    `withdraw:${invitation.invitationId}`,
                                     () => identity.client.cancelInvitation(tenantId, invitation.invitationId),
                                   );
                                 }
@@ -398,12 +445,25 @@ export function InviteMemberPage() {
           <Button
             type="button"
             variant="outlined"
-            disabled={isBusy}
-            startIcon={spinner(pending === pendingAction.more)}
+            disabled={isBusy || invitationsRead.status === 'loading'}
+            startIcon={spinner(pending === 'more')}
             onClick={showMore}
             sx={start}
           >
             {t('identity:invitations.member.showMore')}
+          </Button>
+        )}
+        {invitationReadTarget === 'pagination' && invitationsRead.problem && (
+          <ProblemMessage problem={invitationsRead.problem} />
+        )}
+        {invitationReadTarget === 'pagination' && invitationsRead.status === 'errored' && (
+          <Button
+            type="button"
+            variant="outlined"
+            onClick={() => invitationsRead.refresh(nextCursor, appendInvitations)}
+            sx={start}
+          >
+            Try again
           </Button>
         )}
       </Stack>

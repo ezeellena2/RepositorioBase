@@ -14,6 +14,8 @@ public interface IProblemDetailsService
 
 public sealed class ApiProblemDetailsMapper : IProblemDetailsService
 {
+    private static readonly JsonSerializerOptions WireJson = new(JsonSerializerDefaults.Web);
+
     public ApiProblemDetails Create(HttpContext httpContext, ApplicationError error)
     {
         ArgumentNullException.ThrowIfNull(error);
@@ -43,10 +45,10 @@ public sealed class ApiProblemDetailsMapper : IProblemDetailsService
         {
             httpContext.Response.Headers.RetryAfter = retryAfterSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture);
         }
-        await System.Text.Json.JsonSerializer.SerializeAsync(
+        await JsonSerializer.SerializeAsync(
             httpContext.Response.Body,
             problem,
-            new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web),
+            WireJson,
             cancellationToken);
     }
 
@@ -64,10 +66,10 @@ public sealed class ApiProblemDetailsMapper : IProblemDetailsService
 
         httpContext.Response.StatusCode = StatusCodes.Status500InternalServerError;
         httpContext.Response.ContentType = "application/problem+json";
-        await System.Text.Json.JsonSerializer.SerializeAsync(
+        await JsonSerializer.SerializeAsync(
             httpContext.Response.Body,
             problem,
-            new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web),
+            WireJson,
             cancellationToken);
     }
 

@@ -40,10 +40,12 @@ internal static class AccountLifecycleEndpoints
             .Produces(StatusCodes.Status202Accepted)
             .WithApiProblemDetails(
                 ApiProblemMetadata.AntiforgeryValidationFailed,
+                ApiProblemMetadata.InvalidRequest,
                 ApiProblemMetadata.RateLimitExceeded,
                 ApiProblemMetadata.ServiceUnavailable,
                 ApiProblemMetadata.InternalServerError)
-            .WithBodyBindingFailureCode(ApiProblemMetadata.InvalidRequest.Code);
+            .WithNeutralBodyBindingFailure(StatusCodes.Status202Accepted)
+            .WithInvalidOptionalSessionRefusal();
 
         group.MapPost("/account/reactivate", Reactivate)
             .RequireLoginAttemptBudgets()
@@ -54,6 +56,7 @@ internal static class AccountLifecycleEndpoints
                 ApiProblemMetadata.RateLimitExceeded,
                 ApiProblemMetadata.ServiceUnavailable,
                 ApiProblemMetadata.InternalServerError)
+            .WithInvalidOptionalSessionRefusal()
             // A body this route cannot read is one more way of not holding a usable ticket, and it answers like
             // every other one.
             .WithBodyBindingFailureCode(ApiProblemMetadata.InvalidReactivation.Code);
@@ -75,7 +78,7 @@ internal static class AccountLifecycleEndpoints
 
     private static async Task<IResult> RequestReturn(HttpContext context, IAntiforgery antiforgery, ApiProblemDetailsMapper problems, ISender sender, RequestAccountReactivationCommand command)
     {
-        var antiforgeryFailure = await Identity.ValidateAntiforgery(context, antiforgery, problems, rejectInvalidOptionalSession: true);
+        var antiforgeryFailure = await Identity.ValidateAntiforgery(context, antiforgery, problems);
         if (antiforgeryFailure is not null) return antiforgeryFailure;
         var result = await sender.Send(command, context.RequestAborted);
 
@@ -85,7 +88,7 @@ internal static class AccountLifecycleEndpoints
 
     private static async Task<IResult> Reactivate(HttpContext context, IAntiforgery antiforgery, ApiProblemDetailsMapper problems, ISender sender, ReactivateAccountCommand command)
     {
-        var antiforgeryFailure = await Identity.ValidateAntiforgery(context, antiforgery, problems, rejectInvalidOptionalSession: true);
+        var antiforgeryFailure = await Identity.ValidateAntiforgery(context, antiforgery, problems);
         if (antiforgeryFailure is not null) return antiforgeryFailure;
         var result = await sender.Send(command, context.RequestAborted);
 

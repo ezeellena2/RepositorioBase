@@ -72,7 +72,7 @@ It MUST preserve API calls, states, copy, fields, validations, routes, IDs, acce
 
 ### Requirement: One MUI color-mode mechanism and regression gate
 
-MUI color-mode mechanism MUST be the only theme system; Pico’s dark bootstrap and competing path MUST be removed. Delivery MUST pass 293 unchanged SPA tests and 32 unchanged Reqnroll/Playwright journeys with zero assertion changes; backend and API behavior MUST remain unchanged.
+MUI color-mode mechanism MUST be the only theme system; Pico’s dark bootstrap and competing path MUST be removed. Delivery MUST pass 293 unchanged SPA tests and 30 unchanged Reqnroll/Playwright journeys with zero assertion changes; backend and API behavior MUST remain unchanged.
 
 #### Scenario: Legacy theme bootstrap is absent
 

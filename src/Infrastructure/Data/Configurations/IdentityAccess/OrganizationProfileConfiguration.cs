@@ -13,7 +13,7 @@ public sealed class OrganizationProfileConfiguration : IEntityTypeConfiguration<
         builder.HasKey(profile => profile.TenantId);
         builder.Property(profile => profile.TenantId).HasConversion(id => id.Value, value => TenantId.From(value)).ValueGeneratedNever();
         builder.Property(profile => profile.LegalName).HasMaxLength(256).IsRequired();
-        builder.Property(profile => profile.Cuit).HasConversion(cuit => cuit.Value, value => NormalizedCuit.From(value)).HasMaxLength(11).IsRequired();
+        builder.Property(profile => profile.Cuit).HasConversion(cuit => cuit.Value, value => NormalizedCuit.FromStored(value)).HasMaxLength(11).IsRequired();
         builder.HasIndex(profile => profile.Cuit).IsUnique();
         builder.HasOne<Tenant>().WithOne().HasForeignKey<OrganizationProfile>(profile => profile.TenantId).OnDelete(DeleteBehavior.Restrict);
     }

@@ -22,14 +22,16 @@ internal static class PasswordEndpoints
         group.MapPost("/credentials/password/recovery", Recover)
             .RequireLoginAttemptBudgets()
             .Produces(StatusCodes.Status202Accepted)
-            .WithApiProblemDetails(ApiProblemMetadata.AntiforgeryValidationFailed, ApiProblemMetadata.RateLimitExceeded, ApiProblemMetadata.ServiceUnavailable, ApiProblemMetadata.InternalServerError)
-            .WithBodyBindingFailureCode(ApiProblemMetadata.InvalidRequest.Code);
+            .WithApiProblemDetails(ApiProblemMetadata.AntiforgeryValidationFailed, ApiProblemMetadata.InvalidRequest, ApiProblemMetadata.RateLimitExceeded, ApiProblemMetadata.ServiceUnavailable, ApiProblemMetadata.InternalServerError)
+            .WithNeutralBodyBindingFailure(StatusCodes.Status202Accepted)
+            .WithInvalidOptionalSessionRefusal();
 
         group.MapPost("/credentials/password/reset", Reset)
             .Produces(StatusCodes.Status204NoContent)
             // `429` is newly reachable here: spending a link now waits for the same per-identity lock a sign-in
             // holds, and a wait that elapses is answered rather than forced through.
             .WithApiProblemDetails(ApiProblemMetadata.AntiforgeryValidationFailed, ApiProblemMetadata.InvalidCredentialToken, ApiProblemMetadata.ValidationFailed, ApiProblemMetadata.IdentityConcurrencyConflict, ApiProblemMetadata.RateLimitExceeded, ApiProblemMetadata.InternalServerError)
+            .WithInvalidOptionalSessionRefusal()
             .WithBodyBindingFailureCode(ApiProblemMetadata.InvalidCredentialToken.Code);
 
         group.MapGet("/credentials", Read)
@@ -54,7 +56,7 @@ internal static class PasswordEndpoints
 
     private static async Task<IResult> Recover(HttpContext context, IAntiforgery antiforgery, ApiProblemDetailsMapper problems, ISender sender, RequestPasswordRecoveryCommand command)
     {
-        var antiforgeryFailure = await Identity.ValidateAntiforgery(context, antiforgery, problems, rejectInvalidOptionalSession: true);
+        var antiforgeryFailure = await Identity.ValidateAntiforgery(context, antiforgery, problems);
         if (antiforgeryFailure is not null) return antiforgeryFailure;
         var result = await sender.Send(command, context.RequestAborted);
 
@@ -64,7 +66,7 @@ internal static class PasswordEndpoints
 
     private static async Task<IResult> Reset(HttpContext context, IAntiforgery antiforgery, ApiProblemDetailsMapper problems, ISender sender, ResetPasswordCommand command)
     {
-        var antiforgeryFailure = await Identity.ValidateAntiforgery(context, antiforgery, problems, rejectInvalidOptionalSession: true);
+        var antiforgeryFailure = await Identity.ValidateAntiforgery(context, antiforgery, problems);
         if (antiforgeryFailure is not null) return antiforgeryFailure;
         var result = await sender.Send(command, context.RequestAborted);
 

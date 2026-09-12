@@ -56,13 +56,13 @@ PR #1 base = feature/tracker branch; PR #2 base = PR #1 branch; PRs #3–#7 base
 |---|---|---|---|---|
 | 1/PR1 | theme, contract, main/App; reconcile foundation | Contract + lint | Build/provider mount | Foundation files |
 | 2/PR2 | Layout/NavMenu/Toggle/NativeDialog; shell | Contract + lint | Narrow/wide shell/dialog | Shell files |
-| 3/PR3 | Home/Counter; examples | Contract + example tests | Example routes | Example files |
+| 3/PR3 | Home example | Contract + example tests | Example route | Example files |
 | 4/PR4 | Identity entry/onboarding JSX | Contract + Identity tests | Login/recovery/reactivation | Entry files |
 | 5/PR5 | Identity account/org JSX | Contract + Identity tests | Authenticated journeys | Account files |
 | 6/PR6 | Platform presentation JSX | Contract + Platform tests | Platform/MFA journeys | Platform files |
-| 7/PR7 | Pico/Sass/ThemeContext cleanup | Full test/lint/build | All routes + 32 journeys | Cleanup/dependencies |
+| 7/PR7 | Pico/Sass/ThemeContext cleanup | Full test/lint/build | All routes + 30 journeys | Cleanup/dependencies |
 
-Contract additions stay with their unit; existing 293 tests, page objects, and backend remain unchanged.
+Contract additions stay with their unit; the remaining tests, page objects, and backend remain unchanged.
 Commands: PR1–6 use npm --prefix src/Web/ClientApp test -- src/test/materialUiMigration.contract.test.js plus unchanged tests/lint; PR7 adds full test, lint, build, and dotnet acceptance test.
 
 ## Dependency-Ordered Work Units
@@ -71,8 +71,8 @@ Commands: PR1–6 use npm --prefix src/Web/ClientApp test -- src/test/materialUi
 - [x] 1.2 GREEN/REFACTOR — Simplify src/theme.jsx to createTheme({ colorSchemes, typography, palette }); restore MUI defaults and remove exhaustive logic.
 - [x] 2.1 RED — Add shell, useColorScheme, native-select, and dialog-lifecycle assertions.
 - [x] 2.2 GREEN/REFACTOR — Use direct AppBar/Toolbar/Container, ThemeToggle with useColorScheme, stock NativeSelect/InputLabel, thin NativeDialog only, and no generic wrappers.
-- [x] 3.1 RED — Add direct-MUI assertions for the retained demo screens.
-- [x] 3.2 GREEN/REFACTOR — Convert the retained demo screens directly; preserve requests and routes.
+- [x] 3.1 RED — Add direct-MUI assertions for the retained Home demo screen.
+- [x] 3.2 GREEN/REFACTOR — Convert the retained Home demo screen directly; preserve its route.
 - [x] 4.1 RED — Add login/onboarding assertions.
 - [x] 4.2 GREEN/REFACTOR — Convert Identity entry/onboarding; preserve login contracts, copy, fields, IDs, names, and states.
 - [x] 5.1 RED — Add account/org semantic/status assertions.
@@ -80,7 +80,7 @@ Commands: PR1–6 use npm --prefix src/Web/ClientApp test -- src/test/materialUi
 - [x] 6.1 RED — Add Platform/MFA assertions.
 - [x] 6.2 GREEN/REFACTOR — Convert Platform directly; keep dispute resolution backend-only.
 - [x] 7.1 GREEN/REFACTOR — Remove Pico/Sass, ThemeContext/bootstrap, residual CSS, and obsolete dependencies after migration.
-- [x] 7.2 — Run full SPA tests, contract tests, lint, build, and 32 journeys; verify zero assertion/page-object changes.
+- [x] 7.2 — Run full SPA tests, contract tests, lint, build, and 30 journeys; verify zero assertion/page-object changes.
 
 ## Next Gate
 

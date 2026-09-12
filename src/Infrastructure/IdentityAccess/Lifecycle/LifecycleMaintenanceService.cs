@@ -1,3 +1,4 @@
+using CleanArchitecture.Application.Common.Logging;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -50,8 +51,7 @@ public sealed class LifecycleMaintenanceService(
             }
             catch (Exception failure)
             {
-                // Only the type. What is in scope here is personal data, and a log is not the place for it.
-                logger.LogError("A retention maintenance run failed ({Failure}).", failure.GetType().Name);
+                logger.LogSafeFailure(SafeFailure.Describe(failure, "lifecycle.maintenance"));
             }
 
             await Task.Delay(Interval, timeProvider, stoppingToken);

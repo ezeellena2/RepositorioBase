@@ -1,7 +1,9 @@
 import Box from '@mui/material/Box';
 import Container from '@mui/material/Container';
 import Toolbar from '@mui/material/Toolbar';
+import Typography from '@mui/material/Typography';
 import { useLocation } from 'react-router-dom';
+import { useTranslation } from '../i18n';
 import { NavMenu, shellToolbarSx } from './NavMenu';
 
 /**
@@ -34,26 +36,53 @@ const publicEntryPaths = new Set([
  *
  * The application shell is a sidebar and a bar above it. The public entrance is neither: that navigation names
  * screens a session opens, so offering it to somebody who has come to get one is a menu of things they cannot do
- * yet. What they get instead is the single card, centred, and nothing else.
+ * yet. What they get instead is one entry card and, where the viewport has room, a quiet product-identity plane.
  */
 export function Layout({ children }) {
   const { pathname } = useLocation();
+  const { t } = useTranslation('common');
 
   if (publicEntryPaths.has(pathname)) {
     return (
       <Box
         sx={{
           minHeight: '100dvh',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          px: 2,
-          py: { xs: 4, sm: 8 },
+          display: { xs: 'flex', lg: 'grid' },
+          gridTemplateColumns: { lg: 'minmax(0, 1fr) minmax(468px, 42%)' },
+          backgroundColor: 'background.default',
         }}
       >
-        <Container component="main" maxWidth="xs" disableGutters>
-          {children}
-        </Container>
+        <Box
+          aria-hidden="true"
+          sx={{
+            display: { xs: 'none', lg: 'flex' },
+            alignItems: 'flex-start',
+            minWidth: 0,
+            p: 6,
+            backgroundColor: 'navigation.main',
+            color: 'common.white',
+          }}
+        >
+          <Typography component="div" variant="h5">
+            {t('navigation.brand')}
+          </Typography>
+        </Box>
+        <Box
+          component="main"
+          sx={{
+            display: 'flex',
+            flex: 1,
+            alignItems: 'center',
+            justifyContent: 'center',
+            minWidth: 0,
+            px: { xs: 2, sm: 3, lg: 6 },
+            py: { xs: 4, sm: 6 },
+          }}
+        >
+          <Box sx={{ width: '100%', maxWidth: 420 }}>
+            {children}
+          </Box>
+        </Box>
       </Box>
     );
   }
@@ -61,10 +90,17 @@ export function Layout({ children }) {
   return (
     <Box sx={{ display: 'flex', minHeight: '100dvh' }}>
       <NavMenu />
-      <Box component="main" sx={{ flexGrow: 1, minWidth: 0 }}>
+      <Box
+        component="main"
+        sx={{ flexGrow: 1, minWidth: 0, minHeight: '100dvh', backgroundColor: 'background.default' }}
+      >
         {/* Sits under the fixed bar, so the first thing on a page is not hidden behind it. */}
         <Toolbar sx={shellToolbarSx} />
-        <Container maxWidth="lg" sx={{ py: 3 }}>
+        <Container
+          maxWidth={false}
+          disableGutters
+          sx={{ width: '100%', maxWidth: 1440, mx: 'auto', px: { xs: 2, sm: 3, lg: 4 }, py: 3 }}
+        >
           {children}
         </Container>
       </Box>

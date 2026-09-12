@@ -20,9 +20,8 @@ internal static class PlatformInvitationEndpoints
             .WithApiProblemDetails(
                 ApiProblemMetadata.AntiforgeryValidationFailed,
                 ApiProblemMetadata.ValidationFailed,
-                ApiProblemMetadata.InvalidInvitation,
                 ApiProblemMetadata.InternalServerError)
-            .WithBodyBindingFailureCode(ApiProblemMetadata.InvalidInvitation.Code);
+            .WithBodyBindingFailureCode(ApiProblemMetadata.ValidationFailed.Code);
 
         group.MapPost("/invitations/confirm", Confirm)
             .Produces(StatusCodes.Status204NoContent)
@@ -30,7 +29,6 @@ internal static class PlatformInvitationEndpoints
                 ApiProblemMetadata.AntiforgeryValidationFailed,
                 ApiProblemMetadata.ValidationFailed,
                 ApiProblemMetadata.InvalidConfirmation,
-                ApiProblemMetadata.RegistrationConflict,
                 ApiProblemMetadata.InternalServerError)
             .WithBodyBindingFailureCode(ApiProblemMetadata.InvalidConfirmation.Code);
     }

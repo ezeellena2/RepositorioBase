@@ -22,7 +22,7 @@ internal static class SessionEndpoints
             .RequireLoginAttemptBudgets()
             .Produces(StatusCodes.Status204NoContent)
             .WithApiProblemDetails(ApiProblemMetadata.AntiforgeryValidationFailed, ApiProblemMetadata.InvalidRequest, ApiProblemMetadata.CredentialSuperseded, ApiProblemMetadata.RateLimitExceeded, ApiProblemMetadata.ServiceUnavailable, ApiProblemMetadata.InternalServerError)
-            .WithBodyBindingFailureCode(ApiProblemMetadata.InvalidRequest.Code);
+            .WithNeutralBodyBindingFailure(StatusCodes.Status204NoContent);
         group.MapGet("/sessions", List)
             .RequireAuthorization()
             .Produces<IReadOnlyList<OwnSessionResponse>>(StatusCodes.Status200OK)
@@ -33,7 +33,7 @@ internal static class SessionEndpoints
         group.MapDelete("/sessions/current", Revoke)
             .RequireAuthorization()
             .Produces(StatusCodes.Status204NoContent)
-            .WithApiProblemDetails(ApiProblemMetadata.AntiforgeryValidationFailed, ApiProblemMetadata.AuthenticationRequired, ApiProblemMetadata.InvalidSession, ApiProblemMetadata.SessionConcurrencyConflict, ApiProblemMetadata.InternalServerError);
+            .WithApiProblemDetails(ApiProblemMetadata.AntiforgeryValidationFailed, ApiProblemMetadata.AuthenticationRequired, ApiProblemMetadata.InvalidSession, ApiProblemMetadata.PermissionDenied, ApiProblemMetadata.SessionConcurrencyConflict, ApiProblemMetadata.InternalServerError);
 
         group.MapDelete("/sessions/others", RevokeOthers)
             .RequireAuthorization()

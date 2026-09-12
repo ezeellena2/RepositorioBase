@@ -5,7 +5,7 @@ import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import App from './App';
 import { server } from './test/server';
-import { antiforgery, contextIs, signedInContext } from './test/identityServer';
+import { antiforgery, contextIs, problem, signedInContext } from './test/identityServer';
 
 const renderApp = (path = '/') => render(<MemoryRouter initialEntries={[path]}><App /></MemoryRouter>);
 
@@ -14,6 +14,35 @@ const renderApp = (path = '/') => render(<MemoryRouter initialEntries={[path]}><
  * behind these links is authorized again by the server, so this is a courtesy rather than a control.
  */
 describe('application shell', () => {
+  it('waits for identity before showing the anonymous not-found next step', async () => {
+    let releaseContext;
+    const contextGate = new Promise((resolve) => { releaseContext = resolve; });
+    server.use(
+      antiforgery(),
+      http.get('/api/identity/context', async () => {
+        await contextGate;
+        return problem(401, 'authentication_required');
+      }),
+    );
+    renderApp('/not-a-route');
+
+    expect(screen.queryByRole('heading', { name: 'That page does not exist' })).not.toBeInTheDocument();
+    releaseContext();
+
+    expect(await screen.findByRole('heading', { name: 'That page does not exist', level: 1 })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/login');
+  });
+
+  it('offers an authenticated identity its access page from an unknown route', async () => {
+    server.use(antiforgery(), contextIs(signedInContext()));
+    renderApp('/not-a-route');
+
+    expect(await screen.findByRole('heading', { name: 'That page does not exist', level: 1 })).toBeInTheDocument();
+    const main = screen.getByRole('main');
+    expect(within(main).getByRole('link', { name: 'Your access' })).toHaveAttribute('href', '/identity');
+    expect(within(main).queryByRole('link', { name: 'Sign in' })).not.toBeInTheDocument();
+  });
+
   it('offers sign in and registration to a visitor', async () => {
     server.use(antiforgery(), contextIs(null));
     renderApp();
@@ -97,5 +126,41 @@ describe('application shell', () => {
     // navigation rather than the presence of the signed-out one, because the sign-in page is composed without the
     // application shell: there is no navigation on it to name either way.
     expect(screen.queryByRole('link', { name: 'Log out' })).not.toBeInTheDocument();
+  });
+
+  it('redirects a mid-flow lost session to sign in with its exact return URL and reason', async () => {
+    server.use(
+      antiforgery(),
+      contextIs(signedInContext()),
+      http.post('/api/identity/credentials/reauthenticate', () => problem(401, 'invalid_session')),
+    );
+    renderApp('/identity/password?panel=security');
+    await userEvent.type(await screen.findByLabelText('Current password'), 'Testing1234!');
+    await userEvent.type(screen.getByLabelText('New password'), 'Replaced5678!');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Change it' }));
+
+    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
+    expect(screen.getByTestId('return-url')).toHaveTextContent('/identity/password?panel=security');
+    expect(screen.getByTestId('context-problem')).toHaveTextContent('invalid_session');
+    expect(screen.getByRole('alert')).toHaveTextContent('Your session is no longer valid. Sign in again.');
+    expect(screen.queryByRole('link', { name: 'Log out' })).not.toBeInTheDocument();
+  });
+
+  it('keeps the authenticated shell and shows the exact refusal when sign out fails', async () => {
+    server.use(
+      antiforgery(),
+      contextIs(signedInContext()),
+      http.delete('/api/identity/sessions/current', () => problem(409, 'session_concurrency_conflict')),
+    );
+    renderApp();
+    await screen.findByRole('link', { name: 'Organizations' });
+
+    await userEvent.click(screen.getByRole('link', { name: 'Log out' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Something changed while you were working. Try again.');
+    expect(screen.getByRole('link', { name: 'Organizations' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Log out' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Sign in' })).not.toBeInTheDocument();
   });
 });

@@ -186,7 +186,8 @@ public sealed class OutboxAdmissionTests
                     scope.ServiceProvider.GetRequiredService<LocalizationSettings>()))],
             new ControlledTimeProvider(Origin),
             sink,
-            admission, TestMetrics.Instance);
+            admission, TestMetrics.Instance,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<OutboxDispatcher>.Instance);
     }
 
     /// <summary>

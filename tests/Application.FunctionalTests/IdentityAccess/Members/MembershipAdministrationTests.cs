@@ -234,15 +234,47 @@ public sealed class MembershipAdministrationTests : TestBase
     }
 
     [Test]
-    public async Task A_route_naming_another_tenant_is_refused_rather_than_honoured()
+    public async Task Member_and_invitation_read_scope_mismatches_are_native_absence_for_real_and_random_tenants()
     {
         using var scenario = await OrganizationScenario.CreateAsync("members");
         using var elsewhere = await OrganizationScenario.CreateAsync("elsewhere");
 
-        var refused = await scenario.Owner.GetAsync($"/api/tenants/{elsewhere.TenantId.Value}/members");
+        foreach (var tenantId in new[] { elsewhere.TenantId.Value, Guid.NewGuid() })
+        {
+            foreach (var suffix in new[] { "members", "invitations" })
+            {
+                using var refused = await scenario.Owner.GetAsync($"/api/tenants/{tenantId}/{suffix}");
+                refused.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+                var problem = await IdentityHttpHarness.ReadProblemAsync(refused);
+                problem.GetProperty("status").GetInt32().ShouldBe((int)HttpStatusCode.NotFound);
+                problem.GetProperty("code").GetString().ShouldBe("not_found");
+                problem.GetProperty("detail").GetString().ShouldBe("That member is not available.");
+            }
+        }
+    }
 
-        refused.StatusCode.ShouldBe(HttpStatusCode.BadRequest,
-            "only the session decides which organization the caller is in");
+    [Test]
+    public async Task A_membership_mutation_route_tenant_mismatch_keeps_the_existing_operation_refusal()
+    {
+        using var scenario = await OrganizationScenario.CreateAsync("members");
+        using var elsewhere = await OrganizationScenario.CreateAsync("elsewhere");
+        var membershipId = await scenario.AddQuietMemberAsync("clerk", Permissions.MembersRead);
+        var before = await ReadMemberAsync(scenario, membershipId);
+        await scenario.Owner.ProveAsync(ProofActions.MemberRoleChange);
+
+        using var response = await scenario.Owner.SendAsync(
+            HttpMethod.Put,
+            $"/api/tenants/{elsewhere.TenantId.Value}/members/{membershipId}/roles",
+            new { roleIds = Array.Empty<Guid>(), version = before.Version });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        var problem = await IdentityHttpHarness.ReadProblemAsync(response);
+        problem.GetProperty("status").GetInt32().ShouldBe((int)HttpStatusCode.BadRequest);
+        problem.GetProperty("code").GetString().ShouldBe("invalid_membership_operation");
+        problem.TryGetProperty("errors", out _).ShouldBeFalse();
+        var after = await ReadMemberAsync(scenario, membershipId);
+        after.RoleIds.ShouldBe(before.RoleIds);
+        after.Version.ShouldBe(before.Version);
     }
 
     private static async Task<Guid> CreateRoleAsync(OrganizationScenario scenario, string name, params string[] codes)

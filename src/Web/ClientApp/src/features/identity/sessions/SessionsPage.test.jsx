@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { MemoryRouter } from 'react-router-dom';
@@ -76,8 +76,48 @@ describe('sessions page', () => {
     await userEvent.type(await screen.findByLabelText('Password'), 'wrong');
     await userEvent.click(screen.getByRole('button', { name: 'End this device' }));
 
-    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    const row = screen.getByRole('button', { name: 'End this device' }).closest('li');
+    const alert = await within(row).findByRole('alert');
+    expect(alert).toHaveFocus();
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
     expect(calls).toHaveLength(0);
+  });
+
+  it('keeps a revoke-all refusal with the header action that caused it', async () => {
+    server.use(antiforgery(), contextIs(signedInContext()), credentialsAre(true));
+    server.use(http.get('/api/identity/sessions', () => HttpResponse.json(sessions())));
+    server.use(http.post('/api/identity/credentials/reauthenticate', () => new HttpResponse(null, { status: 204 })));
+    server.use(http.delete('/api/identity/sessions/others', () => problem(404, 'session_not_found')));
+
+    renderPage();
+    await userEvent.type(await screen.findByLabelText('Password'), 'Testing1234!');
+    const endAll = screen.getByRole('button', { name: 'End every other device' });
+    await userEvent.click(endAll);
+
+    const actionRegion = endAll.parentElement;
+    const alert = await within(actionRegion).findByRole('alert');
+    expect(alert).toHaveFocus();
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+  });
+
+  it('replaces the initial device wait with a retryable error and retries in the list region', async () => {
+    let attempts = 0;
+    server.use(antiforgery(), contextIs(signedInContext()), credentialsAre(true));
+    server.use(http.get('/api/identity/sessions', () => {
+      attempts += 1;
+      return attempts === 1
+        ? problem(500, 'internal_server_error', { traceId: 'trace-sessions' })
+        : HttpResponse.json(sessions());
+    }));
+
+    renderPage();
+
+    expect(await screen.findByText('Reference: trace-sessions')).toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+
+    expect(await screen.findByText('Android')).toBeInTheDocument();
+    expect(attempts).toBe(2);
   });
 
   /**

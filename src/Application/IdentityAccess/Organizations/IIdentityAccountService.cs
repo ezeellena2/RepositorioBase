@@ -11,7 +11,13 @@ public sealed record IdentityAccount(Guid Id, string Email, IdentityAccountStatu
 {
     public bool IsActive => Status == IdentityAccountStatus.Active;
 }
-public sealed record IdentityAccountValidationResult(bool IsValid);
+public sealed record IdentityAccountValidationResult(bool IsValid, IReadOnlyList<string> Errors)
+{
+    public IdentityAccountValidationResult(bool isValid)
+        : this(isValid, Array.Empty<string>())
+    {
+    }
+}
 public sealed record IdentityAccountCreationResult(IdentityAccount? Account, bool IsValidationFailure);
 
 /// <summary>Identity boundary used by registration without exposing ASP.NET Identity to the application layer.</summary>

@@ -1,6 +1,7 @@
 using CleanArchitecture.Application.Common.Models;
 using CleanArchitecture.Application.Common.Security;
 using CleanArchitecture.Application.IdentityAccess.Authorization;
+using CleanArchitecture.Domain.IdentityAccess.Invitations;
 using CleanArchitecture.Domain.IdentityAccess.Tenants;
 
 namespace CleanArchitecture.Application.IdentityAccess.Invitations.InviteMember;
@@ -11,6 +12,39 @@ namespace CleanArchitecture.Application.IdentityAccess.Invitations.InviteMember;
 [Authorize(Permissions.MembersInvite, true)]
 public sealed record InviteMemberCommand(TenantId TenantId, string Email, IReadOnlyList<Guid> RoleIds)
     : IRequest<Result<IssuedInvitation>>;
+
+public sealed class InviteMemberCommandValidator : AbstractValidator<InviteMemberCommand>
+{
+    public InviteMemberCommandValidator()
+    {
+        RuleFor(command => command.Email)
+            .Cascade(CascadeMode.Stop)
+            .NotEmpty().WithMessage("Enter an email address.")
+            .MaximumLength(256).WithMessage("The email address must be 256 characters or fewer.")
+            .Must(HasSupportedEmailShape).WithMessage("Enter an email address.")
+            .OverridePropertyName("email");
+
+        RuleFor(command => command.RoleIds)
+            .Cascade(CascadeMode.Stop)
+            .NotEmpty().WithMessage("Choose at least one role.")
+            .Must(roleIds => roleIds is not null && roleIds.All(roleId => roleId != Guid.Empty))
+            .WithMessage("Choose valid roles.")
+            .OverridePropertyName("roleIds");
+    }
+
+    private static bool HasSupportedEmailShape(string email)
+    {
+        try
+        {
+            _ = Invitation.Canonicalize(email);
+            return true;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+    }
+}
 
 /// <summary>
 /// Deliberately carries no token. The usable credential is minted for the recipient and reaches them through the

@@ -4,6 +4,7 @@ using CleanArchitecture.Application.IdentityAccess.Lifecycle;
 using CleanArchitecture.Domain.IdentityAccess.Outbox;
 using CleanArchitecture.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Npgsql;
 
 namespace CleanArchitecture.Infrastructure.Outbox;
@@ -16,7 +17,8 @@ public sealed class OutboxDispatcher(
     TimeProvider timeProvider,
     IIdentityEmailSender sender,
     IRecoveryAdmission admission,
-    IdentityAccess.Observability.IdentityAccessMetrics metrics)
+    IdentityAccess.Observability.IdentityAccessMetrics metrics,
+    ILogger<OutboxDispatcher> logger)
 {
     private static readonly TimeSpan LeaseDuration = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan ReceiptRetention = TimeSpan.FromHours(24);
@@ -60,7 +62,7 @@ public sealed class OutboxDispatcher(
                 "FirstAttemptAt" = COALESCE(message."FirstAttemptAt", @now),
                 "AttemptCount" = LEAST(message."AttemptCount" + 1, 8)
             FROM due WHERE message."Id" = due."Id"
-            RETURNING message."Id", message."Generation", due."AttemptCount" >= 8;
+            RETURNING message."Id", message."Generation", due."AttemptCount" >= 8, message."TraceId";
             """;
         var owner = Guid.NewGuid().ToString("N");
         var connection = (NpgsqlConnection)context.Database.GetDbConnection();
@@ -74,7 +76,12 @@ public sealed class OutboxDispatcher(
             command.Parameters.AddWithValue("now", now);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             return await reader.ReadAsync(cancellationToken)
-                ? new Claim(reader.GetGuid(0), owner, reader.GetInt32(1), reader.GetBoolean(2))
+                ? new Claim(
+                    reader.GetGuid(0),
+                    owner,
+                    reader.GetInt32(1),
+                    reader.GetBoolean(2),
+                    reader.IsDBNull(3) ? null : reader.GetString(3))
                 : null;
         }
         finally { if (opened) await connection.CloseAsync(); }
@@ -190,6 +197,14 @@ public sealed class OutboxDispatcher(
             await context.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
 
+            if (status == OutboxMessageStatus.Abandoned)
+            {
+                logger.LogWarning(
+                    "Outbox message abandoned; FailureCode {FailureCode}; TraceId {TraceId}",
+                    code,
+                    claim.TraceId ?? "none");
+            }
+
             // One funnel for every outcome, so a reason nobody thought to count cannot slip past. The codes are
             // the closed set above; a provider's own message never gets here, and never should.
             metrics.RecordSettlement(status.ToString(), code);
@@ -198,7 +213,7 @@ public sealed class OutboxDispatcher(
         finally { if (secret is not null) context.Entry(secret).State = EntityState.Detached; }
     }
 
-    private sealed record Claim(Guid Id, string Owner, int Generation, bool Exhausted);
+    private sealed record Claim(Guid Id, string Owner, int Generation, bool Exhausted, string? TraceId);
 }
 
 public interface IOutboxDeliveryHandler

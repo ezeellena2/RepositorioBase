@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { MemoryRouter } from 'react-router-dom';
@@ -23,6 +23,12 @@ const recordedProfile = (overrides = {}) => ({
   updatedAt: '2026-09-06T12:00:00+00:00',
   ...overrides,
 });
+
+const deferred = () => {
+  let resolve;
+  const promise = new Promise((onResolve) => { resolve = onResolve; });
+  return { promise, resolve };
+};
 
 /**
  * A person's own context in the browser: the choice that precedes it, the signup that stays neutral, and the
@@ -62,6 +68,75 @@ describe('personal pages', () => {
       password: 'Testing1234!',
     });
     expect(await screen.findByRole('status')).toHaveTextContent(/we have sent it a confirmation link/i);
+  });
+
+  it('blocks client-invalid signup with exact field errors and focuses the first field', async () => {
+    const submissions = [];
+    server.use(antiforgery(), contextIs(null));
+    server.use(http.post('/api/identity/personal/register', async ({ request }) => {
+      submissions.push(await request.json());
+      return new HttpResponse(null, { status: 202 });
+    }));
+
+    renderPage(<PersonalRegisterPage />);
+    await userEvent.click(screen.getByRole('button', { name: 'Register' }));
+
+    const fullName = screen.getByLabelText('Full name');
+    expect(submissions).toHaveLength(0);
+    expect(fullName).toHaveFocus();
+    expect(fullName).toHaveAttribute('aria-invalid', 'true');
+    expect(fullName).toHaveAccessibleDescription('A full name is required.');
+    expect(screen.getByLabelText('Display name')).toHaveAccessibleDescription('A display name is required.');
+    expect(screen.getByLabelText('DNI')).toHaveAccessibleDescription('A document number is required.');
+    expect(screen.getByLabelText('Email')).toHaveAccessibleDescription('Enter an email address.');
+    expect(screen.getByLabelText('Password')).toHaveAccessibleDescription('A password is required.');
+  });
+
+  it('binds exact signup errors, keeps an unclaimed summary, focuses, and clears one edited field', async () => {
+    server.use(antiforgery(), contextIs(null));
+    server.use(http.post('/api/identity/personal/register', () => problem(400, 'validation_failed', {
+      status: 400,
+      errors: {
+        fullName: ['A full name is required.'],
+        displayName: ['A display name is required.'],
+        documentNumber: ['An Argentine DNI must contain seven or eight digits and may use only digits, dots, hyphens, and whitespace.'],
+        email: ['Enter an email address.'],
+        password: ['Passwords must be at least 12 characters.'],
+        request: ['Registration is temporarily unavailable.'],
+      },
+    })));
+
+    renderPage(<PersonalRegisterPage />);
+    await userEvent.type(screen.getByLabelText('Full name'), 'Jane Doe');
+    await userEvent.type(screen.getByLabelText('Display name'), 'Jane');
+    await userEvent.type(screen.getByLabelText('DNI'), '12.345.678');
+    await userEvent.type(screen.getByLabelText('Email'), 'jane@example.test');
+    await userEvent.type(screen.getByLabelText('Password'), 'Testing1234!');
+    await userEvent.click(screen.getByRole('button', { name: 'Register' }));
+
+    const fullName = await screen.findByLabelText('Full name');
+    const displayName = screen.getByLabelText('Display name');
+    const documentNumber = screen.getByLabelText('DNI');
+    const email = screen.getByLabelText('Email');
+    const passwordField = screen.getByLabelText('Password');
+    await waitFor(() => expect(fullName).toHaveFocus());
+    expect(fullName).toHaveAttribute('aria-invalid', 'true');
+    expect(fullName).toHaveAccessibleDescription('A full name is required.');
+    expect(displayName).toHaveAccessibleDescription('A display name is required.');
+    expect(documentNumber).toHaveAccessibleDescription('An Argentine DNI must contain seven or eight digits and may use only digits, dots, hyphens, and whitespace.');
+    expect(email).toHaveAccessibleDescription('Enter an email address.');
+    expect(passwordField).toHaveAccessibleDescription('Passwords must be at least 12 characters.');
+
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent('Registration is temporarily unavailable.');
+    expect(alert).not.toHaveTextContent('request:');
+    expect(alert).not.toHaveTextContent('A full name is required.');
+    expect(alert).not.toHaveTextContent('Passwords must be at least 12 characters.');
+
+    await userEvent.type(displayName, 'x');
+    expect(displayName).not.toHaveAttribute('aria-invalid', 'true');
+    expect(displayName).not.toHaveAccessibleDescription('A display name is required.');
+    expect(documentNumber).toHaveAttribute('aria-invalid', 'true');
   });
 
   it('never leaves the document or the password in browser storage', async () => {
@@ -142,6 +217,90 @@ describe('personal pages', () => {
     await waitFor(() => expect(screen.getByLabelText('Display name')).toHaveValue('Janie'));
   });
 
+  it('keeps both submitted names and their version after a save refusal', async () => {
+    const edits = [];
+    server.use(antiforgery(), contextIs(signedInContext()));
+    server.use(http.get('/api/identity/profile', () => HttpResponse.json(recordedProfile())));
+    server.use(http.put('/api/identity/profile', async ({ request }) => {
+      edits.push(await request.json());
+      return problem(409, 'personal_profile_concurrency_conflict');
+    }));
+
+    renderPage(<PersonalProfilePage />);
+    const fullName = await screen.findByLabelText('Full name');
+    await userEvent.clear(fullName);
+    await userEvent.type(fullName, 'Jane Q. Doe');
+    const displayName = screen.getByLabelText('Display name');
+    await userEvent.clear(displayName);
+    await userEvent.type(displayName, 'Janie');
+    const save = screen.getByRole('button', { name: 'Save' });
+    const profileForm = save.closest('form');
+    await userEvent.click(save);
+
+    expect(await within(profileForm).findByRole('alert')).toHaveTextContent(/changed while you were editing/i);
+    expect(fullName).toHaveValue('Jane Q. Doe');
+    expect(displayName).toHaveValue('Janie');
+    expect(edits).toEqual([{ fullName: 'Jane Q. Doe', displayName: 'Janie', version: '42' }]);
+  });
+
+  it('adopts normalized saved fields without erasing a newer in-flight draft', async () => {
+    const save = deferred();
+    const edits = [];
+    server.use(antiforgery(), contextIs(signedInContext()));
+    server.use(http.get('/api/identity/profile', () => HttpResponse.json(recordedProfile())));
+    server.use(http.put('/api/identity/profile', async ({ request }) => {
+      edits.push(await request.json());
+      await save.promise;
+      return HttpResponse.json(recordedProfile({ fullName: 'Jane Q. Doe', displayName: 'JANIE', version: '43' }));
+    }));
+
+    renderPage(<PersonalProfilePage />);
+    const fullName = await screen.findByLabelText('Full name');
+    await userEvent.clear(fullName);
+    await userEvent.type(fullName, 'Jane Q Doe');
+    const displayName = screen.getByLabelText('Display name');
+    await userEvent.clear(displayName);
+    await userEvent.type(displayName, 'Janie');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(edits).toHaveLength(1));
+
+    await userEvent.clear(displayName);
+    await userEvent.type(displayName, 'Janet');
+    save.resolve();
+
+    await waitFor(() => expect(fullName).toHaveValue('Jane Q. Doe'));
+    expect(displayName).toHaveValue('Janet');
+    expect(edits[0]).toEqual({ fullName: 'Jane Q Doe', displayName: 'Janie', version: '42' });
+  });
+
+  it('binds editable profile fields, focuses in form order, and leaves version unclaimed', async () => {
+    server.use(antiforgery(), contextIs(signedInContext()));
+    server.use(http.get('/api/identity/profile', () => HttpResponse.json(recordedProfile())));
+    server.use(http.put('/api/identity/profile', () => problem(400, 'validation_failed', {
+      status: 400,
+      errors: {
+        fullName: ['A full name is required.'],
+        displayName: ['A display name is required.'],
+        version: ['The profile version must be an unsigned decimal token.'],
+      },
+    })));
+
+    renderPage(<PersonalProfilePage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Save' }));
+
+    const fullName = screen.getByLabelText('Full name');
+    await waitFor(() => expect(fullName).toHaveFocus());
+    expect(fullName).toHaveAccessibleDescription('A full name is required.');
+    expect(screen.getByLabelText('Display name')).toHaveAccessibleDescription('A display name is required.');
+    const profileForm = screen.getByRole('button', { name: 'Save' }).closest('form');
+    const alert = within(profileForm).getByRole('alert');
+    expect(alert).toHaveTextContent('The profile version must be an unsigned decimal token.');
+    expect(alert).not.toHaveTextContent('A full name is required.');
+
+    await userEvent.type(fullName, 'x');
+    expect(fullName).not.toHaveAttribute('aria-invalid', 'true');
+  });
+
   it('tells an identity with no personal context how to make one instead of showing an error', async () => {
     server.use(antiforgery(), contextIs(signedInContext()));
     server.use(http.get('/api/identity/profile', () => problem(404, 'personal_profile_not_found')));
@@ -178,10 +337,46 @@ describe('personal pages', () => {
     expect(Object.keys(claims[0])).not.toContain('password');
   });
 
-  it('says what was refused when a document already belongs to somebody else', async () => {
+  it('binds add-personal field errors and focuses the first field in form order', async () => {
     server.use(antiforgery(), contextIs(signedInContext()));
     server.use(http.get('/api/identity/profile', () => problem(404, 'personal_profile_not_found')));
-    server.use(http.post('/api/identity/personal', () => problem(409, 'personal_context_conflict')));
+    server.use(http.post('/api/identity/personal', () => problem(400, 'validation_failed', {
+      status: 400,
+      errors: {
+        fullName: ['A full name is required.'],
+        displayName: ['A display name is required.'],
+        documentNumber: ['An Argentine DNI must contain seven or eight digits and may use only digits, dots, hyphens, and whitespace.'],
+      },
+    })));
+
+    renderPage(<PersonalProfilePage />);
+    await screen.findByRole('status');
+    await userEvent.type(screen.getByLabelText('Full name'), 'x');
+    await userEvent.type(screen.getByLabelText('Display name'), 'Jane');
+    await userEvent.type(screen.getByLabelText('DNI'), '30111222');
+    await userEvent.click(screen.getByRole('button', { name: /add my personal account/i }));
+
+    const fullName = screen.getByLabelText('Full name');
+    await waitFor(() => expect(fullName).toHaveFocus());
+    expect(fullName).toHaveAccessibleDescription('A full name is required.');
+    expect(screen.getByLabelText('Display name')).toHaveAccessibleDescription('A display name is required.');
+    expect(screen.getByLabelText('DNI')).toHaveAccessibleDescription(
+      'An Argentine DNI must contain seven or eight digits and may use only digits, dots, hyphens, and whitespace.',
+    );
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent('Some of what you sent was not accepted. Check the details and try again.');
+    expect(alert).not.toHaveTextContent('A full name is required.');
+    expect(alert).not.toHaveTextContent('A display name is required.');
+    expect(alert).not.toHaveTextContent('An Argentine DNI');
+
+    await userEvent.type(screen.getByLabelText('Display name'), 'x');
+    expect(screen.getByLabelText('Display name')).not.toHaveAttribute('aria-invalid', 'true');
+  });
+
+  it('reports a personal registration conflict without identifying another account', async () => {
+    server.use(antiforgery(), contextIs(signedInContext()));
+    server.use(http.get('/api/identity/profile', () => problem(404, 'personal_profile_not_found')));
+    server.use(http.post('/api/identity/personal', () => problem(409, 'personal_registration_conflict')));
 
     renderPage(<PersonalProfilePage />);
     await screen.findByRole('status');
@@ -190,6 +385,8 @@ describe('personal pages', () => {
     await userEvent.type(screen.getByLabelText('DNI'), '30111222');
     await userEvent.click(screen.getByRole('button', { name: /add my personal account/i }));
 
-    expect(await screen.findByRole('alert')).toBeVisible();
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Your personal account could not be created. If this address is confirmed, sign in and try again.',
+    );
   });
 });

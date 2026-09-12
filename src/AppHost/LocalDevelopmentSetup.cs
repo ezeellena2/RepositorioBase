@@ -108,7 +108,7 @@ internal static class LocalDevelopmentSetup
         {
             // The run still works: everything was set in memory above. Only persistence across runs is lost, and
             // saying so is more useful than refusing to start a development environment over a file permission.
-            Console.WriteLine($"Local development settings could not be saved to user secrets ({failure.Message}). They apply to this run only.");
+            Console.WriteLine($"Local development settings could not be saved to user secrets ({failure.GetType().Name}). They apply to this run only.");
         }
     }
 

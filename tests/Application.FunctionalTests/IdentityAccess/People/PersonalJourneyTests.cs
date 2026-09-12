@@ -1,3 +1,5 @@
+using System.Net;
+using System.Text.Json;
 using CleanArchitecture.Application.FunctionalTests.Infrastructure;
 using CleanArchitecture.Application.IdentityAccess.Authorization;
 using CleanArchitecture.Application.IdentityAccess.Context.SelectTenant;
@@ -7,6 +9,7 @@ using CleanArchitecture.Application.IdentityAccess.People.Profile;
 using CleanArchitecture.Application.IdentityAccess.People.RegisterPersonal;
 using CleanArchitecture.Domain.IdentityAccess.Auditing;
 using CleanArchitecture.Domain.IdentityAccess.Memberships;
+using CleanArchitecture.Domain.IdentityAccess.Organizations;
 using CleanArchitecture.Domain.IdentityAccess.Outbox;
 using CleanArchitecture.Domain.IdentityAccess.People;
 using CleanArchitecture.Domain.IdentityAccess.Tenants;
@@ -82,6 +85,130 @@ public sealed class PersonalJourneyTests : TestBase
     }
 
     [Test]
+    public async Task An_expired_personal_confirmation_expires_its_intent_and_remains_an_invalid_confirmation_on_replay()
+    {
+        (await TestApp.SendAsync(new RegisterPersonalCommand(
+            "expired-personal@example.test",
+            Password,
+            "Jane Doe",
+            "Jane",
+            "12345678"))).IsSuccess.ShouldBeTrue();
+        var token = TestApp.GetRegistrationRawToken();
+        await TestApp.ExpireConfirmationSecretAsync();
+
+        var first = await TestApp.SendAsync(new ConfirmEmailCommand(token));
+        var replay = await TestApp.SendAsync(new ConfirmEmailCommand(token));
+
+        first.IsFailure.ShouldBeTrue();
+        first.Error!.Code.ShouldBe("invalid_confirmation");
+        replay.IsFailure.ShouldBeTrue();
+        replay.Error!.Code.ShouldBe("invalid_confirmation");
+        (await TestApp.ListAsync<OutboxSecret>()).Single().Status.ShouldBe(OutboxSecretStatus.Expired);
+        (await TestApp.ListAsync<PendingPersonalIntent>()).Single().Outcome.ShouldBe(PendingRegistrationIntentOutcome.Expired);
+        (await TestApp.CountAsync<ApplicationUser>()).ShouldBe(0);
+        (await TestApp.CountAsync<Tenant>()).ShouldBe(0);
+        (await TestApp.CountAsync<TenantMembership>()).ShouldBe(0);
+        (await TestApp.CountAsync<PersonalTenantOwnership>()).ShouldBe(0);
+        (await TestApp.CountAsync<PersonProfile>()).ShouldBe(0);
+        (await TestApp.CountAsync<IdentityDocument>()).ShouldBe(0);
+        (await TestApp.CountAsync<IdentityDocumentFingerprint>()).ShouldBe(0);
+        (await TestApp.ListAsync<AuditEvent>()).ShouldNotContain(item => item.EventType == "identity.confirmed");
+    }
+
+    [Test]
+    public async Task A_failed_personal_confirmation_is_invalid_over_http_and_preserves_the_pending_intent()
+    {
+        (await TestApp.SendAsync(new RegisterPersonalCommand(
+            "failed-personal@example.test",
+            Password,
+            "Jane Doe",
+            "Jane",
+            "12345678"))).IsSuccess.ShouldBeTrue();
+        var token = TestApp.GetRegistrationRawToken();
+        var message = (await TestApp.ListAsync<OutboxMessage>())
+            .Single(item => item.Type == "identity.personal.confirmation.requested");
+        await TestApp.FailConfirmationSecretAsync(message.Id);
+        var before = await ReadPersonalConfirmationStateAsync();
+        before.IntentOutcome.ShouldBeNull("a delivery failure does not settle an unproved personal intent");
+        before.SecretStatus.ShouldBe(OutboxSecretStatus.Failed);
+        before.Users.ShouldBe(0);
+        before.Tenants.ShouldBe(0);
+        before.Memberships.ShouldBe(0);
+        before.Ownerships.ShouldBe(0);
+        before.Profiles.ShouldBe(0);
+        before.Documents.ShouldBe(0);
+        before.Fingerprints.ShouldBe(0);
+
+        var host = $"https://failed-personal-confirmation-{Guid.NewGuid():N}.localhost";
+        var antiforgery = await IdentityHttpHarness.GetAntiforgeryAsync(FunctionalTestSetup.HttpClient, host);
+        using var request = IdentityHttpHarness.JsonRequest(
+            HttpMethod.Post,
+            $"{host}/api/identity/confirm-email",
+            new { token },
+            antiforgery);
+        using var response = await FunctionalTestSetup.HttpClient.SendAsync(request);
+
+        var problem = await IdentityHttpHarness.AssertProblemAsync(
+            response,
+            HttpStatusCode.BadRequest,
+            "invalid_confirmation");
+        problem.GetProperty("instance").GetString().ShouldBe("/api/identity/confirm-email");
+        (await ReadPersonalConfirmationStateAsync()).ShouldBe(before,
+            "a pre-existing Failed secret must not settle the intent or create identity, graph, or audit effects");
+        (await TestApp.ListAsync<AuditEvent>()).ShouldNotContain(item => item.EventType == "identity.confirmed");
+    }
+
+    [Test]
+    public async Task A_conflicted_personal_confirmation_replays_the_recorded_problem_without_duplicate_effects()
+    {
+        const string email = "conflicted-personal@example.test";
+        const string documentNumber = "12345678";
+        var host = $"https://personal-conflict-{Guid.NewGuid():N}.localhost";
+
+        (await TestApp.SendAsync(new RegisterPersonalCommand(email, "Different1234!", "Jane Doe", "Jane", documentNumber))).IsSuccess.ShouldBeTrue();
+        var token = TestApp.GetRegistrationRawToken();
+        await PersonalScenario.SeedConfirmedIdentityAsync(email);
+        var antiforgery = await IdentityHttpHarness.GetAntiforgeryAsync(FunctionalTestSetup.HttpClient, host);
+
+        using var firstRequest = IdentityHttpHarness.JsonRequest(
+            HttpMethod.Post,
+            $"{host}/api/identity/confirm-email",
+            new { token },
+            antiforgery);
+        using var firstResponse = await FunctionalTestSetup.HttpClient.SendAsync(firstRequest);
+        var firstProblem = await AssertPersonalRegistrationConflictAsync(firstResponse, email, documentNumber, token);
+        var durableAfterFirst = await ReadPersonalConfirmationStateAsync();
+        durableAfterFirst.ShouldBe(new PersonalConfirmationState(
+            Users: 1,
+            Submissions: 1,
+            Intents: 1,
+            IntentOutcome: PendingRegistrationIntentOutcome.Conflicted,
+            Messages: 1,
+            Secrets: 1,
+            SecretStatus: OutboxSecretStatus.Consumed,
+            Audits: 2,
+            Tenants: 0,
+            Memberships: 0,
+            Ownerships: 0,
+            Profiles: 0,
+            Documents: 0,
+            Fingerprints: 0));
+
+        using var replayRequest = IdentityHttpHarness.JsonRequest(
+            HttpMethod.Post,
+            $"{host}/api/identity/confirm-email",
+            new { token },
+            antiforgery);
+        using var replayResponse = await FunctionalTestSetup.HttpClient.SendAsync(replayRequest);
+        var replayProblem = await AssertPersonalRegistrationConflictAsync(replayResponse, email, documentNumber, token);
+
+        replayProblem.GetProperty("detail").GetString().ShouldBe(firstProblem.GetProperty("detail").GetString(),
+            "the replay must return the same collapsed refusal the first spend recorded");
+        (await ReadPersonalConfirmationStateAsync()).ShouldBe(durableAfterFirst,
+            "a replay must not create another identity graph, message, secret or audit effect");
+    }
+
+    [Test]
     public async Task An_already_registered_identity_adds_personal_without_a_second_credential()
     {
         var identityId = await PersonalScenario.SeedConfirmedIdentityAsync("member@example.test");
@@ -100,6 +227,72 @@ public sealed class PersonalJourneyTests : TestBase
         tenants.ShouldContain(tenant => tenant.Id == organization);
         (await TestApp.ListAsync<PersonProfile>()).Single().IdentityId.ShouldBe(identityId);
         (await TestApp.ListAsync<PersonalTenantOwnership>()).Single().IdentityId.ShouldBe(identityId);
+    }
+
+    [Test]
+    public async Task Signed_in_personal_creation_refuses_each_invalid_field_with_exact_validation_and_no_effects()
+    {
+        var identityId = await PersonalScenario.SeedConfirmedIdentityAsync("invalid-personal@example.test");
+        await PersonalScenario.RunWithSessionAsync(identityId);
+        TestApp.SetHttpAuthorizationGranted(true);
+        var host = $"https://personal-validation-{Guid.NewGuid():N}.localhost";
+        var antiforgery = await IdentityHttpHarness.GetAntiforgeryAsync(FunctionalTestSetup.HttpClient, host);
+
+        var before = new[] {
+            await TestApp.CountAsync<Tenant>(),
+            await TestApp.CountAsync<PersonProfile>(),
+            await TestApp.CountAsync<IdentityDocument>()
+        };
+
+        await AssertFieldValidationAsync(
+            await SendPersonalJsonAsync(HttpMethod.Post, host, "/api/identity/personal", new
+            {
+                fullName = " ", displayName = "Jane", documentNumber = "12345678"
+            }, antiforgery),
+            "/api/identity/personal", "fullName", "A full name is required.", "invalid-personal-value");
+        await AssertFieldValidationAsync(
+            await SendPersonalJsonAsync(HttpMethod.Post, host, "/api/identity/personal", new
+            {
+                fullName = new string('f', 201), displayName = "Jane", documentNumber = "12345678"
+            }, antiforgery),
+            "/api/identity/personal", "fullName", "The full name must be 200 characters or fewer.", new string('f', 201));
+        await AssertFieldValidationAsync(
+            await SendPersonalJsonAsync(HttpMethod.Post, host, "/api/identity/personal", new
+            {
+                fullName = "Jane Doe", displayName = " ", documentNumber = "12345678"
+            }, antiforgery),
+            "/api/identity/personal", "displayName", "A display name is required.");
+        await AssertFieldValidationAsync(
+            await SendPersonalJsonAsync(HttpMethod.Post, host, "/api/identity/personal", new
+            {
+                fullName = "Jane Doe", displayName = new string('d', 61), documentNumber = "12345678"
+            }, antiforgery),
+            "/api/identity/personal", "displayName", "The display name must be 60 characters or fewer.", new string('d', 61));
+        await AssertFieldValidationAsync(
+            await SendPersonalJsonAsync(HttpMethod.Post, host, "/api/identity/personal", new
+            {
+                fullName = "Jane Doe", displayName = "Jane", documentNumber = " "
+            }, antiforgery),
+            "/api/identity/personal", "documentNumber", "A document number is required.");
+        await AssertFieldValidationAsync(
+            await SendPersonalJsonAsync(HttpMethod.Post, host, "/api/identity/personal", new
+            {
+                fullName = "Jane Doe", displayName = "Jane", documentNumber = new string('1', 33)
+            }, antiforgery),
+            "/api/identity/personal", "documentNumber", "The document number must be 32 characters or fewer.", new string('1', 33));
+        await AssertFieldValidationAsync(
+            await SendPersonalJsonAsync(HttpMethod.Post, host, "/api/identity/personal", new
+            {
+                fullName = "Jane Doe", displayName = "Jane", documentNumber = "12x"
+            }, antiforgery),
+            "/api/identity/personal", "documentNumber",
+            "An Argentine DNI must contain seven or eight digits and may use only digits, dots, hyphens, and whitespace.", "12x");
+
+        new[] {
+            await TestApp.CountAsync<Tenant>(),
+            await TestApp.CountAsync<PersonProfile>(),
+            await TestApp.CountAsync<IdentityDocument>()
+        }.ShouldBe(before, "validation must run before any personal-context effect");
     }
 
     [Test]
@@ -204,6 +397,89 @@ public sealed class PersonalJourneyTests : TestBase
     }
 
     [Test]
+    public async Task Profile_update_separates_malformed_input_stale_versions_and_unknown_members()
+    {
+        var identityId = await PersonalScenario.SeedConfirmedIdentityAsync("profile-validation@example.test");
+        await PersonalScenario.RunWithSessionAsync(identityId);
+        TestApp.SetHttpAuthorizationGranted(true);
+        (await TestApp.SendAsync(new CreatePersonalContextCommand("Jane Doe", "Jane", "12345678"))).IsSuccess.ShouldBeTrue();
+        var original = (await TestApp.SendAsync(new GetPersonalProfileQuery())).Value!;
+        var host = $"https://profile-validation-{Guid.NewGuid():N}.localhost";
+        var antiforgery = await IdentityHttpHarness.GetAntiforgeryAsync(FunctionalTestSetup.HttpClient, host);
+
+        await AssertFieldValidationAsync(
+            await SendPersonalJsonAsync(HttpMethod.Put, host, "/api/identity/profile", new
+            {
+                fullName = " ", displayName = "Jane", version = original.Version
+            }, antiforgery),
+            "/api/identity/profile", "fullName", "A full name is required.", "forbidden-full-name");
+        await AssertFieldValidationAsync(
+            await SendPersonalJsonAsync(HttpMethod.Put, host, "/api/identity/profile", new
+            {
+                fullName = new string('f', 201), displayName = "Jane", version = original.Version
+            }, antiforgery),
+            "/api/identity/profile", "fullName", "The full name must be 200 characters or fewer.", new string('f', 201));
+        await AssertFieldValidationAsync(
+            await SendPersonalJsonAsync(HttpMethod.Put, host, "/api/identity/profile", new
+            {
+                fullName = "Jane Doe", displayName = " ", version = original.Version
+            }, antiforgery),
+            "/api/identity/profile", "displayName", "A display name is required.");
+        await AssertFieldValidationAsync(
+            await SendPersonalJsonAsync(HttpMethod.Put, host, "/api/identity/profile", new
+            {
+                fullName = "Jane Doe", displayName = new string('d', 61), version = original.Version
+            }, antiforgery),
+            "/api/identity/profile", "displayName", "The display name must be 60 characters or fewer.", new string('d', 61));
+        await AssertFieldValidationAsync(
+            await SendPersonalJsonAsync(HttpMethod.Put, host, "/api/identity/profile", new
+            {
+                fullName = "Jane Doe", displayName = "Jane", version = " "
+            }, antiforgery),
+            "/api/identity/profile", "version", "A profile version is required.");
+        await AssertFieldValidationAsync(
+            await SendPersonalJsonAsync(HttpMethod.Put, host, "/api/identity/profile", new
+            {
+                fullName = "Jane Doe", displayName = "Jane", version = "01"
+            }, antiforgery),
+            "/api/identity/profile", "version", "The profile version must be an unsigned decimal token.", "01");
+
+        await AssertBindingValidationAsync(
+            await SendPersonalJsonAsync(HttpMethod.Put, host, "/api/identity/profile", new
+            {
+                fullName = 42, displayName = "binding-profile-sentinel", version = original.Version
+            }, antiforgery),
+            "/api/identity/profile", "binding-profile-sentinel");
+
+        var moved = await TestApp.SendAsync(new UpdatePersonalProfileCommand("Jane Q. Doe", "Janie", original.Version));
+        moved.IsSuccess.ShouldBeTrue();
+        using var stale = await SendPersonalJsonAsync(HttpMethod.Put, host, "/api/identity/profile", new
+        {
+            fullName = "Someone Else", displayName = "Else", version = original.Version
+        }, antiforgery);
+        stale.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        (await IdentityHttpHarness.ReadProblemAsync(stale)).GetProperty("code").GetString()
+            .ShouldBe("personal_profile_concurrency_conflict");
+
+        using var unknown = await SendPersonalJsonAsync(HttpMethod.Put, host, "/api/identity/profile", new Dictionary<string, object?>
+        {
+            ["fullName"] = "Jane Q. Doe",
+            ["displayName"] = "Janie",
+            ["version"] = moved.Value!.Version,
+            ["zzzUnknown"] = "never-echo-this-value",
+            ["aaaUnknown"] = "also-never-echo-this-value"
+        }, antiforgery);
+        unknown.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        var raw = await unknown.Content.ReadAsStringAsync();
+        var unknownProblem = JsonDocument.Parse(raw).RootElement;
+        unknownProblem.GetProperty("code").GetString().ShouldBe("profile_field_not_editable");
+        unknownProblem.GetProperty("detail").GetString().ShouldBe("The member 'aaaUnknown' cannot be edited through this request.");
+        raw.ShouldNotContain("never-echo-this-value");
+        raw.ShouldNotContain("also-never-echo-this-value");
+        (await TestApp.SendAsync(new GetPersonalProfileQuery())).Value!.FullName.ShouldBe("Jane Q. Doe");
+    }
+
+    [Test]
     public async Task An_identity_with_no_personal_context_is_told_nothing_exists_rather_than_shown_somebody_elses()
     {
         var owner = await PersonalScenario.SeedConfirmedIdentityAsync("owner@example.test");
@@ -282,4 +558,156 @@ public sealed class PersonalJourneyTests : TestBase
         (await TestApp.CountAsync<PersonalTenantOwnership>()).ShouldBe(1);
         (await TestApp.CountAsync<IdentityDocument>()).ShouldBe(1);
     }
+
+    private static async Task<JsonElement> AssertPersonalRegistrationConflictAsync(
+        HttpResponseMessage response,
+        string email,
+        string documentNumber,
+        string token)
+    {
+        response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        var problem = await IdentityHttpHarness.ReadProblemAsync(response);
+        problem.GetProperty("status").GetInt32().ShouldBe((int)HttpStatusCode.Conflict);
+        problem.GetProperty("type").GetString().ShouldBe("about:blank");
+        problem.GetProperty("title").GetString().ShouldBe("Conflict");
+        problem.GetProperty("detail").GetString().ShouldBe("The personal context cannot be created in its current state.");
+        problem.GetProperty("instance").GetString().ShouldBe("/api/identity/confirm-email");
+        problem.GetProperty("code").GetString().ShouldBe("personal_registration_conflict");
+        problem.GetProperty("traceId").GetString().ShouldNotBeNullOrWhiteSpace();
+        problem.TryGetProperty("success", out _).ShouldBeFalse();
+        problem.TryGetProperty("data", out _).ShouldBeFalse();
+        problem.TryGetProperty("error", out _).ShouldBeFalse();
+        problem.TryGetProperty("errors", out _).ShouldBeFalse();
+        var payload = problem.GetRawText();
+        payload.Contains(email, StringComparison.OrdinalIgnoreCase).ShouldBeFalse();
+        payload.Contains(documentNumber, StringComparison.Ordinal).ShouldBeFalse();
+        payload.Contains(token, StringComparison.Ordinal).ShouldBeFalse();
+        return problem;
+    }
+
+    private static async Task<HttpResponseMessage> SendPersonalJsonAsync(
+        HttpMethod method,
+        string host,
+        string path,
+        object body,
+        string antiforgery)
+    {
+        using var request = IdentityHttpHarness.JsonRequest(method, $"{host}{path}", body, antiforgery);
+        return await FunctionalTestSetup.HttpClient.SendAsync(request);
+    }
+
+    private static async Task AssertFieldValidationAsync(
+        HttpResponseMessage response,
+        string instance,
+        string field,
+        string message,
+        params string[] submittedValues)
+    {
+        using (response)
+        {
+            response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+            response.Content.Headers.ContentType!.MediaType.ShouldBe("application/problem+json");
+            var raw = await response.Content.ReadAsStringAsync();
+            using var document = JsonDocument.Parse(raw);
+            var problem = document.RootElement;
+            problem.GetProperty("status").GetInt32().ShouldBe((int)HttpStatusCode.BadRequest);
+            problem.GetProperty("type").GetString().ShouldBe("about:blank");
+            problem.GetProperty("title").GetString().ShouldBe("Bad Request");
+            problem.GetProperty("instance").GetString().ShouldBe(instance);
+            problem.GetProperty("code").GetString().ShouldBe("validation_failed");
+            AssertSafeTraceId(problem);
+            var errors = problem.GetProperty("errors");
+            errors.EnumerateObject().Select(property => property.Name).ShouldBe([field]);
+            errors.GetProperty(field).EnumerateArray().Select(entry => entry.GetString()).ShouldBe([message]);
+            AssertDoesNotEchoSubmittedValuesOutsideTraceId(problem, submittedValues);
+        }
+    }
+
+    private static async Task AssertBindingValidationAsync(
+        HttpResponseMessage response,
+        string instance,
+        params string[] submittedValues)
+    {
+        using (response)
+        {
+            response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+            response.Content.Headers.ContentType!.MediaType.ShouldBe("application/problem+json");
+            var raw = await response.Content.ReadAsStringAsync();
+            using var document = JsonDocument.Parse(raw);
+            var problem = document.RootElement;
+            problem.GetProperty("status").GetInt32().ShouldBe((int)HttpStatusCode.BadRequest);
+            problem.GetProperty("type").GetString().ShouldBe("about:blank");
+            problem.GetProperty("title").GetString().ShouldBe("Bad Request");
+            problem.GetProperty("instance").GetString().ShouldBe(instance);
+            problem.GetProperty("code").GetString().ShouldBe("validation_failed");
+            AssertSafeTraceId(problem);
+            problem.TryGetProperty("errors", out _).ShouldBeFalse("binding failures do not invent application field errors");
+            AssertDoesNotEchoSubmittedValuesOutsideTraceId(problem, submittedValues);
+        }
+    }
+
+    private static void AssertSafeTraceId(JsonElement problem)
+    {
+        var traceId = problem.GetProperty("traceId").GetString();
+        traceId.ShouldNotBeNullOrWhiteSpace();
+        traceId!.ShouldMatch("^[0-9a-f]{32}$");
+    }
+
+    private static void AssertDoesNotEchoSubmittedValuesOutsideTraceId(
+        JsonElement problem,
+        params string[] submittedValues)
+    {
+        foreach (var property in problem.EnumerateObject())
+        {
+            foreach (var value in submittedValues)
+            {
+                property.Name.ShouldNotContain(value);
+            }
+
+            if (property.NameEquals("traceId")) continue;
+
+            var valueJson = property.Value.GetRawText();
+            foreach (var value in submittedValues)
+            {
+                valueJson.ShouldNotContain(value);
+            }
+        }
+    }
+
+    private static async Task<PersonalConfirmationState> ReadPersonalConfirmationStateAsync()
+    {
+        var intent = (await TestApp.ListAsync<PendingPersonalIntent>()).Single();
+        var secret = (await TestApp.ListAsync<OutboxSecret>()).Single();
+        return new PersonalConfirmationState(
+            await TestApp.CountAsync<ApplicationUser>(),
+            await TestApp.CountAsync<RegistrationSubmission>(),
+            await TestApp.CountAsync<PendingPersonalIntent>(),
+            intent.Outcome,
+            await TestApp.CountAsync<OutboxMessage>(),
+            await TestApp.CountAsync<OutboxSecret>(),
+            secret.Status,
+            await TestApp.CountAsync<AuditEvent>(),
+            await TestApp.CountAsync<Tenant>(),
+            await TestApp.CountAsync<TenantMembership>(),
+            await TestApp.CountAsync<PersonalTenantOwnership>(),
+            await TestApp.CountAsync<PersonProfile>(),
+            await TestApp.CountAsync<IdentityDocument>(),
+            await TestApp.CountAsync<IdentityDocumentFingerprint>());
+    }
+
+    private sealed record PersonalConfirmationState(
+        int Users,
+        int Submissions,
+        int Intents,
+        PendingRegistrationIntentOutcome? IntentOutcome,
+        int Messages,
+        int Secrets,
+        OutboxSecretStatus SecretStatus,
+        int Audits,
+        int Tenants,
+        int Memberships,
+        int Ownerships,
+        int Profiles,
+        int Documents,
+        int Fingerprints);
 }

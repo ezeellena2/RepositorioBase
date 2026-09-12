@@ -11,40 +11,14 @@ namespace CleanArchitecture.OutboxWorker;
 /// inside every functional test that boots the application, and would race the very rows those tests assert on.
 /// </para>
 /// </summary>
-public sealed class Worker(IServiceScopeFactory scopeFactory, TimeProvider timeProvider, ILogger<Worker> logger) : BackgroundService
+public sealed class Worker(IServiceScopeFactory scopeFactory, OutboxWorkerRuntime runtime) : BackgroundService
 {
-    /// <summary>
-    /// How long to wait after a pass that found nothing. A pass that delivered something tries again immediately,
-    /// because a backlog is drained rather than metered.
-    /// </summary>
-    private static readonly TimeSpan IdleInterval = TimeSpan.FromSeconds(5);
-
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-    {
-        while (!stoppingToken.IsCancellationRequested)
+    protected override Task ExecuteAsync(CancellationToken stoppingToken) =>
+        runtime.RunAsync(async cancellationToken =>
         {
-            var delivered = 0;
-            try
-            {
-                using var scope = scopeFactory.CreateScope();
-                delivered = await scope.ServiceProvider.GetRequiredService<OutboxDispatcher>().DispatchDueAsync(stoppingToken);
-            }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-            {
-                return;
-            }
-            catch (Exception)
-            {
-                // A failed pass must not end the worker: the messages it did not reach are still due, and their
-                // own attempt counters already govern how often anything is retried. The message identifiers are
-                // deliberately absent here — this log line says the loop stumbled, not what it was carrying.
-                logger.LogError("An outbox dispatch pass failed (outbox_pass_failed).");
-            }
-
-            if (delivered == 0)
-            {
-                await Task.Delay(IdleInterval, timeProvider, stoppingToken);
-            }
-        }
-    }
+            using var scope = scopeFactory.CreateScope();
+            return await scope.ServiceProvider
+                .GetRequiredService<OutboxDispatcher>()
+                .DispatchDueAsync(cancellationToken);
+        }, stoppingToken);
 }

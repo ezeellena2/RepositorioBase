@@ -1,3 +1,4 @@
+using System.Net;
 using CleanArchitecture.Application.FunctionalTests.Infrastructure;
 using CleanArchitecture.Application.IdentityAccess.Authorization;
 using CleanArchitecture.Application.IdentityAccess.Invitations.InviteMember;
@@ -124,16 +125,31 @@ public sealed class RegisterInvitedUserTests : TestBase
         var (_, token) = await IssuedInvitationAsync();
         ResetToAnonymous();
         TestApp.ResetConfirmationTokenHashInvocationCount();
+        var identitiesBefore = await TestApp.CountAsync<ApplicationUser>();
+        var messagesBefore = await TestApp.CountAsync<Domain.IdentityAccess.Outbox.OutboxMessage>();
+        var secretsBefore = await TestApp.CountAsync<Domain.IdentityAccess.Outbox.OutboxSecret>();
 
         var live = await TestApp.SendAsync(new RegisterInvitedUserCommand(token, PolicyViolatingPassword));
         var dead = await TestApp.SendAsync(new RegisterInvitedUserCommand(TestApp.RawTokenAt(9), PolicyViolatingPassword));
 
         live.IsFailure.ShouldBeTrue();
-        live.Error!.Code.ShouldBe("invalid_invitation");
+        live.Error!.Code.ShouldBe("validation_failed");
+        live.Error.ValidationErrors.Keys.ShouldBe(["password"]);
+        live.Error.ValidationErrors["password"].ShouldBe([
+            "Passwords must be at least 12 characters.",
+            "Passwords must have at least one non alphanumeric character.",
+            "Passwords must have at least one digit ('0'-'9').",
+            "Passwords must have at least one uppercase ('A'-'Z')."
+        ]);
+        string.Join(' ', live.Error.ValidationErrors["password"]).ShouldNotContain(PolicyViolatingPassword);
         dead.IsFailure.ShouldBeTrue();
         dead.Error!.Code.ShouldBe(live.Error.Code, "a weak password must not double as a token-validity oracle");
         dead.Error.Category.ShouldBe(live.Error.Category);
+        dead.Error.ValidationErrors["password"].ShouldBe(live.Error.ValidationErrors["password"]);
         TestApp.ConfirmationTokenHashInvocationCount.ShouldBe(0, "a refused password is decided before the token is read at all");
+        (await TestApp.CountAsync<ApplicationUser>()).ShouldBe(identitiesBefore);
+        (await TestApp.CountAsync<Domain.IdentityAccess.Outbox.OutboxMessage>()).ShouldBe(messagesBefore);
+        (await TestApp.CountAsync<Domain.IdentityAccess.Outbox.OutboxSecret>()).ShouldBe(secretsBefore);
         (await InvitationScenario.SingleInvitationAsync()).Status.ShouldBe(InvitationStatus.Pending);
     }
 
@@ -208,6 +224,79 @@ public sealed class RegisterInvitedUserTests : TestBase
         var invitation = await InvitationScenario.SingleInvitationAsync();
         invitation.Status.ShouldBe(InvitationStatus.Pending, "the offer still has to be accepted by the signed-in recipient");
         invitation.AcceptedByIdentityId.ShouldBeNull();
+    }
+
+    [Test]
+    public async Task An_expired_invited_confirmation_is_invalid_and_creates_no_membership_or_activation()
+    {
+        var (email, token) = await IssuedInvitationAsync();
+        var membershipsBefore = await TestApp.CountAsync<TenantMembership>();
+        ResetToAnonymous();
+        (await TestApp.SendAsync(new RegisterInvitedUserCommand(token, ValidPassword))).IsSuccess.ShouldBeTrue();
+        var confirmation = (await TestApp.ListAsync<Domain.IdentityAccess.Outbox.OutboxMessage>())
+            .Single(message => message.Type == "identity.invitation.confirmation.requested");
+        await ExpireConfirmationAsync(confirmation.Id);
+        var confirmationToken = TestApp.RawTokenAt(1);
+
+        var first = await TestApp.SendAsync(new ConfirmEmailCommand(confirmationToken));
+        var replay = await TestApp.SendAsync(new ConfirmEmailCommand(confirmationToken));
+
+        first.IsFailure.ShouldBeTrue();
+        first.Error!.Code.ShouldBe("invalid_confirmation");
+        replay.IsFailure.ShouldBeTrue();
+        replay.Error!.Code.ShouldBe("invalid_confirmation");
+        (await TestApp.ListAsync<ApplicationUser>()).Single(user => user.Email == email).EmailConfirmed.ShouldBeFalse();
+        (await TestApp.CountAsync<TenantMembership>()).ShouldBe(membershipsBefore);
+        (await InvitationScenario.SingleInvitationAsync()).Status.ShouldBe(InvitationStatus.Pending);
+        (await TestApp.ListAsync<Domain.IdentityAccess.Outbox.OutboxSecret>())
+            .Single(secret => secret.OutboxMessageId == confirmation.Id)
+            .Status.ShouldBe(Domain.IdentityAccess.Outbox.OutboxSecretStatus.Expired);
+        (await TestApp.ListAsync<Domain.IdentityAccess.Auditing.AuditEvent>())
+            .ShouldNotContain(item => item.EventType == "identity.confirmed");
+    }
+
+    [Test]
+    public async Task A_failed_invited_confirmation_is_invalid_over_http_and_preserves_the_pending_offer()
+    {
+        var (email, token) = await IssuedInvitationAsync();
+        var membershipsBefore = await TestApp.CountAsync<TenantMembership>();
+        ResetToAnonymous();
+        (await TestApp.SendAsync(new RegisterInvitedUserCommand(token, ValidPassword))).IsSuccess.ShouldBeTrue();
+        var confirmation = (await TestApp.ListAsync<Domain.IdentityAccess.Outbox.OutboxMessage>())
+            .Single(message => message.Type == "identity.invitation.confirmation.requested");
+        var confirmationToken = TestApp.RawTokenAt(1);
+        await TestApp.FailConfirmationSecretAsync(confirmation.Id);
+        var failedBefore = (await TestApp.ListAsync<Domain.IdentityAccess.Outbox.OutboxSecret>())
+            .Single(secret => secret.OutboxMessageId == confirmation.Id);
+        var auditsBefore = await TestApp.CountAsync<Domain.IdentityAccess.Auditing.AuditEvent>();
+
+        var host = $"https://failed-invited-confirmation-{Guid.NewGuid():N}.localhost";
+        var antiforgery = await IdentityHttpHarness.GetAntiforgeryAsync(FunctionalTestSetup.HttpClient, host);
+        using var request = IdentityHttpHarness.JsonRequest(
+            HttpMethod.Post,
+            $"{host}/api/identity/confirm-email",
+            new { token = confirmationToken },
+            antiforgery);
+        using var response = await FunctionalTestSetup.HttpClient.SendAsync(request);
+
+        var problem = await IdentityHttpHarness.AssertProblemAsync(
+            response,
+            HttpStatusCode.BadRequest,
+            "invalid_confirmation");
+        problem.GetProperty("instance").GetString().ShouldBe("/api/identity/confirm-email");
+        (await TestApp.ListAsync<ApplicationUser>()).Single(user => user.Email == email).EmailConfirmed.ShouldBeFalse();
+        (await TestApp.CountAsync<TenantMembership>()).ShouldBe(membershipsBefore);
+        var invitation = await InvitationScenario.SingleInvitationAsync();
+        invitation.Status.ShouldBe(InvitationStatus.Pending);
+        invitation.AcceptedByIdentityId.ShouldBeNull();
+        var failedAfter = (await TestApp.ListAsync<Domain.IdentityAccess.Outbox.OutboxSecret>())
+            .Single(secret => secret.OutboxMessageId == confirmation.Id);
+        failedAfter.Status.ShouldBe(Domain.IdentityAccess.Outbox.OutboxSecretStatus.Failed);
+        failedAfter.TerminalReason.ShouldBe(failedBefore.TerminalReason);
+        failedAfter.CompletedAt.ShouldBe(failedBefore.CompletedAt);
+        (await TestApp.CountAsync<Domain.IdentityAccess.Auditing.AuditEvent>()).ShouldBe(auditsBefore);
+        (await TestApp.ListAsync<Domain.IdentityAccess.Auditing.AuditEvent>())
+            .ShouldNotContain(item => item.EventType == "identity.confirmed");
     }
 
     /// <summary>
@@ -313,7 +402,8 @@ public sealed class RegisterInvitedUserTests : TestBase
         var sink = new RegistrationDeliverySink();
         var dispatcher = new OutboxDispatcher(scope.ServiceProvider.GetRequiredService<ApplicationDbContext>(),
             scope.ServiceProvider.GetRequiredService<IOutboxSecretReader>(), scope.ServiceProvider.GetServices<IOutboxDeliveryHandler>(), TimeProvider.System, sink,
-            scope.ServiceProvider.GetRequiredService<CleanArchitecture.Application.IdentityAccess.Lifecycle.IRecoveryAdmission>(), FunctionalTestMetrics.Instance);
+            scope.ServiceProvider.GetRequiredService<CleanArchitecture.Application.IdentityAccess.Lifecycle.IRecoveryAdmission>(), FunctionalTestMetrics.Instance,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<OutboxDispatcher>.Instance);
         await dispatcher.DispatchDueAsync(CancellationToken.None);
         await dispatcher.DispatchDueAsync(CancellationToken.None);
         (await TestApp.ListAsync<Domain.IdentityAccess.Outbox.OutboxMessage>()).Single(item => item.Id == message.Id)
@@ -355,6 +445,14 @@ public sealed class RegisterInvitedUserTests : TestBase
         var email = $"invitee-{Guid.NewGuid():N}@example.test";
         (await TestApp.SendAsync(new InviteMemberCommand(organization.TenantId, email, [organization.RoleId]))).IsSuccess.ShouldBeTrue();
         return (email, TestApp.RawTokenAt(0));
+    }
+
+    private static async Task ExpireConfirmationAsync(Guid outboxMessageId)
+    {
+        using var scope = FunctionalTestSetup.ScopeFactory.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        await context.Database.ExecuteSqlAsync(
+            $"UPDATE outbox_secrets SET \"ExpiresAt\" = {DateTimeOffset.UtcNow.AddMinutes(-1)} WHERE \"OutboxMessageId\" = {outboxMessageId}");
     }
 
     /// <summary>The invitee holds no session and no tenant: this request is reached anonymously.</summary>

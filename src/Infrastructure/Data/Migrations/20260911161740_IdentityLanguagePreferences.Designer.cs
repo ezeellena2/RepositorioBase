@@ -637,6 +637,10 @@ namespace CleanArchitecture.Infrastructure.Data.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
 
+                    b.Property<string>("TraceId")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(32)

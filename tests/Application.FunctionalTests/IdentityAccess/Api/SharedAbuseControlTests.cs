@@ -116,8 +116,9 @@ public sealed class SharedAbuseControlTests : TestBase
             await one.SignInAsync(OwnerEmail, PlatformScenario.ValidPassword);
             for (var attempt = 1; attempt <= 3; attempt++)
             {
-                (await one.PostAsync("/api/platform/mfa/step-up", new { code = wrong }))
-                    .StatusCode.ShouldBe(HttpStatusCode.Unauthorized, $"guess {attempt} is a wrong code, not a refusal");
+                using var refused = await one.PostAsync("/api/platform/mfa/step-up", new { code = wrong });
+                refused.StatusCode.ShouldBe(HttpStatusCode.BadRequest, $"guess {attempt} is a wrong code, not a session failure");
+                (await ReadProblemAsync(refused)).GetProperty("code").GetString().ShouldBe("invalid_mfa_code");
             }
         }
 
@@ -127,8 +128,9 @@ public sealed class SharedAbuseControlTests : TestBase
         await two.SignInAsync(OwnerEmail, PlatformScenario.ValidPassword);
         for (var attempt = 4; attempt <= 5; attempt++)
         {
-            (await two.PostAsync("/api/platform/mfa/step-up", new { code = wrong }))
-                .StatusCode.ShouldBe(HttpStatusCode.Unauthorized, $"guess {attempt} is still inside the budget");
+            using var refused = await two.PostAsync("/api/platform/mfa/step-up", new { code = wrong });
+            refused.StatusCode.ShouldBe(HttpStatusCode.BadRequest, $"guess {attempt} is still inside the budget");
+            (await ReadProblemAsync(refused)).GetProperty("code").GetString().ShouldBe("invalid_mfa_code");
         }
 
         using var exhausted = await two.PostAsync("/api/platform/mfa/step-up", new { code = PlatformScenario.TotpCode(owner.SharedKey) });

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { MemoryRouter } from 'react-router-dom';
@@ -40,9 +40,9 @@ const proofAccepted = (spent) => http.post('/api/identity/credentials/reauthenti
  */
 describe('roles page', () => {
   it('lists the roles with what each one confers, and marks the built-in one', async () => {
-    renderPage();
     server.use(rolesAre([role(), role({ roleId: 'role-2', name: 'Owner', isSystem: true, permissions: ['roles.manage'] })]));
     server.use(catalogIs([{ code: 'members.read', grantable: true }]));
+    renderPage();
 
     expect(await screen.findByRole('button', { name: 'Retire Bookkeeper' })).toBeInTheDocument();
     expect(screen.getByText(/built in/)).toBeInTheDocument();
@@ -104,6 +104,33 @@ describe('roles page', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/that password was not accepted/i);
   });
 
+  it('binds a role name error, focuses it, and leaves unclaimed errors in the summary', async () => {
+    renderPage();
+    server.use(rolesAre([]), catalogIs([{ code: 'members.read', grantable: true }]), proofAccepted([]));
+    server.use(http.post(`/api/tenants/${TENANT}/roles`, () => problem(400, 'validation_failed', {
+      status: 400,
+      errors: {
+        name: ['A role name is required.'],
+        request: ['The role request could not be processed.'],
+      },
+    })));
+
+    await userEvent.type(await screen.findByLabelText('Password'), 'Testing1234!');
+    await userEvent.type(screen.getByLabelText('Name'), 'x');
+    await userEvent.click(screen.getByRole('button', { name: 'Create role' }));
+
+    const name = screen.getByLabelText('Name');
+    await waitFor(() => expect(name).toHaveFocus());
+    expect(name).toHaveAttribute('id', 'role-name');
+    expect(name).toHaveAttribute('aria-invalid', 'true');
+    expect(name).toHaveAccessibleDescription('A role name is required.');
+    expect(screen.getByRole('alert')).toHaveTextContent('The role request could not be processed.');
+    expect(screen.getByRole('alert')).not.toHaveTextContent('A role name is required.');
+
+    await userEvent.type(name, 'y');
+    expect(name).not.toHaveAttribute('aria-invalid', 'true');
+  });
+
   it('echoes the version it read when it saves an edit', async () => {
     const edits = [];
     renderPage();
@@ -134,9 +161,53 @@ describe('roles page', () => {
     await userEvent.type(await screen.findByLabelText('Password'), 'Testing1234!');
     await userEvent.click(screen.getByRole('button', { name: 'Retire Bookkeeper' }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/no administrator/i);
+    const row = screen.getByRole('button', { name: 'Retire Bookkeeper' }).closest('tr');
+    const alert = await within(row).findByRole('alert');
+    expect(alert).toHaveTextContent(/no administrator/i);
+    expect(alert).toHaveFocus();
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
     expect(screen.getByRole('button', { name: 'Retire Bookkeeper' }))
       .toBeInTheDocument("a refused retirement leaves the role exactly where it was");
+  });
+
+  it('replaces the initial wait with a retryable read error and loads roles after Try again', async () => {
+    let attempts = 0;
+    server.use(
+      http.get(`/api/tenants/${TENANT}/roles`, () => {
+        attempts += 1;
+        return attempts === 1
+          ? problem(500, 'internal_server_error', { traceId: 'trace-roles' })
+          : HttpResponse.json({ items: [role()], nextCursor: null });
+      }),
+      catalogIs([{ code: 'members.read', grantable: true }]),
+    );
+    renderPage();
+
+    expect(await screen.findByText('Reference: trace-roles')).toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+
+    expect(await screen.findByRole('button', { name: 'Retire Bookkeeper' })).toBeInTheDocument();
+    expect(attempts).toBe(2);
+  });
+
+  it('keeps listed roles and places a failed continuation beside Show more', async () => {
+    server.use(
+      http.get(`/api/tenants/${TENANT}/roles`, ({ request }) =>
+        new URL(request.url).searchParams.has('cursor')
+          ? problem(500, 'internal_server_error', { traceId: 'trace-role-page' })
+          : HttpResponse.json({ items: [role()], nextCursor: 'next-role' })),
+      catalogIs([{ code: 'members.read', grantable: true }]),
+    );
+    renderPage();
+
+    const more = await screen.findByRole('button', { name: 'Show more roles' });
+    await userEvent.click(more);
+
+    const pagination = more.parentElement;
+    expect(await within(pagination).findByText('Reference: trace-role-page')).toBeInTheDocument();
+    expect(screen.getByText('Bookkeeper')).toBeInTheDocument();
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
   });
 
   it('says so rather than failing when the session is in no organization', async () => {

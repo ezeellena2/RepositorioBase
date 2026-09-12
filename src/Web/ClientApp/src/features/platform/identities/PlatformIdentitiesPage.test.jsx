@@ -93,18 +93,32 @@ describe('platform identities page', () => {
     expect(reads.count).toBe(0);
   });
 
-  it('shows a refused step-up above the form and still reads nothing', async () => {
+  it('keeps an invalid authenticator code on its field without losing the authenticated screen', async () => {
     const [reads, directory] = countedDirectory();
     server.use(antiforgery(), contextIs(platformContext(IDENTITY_PERMISSIONS, { requiresTwoFactor: true })), directory);
-    server.use(http.post('/api/platform/mfa/step-up', () => problem(401, 'recent_mfa_required')));
+    server.use(http.post('/api/platform/mfa/step-up', () => problem(400, 'invalid_mfa_code')));
 
     renderPage();
-    await userEvent.type(await screen.findByLabelText('Authenticator code'), '000000');
+    const code = await screen.findByLabelText('Authenticator code');
+    await userEvent.type(code, '000000');
     await userEvent.click(screen.getByRole('button', { name: 'Step up' }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/second factor again/i);
+    const refusal = 'That authenticator code was not accepted. Check the code and try again.';
+    expect(await screen.findAllByText(refusal)).toHaveLength(1);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(code).toHaveAttribute('aria-invalid', 'true');
+    expect(code).toHaveAccessibleDescription(refusal);
+    expect(code).toHaveFocus();
+    expect(screen.getByRole('heading', { name: 'Identities' })).toBeInTheDocument();
     expect(screen.getByRole('form', { name: 'Step up' })).toBeInTheDocument();
     expect(reads.count).toBe(0);
+
+    await userEvent.type(code, '1');
+
+    expect(code).not.toHaveAttribute('aria-invalid', 'true');
+    expect(code).not.toHaveAccessibleDescription(refusal);
+    expect(screen.queryByText(refusal)).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('associates and focuses a structured step-up code detail without repeating it', async () => {
@@ -214,7 +228,7 @@ describe('platform identities page', () => {
     [409, 'last_administrator_required', /no administrator/i],
     [429, 'rate_limit_exceeded', /too many attempts/i],
     [404, 'not_found', /not available/i],
-    [400, 'platform_last_owner', /no owner/i],
+    [409, 'platform_last_owner', /no owner/i],
     [400, 'invalid_platform_operation', /not valid in its current state/i],
   ])('offers no step-up when a suspension is refused with %i %s', async (status, code, message) => {
     const [, directory] = countedDirectory();
@@ -236,7 +250,7 @@ describe('platform identities page', () => {
     })]);
     server.use(antiforgery(), contextIs(platformContext()), directory);
     server.use(http.post('/api/platform/identities/:identityId/reactivate', () =>
-      problem(400, 'identity_reactivation_unavailable')));
+      problem(403, 'identity_reactivation_unavailable')));
 
     renderPage();
     await userEvent.click(await screen.findByRole('button', { name: 'Reactivate stopped@example.test' }));
@@ -382,6 +396,33 @@ describe('platform identities page', () => {
     expect(screen.queryByRole('button', { name: 'More accounts' })).not.toBeInTheDocument();
   });
 
+  it('disables pagination until its in-flight read settles', async () => {
+    let releaseNextPage;
+    let reads = 0;
+    const nextPage = new Promise((resolve) => { releaseNextPage = resolve; });
+    server.use(antiforgery(), contextIs(platformContext()), http.get('/api/platform/identities', async ({ request }) => {
+      reads += 1;
+      const cursor = new URL(request.url).searchParams.get('cursor');
+      if (cursor === 'page-two') return nextPage;
+      return HttpResponse.json({ items: [identityRow()], nextCursor: 'page-two' });
+    }));
+
+    renderPage();
+    const more = await screen.findByRole('button', { name: 'More accounts' });
+    await userEvent.click(more);
+    await waitFor(() => expect(reads).toBe(2));
+
+    expect(more).toBeDisabled();
+    more.click();
+    expect(reads).toBe(2);
+
+    releaseNextPage(HttpResponse.json({
+      items: [identityRow({ identityId: STOPPED_ID, normalizedEmail: 'later@example.test' })],
+      nextCursor: null,
+    }));
+    expect(await screen.findByText('later@example.test')).toBeInTheDocument();
+  });
+
   /**
    * The acknowledgement is the operator saying they know the account will land back where its owner put it. It
    * starts unchecked, stays unchecked across a retry, and nothing but the checkbox can set it.
@@ -458,19 +499,20 @@ describe('platform identities page', () => {
     expect(screen.queryByText(/no accounts are listed/i)).not.toBeInTheDocument();
   });
 
-  it('offers a retry when the read failed without an answer the client understands', async () => {
+  it('offers a retry and one support reference when a valid server 500 refuses the read', async () => {
     let attempts = 0;
     server.use(antiforgery(), contextIs(platformContext()));
     server.use(http.get('/api/platform/identities', () => {
       attempts += 1;
       return attempts === 1
-        ? new HttpResponse('gateway exploded', { status: 500 })
+        ? problem(500, 'internal_server_error', { traceId: 'trace-directory' })
         : HttpResponse.json({ items: [identityRow()], nextCursor: null });
     }));
 
     renderPage();
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/something went wrong/i);
+    expect(screen.getAllByText('Reference: trace-directory')).toHaveLength(1);
     await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
 
     expect(await screen.findByText('person@example.test')).toBeInTheDocument();

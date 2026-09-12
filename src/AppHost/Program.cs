@@ -25,6 +25,7 @@ var web = builder.AddProject<Projects.Web>(Services.WebApi)
     .WithReference(databaseServer)
     .WaitFor(databaseServer)
     .WithExternalHttpEndpoints()
+    .WithHttpHealthCheck("/health")
     .WithAspNetCoreEnvironment()
     // Forwarded rather than read by the web project directly, so a deployment configures the Platform owner in
     // one place. An absent value is absent all the way down: bootstrap then creates nothing (IA-REQ-040).
@@ -56,6 +57,8 @@ if (!builder.ExecutionContext.IsRunMode ||
     builder.AddProject<Projects.OutboxWorker>(Services.OutboxWorker)
         .WithReference(databaseServer)
         .WaitFor(databaseServer)
+        .WithHttpEndpoint(targetPort: 8080, name: "http")
+        .WithHttpHealthCheck("/health")
         .WithAspNetCoreEnvironment()
         .WithEnvironment(ForwardEmailSettings)
         .WithEnvironment(ForwardLocalizationSettings);

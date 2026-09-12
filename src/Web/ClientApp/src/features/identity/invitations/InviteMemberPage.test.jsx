@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { MemoryRouter } from 'react-router-dom';
@@ -76,6 +76,45 @@ describe('invite member page', () => {
     await waitFor(() => expect(issued).toEqual([{ email: 'nuevo@example.test', roleIds: ['role-1'] }]));
     expect(await screen.findByRole('status')).toHaveTextContent(/expires on/i);
     expect(screen.getByLabelText('Email')).toHaveValue('');
+  });
+
+  it('binds email and role errors, focuses the first field, and makes the fieldset describable', async () => {
+    renderPage();
+    server.use(rolesAre([role()]), invitationsAre([]));
+    server.use(http.post(`/api/tenants/${TENANT}/invitations`, () => problem(400, 'validation_failed', {
+      status: 400,
+      errors: {
+        email: ['Enter an email address.'],
+        roleIds: ['Choose at least one role.'],
+        request: ['The invitation request could not be processed.'],
+      },
+    })));
+
+    await userEvent.type(await screen.findByLabelText('Email'), 'valid@example.test');
+    await userEvent.click(screen.getByRole('button', { name: 'Send invitation' }));
+
+    const email = screen.getByLabelText('Email');
+    const roles = screen.getByRole('group', { name: 'Roles to offer' });
+    await waitFor(() => expect(email).toHaveFocus());
+    expect(email).toHaveAttribute('id', 'invite-email');
+    expect(email).toHaveAccessibleDescription('Enter an email address.');
+    expect(roles).toHaveAttribute('id', 'invite-role-ids');
+    expect(roles).toHaveAttribute('tabindex', '-1');
+    expect(roles).toHaveAttribute('aria-invalid', 'true');
+    expect(roles).toHaveAttribute('aria-describedby', 'invite-role-ids-error');
+    expect(roles).toHaveAccessibleDescription('Choose at least one role.');
+    expect(screen.getByText('Choose at least one role.')).toHaveAttribute('id', 'invite-role-ids-error');
+    expect(screen.getByRole('alert')).toHaveTextContent('The invitation request could not be processed.');
+    expect(screen.getByRole('alert')).not.toHaveFocus();
+    expect(screen.getByRole('alert')).not.toHaveTextContent('Enter an email address.');
+    expect(screen.getByRole('alert')).not.toHaveTextContent('Choose at least one role.');
+
+    await userEvent.type(email, 'x');
+    expect(email).not.toHaveAttribute('aria-invalid', 'true');
+    await userEvent.click(screen.getByLabelText('Bookkeeper'));
+    expect(roles).not.toHaveAttribute('aria-invalid', 'true');
+    expect(roles).not.toHaveAttribute('aria-describedby');
+    expect(screen.queryByText('Choose at least one role.')).not.toBeInTheDocument();
   });
 
   it('lists standing offers with their state, and shows the role by name', async () => {
@@ -156,9 +195,92 @@ describe('invite member page', () => {
     server.use(rolesAre([role()]), invitationsAre([invitation()]));
     server.use(http.post(`/api/tenants/${TENANT}/invitations/invitation-1/resend`, () => problem(409, 'invitation_conflict')));
 
+    const resend = await screen.findByRole('button', { name: /Resend to nuevo@example.test/ });
+    await userEvent.click(resend);
+
+    const row = resend.closest('tr');
+    const alert = await within(row).findByRole('alert');
+    expect(alert).toHaveTextContent(/current state/i);
+    expect(alert).toHaveFocus();
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+  });
+
+  it('keeps a send refusal inside the form, preserves the address, and focuses the alert', async () => {
+    renderPage();
+    server.use(rolesAre([role()]), invitationsAre([]));
+    server.use(http.post(`/api/tenants/${TENANT}/invitations`, () => problem(409, 'invitation_conflict')));
+
+    const email = await screen.findByLabelText('Email');
+    await userEvent.type(email, 'nuevo@example.test');
+    const send = screen.getByRole('button', { name: 'Send invitation' });
+    await userEvent.click(send);
+
+    const alert = await within(send.closest('form')).findByRole('alert');
+    expect(alert).toHaveTextContent(/current state/i);
+    expect(alert).toHaveFocus();
+    expect(email).toHaveValue('nuevo@example.test');
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+  });
+
+  it('ends the initial invitation skeleton on a retryable failure and retries in the invitation section', async () => {
+    let listed = 0;
+    const view = renderPage();
+    server.use(rolesAre([role()]));
+    server.use(http.get(`/api/tenants/${TENANT}/invitations`, () => {
+      listed += 1;
+      return listed === 1
+        ? problem(500, 'internal_server_error', { traceId: 'trace-invitations' })
+        : HttpResponse.json({ items: [invitation()], nextCursor: null });
+    }));
+
+    const invitationSection = (await screen.findByRole('heading', { name: 'Invitations' })).parentElement;
+    const retry = await within(invitationSection).findByRole('button', { name: 'Try again' });
+    expect(view.container.querySelector('.MuiSkeleton-root')).toBeNull();
+
+    await userEvent.click(retry);
+
+    expect(await within(invitationSection).findByRole('button', { name: /Resend to nuevo@example.test/ })).toBeInTheDocument();
+    expect(listed).toBe(2);
+  });
+
+  it('keeps stale invitations and the retry beside Show more when pagination fails', async () => {
+    let listed = 0;
+    renderPage();
+    server.use(rolesAre([role()]));
+    server.use(http.get(`/api/tenants/${TENANT}/invitations`, () => {
+      listed += 1;
+      if (listed === 1) return HttpResponse.json({ items: [invitation()], nextCursor: 'page-2' });
+      if (listed === 2) return problem(500, 'internal_server_error', { traceId: 'trace-invitation-page' });
+      return HttpResponse.json({
+        items: [invitation({ invitationId: 'invitation-2', normalizedEmail: 'otro@example.test' })],
+        nextCursor: null,
+      });
+    }));
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Show more invitations' }));
+
+    const invitationSection = screen.getByRole('heading', { name: 'Invitations' }).parentElement;
+    expect(within(invitationSection).getByRole('button', { name: /Resend to nuevo@example.test/ })).toBeInTheDocument();
+    const retry = await within(invitationSection).findByRole('button', { name: 'Try again' });
+    expect(within(invitationSection).getByRole('alert')).toHaveTextContent('Something went wrong. Try again.');
+
+    await userEvent.click(retry);
+
+    expect(await within(invitationSection).findByRole('button', { name: /Resend to otro@example.test/ })).toBeInTheDocument();
+    expect(within(invitationSection).getByRole('button', { name: /Resend to nuevo@example.test/ })).toBeInTheDocument();
+  });
+
+  it('uses the shared network message for a manual resend catch and re-enables the action', async () => {
+    renderPage();
+    server.use(rolesAre([role()]), invitationsAre([invitation()]));
+    server.use(http.post(`/api/tenants/${TENANT}/invitations/invitation-1/resend`, () => HttpResponse.error()));
+
     await userEvent.click(await screen.findByRole('button', { name: /Resend to nuevo@example.test/ }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/current state/i);
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'We could not reach the service. Check your connection. If you were saving something, refresh to see whether it was saved before trying again.',
+    );
+    expect(screen.getByRole('button', { name: /Resend to nuevo@example.test/ })).toBeEnabled();
   });
 
   /**

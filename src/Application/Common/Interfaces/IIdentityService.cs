@@ -1,5 +1,3 @@
-﻿using CleanArchitecture.Application.Common.Models;
-
 namespace CleanArchitecture.Application.Common.Interfaces;
 
 public interface IIdentityService
@@ -9,8 +7,4 @@ public interface IIdentityService
     Task<bool> IsInRoleAsync(Guid userId, string role);
 
     Task<bool> AuthorizeAsync(Guid userId, string policyName);
-
-    Task<Result<Guid>> CreateUserAsync(string userName, string password, string preferredLanguage);
-
-    Task<Result> DeleteUserAsync(Guid userId);
 }

@@ -36,10 +36,20 @@ public sealed class RecoveryAdmissionTests : TestBase
         {
             using var response = await client.GetAsync($"{host}{route}");
 
-            response.StatusCode.ShouldBe(HttpStatusCode.ServiceUnavailable, route);
+            var payload = await IdentityHttpHarness.AssertProblemAsync(
+                response,
+                HttpStatusCode.ServiceUnavailable,
+                "recovery_admission_closed");
             response.Headers.RetryAfter.ShouldNotBeNull(route);
-            (await IdentityHttpHarness.ReadProblemAsync(response)).GetProperty("code").GetString()
-                .ShouldBe("recovery_admission_closed", route);
+            response.Headers.RetryAfter!.ToString().ShouldBe("60", route);
+            payload.GetProperty("instance").GetString().ShouldBe(route);
+            payload.GetProperty("detail").GetString().ShouldBe("This deployment is not admitting requests.");
+            payload.TryGetProperty("retryAfterSeconds", out _).ShouldBeFalse(route);
+            payload.TryGetProperty("category", out _).ShouldBeFalse(route);
+            payload.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal).ShouldBe(
+                ["code", "detail", "instance", "status", "title", "traceId", "type"],
+                ignoreOrder: false,
+                customMessage: route);
         }
     }
 
@@ -54,10 +64,14 @@ public sealed class RecoveryAdmissionTests : TestBase
         using var client = harness.Client;
         var host = Host();
 
-        using var alive = await client.GetAsync($"{host}/alive");
+        foreach (var path in new[] { "/health", "/alive" })
+        {
+            using var response = await client.GetAsync($"{host}{path}");
 
-        alive.StatusCode.ShouldNotBe(HttpStatusCode.ServiceUnavailable, "a refusing process still has to be visibly alive");
-        (await alive.Content.ReadAsStringAsync()).ShouldNotContain(Deployment);
+            response.StatusCode.ShouldBe(HttpStatusCode.OK, $"{path} must bypass recovery admission and the SPA fallback");
+            response.Content.Headers.ContentType.ShouldBeNull($"{path} exposes status only");
+            (await response.Content.ReadAsByteArrayAsync()).ShouldBeEmpty($"{path} exposes status only");
+        }
     }
 
     /// <summary>

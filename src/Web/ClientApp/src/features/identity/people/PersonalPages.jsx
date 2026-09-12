@@ -12,7 +12,16 @@ import Skeleton from '@mui/material/Skeleton';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
+import { toProblem } from '../api/apiTransport';
 import { useIdentity } from '../context/IdentityProvider';
+import {
+  claimedFieldNames,
+  clearFieldError,
+  fieldErrorText,
+  personalRegistrationFields,
+  selectFieldErrors,
+  validatePersonalRegistration,
+} from '../fieldErrors';
 import { ProblemMessage } from '../ProblemMessage';
 import { useSubmit } from '../useSubmit';
 import { Trans, useTranslation } from '../../../i18n';
@@ -39,23 +48,20 @@ const facts = {
 const fact = { m: 0 };
 const supporting = { mt: 0.5, maxWidth: 640 };
 const startOfRow = { alignSelf: 'flex-start' };
-const personalField = {
-  fullName: 'fullName',
-  displayName: 'displayName',
-  documentNumber: 'documentNumber',
-  email: 'email',
-  password: 'password',
+const personalRegistrationFieldIds = {
+  fullName: 'personal-full-name',
+  displayName: 'personal-display-name',
+  documentNumber: 'personal-document',
+  email: 'personal-email',
+  password: 'personal-password',
 };
-const DocumentType = 'DNI';
-const organizationRegisterPath = '/organizations/register';
-const disputeReasonId = 'dispute-reason';
-const numericDocumentField = { ...requiredField, htmlInput: { inputMode: 'numeric', autoComplete: 'off' } };
-const disputeReason = {
-  typedWrongAtSignup: 'TypedWrongAtSignup',
-  documentReissued: 'DocumentReissued',
-  recordedByMistake: 'RecordedByMistake',
+const addPersonalContextFields = ['fullName', 'displayName', 'documentNumber'];
+const personalProfileFields = ['fullName', 'displayName'];
+
+const focusFirstPersonalRegistrationField = (errors) => {
+  const field = personalRegistrationFields.find((candidate) => errors[candidate]?.length > 0);
+  if (field) document.getElementById(personalRegistrationFieldIds[field])?.focus();
 };
-const recordedDocumentStatus = 'recorded';
 
 /**
  * A newcomer setting up their own account. Like the organization signup it answers with a neutral bodyless 202
@@ -65,8 +71,42 @@ export function PersonalRegisterPage() {
   const identity = useIdentity();
   const { t } = useTranslation();
   const [form, setForm] = useState({ email: '', password: '', fullName: '', displayName: '', documentNumber: '' });
+  const [clientFieldErrors, setClientFieldErrors] = useState({});
+  const [clearedServerFields, setClearedServerFields] = useState([]);
   const { submit, problem, isBusy, result } = useSubmit((request) => identity.client.registerPersonal(request));
-  const update = (field) => (event) => setForm((current) => ({ ...current, [field]: event.target.value }));
+  const fieldErrors = {
+    ...selectFieldErrors(
+      problem,
+      personalRegistrationFields.filter((field) => !clearedServerFields.includes(field)),
+    ),
+    ...clientFieldErrors,
+  };
+  const update = (field) => (event) => {
+    setForm((current) => ({ ...current, [field]: event.target.value }));
+    setClientFieldErrors((current) => clearFieldError(current, field));
+    setClearedServerFields((current) => current.includes(field) ? current : [...current, field]);
+  };
+
+  useEffect(() => {
+    if (!problem) return;
+    const next = selectFieldErrors(problem, personalRegistrationFields);
+    focusFirstPersonalRegistrationField(next);
+  }, [problem]);
+
+  const submitForm = (event) => {
+    event.preventDefault();
+    const next = validatePersonalRegistration(form);
+    if (Object.keys(next).length > 0) {
+      setClientFieldErrors(next);
+      setClearedServerFields([]);
+      focusFirstPersonalRegistrationField(next);
+      return;
+    }
+
+    setClientFieldErrors({});
+    setClearedServerFields([]);
+    submit(form);
+  };
 
   if (result) {
     return (
@@ -84,9 +124,9 @@ export function PersonalRegisterPage() {
   return (
     <Paper component="section" elevation={3} aria-labelledby="personal-register-heading" sx={card}>
       <Stack spacing={3}>
-        <Typography id="personal-register-heading" component="h1" variant="h5">{t('identity:people.register.title')}</Typography>
-        <ProblemMessage problem={problem} />
-        <Stack component="form" spacing={3} onSubmit={(event) => { event.preventDefault(); submit(form); }}>
+        <Typography id="personal-register-heading" component="h1" variant="h5">Set up your personal account</Typography>
+        <ProblemMessage problem={problem} claimedFields={claimedFieldNames(problem, personalRegistrationFields)} />
+        <Stack component="form" spacing={3} noValidate onSubmit={submitForm}>
           {/* Two things are asked for at once — who this person is, and the credential they will sign in with — so
               the five fields are asked in those two groups rather than as one undifferentiated run, the same way
               the organization signup asks for the company and then for the person who will sign in for it. */}
@@ -98,7 +138,9 @@ export function PersonalRegisterPage() {
               fullWidth
               slotProps={requiredField}
               value={form.fullName}
-              onChange={update(personalField.fullName)}
+              onChange={update('fullName')}
+              error={Boolean(fieldErrors.fullName)}
+              helperText={fieldErrorText(fieldErrors, 'fullName', t) || undefined}
             />
             <TextField
               id="personal-display-name"
@@ -107,7 +149,9 @@ export function PersonalRegisterPage() {
               fullWidth
               slotProps={requiredField}
               value={form.displayName}
-              onChange={update(personalField.displayName)}
+              onChange={update('displayName')}
+              error={Boolean(fieldErrors.displayName)}
+              helperText={fieldErrorText(fieldErrors, 'displayName', t) || undefined}
             />
             <TextField
               id="personal-document"
@@ -116,7 +160,9 @@ export function PersonalRegisterPage() {
               fullWidth
               slotProps={numericDocumentField}
               value={form.documentNumber}
-              onChange={update(personalField.documentNumber)}
+              onChange={update('documentNumber')}
+              error={Boolean(fieldErrors.documentNumber)}
+              helperText={fieldErrorText(fieldErrors, 'documentNumber', t) || undefined}
             />
           </Stack>
           <Stack spacing={2}>
@@ -129,7 +175,9 @@ export function PersonalRegisterPage() {
               fullWidth
               slotProps={requiredField}
               value={form.email}
-              onChange={update(personalField.email)}
+              onChange={update('email')}
+              error={Boolean(fieldErrors.email)}
+              helperText={fieldErrorText(fieldErrors, 'email', t) || undefined}
             />
             <TextField
               id="personal-password"
@@ -140,7 +188,9 @@ export function PersonalRegisterPage() {
               fullWidth
               slotProps={requiredField}
               value={form.password}
-              onChange={update(personalField.password)}
+              onChange={update('password')}
+              error={Boolean(fieldErrors.password)}
+              helperText={fieldErrorText(fieldErrors, 'password', t) || undefined}
             />
           </Stack>
           <Button type="submit" variant="contained" size="large" fullWidth disabled={isBusy}>{t('common:navigation.register')}</Button>
@@ -253,13 +303,35 @@ function AddPersonalContext({ client, notice, onAdded }) {
   const { t } = useTranslation();
   const [form, setForm] = useState({ fullName: '', displayName: '', documentNumber: '' });
   const [created, setCreated] = useState(false);
+  const [clearedServerFields, setClearedServerFields] = useState([]);
   const { submit, problem, isBusy } = useSubmit(async (request) => {
     await client.createPersonalContext(request);
     setCreated(true);
     setForm({ fullName: '', displayName: '', documentNumber: '' });
     await onAdded();
   });
-  const update = (field) => (event) => setForm((current) => ({ ...current, [field]: event.target.value }));
+  const fieldErrors = selectFieldErrors(
+    problem,
+    addPersonalContextFields.filter((field) => !clearedServerFields.includes(field)),
+  );
+  const update = (field) => (event) => {
+    setForm((current) => ({ ...current, [field]: event.target.value }));
+    setClearedServerFields((current) => current.includes(field) ? current : [...current, field]);
+  };
+
+  useEffect(() => {
+    const next = selectFieldErrors(problem, addPersonalContextFields);
+    for (const [field, id] of [
+      ['fullName', 'add-personal-full-name'],
+      ['displayName', 'add-personal-display-name'],
+      ['documentNumber', 'add-personal-document'],
+    ]) {
+      if (next[field]) {
+        document.getElementById(id)?.focus();
+        break;
+      }
+    }
+  }, [problem]);
 
   // Saving succeeded before either read begins. A failed refresh must never offer to create it again — and the
   // card stays where it was while the refresh runs, so the page does not collapse to a strip at the one moment
@@ -277,13 +349,13 @@ function AddPersonalContext({ client, notice, onAdded }) {
       variant="outlined"
       component="form"
       sx={section}
-      onSubmit={(event) => { event.preventDefault(); submit(form); }}
+      onSubmit={(event) => { event.preventDefault(); setClearedServerFields([]); submit(form); }}
     >
       <Stack spacing={2}>
         {/* The page's own explanation of why this form is the only thing on it. It belongs inside the card rather
             than floating above it: one block that says what is missing and offers the thing that supplies it. */}
         {notice}
-        <ProblemMessage problem={problem} />
+        <ProblemMessage problem={problem} claimedFields={claimedFieldNames(problem, addPersonalContextFields)} />
         <TextField
           id="add-personal-full-name"
           label={t('identity:people.fullName')}
@@ -291,7 +363,9 @@ function AddPersonalContext({ client, notice, onAdded }) {
           fullWidth
           slotProps={requiredField}
           value={form.fullName}
-          onChange={update(personalField.fullName)}
+          onChange={update('fullName')}
+          error={Boolean(fieldErrors.fullName)}
+          helperText={fieldErrorText(fieldErrors, 'fullName', t) || undefined}
         />
         <TextField
           id="add-personal-display-name"
@@ -300,7 +374,9 @@ function AddPersonalContext({ client, notice, onAdded }) {
           fullWidth
           slotProps={requiredField}
           value={form.displayName}
-          onChange={update(personalField.displayName)}
+          onChange={update('displayName')}
+          error={Boolean(fieldErrors.displayName)}
+          helperText={fieldErrorText(fieldErrors, 'displayName', t) || undefined}
         />
         <TextField
           id="add-personal-document"
@@ -309,7 +385,9 @@ function AddPersonalContext({ client, notice, onAdded }) {
           fullWidth
           slotProps={numericDocumentField}
           value={form.documentNumber}
-          onChange={update(personalField.documentNumber)}
+          onChange={update('documentNumber')}
+          error={Boolean(fieldErrors.documentNumber)}
+          helperText={fieldErrorText(fieldErrors, 'documentNumber', t) || undefined}
         />
         <Button type="submit" variant="contained" disabled={isBusy} sx={startOfRow}>
           {t('identity:people.context.submit')}
@@ -350,7 +428,27 @@ export function PersonalProfilePage() {
   const [loaded, setLoaded] = useState(null);
   const [loadProblem, setLoadProblem] = useState(null);
   const [edits, setEdits] = useState(null);
-  const { submit, problem, isBusy, result } = useSubmit((request) => identity.client.updatePersonalProfile(request));
+  const [clearedServerFields, setClearedServerFields] = useState([]);
+  const { submit, problem, isBusy, result } = useSubmit(async (request) => {
+    const saved = await identity.client.updatePersonalProfile(request);
+    setEdits((current) => {
+      const latest = current ?? { fullName: request.fullName, displayName: request.displayName };
+      const fullNameChanged = latest.fullName !== request.fullName;
+      const displayNameChanged = latest.displayName !== request.displayName;
+      if (!fullNameChanged && !displayNameChanged) return null;
+
+      return {
+        fullName: fullNameChanged ? latest.fullName : saved.fullName,
+        displayName: displayNameChanged ? latest.displayName : saved.displayName,
+      };
+    });
+    setClearedServerFields([]);
+    return saved;
+  });
+  const fieldErrors = selectFieldErrors(
+    problem,
+    personalProfileFields.filter((field) => !clearedServerFields.includes(field)),
+  );
 
   // The saved response is the newest truth about the row, so it wins over what was loaded rather than being
   // copied into state after the fact. Deriving it keeps one source and avoids a render that syncs itself.
@@ -363,7 +461,7 @@ export function PersonalProfilePage() {
       setLoadProblem(null);
     } catch (error) {
       setLoaded(null);
-      setLoadProblem(error.problem ?? { code: 'unexpected' });
+      setLoadProblem(toProblem(error));
     }
   }, [identity.client]);
 
@@ -378,7 +476,14 @@ export function PersonalProfilePage() {
   const update = (field) => (event) => {
     const { value } = event.target;
     setEdits((current) => ({ ...(current ?? { fullName: profile?.fullName ?? '', displayName: profile?.displayName ?? '' }), [field]: value }));
+    setClearedServerFields((current) => current.includes(field) ? current : [...current, field]);
   };
+
+  useEffect(() => {
+    const next = selectFieldErrors(problem, personalProfileFields);
+    if (next.fullName) document.getElementById('profile-full-name')?.focus();
+    else if (next.displayName) document.getElementById('profile-display-name')?.focus();
+  }, [problem]);
 
   if (loadProblem?.code === 'personal_profile_not_found') {
     return (
@@ -465,10 +570,15 @@ export function PersonalProfilePage() {
         variant="outlined"
         component="form"
         sx={section}
-        onSubmit={(event) => { event.preventDefault(); setEdits(null); submit({ ...form, version: profile.version }); }}
+        onSubmit={(event) => {
+          event.preventDefault();
+          const submitted = { fullName: form.fullName, displayName: form.displayName };
+          setClearedServerFields([]);
+          submit({ ...submitted, version: profile.version });
+        }}
       >
         <Stack spacing={2}>
-          <ProblemMessage problem={problem} />
+          <ProblemMessage problem={problem} claimedFields={claimedFieldNames(problem, personalProfileFields)} />
           <TextField
             id="profile-full-name"
             label={t('identity:people.fullName')}
@@ -476,7 +586,9 @@ export function PersonalProfilePage() {
             fullWidth
             slotProps={requiredField}
             value={form.fullName}
-            onChange={update(personalField.fullName)}
+            onChange={update('fullName')}
+            error={Boolean(fieldErrors.fullName)}
+            helperText={fieldErrorText(fieldErrors, 'fullName', t) || undefined}
           />
           <TextField
             id="profile-display-name"
@@ -485,7 +597,9 @@ export function PersonalProfilePage() {
             fullWidth
             slotProps={requiredField}
             value={form.displayName}
-            onChange={update(personalField.displayName)}
+            onChange={update('displayName')}
+            error={Boolean(fieldErrors.displayName)}
+            helperText={fieldErrorText(fieldErrors, 'displayName', t) || undefined}
           />
           <Button type="submit" variant="contained" disabled={isBusy} sx={startOfRow}>{t('identity:people.profile.save')}</Button>
         </Stack>

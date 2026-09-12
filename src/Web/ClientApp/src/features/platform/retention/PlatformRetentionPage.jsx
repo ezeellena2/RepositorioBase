@@ -1,5 +1,6 @@
 /* eslint-disable i18next/no-literal-string -- bounded wire field name, not display copy. */
 import { useCallback, useState } from 'react';
+import visuallyHidden from '@mui/utils/visuallyHidden';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -17,10 +18,10 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { useIdentity } from '../../identity/context/IdentityProvider';
 import { ProblemMessage } from '../../identity/ProblemMessage';
+import { useRead } from '../../identity/useRead';
 import { useSubmit } from '../../identity/useSubmit';
 import { usePlatformClient } from '../invitations/PlatformInvitationPages';
 import { PlatformStepUpForm } from '../shared/PlatformStepUpForm';
-import { usePlatformRead } from '../shared/usePlatformRead';
 import { usePlatformStepUp } from '../shared/usePlatformStepUp';
 import { useFormat, useTranslation } from '../../../i18n';
 import { PermissionLabel } from '../../identity/PermissionLabel';
@@ -46,12 +47,66 @@ const confirmActions = { alignSelf: 'flex-start', flexWrap: 'wrap' };
 /** A sentence keeps a reading measure even where the block around it spans the container. */
 const supporting = { maxWidth: 640 };
 
-/**
- * A `Table size="small"` row is as tall as its tallest cell — a `Chip size="small"` at 24px — plus the 6px that
- * `TableCell` puts above and below it and the 1px divider underneath. The wait is drawn at that height so the
- * categories arrive into space already held for them.
- */
-const ROW_HEIGHT = 24 + 6 + 6 + 1;
+/** Policy rows follow the 44px operational density, and the wait reserves the same stable space. */
+const ROW_HEIGHT = 44;
+
+const mobileValue = { minWidth: 0, overflowWrap: 'anywhere' };
+const responsiveTable = (theme) => ({
+  minWidth: 0,
+  '& .MuiTableRow-root': { height: ROW_HEIGHT },
+  [theme.breakpoints.up('sm')]: { minWidth: 880 },
+  [theme.breakpoints.down('sm')]: {
+    display: 'block',
+    '& .MuiTableHead-root, & .MuiTableHead-root .MuiTableRow-root': {
+      display: 'block',
+      height: 0,
+    },
+    '& .MuiTableHead-root .MuiTableCell-root': { ...visuallyHidden },
+    '& .MuiTableBody-root': { display: 'block', width: '100%' },
+    '& .MuiTableBody-root .MuiTableRow-root': {
+      display: 'block',
+      width: '100%',
+      height: 'auto',
+      py: 1,
+      borderBottom: 1,
+      borderColor: 'divider',
+    },
+    '& .MuiTableBody-root .MuiTableRow-root:last-of-type': { borderBottom: 0 },
+    '& .MuiTableBody-root .MuiTableCell-root': {
+      display: 'block',
+      minWidth: 0,
+      px: 2,
+      py: 0.75,
+      borderBottom: 0,
+      overflowWrap: 'anywhere',
+    },
+    '& .MuiTableBody-root .MuiTableCell-root:not([colspan])': {
+      display: 'grid',
+      gridTemplateColumns: 'minmax(112px, 38%) minmax(0, 1fr)',
+      gap: 1,
+      alignItems: 'center',
+      textAlign: 'left',
+    },
+    '& .MuiTableBody-root .MuiTableCell-root[data-mobile-label]::before': {
+      content: 'attr(data-mobile-label)',
+      ...theme.typography.caption,
+      color: 'text.secondary',
+      fontWeight: 600,
+    },
+    '& .MuiTableBody-root .MuiChip-root': {
+      minWidth: 0,
+      maxWidth: '100%',
+      height: 'auto',
+      minHeight: 24,
+      justifySelf: 'start',
+    },
+    '& .MuiTableBody-root .MuiChip-label': {
+      whiteSpace: 'normal',
+      overflowWrap: 'anywhere',
+      py: 0.25,
+    },
+  },
+});
 
 /** The definition list the policy facts are stated in, as label/value pairs rather than a table of two rows. */
 const facts = { m: 0, flexWrap: 'wrap' };
@@ -113,8 +168,8 @@ export function PlatformRetentionPage() {
 
   // Nothing is asked for while the factor is owed or the permission is missing: both produce only refusals the
   // visitor can do nothing about from here.
-  const policy = usePlatformRead(
-    useCallback(() => platform.readRetentionPolicy(), [platform]),
+  const policy = useRead(
+    useCallback((options) => platform.readRetentionPolicy(options), [platform]),
     mayRead && !owesFactor,
   );
 
@@ -137,18 +192,23 @@ export function PlatformRetentionPage() {
   // asked for twice, and the operator repeats it themselves.
   const onProved = useCallback(() => submit(() => refreshPolicy(undefined)), [submit, refreshPolicy]);
   const stepUp = usePlatformStepUp(onProved);
+  const fieldOwnsStepUpProblem = stepUp.problem?.code === 'invalid_mfa_code';
 
   const run = async (action) => {
     setShapeRefusal(null);
-    const outcome = await submit(action);
+    const outcome = await submit(async () => {
+      const completed = await action();
+      // The active hold count is part of what this screen states, so a change that moved it is read back before
+      // another mutation can begin.
+      await refreshPolicy(undefined);
+      return completed;
+    });
     if (outcome === undefined) {
       // Whatever was staged for confirmation is not the thing being answered any more. Tearing it down here is
       // what keeps a step-up gate from rendering behind a confirmation the operator never got an answer to.
       setPendingRelease(null);
       return undefined;
     }
-    // The active hold count is part of what this screen states, so a change that moved it is read back.
-    await refreshPolicy(undefined);
     return outcome;
   };
 
@@ -189,9 +249,9 @@ export function PlatformRetentionPage() {
   // proof instead of asking for a policy it would only be refused. It renders in place of the data, not beside it.
   if (owesFactor) {
     return (
-      <Stack component="section" aria-labelledby={retentionHeadingId} spacing={3}>
-        <Typography id={retentionHeadingId} component="h1" variant="h5">{t('retention.title')}</Typography>
-        {stepUp.problem && <Box sx={column}><ProblemMessage problem={stepUp.problem} claimed={['code']} /></Box>}
+      <Stack component="section" aria-labelledby="platform-retention-heading" spacing={3}>
+        <Typography id="platform-retention-heading" component="h1" variant="h5">Retention</Typography>
+        {stepUp.problem && !fieldOwnsStepUpProblem && <Box sx={column}><ProblemMessage problem={stepUp.problem} /></Box>}
         <Paper variant="outlined" sx={narrowSection}>
           <Stack spacing={2}>
             <Typography variant="body2" color="text.secondary">
@@ -213,14 +273,14 @@ export function PlatformRetentionPage() {
     );
   }
 
-  const page = policy.page;
+  const page = policy.data;
   // Null members and no categories is a deployment with no policy at all, which is a loaded answer rather than an
   // empty one: an empty table would read as "no categories", and the truth is "nothing here will be erased".
   const hasNoPolicy = page !== null && page.policyId == null && (page.categories ?? []).length === 0;
   // The mutation gate. The session HAS proved the factor — that is what tells this apart from the entry gate — so
   // what is missing is a recent proof, and everything already read stays where it is.
   const changeNeedsRecentProof = actionProblem?.code === 'recent_mfa_required';
-  const refusal = stepUp.problem ?? actionProblem;
+  const refusal = fieldOwnsStepUpProblem ? null : (stepUp.problem ?? actionProblem);
   const rules = page?.categories ?? [];
 
   return (
@@ -234,7 +294,7 @@ export function PlatformRetentionPage() {
         <Box sx={column}>
           {shapeRefusal
             ? <Alert severity="error" role="alert">{shapeRefusal}</Alert>
-            : <ProblemMessage problem={refusal} claimed={stepUp.problem ? ['code'] : []} />}
+            : <ProblemMessage problem={refusal} claimedFields={stepUp.problem ? ['code'] : []} />}
         </Box>
       )}
 
@@ -264,9 +324,9 @@ export function PlatformRetentionPage() {
           the screen down. It is deliberately NOT capped at the form column: what replaces it — the facts panel and
           the categories table — spans the container, so a 560px wait would hold the wrong shape and the policy
           would arrive by jumping sideways. The sentence stays because it is what a reader of the region is told,
-          and it keeps the reading measure the rest of the page's prose has. The bars are drawn at the height of a
-          `size="small"` row: a 24px cell plus the 6px above and below it and the 1px divider. */}
-      {policy.status === policyStatuses.loading && page === null && (
+          and it keeps the reading measure the rest of the page's prose has. The bars match the 44px minimum held
+          by the loaded policy rows. */}
+      {policy.status === 'loading' && page === null && (
         <Stack spacing={1} role="status">
           <Typography variant="body2" color="text.secondary" sx={supporting}>{t('retention.reading')}</Typography>
           {[0, 1, 2].map((placeholder) => <Skeleton key={placeholder} variant="rounded" height={ROW_HEIGHT} />)}
@@ -308,8 +368,15 @@ export function PlatformRetentionPage() {
               </Typography>
             </Paper>
           ) : (
-            <TableContainer component={Paper} variant="outlined">
-              <Table size="small">
+            <TableContainer
+              component={Paper}
+              variant="outlined"
+              sx={{ overflowX: { xs: 'hidden', sm: 'auto' } }}
+            >
+              <Table
+                size="small"
+                sx={responsiveTable}
+              >
                 <TableHead>
                   <TableRow>
                     <TableCell component="th" scope="col">{t('retention.columns.category')}</TableCell>
@@ -334,12 +401,16 @@ export function PlatformRetentionPage() {
                           columns after them are closed sets the server owns, and all three are stated the same
                           way — a chip. Two of them being bare words next to a chipped third was the table
                           disagreeing with itself about which of its own answers count as domain state. */}
-                      <TableCell>{t(`enums:retentionCategory.${rule.category}`)}</TableCell>
-                      <TableCell>{rule.retentionPeriod}</TableCell>
-                      <TableCell>
-                        <Chip size="small" variant="outlined" label={t(`enums:retentionTrigger.${rule.trigger}`)} />
+                      <TableCell data-mobile-label="Category">
+                        <Box component="span" sx={mobileValue}>{rule.category}</Box>
                       </TableCell>
-                      <TableCell>
+                      <TableCell data-mobile-label="Retention period">
+                        <Box component="span" sx={mobileValue}>{rule.retentionPeriod}</Box>
+                      </TableCell>
+                      <TableCell data-mobile-label="Trigger">
+                        <Chip size="small" variant="outlined" label={rule.trigger} />
+                      </TableCell>
+                      <TableCell data-mobile-label="Action">
                         <Chip
                           size="small"
                           variant="outlined"
@@ -347,7 +418,7 @@ export function PlatformRetentionPage() {
                           color={actionColor[rule.action] ?? neutralChipColor}
                         />
                       </TableCell>
-                      <TableCell>
+                      <TableCell data-mobile-label="Evidence required">
                         <Chip
                           size="small"
                           variant="outlined"
@@ -366,9 +437,9 @@ export function PlatformRetentionPage() {
 
       {policy.status === policyStatuses.refused && <Box sx={column}><ProblemMessage problem={policy.problem} /></Box>}
 
-      {/* A refusal the server put into words is answered by reading it, not by asking again. Something that went
-          wrong without any such words is the other screen, and that one is worth retrying. */}
-      {policy.status === policyStatuses.errored && (
+      {/* A typed non-retryable refusal is answered by reading it, not by asking again. Transport failures,
+          rate limits and server failures are the other screen, and that one is worth retrying. */}
+      {policy.status === 'errored' && (
         <>
           <Box sx={column}><ProblemMessage problem={policy.problem} /></Box>
           <Button

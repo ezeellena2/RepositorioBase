@@ -60,22 +60,26 @@ internal static class PlatformEndpoints
         group.MapGet("/organizations", ListOrganizations)
             .RequireAuthorization()
             .Produces<PlatformOrganizationDirectoryResponse>()
-            .WithApiProblemDetails(Directory);
+            .WithApiProblemDetails(Directory)
+            .WithBodyBindingFailureCode(ApiProblemMetadata.InvalidRequest.Code);
 
         group.MapGet("/identities", ListIdentities)
             .RequireAuthorization()
             .Produces<PlatformIdentityDirectoryResponse>()
-            .WithApiProblemDetails(Directory);
+            .WithApiProblemDetails(Directory)
+            .WithBodyBindingFailureCode(ApiProblemMetadata.InvalidRequest.Code);
 
         group.MapGet("/admins", ListAdministrators)
             .RequireAuthorization()
             .Produces<PlatformAdministratorDirectoryResponse>()
-            .WithApiProblemDetails(Directory);
+            .WithApiProblemDetails(Directory)
+            .WithBodyBindingFailureCode(ApiProblemMetadata.InvalidRequest.Code);
 
         group.MapGet("/audit", ListAudit)
             .RequireAuthorization()
             .Produces<PlatformAuditDirectoryResponse>()
-            .WithApiProblemDetails(Directory);
+            .WithApiProblemDetails(Directory)
+            .WithBodyBindingFailureCode(ApiProblemMetadata.InvalidRequest.Code);
 
         group.MapPost("/organizations/{tenantId:guid}/suspend", Suspend)
             .RequireAuthorization()

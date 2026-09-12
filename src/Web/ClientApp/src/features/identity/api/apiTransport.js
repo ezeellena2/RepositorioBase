@@ -1,8 +1,12 @@
 import { isProblem, readProblem, readSuccess } from './problemDetails';
 
 const ANTIFORGERY = '/api/identity/antiforgery';
-const CONTEXT = '/api/identity/context';
-const SESSION_LOST = new Set(['authentication_required', 'invalid_session']);
+const IDENTITY_CONTEXT = '/api/identity/context';
+const REQUEST_TIMEOUT_MS = 30_000;
+const SESSION_LOST_CODES = new Set(['invalid_session', 'authentication_required']);
+
+export const isSessionLostProblem = (problem) =>
+  problem?.status === 401 && SESSION_LOST_CODES.has(problem.code);
 
 export class ApiProblem extends Error {
   constructor(problem) {
@@ -11,6 +15,19 @@ export class ApiProblem extends Error {
     this.problem = problem;
   }
 }
+
+export class ClientFailure extends Error {
+  constructor(code) {
+    super(code);
+    this.name = 'ClientFailure';
+    this.problem = { code, status: 0 };
+  }
+}
+
+export const toProblem = (failure) => failure?.problem ?? { code: 'client_failure', status: 0 };
+
+export const isRetryable = (problem) =>
+  problem?.status === 0 || problem?.status === 429 || problem?.status >= 500;
 
 /**
  * How this application talks to the API, and the one place that holds the antiforgery request token.
@@ -27,19 +44,71 @@ export function createApiTransport() {
   let requestToken = null;
   const sessionLostListeners = new Set();
 
-  const bootstrapAntiforgery = async () => {
-    const response = await fetch(ANTIFORGERY);
-    if (!response.ok) throw new Error('Unable to establish the request token.');
-    const payload = await readSuccess(response, ['requestToken']);
+  const request = async (path, init, callerSignal) => {
+    const timeoutSignal = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+    const signal = callerSignal === undefined
+      ? timeoutSignal
+      : AbortSignal.any([callerSignal, timeoutSignal]);
+
+    try {
+      return { response: await fetch(path, { ...init, signal }), timeoutSignal };
+    } catch (failure) {
+      if (timeoutSignal.aborted) throw new ClientFailure('request_timeout');
+      if (callerSignal?.aborted) throw new ClientFailure('client_failure');
+      if (failure instanceof TypeError) throw new ClientFailure('network_unavailable');
+      throw new ClientFailure('client_failure');
+    }
+  };
+
+  const read = async (operation, timeoutSignal, callerSignal) => {
+    try {
+      return await operation();
+    } catch {
+      if (timeoutSignal.aborted) throw new ClientFailure('request_timeout');
+      if (callerSignal?.aborted) throw new ClientFailure('client_failure');
+      throw new ClientFailure('unreadable_response');
+    }
+  };
+
+  const success = (response, expectedMembers, options, timeoutSignal, callerSignal) => read(async () => {
+    const payload = await readSuccess(response, expectedMembers, options);
+    if (payload === null && expectedMembers.length > 0) {
+      throw new Error('The response omitted its declared body.');
+    }
+    return payload;
+  }, timeoutSignal, callerSignal);
+
+  const refusal = async (path, response, timeoutSignal, callerSignal) => {
+    if (!isProblem(response)) throw new ClientFailure('unreadable_response');
+
+    const problem = await read(() => readProblem(response), timeoutSignal, callerSignal);
+    if (isSessionLostProblem(problem)) {
+      requestToken = null;
+      if (path !== IDENTITY_CONTEXT) {
+        sessionLostListeners.forEach((listener) => listener(problem));
+      }
+    }
+    return problem;
+  };
+
+  const bootstrapAntiforgery = async ({ signal } = {}) => {
+    requestToken = null;
+    const { response, timeoutSignal } = await request(ANTIFORGERY, {}, signal);
+    if (!response.ok) {
+      throw new ApiProblem(await refusal(ANTIFORGERY, response, timeoutSignal, signal));
+    }
+    const payload = await success(response, ['requestToken'], {}, timeoutSignal, signal);
     requestToken = payload.requestToken;
     return requestToken;
   };
 
-  const send = async (path, { method = 'GET', body, expect = [], expectArray = false } = {}) => {
+  const send = async (path, {
+    method = 'GET', body, expect = [], expectArray = false, expectStatus, signal,
+  } = {}) => {
     const mutation = method !== 'GET';
-    if (mutation && requestToken === null) await bootstrapAntiforgery();
+    if (mutation && requestToken === null) await bootstrapAntiforgery({ signal });
 
-    const response = await fetch(path, {
+    const { response, timeoutSignal } = await request(path, {
       method,
       headers: {
         Accept: 'application/json, application/problem+json',
@@ -47,17 +116,18 @@ export function createApiTransport() {
         ...(mutation ? { 'X-CSRF-TOKEN': requestToken } : {}),
       },
       body: body === undefined ? undefined : JSON.stringify(body),
-    });
+    }, signal);
 
-    if (response.ok) return readSuccess(response, expect, { asArray: expectArray });
-    if (!isProblem(response)) throw new Error(`The API answered ${response.status} without a problem document.`);
+    if (response.ok) {
+      if (expectStatus !== undefined && response.status !== expectStatus) {
+        throw new ClientFailure('unreadable_response');
+      }
+      return success(response, expect, { asArray: expectArray }, timeoutSignal, signal);
+    }
 
-    const problem = await readProblem(response);
-    const sessionWasLost = response.status === 401 && SESSION_LOST.has(problem.code);
-    if (sessionWasLost) requestToken = null;
-    if (problem.code === 'antiforgery_validation_failed') await bootstrapAntiforgery();
-    if (sessionWasLost && path !== CONTEXT) {
-      sessionLostListeners.forEach((listener) => listener(problem));
+    const problem = await refusal(path, response, timeoutSignal, signal);
+    if (problem.code === 'antiforgery_validation_failed') {
+      await bootstrapAntiforgery({ signal }).catch(() => undefined);
     }
     throw new ApiProblem(problem);
   };
@@ -67,7 +137,7 @@ export function createApiTransport() {
     hasRequestToken: () => requestToken !== null,
     onSessionLost: (listener) => {
       sessionLostListeners.add(listener);
-      return () => sessionLostListeners.delete(listener);
+      return () => { sessionLostListeners.delete(listener); };
     },
     send,
   };

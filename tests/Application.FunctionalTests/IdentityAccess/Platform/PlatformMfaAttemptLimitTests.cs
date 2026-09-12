@@ -1,4 +1,5 @@
 using CleanArchitecture.Application.FunctionalTests.Infrastructure;
+using CleanArchitecture.Application.Common.Models;
 using CleanArchitecture.Application.IdentityAccess.Platform;
 using CleanArchitecture.Application.IdentityAccess.Platform.Mfa;
 
@@ -29,7 +30,8 @@ public sealed class PlatformMfaAttemptLimitTests : TestBase
         for (var attempt = 0; attempt < PlatformAttemptBudgets.MfaAttempt.Limit; attempt++)
         {
             var refused = await TestApp.SendAsync(new VerifyPlatformMfaEnrollmentCommand(invitee.Token, WrongCode));
-            refused.Error!.Code.ShouldBe("invalid_invitation", "a wrong code is still only a wrong code.");
+            refused.Error!.Code.ShouldBe("invalid_mfa_code", "a wrong code is still only a wrong code.");
+            refused.Error.Category.ShouldBe(ApplicationErrorCategory.Validation);
         }
 
         var exhausted = await TestApp.SendAsync(new VerifyPlatformMfaEnrollmentCommand(invitee.Token, WrongCode));
@@ -112,7 +114,7 @@ public sealed class PlatformMfaAttemptLimitTests : TestBase
         for (var attempt = 0; attempt < PlatformAttemptBudgets.MfaAttempt.Limit; attempt++)
         {
             (await TestApp.SendAsync(new VerifyPlatformMfaEnrollmentCommand(invitee.Token, WrongCode)))
-                .Error!.Code.ShouldBe("invalid_invitation", "the budget started over when the code was accepted.");
+                .Error!.Code.ShouldBe("invalid_mfa_code", "the budget started over when the code was accepted.");
         }
     }
 
@@ -127,7 +129,9 @@ public sealed class PlatformMfaAttemptLimitTests : TestBase
 
         for (var attempt = 0; attempt < PlatformAttemptBudgets.MfaAttempt.Limit; attempt++)
         {
-            (await TestApp.SendAsync(new StepUpPlatformMfaCommand(WrongCode))).Error!.Code.ShouldBe("invalid_session");
+            var refused = await TestApp.SendAsync(new StepUpPlatformMfaCommand(WrongCode));
+            refused.Error!.Code.ShouldBe("invalid_mfa_code");
+            refused.Error.Category.ShouldBe(ApplicationErrorCategory.Validation);
         }
 
         var exhausted = await TestApp.SendAsync(new StepUpPlatformMfaCommand(PlatformScenario.TotpCode(owner.SharedKey)));

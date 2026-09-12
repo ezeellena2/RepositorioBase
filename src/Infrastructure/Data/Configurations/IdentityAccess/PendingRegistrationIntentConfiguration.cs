@@ -39,7 +39,7 @@ public sealed class PendingRegistrationIntentConfiguration : IEntityTypeConfigur
         builder.Property(intent => intent.Language).HasMaxLength(16);
         builder.Property(intent => intent.LegalName).HasMaxLength(256).IsRequired();
         builder.Property(intent => intent.Cuit)
-            .HasConversion(cuit => cuit.Value, value => NormalizedCuit.From(value))
+            .HasConversion(cuit => cuit.Value, value => NormalizedCuit.FromStored(value))
             .HasMaxLength(11)
             .IsRequired();
         builder.Property(intent => intent.PasswordHash).HasMaxLength(512).IsRequired();

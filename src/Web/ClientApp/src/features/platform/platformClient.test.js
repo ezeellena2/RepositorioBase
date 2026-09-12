@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createApiTransport } from '../identity/api/apiTransport';
 import { createPlatformClient } from './api/platformClient';
 import { server } from '../../test/server';
@@ -86,7 +86,9 @@ describe('platform client', () => {
     server.use(antiforgery());
     server.use(http.post('/api/platform/mfa/enroll', () => HttpResponse.json({ sharedKey: 'JBSWY3DPEHPK3PXP' })));
 
-    await expect(clientWith().beginMfaEnrollment('token-1')).rejects.toThrow(/missing/i);
+    await expect(clientWith().beginMfaEnrollment('token-1')).rejects.toMatchObject({
+      problem: { code: 'unreadable_response', status: 0 },
+    });
   });
 
   it('carries only the membership identifier into a revocation', async () => {
@@ -121,7 +123,24 @@ describe('platform client', () => {
     server.use(http.get('/api/platform/organizations', () =>
       HttpResponse.json({ succeeded: true, value: { items: [], nextCursor: null } })));
 
-    await expect(clientWith().listOrganizations()).rejects.toThrow(/succeeded|value/i);
+    await expect(clientWith().listOrganizations()).rejects.toMatchObject({
+      problem: { code: 'unreadable_response', status: 0 },
+    });
+  });
+
+  it('forwards a caller signal through every effect-owned Platform read', async () => {
+    const signal = new AbortController().signal;
+    const send = vi.fn().mockResolvedValue({ items: [], nextCursor: null });
+    const client = createPlatformClient({ send });
+
+    await client.listOrganizations({ signal });
+    await client.listIdentities({ signal });
+    await client.listAdministrators({ signal });
+    await client.listAudit({ signal });
+    await client.readRetentionPolicy({ signal });
+
+    expect(send).toHaveBeenCalledTimes(5);
+    expect(send.mock.calls.every(([, options]) => options.signal === signal)).toBe(true);
   });
 
   it('sends the reason and the status the operator read, and nothing else, when suspending an account', async () => {

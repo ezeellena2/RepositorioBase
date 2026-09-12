@@ -1,3 +1,4 @@
+using CleanArchitecture.Application.Common.Logging;
 using CleanArchitecture.Infrastructure.Email;
 using CleanArchitecture.Infrastructure.Outbox;
 using Microsoft.Extensions.DependencyInjection;
@@ -49,8 +50,7 @@ public sealed class LocalOutboxDeliveryService(
             }
             catch (Exception exception)
             {
-                // Only the type: the one interesting value in scope is a token, and a log is not the place for it.
-                logger.LogError("A local outbox dispatch pass failed ({Failure}).", exception.GetType().Name);
+                logger.LogSafeFailure(SafeFailure.Describe(exception, "local_outbox.dispatch"));
             }
 
             if (delivered == 0)

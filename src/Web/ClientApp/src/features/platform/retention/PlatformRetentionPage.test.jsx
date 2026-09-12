@@ -57,6 +57,12 @@ const HOLD = {
 
 const policyIs = (body = POLICY) => http.get('/api/platform/retention/policy', () => HttpResponse.json(body));
 
+const deferred = () => {
+  let resolve;
+  const promise = new Promise((onResolve) => { resolve = onResolve; });
+  return { promise, resolve };
+};
+
 const renderPage = () => render(
   <MemoryRouter><IdentityProvider><PlatformRetentionPage /></IdentityProvider></MemoryRouter>,
 );
@@ -107,6 +113,33 @@ describe('platform retention page', () => {
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
     expect(screen.queryByRole('form', { name: 'Place a hold' })).not.toBeInTheDocument();
     await waitFor(() => expect(retentionCalls(paths)).toEqual([]));
+  });
+
+  it('binds an invalid authenticator code to its field exactly once and clears it on edit', async () => {
+    server.use(antiforgery(), contextIs(retentionContext(RETENTION_PERMISSIONS, { requiresTwoFactor: true })), policyIs());
+    server.use(http.post('/api/platform/mfa/step-up', () => problem(400, 'invalid_mfa_code')));
+
+    renderPage();
+    const code = await screen.findByLabelText('Authenticator code');
+    await userEvent.type(code, '000000');
+    await userEvent.click(screen.getByRole('button', { name: 'Step up' }));
+
+    const refusal = 'That authenticator code was not accepted. Check the code and try again.';
+    expect(await screen.findAllByText(refusal)).toHaveLength(1);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(code).toHaveAttribute('aria-invalid', 'true');
+    expect(code).toHaveAccessibleDescription(refusal);
+    expect(code).toHaveFocus();
+    expect(screen.getByRole('heading', { name: 'Retention' })).toBeInTheDocument();
+    expect(screen.getByRole('form', { name: 'Step up' })).toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+
+    await userEvent.type(code, '1');
+
+    expect(code).not.toHaveAttribute('aria-invalid', 'true');
+    expect(code).not.toHaveAccessibleDescription(refusal);
+    expect(screen.queryByText(refusal)).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   /**
@@ -266,8 +299,8 @@ describe('platform retention page', () => {
     expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
   });
 
-  /** Something that went wrong without the server saying so in words is a different screen, and it can be retried. */
-  it('offers a retry when the read failed with no problem document', async () => {
+  /** A success document that drifts from its contract is unreadable, not a raw parser diagnostic. */
+  it('offers a safe retry when the read success document drifts from its contract', async () => {
     let attempt = 0;
     server.use(antiforgery(), contextIs(retentionContext()));
     server.use(http.get('/api/platform/retention/policy', () => {
@@ -279,7 +312,9 @@ describe('platform retention page', () => {
 
     renderPage();
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/something went wrong/i);
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('We could not read the answer. Reload the page and try again.');
+    expect(alert).not.toHaveTextContent('categories');
     await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
 
     expect(await screen.findByText('Audit events')).toBeInTheDocument();
@@ -345,6 +380,35 @@ describe('platform retention page', () => {
     expect(receipt).toHaveTextContent(HOLD.reasonCode);
     expect(receipt).toHaveTextContent(HOLD.reference);
     expect(receipt).toHaveTextContent(new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(HOLD.placedAt)));
+  });
+
+  it('keeps mutation controls disabled until the post-mutation policy read settles', async () => {
+    const refreshed = deferred();
+    let policyReads = 0;
+    let placements = 0;
+    server.use(antiforgery(), contextIs(retentionContext()));
+    server.use(http.get('/api/platform/retention/policy', () => {
+      policyReads += 1;
+      return policyReads === 1 ? HttpResponse.json(POLICY) : refreshed.promise;
+    }));
+    server.use(http.post('/api/platform/retention/holds', () => {
+      placements += 1;
+      return HttpResponse.json(HOLD, { status: 201 });
+    }));
+
+    renderPage();
+    await placeAHold();
+    await waitFor(() => expect(policyReads).toBe(2));
+    expect(placements).toBe(1);
+
+    const place = screen.getByRole('button', { name: 'Place hold' });
+    expect(place).toBeDisabled();
+    place.click();
+    expect(placements).toBe(1);
+
+    refreshed.resolve(HttpResponse.json(POLICY));
+    expect(await screen.findByRole('status')).toHaveTextContent(HOLD.holdId);
+    await waitFor(() => expect(place).toBeEnabled());
   });
 
   /**

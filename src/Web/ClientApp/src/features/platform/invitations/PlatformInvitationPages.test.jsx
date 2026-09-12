@@ -14,6 +14,7 @@ import { server } from '../../../test/server';
 import { antiforgery, contextIs, problem, signedInContext } from '../../../test/identityServer';
 
 const withToken = (token) => window.history.replaceState({}, '', `/platform/invitations/register#token=${encodeURIComponent(token)}`);
+const withoutToken = () => window.history.replaceState({}, '', '/platform/invitations/register');
 
 const renderPage = (page) => render(<MemoryRouter><IdentityProvider>{page}</IdentityProvider></MemoryRouter>);
 
@@ -26,6 +27,28 @@ const renderPage = (page) => render(<MemoryRouter><IdentityProvider>{page}</Iden
  * same thing whether the token was live, dead, or already belonged to an account.
  */
 describe('platform invitation pages', () => {
+  it('identifies an incomplete link, disables the action and sends nothing without a fragment token', async () => {
+    const submissions = [];
+    server.use(
+      antiforgery(),
+      contextIs(null),
+      http.post('/api/platform/invitations/register', async ({ request }) => {
+        submissions.push(await request.json());
+        return new HttpResponse(null, { status: 202 });
+      }),
+    );
+    withoutToken();
+
+    renderPage(<RegisterPlatformInviteePage />);
+    const password = await screen.findByLabelText('Choose a password');
+    await userEvent.type(password, 'Testing1234!');
+
+    expect(screen.getByText('This invitation link is incomplete. Open it again from the invitation email.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
+    expect(password).toBeRequired();
+    expect(submissions).toHaveLength(0);
+  });
+
   it('reads the token out of the fragment and erases it', async () => {
     const submissions = [];
     server.use(antiforgery(), contextIs(null));
@@ -125,16 +148,40 @@ describe('platform invitation pages', () => {
     expect(Object.keys(submissions[0])).toEqual(['token', 'password']);
   });
 
-  it('shows a refused registration as the problem the server sent', async () => {
-    server.use(antiforgery(), contextIs(null));
-    server.use(http.post('/api/platform/invitations/register', () => problem(400, 'invalid_invitation')));
+  it("puts the server's password policy descriptions on the password and focuses it", async () => {
+    const descriptions = [
+      'Passwords must be at least 12 characters.',
+      "Passwords must have at least one digit ('0'-'9').",
+    ];
+    const submissions = [];
+    server.use(
+      antiforgery(),
+      contextIs(null),
+      http.post('/api/platform/invitations/register', async ({ request }) => {
+        submissions.push(await request.json());
+        return problem(400, 'validation_failed', {
+          status: 400,
+          type: 'about:blank',
+          title: 'Bad Request',
+          errors: { password: descriptions },
+        });
+      }),
+    );
     withToken('token-1');
 
     renderPage(<RegisterPlatformInviteePage />);
-    await userEvent.type(await screen.findByLabelText('Choose a password'), 'short');
+    const password = await screen.findByLabelText('Choose a password');
+    await userEvent.type(password, 'short');
     await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/invitation is not usable/i);
+    await waitFor(() => expect(password).toHaveAttribute('aria-invalid', 'true'));
+    expect(password).toHaveAccessibleDescription(descriptions.join(' '));
+    expect(password).toHaveFocus();
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent('Some of what you sent was not accepted. Check the details and try again.');
+    expect(alert).not.toHaveTextContent(descriptions[0]);
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled();
+    expect(submissions).toEqual([{ token: 'token-1', password: 'short' }]);
   });
 
   it('associates and focuses an invitation password detail without hiding fragment-token details', async () => {
@@ -186,6 +233,22 @@ describe('platform invitation pages', () => {
     expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/login');
   });
 
+  it('shows an invalid confirmation exactly, never shows success and re-enables the action', async () => {
+    server.use(
+      antiforgery(),
+      contextIs(null),
+      http.post('/api/platform/invitations/confirm', () => problem(400, 'invalid_confirmation')),
+    );
+    withToken('expired-platform-confirmation');
+
+    renderPage(<ConfirmPlatformInviteePage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Confirm my address' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('That confirmation link is not usable.');
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Confirm my address' })).toBeEnabled();
+  });
+
   it('does not offer the MFA ceremony to a visitor with no session', async () => {
     server.use(antiforgery(), contextIs(null));
 
@@ -230,21 +293,83 @@ describe('platform invitation pages', () => {
     expect(calls).toEqual(['enroll', 'verify', 'acknowledge']);
   });
 
-  it('shows a refused verification without advancing to acknowledgement', async () => {
-    server.use(antiforgery(), contextIs(signedInContext()));
-    server.use(http.post('/api/platform/mfa/enroll', () => HttpResponse.json({
-      sharedKey: 'JBSWY3DPEHPK3PXP', provisioningUri: 'otpauth://x', recoveryCodes: ['aaaaa'],
-    })));
-    server.use(http.post('/api/platform/mfa/verify', () => problem(400, 'invalid_invitation')));
+  it('keeps a successful acknowledgement successful when selecting the new Platform context is refused', async () => {
+    const calls = [];
+    const selections = [];
+    let contextReads = 0;
+    const initialContext = signedInContext({ activeTenant: null, availableTenants: [], permissions: [] });
+    const refreshedContext = signedInContext({
+      activeTenant: null,
+      availableTenants: [{ id: 'platform-1', type: 'Platform', name: 'Platform' }],
+      permissions: [],
+    });
+    server.use(
+      antiforgery(),
+      http.get('/api/identity/context', () => {
+        contextReads += 1;
+        return HttpResponse.json(contextReads === 1 ? initialContext : refreshedContext);
+      }),
+      http.post('/api/platform/mfa/enroll', () => HttpResponse.json({
+        sharedKey: 'JBSWY3DPEHPK3PXP',
+        provisioningUri: 'otpauth://x',
+        recoveryCodes: ['aaaaa-bbbbb-ccccc-ddddd'],
+      })),
+      http.post('/api/platform/mfa/verify', () => new HttpResponse(null, { status: 204 })),
+      http.post('/api/platform/mfa/recovery-acknowledge', () => {
+        calls.push('acknowledge');
+        return new HttpResponse(null, { status: 204 });
+      }),
+      http.put('/api/identity/context/tenant', async ({ request }) => {
+        selections.push(await request.json());
+        return problem(409, 'session_concurrency_conflict');
+      }),
+    );
     withToken('platform-token-1');
 
     renderPage(<PlatformMfaEnrollmentPage />);
     await userEvent.click(await screen.findByRole('button', { name: 'Begin enrollment' }));
-    await userEvent.type(screen.getByLabelText(/code from your authenticator/i), '000000');
+    await userEvent.type(screen.getByLabelText(/code from your authenticator/i), '123456');
+    await userEvent.click(screen.getByRole('button', { name: 'Verify' }));
+    await userEvent.click(await screen.findByRole('button', { name: /saved my recovery codes/i }));
+
+    const success = await screen.findByRole('status');
+    const alert = await screen.findByRole('alert');
+    expect(success).toHaveTextContent('Your second factor is active.');
+    expect(alert).toHaveTextContent('Something changed while you were working. Try again.');
+    expect(calls).toEqual(['acknowledge']);
+    expect(selections).toEqual([{ tenantId: 'platform-1' }]);
+    expect(contextReads).toBe(2);
+    expect(screen.queryByRole('button', { name: /saved my recovery codes/i })).not.toBeInTheDocument();
+  });
+
+  it('binds a refused authenticator code to its field without advancing to acknowledgement', async () => {
+    server.use(antiforgery(), contextIs(signedInContext()));
+    server.use(http.post('/api/platform/mfa/enroll', () => HttpResponse.json({
+      sharedKey: 'JBSWY3DPEHPK3PXP', provisioningUri: 'otpauth://x', recoveryCodes: ['aaaaa'],
+    })));
+    server.use(http.post('/api/platform/mfa/verify', () => problem(400, 'invalid_mfa_code')));
+    withToken('platform-token-1');
+
+    renderPage(<PlatformMfaEnrollmentPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Begin enrollment' }));
+    const code = screen.getByLabelText(/code from your authenticator/i);
+    await userEvent.type(code, '000000');
     await userEvent.click(screen.getByRole('button', { name: 'Verify' }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/invitation is not usable/i);
+    const refusal = 'That authenticator code was not accepted. Check the code and try again.';
+    expect(await screen.findAllByText(refusal)).toHaveLength(1);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(code).toHaveAttribute('aria-invalid', 'true');
+    expect(code).toHaveAccessibleDescription(refusal);
+    expect(code).toHaveFocus();
     expect(screen.queryByRole('button', { name: /saved my recovery codes/i })).not.toBeInTheDocument();
+
+    await userEvent.type(code, '1');
+
+    expect(code).not.toHaveAttribute('aria-invalid', 'true');
+    expect(code).not.toHaveAccessibleDescription(refusal);
+    expect(screen.queryByText(refusal)).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('associates and focuses an enrollment code detail without duplicating the detail', async () => {

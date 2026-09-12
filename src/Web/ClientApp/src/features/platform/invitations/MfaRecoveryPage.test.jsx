@@ -76,19 +76,32 @@ describe('platform mfa recovery', () => {
     expect(stored).not.toContain('aaaa-1111');
   });
 
-  it('shows what the API said when a code is refused, and keeps the form to try another', async () => {
+  it('binds a refused recovery code to its field and keeps the form to try another', async () => {
     server.use(antiforgery(), contextIs(signedInContext()));
     server.use(http.post('/api/identity/credentials/reauthenticate', () => new HttpResponse(null, { status: 204 })));
-    server.use(http.post('/api/platform/mfa/recover', () => problem(400, 'invalid_credential_proof')));
+    server.use(http.post('/api/platform/mfa/recover', () => problem(400, 'invalid_recovery_code')));
 
     renderPage();
     await userEvent.type(await screen.findByLabelText(/your password/i), 'Testing1234!');
-    await userEvent.type(screen.getByLabelText(/a recovery code/i), 'wrong');
+    const recoveryCode = screen.getByLabelText(/a recovery code/i);
+    await userEvent.type(recoveryCode, 'wrong');
     await userEvent.click(screen.getByRole('button', { name: /replace my second factor/i }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/not accepted/i);
+    const refusal = 'That recovery code was not accepted. Check it or try another unused code.';
+    expect(await screen.findAllByText(refusal)).toHaveLength(1);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(recoveryCode).toHaveAttribute('aria-invalid', 'true');
+    expect(recoveryCode).toHaveAccessibleDescription(refusal);
+    expect(recoveryCode).toHaveFocus();
     expect(screen.getByRole('button', { name: /replace my second factor/i })).toBeInTheDocument();
     expect(screen.queryByTestId('recovered-shared-key')).not.toBeInTheDocument();
+
+    await userEvent.type(recoveryCode, 'next-code');
+
+    expect(recoveryCode).not.toHaveAttribute('aria-invalid', 'true');
+    expect(recoveryCode).not.toHaveAccessibleDescription(refusal);
+    expect(screen.queryByText(refusal)).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('associates and focuses a recovery-code validation detail without marking the proof password', async () => {

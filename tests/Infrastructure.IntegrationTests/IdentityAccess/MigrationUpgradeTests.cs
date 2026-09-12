@@ -96,6 +96,14 @@ public sealed class MigrationUpgradeTests
             preserved.Generation.ShouldBe(3);
             preserved.FailureCode.ShouldBe("provider_error");
             preserved.RequestFingerprint.ShouldBeNull();
+            preserved.TraceId.ShouldBeNull("legacy outbox rows have no request trace to invent during upgrade");
+            await using var inspection = new NpgsqlConnection(connectionString);
+            await inspection.OpenAsync();
+            (await Scalar<bool>(inspection, """
+                SELECT is_nullable = 'YES' AND column_default IS NULL AND character_maximum_length = 32
+                FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'outbox_messages' AND column_name = 'TraceId';
+                """)).ShouldBeTrue();
             (await context.Database.GetPendingMigrationsAsync()).ShouldBeEmpty();
         }
         finally { if (connectionString is not null) await DropDatabase(databaseName, connectionString); }

@@ -45,38 +45,39 @@ public sealed class ConfirmEmailCommandHandler(
             if (secret is null || !tokenHasher.Verify(request.Token, secret.VersionedHash)) return Result.Failure(IdentityAccessErrors.InvalidConfirmation());
             // A spent envelope means the token did its work; what that work decided is recorded on the intent, not
             // on the envelope. Both terminal outcomes consume it, so answering success here would tell a person
-            // whose organization was lost to a competing claim that it had been created — every time they clicked.
+            // whose registration was lost to a competing claim that it had succeeded — every time they clicked.
             if (secret.Status == OutboxSecretStatus.Consumed)
             {
-                return await SettledIntentAsync(secret.OutboxMessageId, ct) is { } recorded
-                    ? ResultFor(recorded)
-                    : Result.Success();
-            }
-            if (secret.Status is not (OutboxSecretStatus.Pending or OutboxSecretStatus.Delivered)) return Result.Failure(IdentityAccessErrors.RegistrationConflict());
-            if (secret.ExpiresAt <= now)
-            {
-                secret.Terminate(OutboxSecretStatus.Expired, "confirmation_expired", now);
-
-                // A registration intent settles with its envelope. Leaving it open would let the same dead link
-                // keep asking, and would leave a row whose meaning depends on a clock rather than on a decision.
-                if (await FindOpenIntentAsync(secret.OutboxMessageId, ct) is { } expiring)
-                {
-                    expiring.Complete(PendingRegistrationIntentOutcome.Expired, now);
-                }
-
-                await context.SaveChangesAsync(ct);
-                return Result.Failure(IdentityAccessErrors.RegistrationConflict());
+                return await ResultForConsumedEnvelopeAsync(secret.OutboxMessageId, ct);
             }
 
             var message = await context.OutboxMessages.SingleOrDefaultAsync(item => item.Id == secret.OutboxMessageId, ct);
             if (message is null) return Result.Failure(IdentityAccessErrors.InvalidConfirmation());
+            var purpose = Classify(message.Type);
+            if (purpose == ConfirmationPurpose.Unknown) return Result.Failure(IdentityAccessErrors.InvalidConfirmation());
+
+            // A terminal envelope can only name its refusal after its purpose is known. Organization registration
+            // has a recorded conflict outcome; Personal and invitation links collapse every unusable state into
+            // the same invalid-confirmation answer.
+            if (secret.Status is not (OutboxSecretStatus.Pending or OutboxSecretStatus.Delivered))
+            {
+                return Result.Failure(TerminalErrorFor(purpose));
+            }
+
+            if (secret.ExpiresAt <= now)
+            {
+                secret.Terminate(OutboxSecretStatus.Expired, "confirmation_expired", now);
+                await SettleExpiredIntentAsync(message, purpose, now, ct);
+                await context.SaveChangesAsync(ct);
+                return Result.Failure(TerminalErrorFor(purpose));
+            }
 
             // An invited registration confirms an identity that holds no membership yet, so it writes its own
             // purpose. Confirming that purpose activates the identity and nothing else: acceptance is a separate
             // authenticated request and must stay the only thing that creates a membership (IA-REQ-016). The two
             // purposes are told apart by message type rather than by the shape of the payload, because a shape
             // test would silently match whichever envelope happened to deserialize.
-            if (string.Equals(message.Type, RegisterInvitedUserCommandHandler.InvitedConfirmationMessageType, StringComparison.Ordinal))
+            if (purpose == ConfirmationPurpose.InvitedIdentity)
             {
                 if (!TryReadIdentityEnvelope(message.Payload, out var identityOnly)) return Result.Failure(IdentityAccessErrors.InvalidConfirmation());
                 await identities.ActivateAsync(identityOnly.IdentityId, ct);
@@ -89,19 +90,17 @@ public sealed class ConfirmEmailCommandHandler(
             // The registration a person started anonymously. Spending this token is the proof that lets the
             // organization exist at all, so this is where every exclusive claim is made — and the first place any
             // of them could fail (IA-REQ-048).
-            if (string.Equals(message.Type, RegisterOrganizationCommandHandler.IntentConfirmationMessageType, StringComparison.Ordinal))
+            if (purpose == ConfirmationPurpose.OrganizationIntent)
             {
                 return await FinalizeRegistrationAsync(message.Payload, secret, now, ct);
             }
 
             // The same proof, for a person instead of a company. It is the same endpoint and the same envelope
             // because a confirmation link is a confirmation link (IA-REQ-005); only what it finalizes differs.
-            if (string.Equals(message.Type, CleanArchitecture.Application.IdentityAccess.People.RegisterPersonal.RegisterPersonalCommandHandler.IntentConfirmationMessageType, StringComparison.Ordinal))
+            if (purpose == ConfirmationPurpose.PersonalIntent)
             {
                 return await FinalizePersonalAsync(message.Payload, secret, now, ct);
             }
-
-            if (!string.Equals(message.Type, ConfirmationMessageType, StringComparison.Ordinal)) return Result.Failure(IdentityAccessErrors.InvalidConfirmation());
 
             if (!TryReadEnvelope(message.Payload, out var envelope)) return Result.Failure(IdentityAccessErrors.InvalidConfirmation());
             var tenant = await context.Tenants.SingleOrDefaultAsync(item => item.Id == TenantId.From(envelope.TenantId), ct);
@@ -356,25 +355,73 @@ public sealed class ConfirmEmailCommandHandler(
         _ => Result.Failure(IdentityAccessErrors.RegistrationConflict())
     };
 
-    /// <summary>The unsettled intent an expiring envelope belongs to, if that envelope carried one at all.</summary>
-    private async Task<PendingRegistrationIntent?> FindOpenIntentAsync(Guid outboxMessageId, CancellationToken cancellationToken)
+    /// <summary>Settles only the intent carried by the classified envelope; legacy and invited confirmations have none.</summary>
+    private async Task SettleExpiredIntentAsync(
+        OutboxMessage message,
+        ConfirmationPurpose purpose,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
     {
-        var intent = await FindIntentAsync(outboxMessageId, cancellationToken);
-        return intent?.Outcome is null ? intent : null;
+        if (purpose == ConfirmationPurpose.OrganizationIntent && TryReadIntentEnvelope(message.Payload, out var organizationEnvelope))
+        {
+            var intent = await context.PendingRegistrationIntents
+                .SingleOrDefaultAsync(item => item.Id == organizationEnvelope.IntentId, cancellationToken);
+            if (intent is { Outcome: null }) intent.Complete(PendingRegistrationIntentOutcome.Expired, now);
+            return;
+        }
+
+        if (purpose == ConfirmationPurpose.PersonalIntent && TryReadPersonalEnvelope(message.Payload, out var personalEnvelope))
+        {
+            var intent = await context.PendingPersonalIntents
+                .SingleOrDefaultAsync(item => item.Id == personalEnvelope.IntentId, cancellationToken);
+            if (intent is { Outcome: null }) intent.Complete(PendingRegistrationIntentOutcome.Expired, now);
+        }
     }
 
-    /// <summary>The outcome a spent envelope's intent recorded, or null when the envelope carried no intent.</summary>
-    private async Task<PendingRegistrationIntentOutcome?> SettledIntentAsync(Guid outboxMessageId, CancellationToken cancellationToken) =>
-        (await FindIntentAsync(outboxMessageId, cancellationToken))?.Outcome;
-
-    private async Task<PendingRegistrationIntent?> FindIntentAsync(Guid outboxMessageId, CancellationToken cancellationToken)
+    /// <summary>Returns the outcome a spent registration envelope recorded, or the legacy success fallback.</summary>
+    private async Task<Result> ResultForConsumedEnvelopeAsync(Guid outboxMessageId, CancellationToken cancellationToken)
     {
         var message = await context.OutboxMessages.AsNoTracking().SingleOrDefaultAsync(item => item.Id == outboxMessageId, cancellationToken);
-        if (message is null || !string.Equals(message.Type, RegisterOrganizationCommandHandler.IntentConfirmationMessageType, StringComparison.Ordinal))
-            return null;
-        if (!TryReadIntentEnvelope(message.Payload, out var envelope)) return null;
-        return await context.PendingRegistrationIntents.SingleOrDefaultAsync(item => item.Id == envelope.IntentId, cancellationToken);
+        if (message is null) return Result.Success();
+
+        if (string.Equals(message.Type, RegisterOrganizationCommandHandler.IntentConfirmationMessageType, StringComparison.Ordinal)
+            && TryReadIntentEnvelope(message.Payload, out var organizationEnvelope))
+        {
+            var outcome = await context.PendingRegistrationIntents
+                .AsNoTracking()
+                .Where(item => item.Id == organizationEnvelope.IntentId)
+                .Select(item => item.Outcome)
+                .SingleOrDefaultAsync(cancellationToken);
+            return outcome is { } recorded ? ResultFor(recorded) : Result.Success();
+        }
+
+        if (string.Equals(message.Type, CleanArchitecture.Application.IdentityAccess.People.RegisterPersonal.RegisterPersonalCommandHandler.IntentConfirmationMessageType, StringComparison.Ordinal)
+            && TryReadPersonalEnvelope(message.Payload, out var personalEnvelope))
+        {
+            var outcome = await context.PendingPersonalIntents
+                .AsNoTracking()
+                .Where(item => item.Id == personalEnvelope.IntentId)
+                .Select(item => item.Outcome)
+                .SingleOrDefaultAsync(cancellationToken);
+            return outcome is { } recorded ? PersonalResultFor(recorded) : Result.Success();
+        }
+
+        return Result.Success();
     }
+
+    private static ConfirmationPurpose Classify(string? messageType) => messageType switch
+    {
+        RegisterOrganizationCommandHandler.IntentConfirmationMessageType => ConfirmationPurpose.OrganizationIntent,
+        ConfirmationMessageType => ConfirmationPurpose.LegacyOrganization,
+        CleanArchitecture.Application.IdentityAccess.People.RegisterPersonal.RegisterPersonalCommandHandler.IntentConfirmationMessageType => ConfirmationPurpose.PersonalIntent,
+        RegisterInvitedUserCommandHandler.InvitedConfirmationMessageType => ConfirmationPurpose.InvitedIdentity,
+        _ => ConfirmationPurpose.Unknown
+    };
+
+    private static ApplicationError TerminalErrorFor(ConfirmationPurpose purpose) =>
+        purpose is ConfirmationPurpose.OrganizationIntent or ConfirmationPurpose.LegacyOrganization
+            ? IdentityAccessErrors.RegistrationConflict()
+            : IdentityAccessErrors.InvalidConfirmation();
 
     private static bool TryReadIntentEnvelope(string payload, out RegisterOrganizationCommandHandler.IntentEnvelope envelope)
     {
@@ -426,4 +473,13 @@ public sealed class ConfirmEmailCommandHandler(
     }
 
     private sealed record ConfirmationEnvelope(Guid IdentityId, Guid TenantId, Guid MembershipId);
+
+    private enum ConfirmationPurpose
+    {
+        Unknown,
+        OrganizationIntent,
+        LegacyOrganization,
+        PersonalIntent,
+        InvitedIdentity
+    }
 }

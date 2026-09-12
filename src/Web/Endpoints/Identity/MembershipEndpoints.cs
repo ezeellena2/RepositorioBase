@@ -22,12 +22,14 @@ internal static class MembershipEndpoints
         group.MapGet("/{tenantId:guid}/members", ListMembers)
             .RequireAuthorization()
             .Produces<MemberPageResponse>(StatusCodes.Status200OK)
-            .WithApiProblemDetails(ApiProblemMetadata.AuthenticationRequired, ApiProblemMetadata.InvalidSession, ApiProblemMetadata.PermissionDenied, ApiProblemMetadata.InvalidMembershipOperation, ApiProblemMetadata.InternalServerError);
+            .WithApiProblemDetails(ApiProblemMetadata.AuthenticationRequired, ApiProblemMetadata.InvalidSession, ApiProblemMetadata.PermissionDenied, ApiProblemMetadata.NotFound, ApiProblemMetadata.InternalServerError)
+            .WithBodyBindingFailureCode(ApiProblemMetadata.InvalidRequest.Code);
 
         group.MapGet("/{tenantId:guid}/invitations", ListInvitations)
             .RequireAuthorization()
             .Produces<InvitationSummaryPageResponse>(StatusCodes.Status200OK)
-            .WithApiProblemDetails(ApiProblemMetadata.AuthenticationRequired, ApiProblemMetadata.InvalidSession, ApiProblemMetadata.PermissionDenied, ApiProblemMetadata.InvalidMembershipOperation, ApiProblemMetadata.InternalServerError);
+            .WithApiProblemDetails(ApiProblemMetadata.AuthenticationRequired, ApiProblemMetadata.InvalidSession, ApiProblemMetadata.PermissionDenied, ApiProblemMetadata.NotFound, ApiProblemMetadata.InternalServerError)
+            .WithBodyBindingFailureCode(ApiProblemMetadata.InvalidRequest.Code);
 
         group.MapPut("/{tenantId:guid}/members/{membershipId:guid}/roles", UpdateRoles)
             .RequireAuthorization()

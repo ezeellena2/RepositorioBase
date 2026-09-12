@@ -11,10 +11,11 @@ import Skeleton from '@mui/material/Skeleton';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
-import { Trans, useFormat, useTranslation } from '../../../i18n';
+import { toProblem } from '../api/apiTransport';
 import { useIdentity } from '../context/IdentityProvider';
 import { ProblemMessage } from '../ProblemMessage';
 import { useIdentityProof } from '../useIdentityProof';
+import { useRead } from '../useRead';
 
 /**
  * A width this screen chooses rather than inherits. It is a hybrid — one proof field and a handful of rows, never
@@ -27,8 +28,15 @@ const page = { maxWidth: 560 };
 const header = { alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap' };
 const supporting = { mt: 0.5, maxWidth: 640 };
 const proofSection = { p: { xs: 2, sm: 3 }, maxWidth: 560 };
-const deviceRow = { gap: 2, flexWrap: 'wrap' };
+const bulkAction = { width: { xs: '100%', sm: 'auto' } };
+const deviceRow = {
+  alignItems: { xs: 'flex-start', sm: 'center' },
+  flexDirection: { xs: 'column', sm: 'row' },
+  gap: { xs: 1, sm: 2 },
+  minHeight: 44,
+};
 const deviceName = { alignItems: 'baseline', flexWrap: 'wrap' };
+const deviceAction = { width: { xs: '100%', sm: 'auto' } };
 const empty = { p: 4, textAlign: 'center' };
 
 /**
@@ -58,33 +66,21 @@ export function SessionsPage() {
   const { t } = useTranslation('identity');
   const identity = useIdentity();
   const proof = useIdentityProof();
-  const [sessions, setSessions] = useState(null);
-  const [problem, setProblem] = useState(null);
+  const [actionProblem, setActionProblem] = useState(null);
+  const [actionTarget, setActionTarget] = useState(null);
   const [password, setPassword] = useState('');
   const [isBusy, setIsBusy] = useState(false);
 
-  const load = useCallback(async () => {
-    try {
-      // Only the devices. What this screen may offer at all is a question about the identity rather than about
-      // this list, so it is asked once, in one place, by the proof seam every sensitive screen shares.
-      setSessions(await identity.client.listSessions());
-      setProblem(null);
-    } catch (error) {
-      setProblem(error.problem ?? { code: 'unexpected' });
-    }
-  }, [identity]);
+  const read = useRead(useCallback(
+    ({ signal }) => identity.client.listSessions({ signal }),
+    [identity.client],
+  ));
+  const sessions = read.data;
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      if (!cancelled) await load();
-    })();
-    return () => { cancelled = true; };
-  }, [load]);
-
-  const run = async (action, act, intent = null) => {
+  const run = async (target, action, act, intent = null) => {
     setIsBusy(true);
-    setProblem(null);
+    setActionTarget(target);
+    setActionProblem(null);
     try {
       // A provider proof leaves for the provider instead of answering, so there is nothing to do here but stop:
       // what this operation was going to write waits for the round trip to come back. A null action means the
@@ -92,9 +88,9 @@ export function SessionsPage() {
       if (action !== null && !await proof.prove(action, password, intent)) return;
       await act();
       setPassword('');
-      await load();
+      await read.refresh(undefined);
     } catch (error) {
-      setProblem(error.problem ?? { code: 'unexpected' });
+      setActionProblem(toProblem(error));
     } finally {
       setIsBusy(false);
     }
@@ -112,7 +108,7 @@ export function SessionsPage() {
     const resume = (act) => { void Promise.resolve().then(act); };
 
     if (waiting.operation === 'revoke-others') {
-      resume(() => run(null, () => identity.client.revokeOtherSessions()));
+      resume(() => run('all', null, () => identity.client.revokeOtherSessions()));
       return;
     }
 
@@ -120,7 +116,7 @@ export function SessionsPage() {
     // expired, been ended elsewhere, or become the one being used.
     const target = sessions.find((session) => session.sessionRef === waiting.target);
     if (waiting.operation !== 'revoke-one' || target === undefined || target.isCurrent) return;
-    resume(() => run(null, () => identity.client.revokeSession(target.sessionRef)));
+    resume(() => run(`session:${target.sessionRef}`, null, () => identity.client.revokeSession(target.sessionRef)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [waiting, sessions, proof.isReady]);
 
@@ -137,22 +133,25 @@ export function SessionsPage() {
             it carries the same weight as the per-row ending control rather than the weight of a primary action.
             Nothing here is `contained`: this screen has no constructive primary action to spend it on. */}
         {proof.canProve && (
-          <Button
-            type="button"
-            variant="outlined"
-            color="error"
-            disabled={isBusy || !proof.canBegin(password)}
-            onClick={() => run(
-              sessionOperation.revokeOthers.proofAction,
-              () => identity.client.revokeOtherSessions(),
-              { returnTo: SessionsPath, operation: sessionOperation.revokeOthers.operation })}
-          >
-            {t('sessions.endEveryOther')}
-          </Button>
+          <Stack spacing={1} sx={bulkAction}>
+            <ProblemMessage problem={actionTarget === 'all' ? actionProblem : null} autoFocus />
+            <Button
+              type="button"
+              variant="outlined"
+              color="error"
+              disabled={isBusy || !proof.canBegin(password)}
+              sx={bulkAction}
+              onClick={() => run(
+                'all',
+                'sessions.revoke-others',
+                () => identity.client.revokeOtherSessions(),
+                { returnTo: SessionsPath, operation: 'revoke-others' })}
+            >
+              End every other device
+            </Button>
+          </Stack>
         )}
       </Stack>
-
-      <ProblemMessage problem={problem} />
 
       {/* The field is a control, so it is given a container and the container carries the width; the two branches
           beside it are prose about the identity rather than something to fill in, so they stay on the page. */}
@@ -185,11 +184,17 @@ export function SessionsPage() {
 
       {/* The rows wait for the proof seam as well as for the list. Showing a device before this screen knows
           what it may offer would render the ending controls twice: once wrong, then again right. */}
-      {sessions === null || !proof.isReady ? (
-        <Stack spacing={1} role="status" aria-label={t('sessions.loading')}>
+      <ProblemMessage problem={read.problem} />
+      {read.status === 'errored' && (
+        <Button type="button" variant="outlined" sx={deviceAction} onClick={() => read.refresh(undefined)}>
+          Try again
+        </Button>
+      )}
+      {read.status === 'loading' && read.data === null ? (
+        <Stack spacing={1} role="status" aria-label="Loading">
           {[0, 1, 2].map((placeholder) => <Skeleton key={placeholder} variant="rounded" height={rowHeight} />)}
         </Stack>
-      ) : sessions.length === 0 ? (
+      ) : sessions === null ? null : sessions.length === 0 ? (
         <Paper variant="outlined" sx={empty}>
           <Typography variant="body2" color="text.secondary">{t('sessions.empty')}</Typography>
         </Paper>
@@ -217,20 +222,28 @@ export function SessionsPage() {
                     them is the description: the row's own device label, which a screen reader announces after the
                     name and which leaves that name untouched. */}
                 {!session.isCurrent && proof.canProve && (
-                  <Button
-                    type="button"
-                    variant="outlined"
-                    color="error"
-                    size="small"
-                    aria-describedby={`device-${session.sessionRef}`}
-                    disabled={isBusy || !proof.canBegin(password)}
-                    onClick={() => run(
-                      sessionOperation.revokeOne.proofAction,
-                      () => identity.client.revokeSession(session.sessionRef),
-                      { returnTo: SessionsPath, operation: sessionOperation.revokeOne.operation, target: session.sessionRef })}
-                  >
-                    {t('sessions.endThis')}
-                  </Button>
+                  <Stack spacing={1} sx={deviceAction}>
+                    <ProblemMessage
+                      problem={actionTarget === `session:${session.sessionRef}` ? actionProblem : null}
+                      autoFocus
+                    />
+                    <Button
+                      type="button"
+                      variant="outlined"
+                      color="error"
+                      size="small"
+                      aria-describedby={`device-${session.sessionRef}`}
+                      disabled={isBusy || !proof.canBegin(password)}
+                      sx={deviceAction}
+                      onClick={() => run(
+                        `session:${session.sessionRef}`,
+                        'sessions.revoke-one',
+                        () => identity.client.revokeSession(session.sessionRef),
+                        { returnTo: SessionsPath, operation: 'revoke-one', target: session.sessionRef })}
+                    >
+                      End this device
+                    </Button>
+                  </Stack>
                 )}
               </ListItem>
             ))}

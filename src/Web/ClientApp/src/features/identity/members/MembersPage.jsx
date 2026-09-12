@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link as RouterLink } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Checkbox from '@mui/material/Checkbox';
@@ -16,17 +15,22 @@ import Skeleton from '@mui/material/Skeleton';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
+import { toProblem } from '../api/apiTransport';
 import { useIdentity } from '../context/IdentityProvider';
 import { ProblemMessage } from '../ProblemMessage';
 import { useIdentityProof } from '../useIdentityProof';
-import { roleName, useTranslation } from '../../../i18n';
+import { useRead } from '../useRead';
 
 const frame = { maxWidth: 560 };
 const panel = { p: { xs: 2, sm: 3 }, maxWidth: 560 };
 const empty = { p: 4, textAlign: 'center' };
 const supporting = { mt: 0.5, maxWidth: 640 };
 const selfStart = { alignSelf: 'flex-start' };
-const rowActions = { flexWrap: 'wrap', justifyContent: { xs: 'flex-start', sm: 'flex-end' } };
+const rowActions = {
+  alignSelf: { md: 'center' },
+  flexWrap: 'wrap',
+  justifyContent: { xs: 'flex-start', md: 'flex-end' },
+};
 const row = { flexWrap: 'wrap', alignItems: 'center' };
 
 /**
@@ -51,12 +55,24 @@ const absence = { py: 0.25 };
  * and therefore to the same element. Keeping them inside one `li` is also what lets a caller scope a query to a
  * member and find everything about them — a table would put the editor in a sibling row instead.
  */
-const memberRow = { display: 'block', py: 2 };
-const memberHead = { alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap' };
+const memberRow = { display: 'block', minHeight: 44, py: 2 };
+const memberLayout = {
+  display: 'grid',
+  gridTemplateColumns: { xs: 'minmax(0, 1fr)', md: 'minmax(0, 1fr) auto' },
+  gap: 1.5,
+};
+const memberHead = {
+  display: 'grid',
+  gridTemplateColumns: { xs: 'minmax(0, 1fr)', sm: 'minmax(180px, 0.8fr) minmax(0, 1.2fr)' },
+  gap: 1,
+  alignItems: 'start',
+};
 const nameBlock = { minWidth: 0 };
 const nameLine = { alignItems: 'baseline', flexWrap: 'wrap' };
 const badges = { alignItems: 'center', flexWrap: 'wrap' };
-const editor = { pt: 1 };
+const fullMemberRow = { gridColumn: '1 / -1' };
+const transferRow = { ...fullMemberRow, justifySelf: { xs: 'stretch', md: 'end' } };
+const editor = { ...fullMemberRow, pt: 1 };
 
 /**
  * A membership state is a closed set the server owns, so the colour is a lookup rather than a condition. An
@@ -64,9 +80,10 @@ const editor = { pt: 1 };
  * not an error, it is a state this screen has not been taught.
  */
 const statusColor = { Active: 'success', Suspended: 'warning', Revoked: 'error' };
-const memberStatus = { active: 'Active', suspended: 'Suspended', revoked: 'Revoked' };
-const memberStatusAction = { suspend: 'suspend', reactivate: 'reactivate', revoke: 'revoke' };
-const memberRoleInputId = (membershipId, roleId) => `role-${membershipId}-${roleId}`;
+const appendMembers = (current, loaded) => ({
+  ...loaded,
+  items: [...current.items, ...loaded.items],
+});
 
 /**
  * The people in the organization the session is operating in, and what may be done to them (IA-REQ-053).
@@ -92,68 +109,61 @@ export function MembersPage() {
   const { t } = useTranslation();
   const proof = useIdentityProof();
   const tenantId = identity.context?.activeTenant?.id ?? null;
-  const [members, setMembers] = useState(null);
-  const [nextCursor, setNextCursor] = useState(null);
-  const [roles, setRoles] = useState(null);
   const [password, setPassword] = useState('');
-  const [problem, setProblem] = useState(null);
+  const [actionProblem, setActionProblem] = useState(null);
+  const [actionTarget, setActionTarget] = useState(null);
+  const [readTarget, setReadTarget] = useState('roster');
   const [isBusy, setIsBusy] = useState(false);
   const [editing, setEditing] = useState(null);
 
-  const load = useCallback(async () => {
-    if (tenantId === null) return;
-    // The catalogue can never reject: both of its outcomes are handled where it is started, so `Promise.all`
-    // fails only for the roster. Both requests still leave together, and both answers land in one continuation,
-    // so the roster never renders for an instant with its role names missing.
-    const catalogue = identity.client.listRoles(tenantId).then(
-      (page) => page.items.filter((role) => !role.isRetired),
-      () => null,
-    );
-    try {
-      const [listed, available] = await Promise.all([identity.client.listMembers(tenantId), catalogue]);
-      setMembers(listed.items);
-      setNextCursor(listed.nextCursor ?? null);
-      setRoles(available);
-      setProblem(null);
-    } catch (error) {
-      setProblem(error.problem ?? { code: 'unexpected' });
-    }
-  }, [identity, tenantId]);
+  const roster = useRead(
+    useCallback(
+      ({ cursor, signal }) => identity.client.listMembers(tenantId, cursor, { signal }),
+      [identity.client, tenantId],
+    ),
+    tenantId !== null,
+  );
+  const catalog = useRead(
+    useCallback(async ({ signal }) => {
+      const page = await identity.client.listRoles(tenantId, null, { signal });
+      return page.items.filter((role) => !role.isRetired);
+    }, [identity.client, tenantId]),
+    tenantId !== null,
+  );
+  const members = roster.data?.items ?? null;
+  const nextCursor = roster.data?.nextCursor ?? null;
+  const roles = catalog.data;
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      if (!cancelled) await load();
-    })();
-    return () => { cancelled = true; };
-  }, [load]);
-
-  const run = async (action, act, intent = null) => {
+  const run = async (target, action, act, intent = null) => {
     setIsBusy(true);
-    setProblem(null);
+    setActionTarget(target);
+    setActionProblem(null);
     try {
       // A provider proof leaves for the provider rather than answering, so the change waits for the round trip.
       if (action !== null && !await proof.prove(action, password, intent)) return;
       await act();
       setPassword('');
       setEditing(null);
-      await load();
+      setReadTarget('roster');
+      await Promise.all([roster.refresh(undefined), catalog.refresh(undefined)]);
     } catch (error) {
-      setProblem(error.problem ?? { code: 'unexpected' });
+      setActionProblem(toProblem(error));
     } finally {
       setIsBusy(false);
     }
   };
 
   const saveRoles = (member) => run(
+    `roles:${member.membershipId}`,
     'members.roles.change',
     () => identity.client.updateMemberRoles(tenantId, member.membershipId, editing.roleIds, member.version),
     { returnTo: MembersPath, operation: 'roles', target: member.membershipId, draft: { roleIds: editing.roleIds, version: member.version } });
 
   const changeStatus = (member, change) =>
-    run(null, () => identity.client.changeMemberStatus(tenantId, member.membershipId, change, member.version));
+    run(`member:${member.membershipId}`, null, () => identity.client.changeMemberStatus(tenantId, member.membershipId, change, member.version));
 
   const transfer = (member) => run(
+    `member:${member.membershipId}`,
     'tenant.ownership.transfer',
     () => identity.client.transferOwnership(tenantId, member.membershipId, member.version),
     { returnTo: MembersPath, operation: 'transfer', target: member.membershipId, draft: { version: member.version } });
@@ -167,7 +177,11 @@ export function MembersPage() {
     void Promise.resolve().then(async () => {
       if (cancelled) return;
       setIsBusy(true);
-      setProblem(null);
+      const target = waiting.operation === 'roles'
+        ? `roles:${waiting.target}`
+        : `member:${waiting.target}`;
+      setActionTarget(target);
+      setActionProblem(null);
       try {
         // A fresh return loads only page one. Follow its current cursors before deciding the member is gone.
         let member = members.find((candidate) => candidate.membershipId === waiting.target);
@@ -183,12 +197,12 @@ export function MembersPage() {
         if (member === undefined) return;
         const pending = waiting.draft ?? {};
         if (waiting.operation === 'roles') {
-          await run(null, () => identity.client.updateMemberRoles(tenantId, member.membershipId, pending.roleIds, pending.version));
+          await run(target, null, () => identity.client.updateMemberRoles(tenantId, member.membershipId, pending.roleIds, pending.version));
         } else if (waiting.operation === 'transfer' && !member.isOwner && member.status === 'Active') {
-          await run(null, () => identity.client.transferOwnership(tenantId, member.membershipId, pending.version));
+          await run(target, null, () => identity.client.transferOwnership(tenantId, member.membershipId, pending.version));
         }
       } catch (error) {
-        if (!cancelled) setProblem(error.problem ?? { code: 'unexpected' });
+        if (!cancelled) setActionProblem(toProblem(error));
       } finally {
         if (!cancelled) setIsBusy(false);
       }
@@ -202,13 +216,9 @@ export function MembersPage() {
   // once somebody's roles or status changed, positions further down the list are no longer the ones read.
   const showMore = async () => {
     setIsBusy(true);
-    setProblem(null);
     try {
-      const next = await identity.client.listMembers(tenantId, nextCursor);
-      setMembers((current) => [...(current ?? []), ...next.items]);
-      setNextCursor(next.nextCursor ?? null);
-    } catch (error) {
-      setProblem(error.problem ?? { code: 'unexpected' });
+      setReadTarget('pagination');
+      await roster.refresh(nextCursor, appendMembers);
     } finally {
       setIsBusy(false);
     }
@@ -228,6 +238,14 @@ export function MembersPage() {
    * standard gives a form. It never renders beside the roster — the screen is this or that — which is why the
    * one `h1`, its id and its word are the same in both.
    */
+  // Every refusal on this screen is scoped to the region that asked for it, which reports well only while that
+  // region is on screen. A resumed operation returns to a screen mounted from scratch — no editor open, only
+  // page one read — so its target can have no place to be drawn. A refusal nobody can see is worse than one
+  // said plainly, so what no region claims is said for the screen instead.
+  const claimedByRegion = actionTarget === `roles:${editing?.membershipId}`
+    || (members ?? []).some((member) => actionTarget === `member:${member.membershipId}`);
+  const unclaimedProblem = claimedByRegion ? null : actionProblem;
+
   if (tenantId === null) {
     return (
       <Stack component="section" aria-labelledby="members-heading" spacing={3} sx={frame}>
@@ -244,10 +262,8 @@ export function MembersPage() {
     );
   }
 
-  const nameOf = (roleId) => {
-    const role = roles?.find((candidate) => candidate.roleId === roleId);
-    return role ? roleName(role, t) : roleId;
-  };
+  const nameOf = (roleId) => roles?.find((role) => role.roleId === roleId)?.name ?? null;
+  const initialLoading = roster.status === 'loading' && roster.data === null;
 
   return (
     <Stack component="section" aria-labelledby="members-heading" spacing={3}>
@@ -257,8 +273,6 @@ export function MembersPage() {
           {t('identity:members.description')}
         </Typography>
       </Box>
-
-      <ProblemMessage problem={problem} />
 
       {/* A control with no container is a stray field. The password is not part of any one member's form — it is
           what every sensitive action on this screen is bought with — so it gets a section of its own, at the
@@ -284,11 +298,24 @@ export function MembersPage() {
       {/* The wait keeps the shape of what is coming, so the roster does not arrive by pushing the page down. The
           word is what a reader of the status region is told, so it is said to them and not also drawn as a line
           of content the roster then has to replace: a visible "Loading…" is not a loading state. */}
-      {members === null || !proof.isReady ? (
-        <Stack spacing={1} role="status" aria-label={t('identity:members.loading')}>
+      <ProblemMessage problem={unclaimedProblem} autoFocus />
+
+      {readTarget === 'roster' && <ProblemMessage problem={roster.problem} />}
+      {readTarget === 'roster' && roster.status === 'errored' && (
+        <Button
+          type="button"
+          variant="outlined"
+          sx={selfStart}
+          onClick={() => { setReadTarget('roster'); roster.refresh(undefined); }}
+        >
+          Try again
+        </Button>
+      )}
+      {initialLoading ? (
+        <Stack spacing={1} role="status" aria-label="Loading…">
           {[0, 1, 2].map((placeholder) => <Skeleton key={placeholder} variant="rounded" height={ROW_HEIGHT} />)}
         </Stack>
-      ) : members.length === 0 ? (
+      ) : members === null ? null : members.length === 0 ? (
         <Paper variant="outlined" sx={empty}>
           {/* The standard asks an empty state to offer the action that creates the first item, and this screen has
               one at /members/invite. Its label is a string this screen has never rendered, so it is reported
@@ -300,7 +327,7 @@ export function MembersPage() {
           <List disablePadding>
             {members.map((member, index) => (
               <ListItem key={member.membershipId} divider={index < members.length - 1} sx={memberRow}>
-                <Stack spacing={1.5}>
+                <Stack spacing={1.5} useFlexGap sx={memberLayout}>
                   <Stack direction="row" spacing={2} useFlexGap sx={memberHead}>
                     <Box sx={nameBlock}>
                       <Stack direction="row" spacing={1} useFlexGap sx={nameLine}>
@@ -329,17 +356,30 @@ export function MembersPage() {
                       {member.roleIds.length === 0 ? (
                         <Typography variant="caption" color="text.disabled" sx={absence}>{t('identity:members.noRoles')}</Typography>
                       ) : (
-                        member.roleIds.map((roleId) => <Chip key={roleId} size="small" label={nameOf(roleId)} />)
+                        member.roleIds.map((roleId) => {
+                          const name = nameOf(roleId);
+                          return name ? <Chip key={roleId} size="small" label={name} /> : null;
+                        })
                       )}
                     </Stack>
                   </Stack>
+
+                  {actionTarget === `member:${member.membershipId}` && actionProblem && (
+                    <Box sx={fullMemberRow}>
+                      <ProblemMessage problem={actionProblem} autoFocus />
+                    </Box>
+                  )}
 
                   <Stack direction="row" spacing={1} useFlexGap sx={rowActions}>
                     <Button
                       type="button"
                       size="small"
                       disabled={isBusy}
-                      onClick={() => setEditing({ membershipId: member.membershipId, roleIds: [...member.roleIds] })}
+                      onClick={() => {
+                        setActionProblem(null);
+                        setActionTarget(null);
+                        setEditing({ membershipId: member.membershipId, roleIds: [...member.roleIds] });
+                      }}
                     >
                       {t('identity:members.editRoles', { name: member.displayName })}
                     </Button>
@@ -369,8 +409,8 @@ export function MembersPage() {
                       because that is how a caller scopes a query to one person. */}
                   {!member.isOwner && member.status === memberStatus.active && proof.canProve && (
                     <>
-                      <Divider />
-                      <Box>
+                      <Divider sx={fullMemberRow} />
+                      <Box sx={transferRow}>
                         <Button
                           type="button"
                           size="small"
@@ -394,12 +434,29 @@ export function MembersPage() {
                       onSubmit={(event) => { event.preventDefault(); saveRoles(member); }}
                     >
                       <Divider />
+                      <ProblemMessage
+                        problem={actionTarget === `roles:${member.membershipId}` ? actionProblem : null}
+                        autoFocus
+                      />
                       <FormControl component="fieldset">
-                        <FormLabel component="legend">{t('identity:members.rolesFor', { name: member.displayName })}</FormLabel>
-                        {roles === null && (
+                        <FormLabel component="legend">Roles for {member.displayName}</FormLabel>
+                        {catalog.problem?.code === 'permission_denied' && (
                           <Typography variant="body2" color="text.secondary">
                             {t('identity:members.rolesRefused')}
                           </Typography>
+                        )}
+                        {catalog.problem && catalog.problem.code !== 'permission_denied' && (
+                          <ProblemMessage problem={catalog.problem} />
+                        )}
+                        {catalog.status === 'errored' && (
+                          <Button
+                            type="button"
+                            variant="outlined"
+                            sx={selfStart}
+                            onClick={() => catalog.refresh(undefined)}
+                          >
+                            Try again
+                          </Button>
                         )}
                         {roles?.length === 0 && (
                           <Typography variant="body2" color="text.secondary">{t('identity:members.noRolesToGive')}</Typography>
@@ -425,7 +482,18 @@ export function MembersPage() {
                         <Button type="submit" variant="contained" disabled={isBusy || !proof.canProve || !proof.canBegin(password)}>
                           {t('identity:members.saveRoles')}
                         </Button>
-                        <Button type="button" variant="outlined" disabled={isBusy} onClick={() => setEditing(null)}>{t('identity:members.cancel')}</Button>
+                        <Button
+                          type="button"
+                          variant="outlined"
+                          disabled={isBusy}
+                          onClick={() => {
+                            setActionProblem(null);
+                            setActionTarget(null);
+                            setEditing(null);
+                          }}
+                        >
+                          Cancel
+                        </Button>
                       </Stack>
                     </Stack>
                   )}
@@ -436,10 +504,19 @@ export function MembersPage() {
         </Paper>
       )}
 
-      {nextCursor !== null && (
-        <Button type="button" variant="outlined" disabled={isBusy} onClick={showMore} sx={selfStart}>
-          {t('identity:members.showMore')}
-        </Button>
+      {(nextCursor !== null || (readTarget === 'pagination' && roster.problem)) && (
+        <Stack spacing={1} sx={selfStart}>
+          {readTarget === 'pagination' && <ProblemMessage problem={roster.problem} />}
+          {readTarget === 'pagination' && roster.status === 'errored' ? (
+            <Button type="button" variant="outlined" disabled={isBusy} onClick={showMore} sx={selfStart}>
+              Try again
+            </Button>
+          ) : nextCursor !== null ? (
+            <Button type="button" variant="outlined" disabled={isBusy} onClick={showMore} sx={selfStart}>
+              Show more members
+            </Button>
+          ) : null}
+        </Stack>
       )}
     </Stack>
   );

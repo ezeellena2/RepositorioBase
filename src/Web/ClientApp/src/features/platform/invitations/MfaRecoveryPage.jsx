@@ -1,4 +1,3 @@
-/* eslint-disable i18next/no-literal-string -- bounded wire field names, not display copy. */
 import { useEffect, useRef, useState } from 'react';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
@@ -12,8 +11,8 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { useIdentity } from '../../identity/context/IdentityProvider';
 import { usePlatformClient } from './PlatformInvitationPages';
-import { ProblemMessage } from '../../identity/ProblemMessage';
 import { fieldError, firstInvalid } from '../../identity/fieldErrors';
+import { ProblemMessage } from '../../identity/ProblemMessage';
 import { useSubmit } from '../../identity/useSubmit';
 import { useTranslation } from '../../../i18n';
 
@@ -63,13 +62,25 @@ export function MfaRecoveryPage() {
   const { t } = useTranslation('platform');
   const identity = useIdentity();
   const platform = usePlatformClient();
+  const passwordInput = useRef(null);
+  const recoveryCodeInput = useRef(null);
   const [password, setPassword] = useState('');
   const [recoveryCode, setRecoveryCode] = useState('');
   const [replacement, setReplacement] = useState(null);
-  const { submit, problem, isBusy } = useSubmit(async (action) => action());
-  const recoveryCodeRef = useRef(null);
-  const invalid = firstInvalid(problem, ['recoveryCode']);
-  useEffect(() => { if (invalid) recoveryCodeRef.current?.focus(); }, [invalid]);
+  const { submit, clearProblem, problem, isBusy } = useSubmit(async (action) => action());
+  const invalidField = firstInvalid(problem, ['recoveryCode', 'password']);
+  const passwordError = fieldError(problem, 'password', t);
+  const recoveryCodeError = fieldError(problem, 'recoveryCode', t);
+  const invalidCredentialProof = problem?.code === 'invalid_credential_proof';
+  const invalidRecoveryCodeDirect = problem?.code === 'invalid_recovery_code';
+  const invalidPassword = passwordError.error || invalidCredentialProof;
+  const invalidRecoveryCode = recoveryCodeError.error || invalidRecoveryCodeDirect;
+  const directFieldProblem = invalidCredentialProof || invalidRecoveryCodeDirect;
+
+  useEffect(() => {
+    if (invalidRecoveryCode) recoveryCodeInput.current?.focus();
+    else if (invalidPassword) passwordInput.current?.focus();
+  }, [invalidPassword, invalidRecoveryCode]);
 
   const signedIn = Boolean(identity?.isAuthenticated);
   const asking = signedIn && replacement === null;
@@ -145,7 +156,11 @@ export function MfaRecoveryPage() {
         </>
       ) : (
         <>
-          <ProblemMessage problem={problem} claimed={['recoveryCode']} autoFocus={!invalid} />
+          <ProblemMessage
+            problem={directFieldProblem ? null : problem}
+            claimedFields={['password', 'recoveryCode']}
+            autoFocus={!invalidField}
+          />
           <Paper
             variant="outlined"
             component="form"
@@ -170,25 +185,35 @@ export function MfaRecoveryPage() {
                   code are exactly the two things a password manager must not be able to fill. */}
               <TextField
                 id="mfa-recovery-password"
+                inputRef={passwordInput}
                 label={t('mfa.recovery.password')}
                 type="password"
                 required
                 fullWidth
                 slotProps={requiredField}
+                error={invalidPassword}
+                helperText={invalidCredentialProof ? t('errors:invalid_credential_proof') : passwordError.helperText}
                 value={password}
-                onChange={(event) => setPassword(event.target.value)}
+                onChange={(event) => {
+                  setPassword(event.target.value);
+                  if (invalidCredentialProof) clearProblem();
+                }}
               />
               <TextField
                 id="mfa-recovery-code"
+                inputRef={recoveryCodeInput}
                 label={t('mfa.recovery.code')}
                 type="text"
                 required
                 fullWidth
                 slotProps={requiredField}
-                inputRef={recoveryCodeRef}
-                {...fieldError(problem, 'recoveryCode', t)}
+                error={invalidRecoveryCode}
+                helperText={invalidRecoveryCodeDirect ? t('errors:invalid_recovery_code') : recoveryCodeError.helperText}
                 value={recoveryCode}
-                onChange={(event) => setRecoveryCode(event.target.value)}
+                onChange={(event) => {
+                  setRecoveryCode(event.target.value);
+                  if (invalidRecoveryCodeDirect) clearProblem();
+                }}
               />
               <Button type="submit" variant="contained" disabled={isBusy} sx={leading}>
                 {t('mfa.recovery.submit')}

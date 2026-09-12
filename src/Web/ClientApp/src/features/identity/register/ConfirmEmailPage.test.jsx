@@ -63,16 +63,20 @@ describe('confirm email page', () => {
     expect(stored.flat().join(' ')).not.toContain('confirmation-token-2');
   });
 
-  /** A refused confirmation reads out what the server said rather than inventing an outcome of its own. */
-  it('shows the refusal the API returned', async () => {
+  /** Each confirmation purpose reads out the server's collapsed refusal rather than inventing a success. */
+  it.each([
+    [400, 'invalid_confirmation', 'That confirmation link is not usable.'],
+    [409, 'registration_conflict', 'That organization registration cannot be completed. If you already have an account at this address, sign in; otherwise start registration again.'],
+    [409, 'personal_registration_conflict', 'Your personal account could not be created. If this address is confirmed, sign in and try again.'],
+  ])('shows the exact %s %s refusal without a success state', async (status, code, message) => {
     server.use(antiforgery(), contextIs(null));
-    server.use(http.post('/api/identity/confirm-email', () => problem(400, 'invalid_confirmation')));
+    server.use(http.post('/api/identity/confirm-email', () => problem(status, code)));
     withToken('stale-token');
 
     renderPage();
     await userEvent.click(await screen.findByRole('button', { name: 'Confirm my address' }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/that confirmation link is not usable/i);
+    expect(await screen.findByRole('alert')).toHaveTextContent(message);
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
 

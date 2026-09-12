@@ -25,8 +25,9 @@ public sealed class InvitePlatformAdministratorCommandValidator : AbstractValida
 {
     public InvitePlatformAdministratorCommandValidator() =>
         RuleFor(command => command.Email)
-            .NotEmpty().WithErrorCode(ValidationErrorCodes.Required)
-            .MaximumLength(256).WithErrorCode(ValidationErrorCodes.TooLong);
+            .NotEmpty().WithErrorCode(ValidationErrorCodes.Required).WithMessage("Enter an email address.")
+            .MaximumLength(256).WithErrorCode(ValidationErrorCodes.TooLong).WithMessage("The email address must be 256 characters or fewer.")
+            .OverridePropertyName("email");
 }
 
 /// <summary>

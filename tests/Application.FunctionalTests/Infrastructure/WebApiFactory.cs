@@ -17,6 +17,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using CleanArchitecture.Infrastructure.Identity;
 using CleanArchitecture.Infrastructure.IdentityAccess;
+using MediatR;
 
 namespace CleanArchitecture.Application.FunctionalTests.Infrastructure;
 
@@ -36,6 +37,7 @@ public class WebApiFactory(
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
+        builder.UseWebRoot(Path.Combine(AppContext.BaseDirectory, "Infrastructure", "TestWebRoot"));
         builder.UseSetting("ConnectionStrings:CleanArchitectureDb", connectionString);
         builder.UseSetting("IdentityAccess:Email:PublicOrigin", "https://app.example.test");
         // Fingerprint key material has no default by design, so the host that records documents has to be given
@@ -141,7 +143,9 @@ public class WebApiFactory(
                 new CountingPasswordHasher(new PasswordHasher<ApplicationUser>(provider.GetRequiredService<IOptions<PasswordHasherOptions>>())));
             services.AddSingleton<ILoggerProvider, TestLogCaptureProvider>();
             services.AddLogging(logging => logging.AddFilter<TestLogCaptureProvider>(null, LogLevel.Trace));
+            services.AddTransient(typeof(IPipelineBehavior<,>), typeof(TestForcedRequestFailureBehavior<,>));
             services.AddScoped<Microsoft.EntityFrameworkCore.Diagnostics.ISaveChangesInterceptor, TestSaveChangesRaceInterceptor>();
+            services.AddScoped<DbCommandInterceptor, TestProviderFailureInterceptor>();
             services.AddScoped<DbCommandInterceptor, ConfirmationSecretLockBarrierInterceptor>();
             services.AddScoped<DbCommandInterceptor, InvitationLockBarrierInterceptor>();
             services.AddScoped<DbCommandInterceptor, SessionLivenessRaceInterceptor>();
@@ -211,6 +215,23 @@ public class WebApiFactory(
         }
 
         public bool Verify(string token, string versionedHash) => _inner.Verify(token, versionedHash);
+    }
+
+    private sealed class TestForcedRequestFailureBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, TResponse>
+        where TRequest : notnull
+    {
+        public Task<TResponse> Handle(
+            TRequest request,
+            RequestHandlerDelegate<TResponse> next,
+            CancellationToken cancellationToken)
+        {
+            if (TestApp.ConsumeForcedDownstreamBindingShapedFailure() is { } failure)
+            {
+                throw failure;
+            }
+
+            return next(cancellationToken);
+        }
     }
 
     private sealed class TestCurrentTenant : ICurrentTenant

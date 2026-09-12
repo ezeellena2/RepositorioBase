@@ -19,6 +19,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Hosting;
 
 namespace Microsoft.Extensions.DependencyInjection;
@@ -39,6 +40,7 @@ public static class DependencyInjection
 
         builder.Services.AddScoped<ISaveChangesInterceptor, AuditableEntityInterceptor>();
         builder.Services.AddScoped<ISaveChangesInterceptor, DispatchDomainEventsInterceptor>();
+        builder.Services.AddScoped<ISaveChangesInterceptor, OutboxTraceInterceptor>();
         builder.Services.AddScoped<ISaveChangesInterceptor, TenantAuthorizationAuditInterceptor>();
         builder.Services.AddScoped<ISaveChangesInterceptor, CleanArchitecture.Infrastructure.Data.Interceptors.OperationalTimestampInterceptor>();
 
@@ -47,10 +49,37 @@ public static class DependencyInjection
             options.AddInterceptors(sp.GetServices<ISaveChangesInterceptor>());
             options.AddInterceptors(sp.GetServices<DbCommandInterceptor>());
             options.UseNpgsql(connectionString);
-            options.ConfigureWarnings(warnings => warnings.Ignore(RelationalEventId.PendingModelChangesWarning));
+            options.ConfigureWarnings(warnings => warnings
+                .Ignore(RelationalEventId.PendingModelChangesWarning)
+                // These exception-bearing diagnostics can include provider messages, SQL and parameters. Terminal
+                // request/background boundaries own the single redacted SafeFailure record for caught failures.
+                .Ignore(RelationalEventId.CommandError)
+                .Ignore(CoreEventId.SaveChangesFailed)
+                .Ignore(CoreEventId.QueryIterationFailed)
+                .Ignore(RelationalEventId.ConnectionError)
+                .Ignore(RelationalEventId.TransactionError)
+                .Ignore(RelationalEventId.ExecuteDeleteFailed)
+                .Ignore(RelationalEventId.ExecuteUpdateFailed)
+                .Ignore(RelationalEventId.NonQueryOperationFailed)
+                .Ignore(CoreEventId.OptimisticConcurrencyException)
+                .Ignore(CoreEventId.ExecutionStrategyRetrying)
+                .Ignore(CoreEventId.TypeLoadingErrorWarning)
+                .Ignore(RelationalEventId.BatchExecutorFailedToRollbackToSavepoint)
+                .Ignore(RelationalEventId.BatchExecutorFailedToReleaseSavepoint));
         });
 
-        builder.EnrichNpgsqlDbContext<ApplicationDbContext>();
+        builder.Services.AddHealthChecks()
+            .AddDbContextCheck<ApplicationDbContext>(
+                "database",
+                failureStatus: HealthStatus.Unhealthy,
+                tags: ["ready"]);
+
+        builder.EnrichNpgsqlDbContext<ApplicationDbContext>(settings =>
+        {
+            // Npgsql activities can carry provider failure details. Keep tracing disabled until a verified
+            // redacting processor exists; SafeFailure remains the only exception diagnostic.
+            settings.DisableTracing = true;
+        });
 
         builder.Services.AddScoped<IApplicationDbContext>(provider => provider.GetRequiredService<ApplicationDbContext>());
         builder.Services.AddScoped<IApplicationTransaction, EfApplicationTransaction>();

@@ -1,4 +1,5 @@
 using CleanArchitecture.Application.FunctionalTests.Infrastructure;
+using CleanArchitecture.Application.Common.Exceptions;
 using CleanArchitecture.Application.IdentityAccess.Authorization;
 using CleanArchitecture.Application.IdentityAccess.Invitations.InviteMember;
 using CleanArchitecture.Domain.IdentityAccess.Auditing;
@@ -128,10 +129,11 @@ public sealed class InviteMemberTests : TestBase
         var organization = await InvitationScenario.SeedOrganizationAsync(Permissions.MembersInvite);
         InvitationScenario.ActAs(organization);
 
-        var result = await TestApp.SendAsync(NewCommand(organization) with { RoleIds = [] });
+        var exception = await Should.ThrowAsync<ValidationException>(
+            () => TestApp.SendAsync(NewCommand(organization) with { RoleIds = [] }));
 
-        result.IsFailure.ShouldBeTrue();
-        result.Error!.Code.ShouldBe("invalid_invitation");
+        exception.Errors.Keys.ShouldBe(["roleIds"]);
+        exception.Errors["roleIds"].ShouldBe(["Choose at least one role."]);
         await InvitationScenario.AssertNoInvitationEffectsAsync();
     }
 
@@ -141,10 +143,11 @@ public sealed class InviteMemberTests : TestBase
         var organization = await InvitationScenario.SeedOrganizationAsync(Permissions.MembersInvite);
         InvitationScenario.ActAs(organization);
 
-        var result = await TestApp.SendAsync(NewCommand(organization) with { Email = "not-an-address" });
+        var exception = await Should.ThrowAsync<ValidationException>(
+            () => TestApp.SendAsync(NewCommand(organization) with { Email = "not-an-address" }));
 
-        result.IsFailure.ShouldBeTrue();
-        result.Error!.Code.ShouldBe("invalid_invitation");
+        exception.Errors.Keys.ShouldBe(["email"]);
+        exception.Errors["email"].ShouldBe(["Enter an email address."]);
         await InvitationScenario.AssertNoInvitationEffectsAsync();
     }
 

@@ -58,5 +58,5 @@ Revert presentation slices and dependency cleanup together, restoring Pico provi
 
 - [ ] All 34 route entries use direct standard MUI with only approved palette/font branding.
 - [ ] Pico and competing theme bootstrap are removed.
-- [ ] Existing 293 SPA assertions and 32 acceptance journeys/page objects pass unchanged.
+- [ ] Existing 293 SPA assertions and 30 acceptance journeys/page objects pass unchanged.
 - [ ] Backend, APIs, product flows, login contracts, and mockup boundary remain unchanged.

@@ -40,7 +40,7 @@ export function createIdentityClient(transport = createApiTransport()) {
     }),
 
     signIn: (email, password) => send('/api/identity/sessions', { method: 'POST', body: { email, password } }),
-    signOut: () => send('/api/identity/sessions/current', { method: 'DELETE' }),
+    signOut: () => send('/api/identity/sessions/current', { method: 'DELETE', expectStatus: 204 }),
 
     selectTenant: (tenantId) => send('/api/identity/context/tenant', {
       method: 'PUT',
@@ -60,9 +60,10 @@ export function createIdentityClient(transport = createApiTransport()) {
     // A person's own context. The signup is neutral and bodyless like the organization one; the two authenticated
     // calls name the members they are allowed to read, so a response that grew a field would be refused here.
     // A person's own devices. The list is a bare array by contract, so nothing here declares an envelope.
-    listSessions: () => send('/api/identity/sessions', {
+    listSessions: (options) => send('/api/identity/sessions', {
       expectArray: true,
       expect: ['sessionRef', 'isCurrent', 'deviceLabel', 'createdAt', 'lastSeenAt', 'expiresAt'],
+      signal: options?.signal,
     }),
     revokeSession: (sessionRef) => send(`/api/identity/sessions/${encodeURIComponent(sessionRef)}`, { method: 'DELETE' }),
     revokeOtherSessions: () => send('/api/identity/sessions/others', { method: 'DELETE' }),
@@ -78,8 +79,9 @@ export function createIdentityClient(transport = createApiTransport()) {
     reactivateAccount: (reactivationToken, password) => send('/api/identity/account/reactivate', { method: 'POST', body: { reactivationToken, password } }),
     // Whether there is a password at all, and when it last changed. Two screens are dishonest without it: an
     // account whose only way in is a provider must not be offered an unlink that can only be refused.
-    getOwnCredentials: () => send('/api/identity/credentials', {
+    getOwnCredentials: (options) => send('/api/identity/credentials', {
       expect: ['hasPassword', 'passwordUpdatedAt'],
+      signal: options?.signal,
     }),
 
     // Provider accounts. Each start answers only where to send the browser next; which round trip it is stays in
@@ -103,19 +105,22 @@ export function createIdentityClient(transport = createApiTransport()) {
     completeExternalRoundTrip: () => send('/api/identity/external/complete', { method: 'POST' }),
     // `available` is the deployment's own answer about which providers exist. Only the server knows: one with
     // no client configured has no middleware and no route that can succeed.
-    listExternalLinks: () => send('/api/identity/external', {
+    listExternalLinks: (options) => send('/api/identity/external', {
       expect: ['items', 'available'],
+      signal: options?.signal,
     }),
     unlinkExternal: (provider) => send(`/api/identity/external/${encodeURIComponent(provider)}`, { method: 'DELETE' }),
 
     // Custom roles inside one Organization. Every route is addressed by tenant and the server compares that
     // address against the session's own active tenant, so naming another one is refused rather than honoured.
-    listPermissionCatalog: (tenantId) => send(`/api/tenants/${encodeURIComponent(tenantId)}/permission-catalog`, {
+    listPermissionCatalog: (tenantId, options) => send(`/api/tenants/${encodeURIComponent(tenantId)}/permission-catalog`, {
       expectArray: true,
       expect: ['code', 'grantable'],
+      signal: options?.signal,
     }),
-    listRoles: (tenantId, cursor = null) => send(continued(`/api/tenants/${encodeURIComponent(tenantId)}/roles`, cursor), {
+    listRoles: (tenantId, cursor = null, options) => send(continued(`/api/tenants/${encodeURIComponent(tenantId)}/roles`, cursor), {
       expect: ['items', 'nextCursor'],
+      signal: options?.signal,
     }),
     createRole: (tenantId, name, permissions) => send(`/api/tenants/${encodeURIComponent(tenantId)}/roles`, {
       method: 'POST',
@@ -134,11 +139,13 @@ export function createIdentityClient(transport = createApiTransport()) {
 
     // Member administration. `version` is the row's own concurrency token, echoed back so a change made against
     // a member somebody else has since altered is refused rather than silently applied over theirs.
-    listMembers: (tenantId, cursor = null) => send(continued(`/api/tenants/${encodeURIComponent(tenantId)}/members`, cursor), {
+    listMembers: (tenantId, cursor = null, options) => send(continued(`/api/tenants/${encodeURIComponent(tenantId)}/members`, cursor), {
       expect: ['items', 'nextCursor'],
+      signal: options?.signal,
     }),
-    listTenantInvitations: (tenantId, cursor = null) => send(continued(`/api/tenants/${encodeURIComponent(tenantId)}/invitations`, cursor), {
+    listTenantInvitations: (tenantId, cursor = null, options) => send(continued(`/api/tenants/${encodeURIComponent(tenantId)}/invitations`, cursor), {
       expect: ['items', 'nextCursor'],
+      signal: options?.signal,
     }),
     updateMemberRoles: (tenantId, membershipId, roleIds, version) =>
       send(`/api/tenants/${encodeURIComponent(tenantId)}/members/${encodeURIComponent(membershipId)}/roles`, {

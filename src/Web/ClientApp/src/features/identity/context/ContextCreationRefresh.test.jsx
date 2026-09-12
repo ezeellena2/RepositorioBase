@@ -17,7 +17,7 @@ async function begin(kind, failRefresh) {
   const added = { ...base, availableTenants: [tenant] };
   server.use(antiforgery(), http.get('/api/identity/context', () => {
     reads += 1;
-    return mutations && failRefresh ? problem(503, 'context_unreadable') : HttpResponse.json(mutations ? added : base);
+    return mutations && failRefresh ? problem(503, 'service_unavailable') : HttpResponse.json(mutations ? added : base);
   }), http.get('/api/identity/profile', () => mutations ? HttpResponse.json(profile) : problem(404, 'personal_profile_not_found')),
   http.post('/api/invitations/accept', () => { mutations += 1; return HttpResponse.json({ tenantId: tenant.id, membershipId: 'membership-1' }); }),
   http.post('/api/identity/personal', () => { mutations += 1; return new HttpResponse(null, { status: 204 }); }),
@@ -49,7 +49,7 @@ describe('shared context after a membership is created', () => {
   it.each(['invitation', 'personal'])('reports a failed refresh after successful %s creation without offering to repeat the mutation', async (kind) => {
     const calls = await begin(kind, true);
     await waitFor(() => expect(calls.reads()).toBe(2));
-    await screen.findByRole('alert');
+    expect(await screen.findByRole('alert')).toHaveTextContent('That is temporarily unavailable. Try again shortly.');
     expect(screen.queryByRole('button', { name: kind === 'invitation' ? 'Accept' : 'Add my personal account' })).not.toBeInTheDocument();
     expect(calls.mutations()).toBe(1);
   });

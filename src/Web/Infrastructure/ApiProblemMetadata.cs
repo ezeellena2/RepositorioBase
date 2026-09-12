@@ -11,11 +11,12 @@ public static class ApiProblemMetadata
     public static readonly ApiProblemContract InvalidRegistration = new(StatusCodes.Status400BadRequest, "invalid_registration");
     public static readonly ApiProblemContract AntiforgeryValidationFailed = new(StatusCodes.Status400BadRequest, "antiforgery_validation_failed");
     public static readonly ApiProblemContract InvalidConfirmation = new(StatusCodes.Status400BadRequest, "invalid_confirmation");
-    public static readonly ApiProblemContract RouteBodyIdMismatch = new(StatusCodes.Status400BadRequest, "route_body_id_mismatch");
     public static readonly ApiProblemContract NotFound = new(StatusCodes.Status404NotFound, "not_found");
     public static readonly ApiProblemContract RegistrationConflict = new(StatusCodes.Status409Conflict, "registration_conflict");
     public static readonly ApiProblemContract SessionConcurrencyConflict = new(StatusCodes.Status409Conflict, "session_concurrency_conflict");
     public static readonly ApiProblemContract InvalidInvitation = new(StatusCodes.Status400BadRequest, "invalid_invitation");
+    public static readonly ApiProblemContract InvalidMfaCode = new(StatusCodes.Status400BadRequest, "invalid_mfa_code");
+    public static readonly ApiProblemContract InvalidRecoveryCode = new(StatusCodes.Status400BadRequest, "invalid_recovery_code");
     public static readonly ApiProblemContract InvitationConflict = new(StatusCodes.Status409Conflict, "invitation_conflict");
     public static readonly ApiProblemContract InvalidSession = new(StatusCodes.Status401Unauthorized, "invalid_session");
     public static readonly ApiProblemContract PlatformTenantConcurrencyConflict = new(StatusCodes.Status409Conflict, "platform_tenant_concurrency_conflict");
@@ -30,6 +31,18 @@ public static class ApiProblemMetadata
     /// they tried too often (amendment A5).
     /// </summary>
     public static readonly ApiProblemContract ServiceUnavailable = new(StatusCodes.Status503ServiceUnavailable, "service_unavailable", true);
+
+    /// <summary>The deployment refuses ingress before routing while recovery admission is closed.</summary>
+    public static readonly ApiProblemContract RecoveryAdmissionClosed = new(
+        StatusCodes.Status503ServiceUnavailable,
+        "recovery_admission_closed",
+        true);
+
+    /// <summary>
+    /// The two public answers every shared attempt budget can emit. Keep them together so a route cannot advertise
+    /// exhaustion without also advertising the fail-closed store outage (IA-REQ-057).
+    /// </summary>
+    public static readonly ApiProblemContract[] BoundedAttempt = [RateLimitExceeded, ServiceUnavailable];
 
     public static readonly ApiProblemContract PersonalRegistrationConflict = new(StatusCodes.Status409Conflict, "personal_registration_conflict");
 
@@ -129,7 +142,48 @@ public static class ApiProblemMetadata
     public static RouteHandlerBuilder WithBodyBindingFailureCode(this RouteHandlerBuilder builder, string code)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(code);
+        builder.Produces<ApiProblemDetails>(StatusCodes.Status400BadRequest, ProblemContentType);
+        builder.WithMetadata(new ApiProblemContractMetadata(
+            [new ApiProblemContract(StatusCodes.Status400BadRequest, code)]));
         builder.WithMetadata(new ApiBodyBindingFailureMetadata(code));
+        return builder;
+    }
+
+    /// <summary>
+    /// Keeps an enumeration-sensitive public endpoint neutral when its request body cannot be bound. Only the
+    /// explicitly bodyless neutral statuses are accepted; oversized-body and unsupported-media refusals are not covered.
+    /// </summary>
+    public static RouteHandlerBuilder WithNeutralBodyBindingFailure(this RouteHandlerBuilder builder, int statusCode)
+    {
+        if (statusCode is not StatusCodes.Status202Accepted and not StatusCodes.Status204NoContent)
+        {
+            throw new ArgumentOutOfRangeException(nameof(statusCode), statusCode, "A neutral body-binding response must be 202 or 204.");
+        }
+
+        builder.WithMetadata(new ApiNeutralBodyBindingFailureMetadata(statusCode));
+        builder.AddEndpointFilter(async (invocationContext, next) =>
+        {
+            if (invocationContext.HttpContext.Items.TryGetValue(
+                    ApiNeutralBodyBindingExecutionState.HttpContextItemKey,
+                    out var value)
+                && value is ApiNeutralBodyBindingExecutionState state)
+            {
+                state.MarkBindingCompleted();
+            }
+
+            return await next(invocationContext);
+        });
+        return builder;
+    }
+
+    /// <summary>
+    /// Couples a public route's optional-session rejection to its declared <c>401 invalid_session</c> contract.
+    /// </summary>
+    public static RouteHandlerBuilder WithInvalidOptionalSessionRefusal(this RouteHandlerBuilder builder)
+    {
+        builder.Produces<ApiProblemDetails>(StatusCodes.Status401Unauthorized, ProblemContentType);
+        builder.WithMetadata(new ApiProblemContractMetadata([InvalidSession]));
+        builder.WithMetadata(ApiInvalidOptionalSessionMetadata.Instance);
         return builder;
     }
 }
@@ -147,5 +201,23 @@ public sealed class ApiProblemContractMetadata
 }
 
 public sealed record ApiBodyBindingFailureMetadata(string Code);
+
+public sealed record ApiNeutralBodyBindingFailureMetadata(int StatusCode);
+
+public sealed class ApiNeutralBodyBindingExecutionState
+{
+    internal static object HttpContextItemKey { get; } = new();
+
+    public bool BindingCompleted { get; private set; }
+
+    public void MarkBindingCompleted() => BindingCompleted = true;
+}
+
+public sealed class ApiInvalidOptionalSessionMetadata
+{
+    private ApiInvalidOptionalSessionMetadata() { }
+
+    public static ApiInvalidOptionalSessionMetadata Instance { get; } = new();
+}
 
 public sealed record ApiSuccessContractMetadata(int StatusCode, bool RequiresLocationHeader);

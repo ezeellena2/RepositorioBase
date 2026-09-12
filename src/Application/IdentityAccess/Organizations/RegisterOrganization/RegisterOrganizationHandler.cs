@@ -46,17 +46,20 @@ public sealed class RegisterOrganizationCommandHandler(
 
     public async Task<Result> Handle(RegisterOrganizationCommand request, CancellationToken cancellationToken)
     {
-        if (!TryNormalize(request, out var intent)) return Result.Failure(IdentityAccessErrors.InvalidRegistration());
         if (session.IsInvalid || session.IdentityId.HasValue != (session.Email is not null)) return Result.Failure(IdentityAccessErrors.InvalidSession());
-        if (session.Email is not null && !string.Equals(session.Email.Trim(), intent.Email, StringComparison.OrdinalIgnoreCase))
-            return Result.Failure(IdentityAccessErrors.InvalidRegistration());
+        if (!TryNormalize(request, out var intent)) return Result.Failure(IdentityAccessErrors.InvalidRegistration());
 
         // Password policy depends on the submitted password alone, so it is decided here — before any address is
         // looked up. Validating it only for a free address made a weak password answer invalid_registration for an
         // untaken address and neutrally succeed for a taken one, which is an enumeration oracle anyone could probe.
-        if (session.IdentityId is null && !(await identities.ValidatePasswordAsync(request.Password, cancellationToken)).IsValid)
+        if (session.IdentityId is null)
         {
-            return Result.Failure(IdentityAccessErrors.InvalidRegistration());
+            var password = await identities.ValidatePasswordAsync(request.Password, cancellationToken);
+            if (!password.IsValid)
+            {
+                return Result.Failure(IdentityAccessErrors.PasswordPolicyFailed(
+                    new Dictionary<string, string[]> { ["password"] = password.Errors.ToArray() }));
+            }
         }
 
         return await transaction.ExecuteAsync(async ct =>
@@ -186,19 +189,47 @@ public sealed class RegisterOrganizationCommandHandler(
         _ => throw new ArgumentOutOfRangeException(nameof(outcome), outcome, "Unsupported registration outcome.")
     };
 
-    private static bool TryNormalize(RegisterOrganizationCommand request, out RegistrationIntent intent)
+    private bool TryNormalize(RegisterOrganizationCommand request, out RegistrationIntent intent)
     {
         intent = default;
         try
         {
-            if (request.Email is null || request.Password is null || request.LegalName is null || request.Cuit is null) return false;
-            if (request.Email.Length > 256 || request.Password.Length > 256 || request.LegalName.Length > 256 || request.Cuit.Length > 32) return false;
-            var email = request.Email.Trim().ToLowerInvariant();
-            if (string.IsNullOrWhiteSpace(email) || !email.Contains('@') || string.IsNullOrWhiteSpace(request.Password)) return false;
+            if (request.LegalName is null || request.Cuit is null) return false;
+            if (request.LegalName.Length > 256 || request.Cuit.Length > 32) return false;
+
+            string email;
+            if (session.IdentityId is null)
+            {
+                if (request.Email is null || request.Password is null) return false;
+                if (!TryNormalizeEmail(request.Email, out email)) return false;
+                if (request.Password.Length > 256 || string.IsNullOrWhiteSpace(request.Password)) return false;
+            }
+            else
+            {
+                if (!TryNormalizeEmail(session.Email!, out email)) return false;
+                if (!string.IsNullOrWhiteSpace(request.Email))
+                {
+                    if (!TryNormalizeEmail(request.Email, out var submittedEmail) ||
+                        !string.Equals(submittedEmail, email, StringComparison.Ordinal)) return false;
+                }
+            }
+
             intent = new RegistrationIntent(email, request.LegalName.Trim(), NormalizedCuit.From(request.Cuit));
             return !string.IsNullOrWhiteSpace(intent.LegalName);
         }
         catch (ArgumentException) { return false; }
+    }
+
+    private static bool TryNormalizeEmail(string email, out string normalizedEmail)
+    {
+        if (email.Length > 256)
+        {
+            normalizedEmail = string.Empty;
+            return false;
+        }
+
+        normalizedEmail = email.Trim().ToLowerInvariant();
+        return !string.IsNullOrWhiteSpace(normalizedEmail) && normalizedEmail.Contains('@');
     }
 
     private static string CanonicalKey(string scope, RegistrationIntent intent) =>

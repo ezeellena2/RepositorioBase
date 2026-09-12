@@ -1,7 +1,5 @@
 using CleanArchitecture.Application.Common.Interfaces;
-using CleanArchitecture.Application.Common.Models;
 using CleanArchitecture.Application.IdentityAccess.Authorization;
-using CleanArchitecture.Application.IdentityAccess.Common;
 using CleanArchitecture.Domain.Common;
 using CleanArchitecture.Domain.IdentityAccess.Authorization;
 using CleanArchitecture.Domain.IdentityAccess.Memberships;
@@ -38,10 +36,17 @@ public class IdentityGuidContractTests
         identityService.GetMethod(nameof(IIdentityService.GetUserNameAsync))!.GetParameters().Single().ParameterType.ShouldBe(typeof(Guid));
         identityService.GetMethod(nameof(IIdentityService.IsInRoleAsync))!.GetParameters().First().ParameterType.ShouldBe(typeof(Guid));
         identityService.GetMethod(nameof(IIdentityService.AuthorizeAsync))!.GetParameters().First().ParameterType.ShouldBe(typeof(Guid));
-        identityService.GetMethod(nameof(IIdentityService.DeleteUserAsync))!.GetParameters().Single().ParameterType.ShouldBe(typeof(Guid));
-        var createUserReturn = identityService.GetMethod(nameof(IIdentityService.CreateUserAsync))!.ReturnType.GenericTypeArguments.Single();
-        createUserReturn.GetGenericTypeDefinition().ShouldBe(typeof(Result<>));
-        createUserReturn.GenericTypeArguments.Single().ShouldBe(typeof(Guid));
+    }
+
+    [Test]
+    public void Identity_template_mutation_surfaces_are_absent()
+    {
+        typeof(IIdentityService).GetMethod("CreateUserAsync").ShouldBeNull();
+        typeof(IIdentityService).GetMethod("DeleteUserAsync").ShouldBeNull();
+        typeof(IdentityService).GetMethods().ShouldNotContain(method => method.Name == "CreateUserAsync");
+        typeof(IdentityService).GetMethods().ShouldNotContain(method => method.Name == "DeleteUserAsync");
+        typeof(Application.IdentityAccess.Common.IdentityAccessErrors).GetMethod("UserCreationFailed").ShouldBeNull();
+        typeof(Application.IdentityAccess.Common.IdentityAccessErrors).GetMethod("UserDeletionFailed").ShouldBeNull();
     }
 
     [Test]
@@ -55,13 +60,6 @@ public class IdentityGuidContractTests
 
         tenantMethod.GetParameters().Select(parameter => parameter.ParameterType).Take(3).ShouldBe([typeof(Guid), typeof(TenantId), typeof(string)]);
         applicationMethod.GetParameters().Select(parameter => parameter.ParameterType).Take(2).ShouldBe([typeof(Guid), typeof(string)]);
-    }
-
-    [Test]
-    public void Identity_deletion_failure_uses_its_own_safe_stable_error_code()
-    {
-        IdentityAccessErrors.UserDeletionFailed().Code.ShouldBe("identity_user_deletion_failed");
-        IdentityAccessErrors.UserDeletionFailed().Detail.ShouldBe("The identity could not be deleted.");
     }
 
     [Test]

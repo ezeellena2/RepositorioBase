@@ -31,8 +31,12 @@ public sealed class CreatePersonalContextCommandHandler(
             return Result.Failure(IdentityAccessErrors.InvalidSession());
 
         var identityId = currentSession.IdentityId.Value;
-        if (!TryNormalize(request, out var fullName, out var displayName, out var document))
-            return Result.Failure(IdentityAccessErrors.InvalidRegistration());
+        var fullName = request.FullName!.Trim();
+        var displayName = request.DisplayName!.Trim();
+        var document = NormalizedDocument.From(
+            IdentityDocumentCountry.AR,
+            IdentityDocumentKind.DNI,
+            request.DocumentNumber!);
 
         // Spent before the claim is attempted, and outside the business transaction, so a refused claim still costs
         // an attempt. Counting only successful claims would leave the enumeration this budget exists to bound.
@@ -67,21 +71,4 @@ public sealed class CreatePersonalContextCommandHandler(
         }, cancellationToken);
     }
 
-    private static bool TryNormalize(CreatePersonalContextCommand request, out string fullName, out string displayName, out NormalizedDocument document)
-    {
-        fullName = string.Empty;
-        displayName = string.Empty;
-        document = default;
-        try
-        {
-            if (request.FullName is null || request.DisplayName is null || request.DocumentNumber is null) return false;
-            if (request.FullName.Length > 200 || request.DisplayName.Length > 60 || request.DocumentNumber.Length > 32) return false;
-            fullName = request.FullName.Trim();
-            displayName = request.DisplayName.Trim();
-            if (string.IsNullOrWhiteSpace(fullName) || string.IsNullOrWhiteSpace(displayName)) return false;
-            document = NormalizedDocument.From(IdentityDocumentCountry.AR, IdentityDocumentKind.DNI, request.DocumentNumber);
-            return true;
-        }
-        catch (ArgumentException) { return false; }
-    }
 }

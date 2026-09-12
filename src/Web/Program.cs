@@ -1,3 +1,4 @@
+using CleanArchitecture.Application.Common.Models;
 using CleanArchitecture.Web.Infrastructure.Identity;
 using CleanArchitecture.Application.Common.Localization;
 using Microsoft.AspNetCore.Localization;
@@ -39,6 +40,36 @@ builder.Services.Configure<RequestLocalizationOptions>(options =>
 var app = builder.Build();
 
 app.UseForwardedHeaders();
+app.UseExceptionHandler(options => { });
+app.UseStatusCodePages(async statusCodeContext =>
+{
+    var context = statusCodeContext.HttpContext;
+    if (context.Response.StatusCode != StatusCodes.Status404NotFound
+        || !context.Request.Path.StartsWithSegments("/api"))
+    {
+        return;
+    }
+
+    var problems = context.RequestServices
+        .GetRequiredService<CleanArchitecture.Web.Infrastructure.IProblemDetailsService>();
+    var responseBody = context.Response.Body;
+    if (HttpMethods.IsHead(context.Request.Method))
+    {
+        context.Response.Body = Stream.Null;
+    }
+
+    try
+    {
+        await problems.WriteAsync(
+            context,
+            new ApplicationError(ApiProblemMetadata.NotFound.Code, ApplicationErrorCategory.NotFound),
+            context.RequestAborted);
+    }
+    finally
+    {
+        context.Response.Body = responseBody;
+    }
+});
 app.UseRequestLocalization(app.Services.GetRequiredService<IOptions<RequestLocalizationOptions>>().Value);
 
 if (!app.Environment.IsDevelopment())
@@ -57,10 +88,7 @@ app.UseMiddleware<CleanArchitecture.Web.Infrastructure.Identity.RecoveryAdmissio
 // application to protect. A header a route can forget is a header the next route will (IA-REQ-026/027).
 app.UseIdentitySecurityHeaders();
 
-app.UseFileServer();
-
-app.MapOpenApi();
-app.MapScalarApiReference();
+app.UseRouting();
 
 if (app.Environment.IsDevelopment())
 {
@@ -71,13 +99,45 @@ if (app.Environment.IsDevelopment())
     });
 }
 
-app.UseExceptionHandler(options => { });
-// Login partition keys must exist before the budgets are spent; only POST /api/identity/sessions carries the
-// marker. Both run before authentication, so a refused attempt reaches no credential and no session.
+#if (!UseApiOnly)
+app.Use(async (context, next) =>
+{
+    var path = context.Request.Path;
+    var shouldUseSpaFallback = context.GetEndpoint() is null
+        && (HttpMethods.IsGet(context.Request.Method) || HttpMethods.IsHead(context.Request.Method))
+        && !path.StartsWithSegments("/api")
+        && IsNonFilePath(path);
+
+    if (!shouldUseSpaFallback)
+    {
+        await next(context);
+        return;
+    }
+
+    context.Request.Path = "/index.html";
+    try
+    {
+        await next(context);
+    }
+    finally
+    {
+        context.Request.Path = path;
+    }
+});
+#endif
+
+app.UseFileServer();
+
+app.MapOpenApi();
+app.MapScalarApiReference();
+
+// Partition keys must exist before any endpoint carrying LoginAttemptBudgetMetadata spends its shared budgets.
+// Both middleware run before authentication, so a budget refusal reaches no endpoint handler.
 app.UseLoginRateLimitKeys();
 app.UseLoginAttemptBudgets();
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseNeutralBodyBindingInvocation();
 
 #if (UseApiOnly)
 app.Map("/", () => Results.Redirect("/scalar"));
@@ -86,8 +146,12 @@ app.Map("/", () => Results.Redirect("/scalar"));
 app.MapDefaultEndpoints();
 app.MapEndpoints(typeof(Program).Assembly);
 
-#if (!UseApiOnly)
-app.MapFallbackToFile("index.html");
-#endif
-
 app.Run();
+
+static bool IsNonFilePath(PathString path)
+{
+    var value = path.Value.AsSpan();
+    var lastSegment = value[(value.LastIndexOf('/') + 1)..];
+    var lastDot = lastSegment.LastIndexOf('.');
+    return lastDot < 0 || lastDot == lastSegment.Length - 1;
+}

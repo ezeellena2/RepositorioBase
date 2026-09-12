@@ -20,10 +20,16 @@ export function usePlatformStepUp(onProved) {
   const identity = useIdentity();
   const platform = usePlatformClient();
   const [code, setCode] = useState('');
-  const { submit, problem, isBusy } = useSubmit(async (value) => {
+  const { submit, clearProblem, problem, isBusy } = useSubmit(async (value) => {
     await platform.stepUp(value);
     return identity.reload();
   });
+  const invalidMfaCode = problem?.code === 'invalid_mfa_code';
+
+  const onCodeChange = useCallback((value) => {
+    setCode(value);
+    if (invalidMfaCode) clearProblem();
+  }, [clearProblem, invalidMfaCode]);
 
   const onSubmit = useCallback(async () => {
     const reloaded = await submit(code);
@@ -36,5 +42,5 @@ export function usePlatformStepUp(onProved) {
     onProved();
   }, [submit, code, onProved]);
 
-  return { code, onCodeChange: setCode, onSubmit, isBusy, problem };
+  return { code, onCodeChange, onSubmit, isBusy, problem };
 }

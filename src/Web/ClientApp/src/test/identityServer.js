@@ -1,4 +1,5 @@
 import { http, HttpResponse } from 'msw';
+import problemCodes from '../features/identity/problemCodes.json';
 
 export const ANTIFORGERY_TOKEN = 'request-token-1';
 
@@ -27,8 +28,13 @@ export const contextIs = (body) =>
       headers: { 'Content-Type': 'application/problem+json' },
     }));
 
-export const problem = (status, code, extra = {}, headers = {}) =>
-  HttpResponse.json({ code, traceId: 'trace-1', ...extra }, {
+export const problem = (status, code, extra = {}, headers = {}) => {
+  if (problemCodes[code] !== status) {
+    throw new Error(`Problem fixture ${status} ${code} is not declared in problemCodes.json.`);
+  }
+
+  return HttpResponse.json({ code, traceId: 'trace-1', ...extra }, {
     status,
     headers: { 'Content-Type': 'application/problem+json', ...headers },
   });
+};

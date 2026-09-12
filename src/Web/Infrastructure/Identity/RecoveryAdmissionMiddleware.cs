@@ -1,3 +1,4 @@
+using CleanArchitecture.Application.Common.Models;
 using CleanArchitecture.Application.IdentityAccess.Lifecycle;
 
 namespace CleanArchitecture.Web.Infrastructure.Identity;
@@ -15,10 +16,19 @@ namespace CleanArchitecture.Web.Infrastructure.Identity;
 /// probe that returned anything about the deployment would be ingress.
 /// </para>
 /// </summary>
-public sealed class RecoveryAdmissionMiddleware(RequestDelegate next, IRecoveryAdmission admission)
+public sealed class RecoveryAdmissionMiddleware(
+    RequestDelegate next,
+    IRecoveryAdmission admission,
+    IProblemDetailsService problems)
 {
     /// <summary>How long a caller is asked to wait. A **product default**: an operator's release is not a poll.</summary>
     private const int RetryAfterSeconds = 60;
+
+    private static readonly ApplicationError AdmissionClosed = new(
+        ApiProblemMetadata.RecoveryAdmissionClosed.Code,
+        ApplicationErrorCategory.Unavailable,
+        "This deployment is not admitting requests.",
+        retryAfterSeconds: RetryAfterSeconds);
 
     /// <summary>The two paths that answer while everything else does not, and they answer with nothing.</summary>
     private static readonly string[] Probes = ["/health", "/alive"];
@@ -55,16 +65,7 @@ public sealed class RecoveryAdmissionMiddleware(RequestDelegate next, IRecoveryA
             return;
         }
 
-        context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
-        context.Response.Headers.RetryAfter = RetryAfterSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture);
-        context.Response.ContentType = "application/problem+json";
-
-        // Written directly rather than through the problem-details mapper, which resolves services from the
-        // request scope. A closed deployment answers without building anything that reads the database.
-        await context.Response.WriteAsync(
-            """
-            {"type":"about:blank","title":"Service Unavailable","status":503,"detail":"This deployment is not admitting requests.","code":"recovery_admission_closed","retryAfterSeconds":60}
-            """);
+        await problems.WriteAsync(context, AdmissionClosed, context.RequestAborted);
     }
 
     private static bool IsProbe(PathString path) =>

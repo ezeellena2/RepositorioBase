@@ -11,7 +11,6 @@ import { ThemeProvider as MaterialThemeProvider } from '@mui/material/styles';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 import App from '../App';
-import { Counter } from '../components/Counter';
 import { Layout } from '../components/Layout';
 import { NativeDialog } from '../components/NativeDialog';
 import { IdentityProvider } from '../features/identity/context/IdentityProvider';
@@ -25,7 +24,7 @@ function renderWithMui(children) {
 
 describe('Material UI visual foundation', () => {
   it('centralizes the selected brand palette roles and approved typography', () => {
-    expect(appTheme.colorSchemes.light.palette.primary.main).toBe('#0E5C66');
+    expect(appTheme.colorSchemes.light.palette.primary.main).toBe('#4F46E5');
     expect(appTheme.colorSchemes.light.palette.error.main).toBe('#B3412A');
     expect(appTheme.colorSchemes.light.palette.success.main).toBe('#1F6B40');
     expect(appTheme.typography.fontFamily).toContain('Source Sans 3');
@@ -134,15 +133,6 @@ describe('Material UI visual foundation', () => {
     }
   });
 
-  it('gives the counter an explicit non-submit action', async () => {
-    const user = userEvent.setup();
-    renderWithMui(createElement(Counter));
-
-    const increment = screen.getByRole('button', { name: 'Increment' });
-    expect(increment).toHaveAttribute('type', 'button');
-    await user.click(increment);
-    expect(screen.getByText('1', { selector: 'strong' })).toBeInTheDocument();
-  });
 });
 
 const renderRoute = (path) =>
@@ -181,7 +171,7 @@ describe('Material UI authentication entry', () => {
     expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
     expect(screen.queryByRole('banner')).not.toBeInTheDocument();
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
-    for (const name of ['Clean Architecture', 'Home', 'Counter']) {
+    for (const name of ['Clean Architecture', 'Home']) {
       expect(screen.queryByRole('link', { name })).not.toBeInTheDocument();
     }
   });

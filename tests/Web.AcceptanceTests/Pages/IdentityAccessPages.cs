@@ -99,6 +99,15 @@ public sealed class RegisterOrganizationPage(IPage page) : BasePage(page)
         await Page.Locator("button[type='submit']").ClickAsync();
     }
 
+    public async Task RegisterSignedInAsync(string legalName, string cuit)
+    {
+        await Assertions.Expect(Page.Locator("#register-email")).ToHaveCountAsync(0);
+        await Assertions.Expect(Page.Locator("#register-password")).ToHaveCountAsync(0);
+        await Page.FillAsync("#register-legal-name", legalName);
+        await Page.FillAsync("#register-cuit", cuit);
+        await Page.Locator("button[type='submit']").ClickAsync();
+    }
+
     public Task AssertNeutralAcknowledgementAsync() =>
         Assertions.Expect(Page.GetByRole(AriaRole.Status)).ToContainTextAsync("If that address can register");
 }

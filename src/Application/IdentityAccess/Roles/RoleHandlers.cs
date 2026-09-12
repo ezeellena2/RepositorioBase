@@ -21,7 +21,7 @@ public sealed class GetPermissionCatalogQueryHandler(
     public async Task<Result<IReadOnlyList<PermissionCatalogEntry>>> Handle(GetPermissionCatalogQuery request, CancellationToken cancellationToken)
     {
         if (!RoleScope.Resolve(request.TenantId, currentTenant, user, out var tenantId, out var actorId))
-            return Result<IReadOnlyList<PermissionCatalogEntry>>.Failure(IdentityAccessErrors.InvalidRoleOperation());
+            return Result<IReadOnlyList<PermissionCatalogEntry>>.Failure(IdentityAccessErrors.RoleNotFound());
 
         // Everything an Organization may hold, each entry saying whether this caller could grant it. Showing the
         // ceiling is what lets a screen offer only what will be accepted, instead of letting somebody compose a
@@ -44,7 +44,7 @@ public sealed class ListRolesQueryHandler(
     public async Task<Result<RolePage>> Handle(ListRolesQuery request, CancellationToken cancellationToken)
     {
         if (!RoleScope.Resolve(request.TenantId, currentTenant, user, out var tenantId, out _))
-            return Result<RolePage>.Failure(IdentityAccessErrors.InvalidRoleOperation());
+            return Result<RolePage>.Failure(IdentityAccessErrors.RoleNotFound());
 
         return Result<RolePage>.Success(await roles.ListAsync(tenantId, request.Limit, request.Cursor, cancellationToken));
     }
@@ -58,7 +58,7 @@ public sealed class GetRoleQueryHandler(
     public async Task<Result<RoleView>> Handle(GetRoleQuery request, CancellationToken cancellationToken)
     {
         if (!RoleScope.Resolve(request.TenantId, currentTenant, user, out var tenantId, out _))
-            return Result<RoleView>.Failure(IdentityAccessErrors.InvalidRoleOperation());
+            return Result<RoleView>.Failure(IdentityAccessErrors.RoleNotFound());
 
         // Another tenant's role is absent, not forbidden: `403` would confirm the identifier exists somewhere.
         var role = await roles.FindAsync(tenantId, request.RoleId, cancellationToken);

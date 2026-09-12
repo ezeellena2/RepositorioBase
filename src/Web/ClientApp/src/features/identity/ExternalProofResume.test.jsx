@@ -58,7 +58,8 @@ const owner = () => {
 
 const beginTransfer = async (recorded) => {
   const page = renderAt('/members');
-  await userEvent.click(await screen.findByRole('button', { name: 'Transfer ownership to Bruno' }));
+  await screen.findByText('Bruno');
+  await userEvent.click(screen.getByRole('button', { name: 'Transfer ownership to Bruno' }));
   await waitFor(() => expect(recorded.starts).toEqual([{ action: 'tenant.ownership.transfer' }]));
   expect(recorded.transfers, 'nothing may be written before the provider has answered').toEqual([]);
   page.unmount();
@@ -189,6 +190,34 @@ describe('resuming a sensitive operation after a provider round trip', () => {
     await waitFor(() => expect(recorded.completed()).toBe(2));
     expect(await screen.findByRole('alert')).toBeInTheDocument();
     expect(recorded.writes).toEqual([expected]);
+  });
+
+  /**
+   * A resumed operation comes back to a freshly mounted screen: no editor is open and only page one is loaded,
+   * so an alert scoped to the region that started the change has nowhere to be drawn. A refusal that reports
+   * nothing is worse than one that reports badly, so the screen says it where the reader is.
+   */
+  it('reports a refused role change that was resumed after the provider round trip', async () => {
+    const recorded = owner();
+    server.use(
+      http.get(`/api/tenants/${TENANT}/roles`, () => HttpResponse.json({
+        items: [{ roleId: 'role-1', name: 'Administrator', permissions: ['members.manage'], isSystem: false, isRetired: false, version: '33' }],
+        nextCursor: null,
+      })),
+      http.put(`/api/tenants/${TENANT}/members/${TARGET}/roles`, () => problem(409, 'last_administrator_required')),
+    );
+
+    const page = renderAt('/members');
+    await userEvent.click(await screen.findByRole('button', { name: 'Edit roles of Bruno' }));
+    await userEvent.click(screen.getByLabelText('Administrator'));
+    await userEvent.click(screen.getByRole('button', { name: 'Save roles' }));
+    await waitFor(() => expect(recorded.starts).toEqual([{ action: 'members.roles.change' }]));
+    page.unmount();
+
+    renderAt('/external/return?outcome=proved');
+
+    expect(await screen.findByRole('alert'))
+      .toHaveTextContent('This would leave the organization with no administrator. Give somebody else those permissions first.');
   });
 
   it.each([['members', 'missing'], ['roles', 'ineligible']])('does not resume when the %s target is %s after return', async (kind, state) => {

@@ -13,11 +13,14 @@ before writing the markup, not after.**
 
 The decision the standard encodes:
 
-- **Standard Material UI.** Import components directly. No wrapper layer, no parallel design system, no named
-  visual recipes, no invented CSS for buttons, inputs, cards, tables or states, no custom CSS variables,
-  gradients, shadow recipes, radii or transitions. `sx` is for layout only — width, centring, spacing,
-  alignment. `src/theme.jsx` stays a normal minimal theme: brand palette roles, Manrope + Source Sans 3, and a
-  component default overridden only where a default broke something, with a comment saying what.
+- **Standard Material UI, branded centrally.** Import components directly. No wrapper layer, no parallel design
+  system, no named visual recipes, no CSS files or custom CSS variables, and no hand-written hover/focus states,
+  gradients or transitions. `sx` is for layout only — width, centring, spacing and alignment. `src/theme.jsx` is
+  the only visual policy layer. It carries Direction C · Indigo SaaS: `#4F46E5` primary, `#1A1F36` ink,
+  `#4F566B` secondary text, `#F6F7FB` canvas, white paper and `#E3E6F0` dividers, with Manrope + Source Sans 3
+  and light mode only. The approved centralized defaults are 8px controls, 12px rounded Paper, flat pill Buttons,
+  a white hairline AppBar, and a soft `elevation3` for public-entry cards. Outside those defaults, do not invent
+  shadow or radius recipes per screen, and do not apply the divider colour to input outlines.
 - **Quality comes from composition, not decoration.** Every screen gets a page header with a title and one
   primary action; exactly one `contained` button per screen; collections are tables or two-line lists, never
   fields joined with `·`; domain status is a `Chip` with a semantic colour; every collection has an empty state;
@@ -57,6 +60,30 @@ Feature work, bug fixes, refactoring, architecture, code review and tests follow
 [.agents/skills/engineering-standards/SKILL.md](.agents/skills/engineering-standards/SKILL.md). The identity and
 access domain is specified in [docs/features/identity-access/SPEC.md](docs/features/identity-access/SPEC.md);
 approved SPECs and accepted ADRs outrank convenience.
+## Error handling: one contract, end to end
+
+Anything that creates, maps, shows, logs or tests a failure — a command or validator, a value-object rule, an
+error code, an endpoint's problem contract, response-writing middleware, the SPA transport, `useSubmit`,
+`ProblemMessage`, a screen that renders a refusal, a background loop — must follow
+[.agents/skills/error-handling-standards/SKILL.md](.agents/skills/error-handling-standards/SKILL.md) and its
+[error-handling rules](.agents/skills/error-handling-standards/references/error-handling-rules.md).
+
+- **Extend the architecture, never replace it.** Expected failures are `Result`/`ApplicationError` with a stable
+  code and category; unexpected ones stay exceptions. One RFC 9457 writer, a generic safe `500` with a `traceId`,
+  and the strict client reader (IA-REQ-038).
+- **A code is born once**: factory, endpoint contract, `problemCodes.json`, client message and test in the same
+  change. A code without words, or words without a code, is not done.
+- **Input-only problems are field errors** — `400 validation_failed` with camelCase keys — shown on the field,
+  with focus moved there. Operation codes are for refusals that depend on state.
+- **Enumeration safety outranks helpfulness.** Neutral public flows never distinguish account or token state.
+  Input-only field errors are allowed on them only when they pass the skill's three-part test and a parity test
+  proves it. A neutral outcome still gets a next step that is true for everyone.
+- **Record each unexpected exception once, safely** — type chain, frames, `traceId`, `SqlState`, never
+  `Exception.Message` (IA-REQ-029). Expected refusals are not logged as errors.
+
+Error-handling work may edit `features/*/api/`, add routes such as the not-found page, add tests and update the
+ones that pin a behaviour it deliberately changes, and amend the SPEC in the same change when a SPEC row pins the
+old behaviour. The "Contracts a visual change must never break" section still binds any restyling done alongside.
 
 ## Verification before calling frontend work done
 

@@ -29,8 +29,9 @@ public sealed class BeginPlatformMfaEnrollmentCommandValidator : AbstractValidat
 {
     public BeginPlatformMfaEnrollmentCommandValidator() =>
         RuleFor(command => command.Token)
-            .NotEmpty().WithErrorCode(ValidationErrorCodes.Required)
-            .MaximumLength(256).WithErrorCode(ValidationErrorCodes.TooLong);
+            .NotEmpty().WithErrorCode(ValidationErrorCodes.Required).WithMessage("An invitation token is required.")
+            .MaximumLength(256).WithErrorCode(ValidationErrorCodes.TooLong).WithMessage("The invitation token must be 256 characters or fewer.")
+            .OverridePropertyName("token");
 }
 
 /// <summary>Proves the authenticator holds the secret. Until this succeeds, the factor is only half set up.</summary>
@@ -43,11 +44,13 @@ public sealed class VerifyPlatformMfaEnrollmentCommandValidator : AbstractValida
     public VerifyPlatformMfaEnrollmentCommandValidator()
     {
         RuleFor(command => command.Token)
-            .NotEmpty().WithErrorCode(ValidationErrorCodes.Required)
-            .MaximumLength(256).WithErrorCode(ValidationErrorCodes.TooLong);
+            .NotEmpty().WithErrorCode(ValidationErrorCodes.Required).WithMessage("An invitation token is required.")
+            .MaximumLength(256).WithErrorCode(ValidationErrorCodes.TooLong).WithMessage("The invitation token must be 256 characters or fewer.")
+            .OverridePropertyName("token");
         RuleFor(command => command.Code)
-            .NotEmpty().WithErrorCode(ValidationErrorCodes.Required)
-            .MaximumLength(16).WithErrorCode(ValidationErrorCodes.TooLong);
+            .NotEmpty().WithErrorCode(ValidationErrorCodes.Required).WithMessage("An authenticator code is required.")
+            .MaximumLength(16).WithErrorCode(ValidationErrorCodes.TooLong).WithMessage("The authenticator code must be 16 characters or fewer.")
+            .OverridePropertyName("code");
     }
 }
 
@@ -63,8 +66,9 @@ public sealed class AcknowledgePlatformRecoveryCodesCommandValidator : AbstractV
 {
     public AcknowledgePlatformRecoveryCodesCommandValidator() =>
         RuleFor(command => command.Token)
-            .NotEmpty().WithErrorCode(ValidationErrorCodes.Required)
-            .MaximumLength(256).WithErrorCode(ValidationErrorCodes.TooLong);
+            .NotEmpty().WithErrorCode(ValidationErrorCodes.Required).WithMessage("An invitation token is required.")
+            .MaximumLength(256).WithErrorCode(ValidationErrorCodes.TooLong).WithMessage("The invitation token must be 256 characters or fewer.")
+            .OverridePropertyName("token");
 }
 
 /// <summary>
@@ -76,9 +80,8 @@ public sealed class AcknowledgePlatformRecoveryCodesCommandValidator : AbstractV
 /// code is not enough, and neither is holding the password.
 /// </para>
 /// <para>
-/// SPEC's route table writes the proof as a `proofToken` field. It is not one here, for the same reason no other
-/// sensitive route has one: C4's proofs are server-side rows spent by identity, session and action, and nothing
-/// the client holds names one. The gate is the same gate; only its spelling differs.
+/// The request deliberately carries only the recovery code: C4's recent password proof is a server-side row spent
+/// by identity, session and action, and nothing the client holds names one.
 /// </para>
 /// <para>
 /// The same table says the route needs "no active Platform tenant". That is an absence from the requirement list,
@@ -97,8 +100,9 @@ public sealed class RecoverPlatformMfaCommandValidator : AbstractValidator<Recov
 {
     public RecoverPlatformMfaCommandValidator() =>
         RuleFor(command => command.RecoveryCode)
-            .NotEmpty().WithErrorCode(ValidationErrorCodes.Required)
-            .MaximumLength(64).WithErrorCode(ValidationErrorCodes.TooLong);
+            .NotEmpty().WithErrorCode(ValidationErrorCodes.Required).WithMessage("A recovery code is required.")
+            .MaximumLength(64).WithErrorCode(ValidationErrorCodes.TooLong).WithMessage("The recovery code must be 64 characters or fewer.")
+            .OverridePropertyName("recoveryCode");
 }
 
 /// <summary>
@@ -113,6 +117,7 @@ public sealed class StepUpPlatformMfaCommandValidator : AbstractValidator<StepUp
 {
     public StepUpPlatformMfaCommandValidator() =>
         RuleFor(command => command.Code)
-            .NotEmpty().WithErrorCode(ValidationErrorCodes.Required)
-            .MaximumLength(16).WithErrorCode(ValidationErrorCodes.TooLong);
+            .NotEmpty().WithErrorCode(ValidationErrorCodes.Required).WithMessage("An authenticator code is required.")
+            .MaximumLength(16).WithErrorCode(ValidationErrorCodes.TooLong).WithMessage("The authenticator code must be 16 characters or fewer.")
+            .OverridePropertyName("code");
 }

@@ -1,8 +1,18 @@
 import '@testing-library/jest-dom/vitest';
+import { transferableAbortController } from 'node:util';
 import { afterAll, afterEach, beforeAll } from 'vitest';
 import { cleanup } from '@testing-library/react';
 import { server } from './server';
 import { i18n } from '../i18n';
+
+// jsdom supplies DOM abort objects from a different realm than Node's fetch accepts. Keep the test browser and
+// the intercepted fetch on the same native signal implementation so deadline and caller-cancellation tests
+// exercise the same AbortSignal.any boundary a browser does.
+const nativeAbortController = transferableAbortController();
+Object.defineProperties(globalThis, {
+  AbortController: { configurable: true, value: nativeAbortController.constructor },
+  AbortSignal: { configurable: true, value: nativeAbortController.signal.constructor },
+});
 
 // This Node build starts jsdom without a storage backend, so window.localStorage is undefined and any component
 // that reads a saved preference throws on render. The identity feature stores nothing (IA-REQ-025); this exists

@@ -5,6 +5,17 @@ import { describe, expect, it } from 'vitest';
 const app = resolve(import.meta.dirname, '..');
 const read = (relative) => readFileSync(resolve(app, relative), 'utf8');
 const has = (relative) => existsSync(resolve(app, relative));
+const actionCatches = new Map([
+  ['features/identity/sessions/SessionsPage.jsx', 1],
+  ['features/identity/roles/RolesPage.jsx', 2],
+  ['features/identity/members/MembersPage.jsx', 2],
+  ['features/identity/credentials/ExternalAccountsPage.jsx', 2],
+  ['features/identity/invitations/InviteMemberPage.jsx', 1],
+  ['features/identity/credentials/PasswordPages.jsx', 1],
+  ['features/identity/lifecycle/AccountLifecyclePages.jsx', 1],
+  ['features/identity/people/PersonalPages.jsx', 1],
+  ['features/identity/login/LoginPage.jsx', 1],
+]);
 
 /**
  * A filesystem contract rather than an import graph. Importing a module that does not exist yet is a build
@@ -15,6 +26,7 @@ describe('identity feature files', () => {
   it.each([
     'features/identity/api/identityClient.js',
     'features/identity/api/problemDetails.js',
+    'features/identity/useRead.js',
     'features/identity/context/IdentityProvider.jsx',
     'features/identity/login/LoginPage.jsx',
     'features/identity/register/RegisterOrganizationPage.jsx',
@@ -98,5 +110,38 @@ describe('identity feature files', () => {
     expect(config).not.toMatch(/cors\s*:/);
     expect(config).not.toMatch(/Access-Control-Allow-Origin/);
     expect(config).not.toMatch(/https?:\/\/[^\s'"`]*\/api/);
+  });
+});
+
+describe('identity client failure classification contract', () => {
+  it('routes the exact twelve remaining action catches through toProblem with no legacy synthetic code', () => {
+    let classified = 0;
+    for (const [path, expected] of actionCatches) {
+      const source = read(path);
+      const calls = source.match(/toProblem\(error\)/g) ?? [];
+      expect(calls, path).toHaveLength(expected);
+      expect(source, path).not.toMatch(/error\.problem\s*\?\?/);
+      expect(source, path).not.toContain("code: 'unexpected'");
+      classified += calls.length;
+    }
+    expect(classified).toBe(12);
+  });
+
+  it('classifies reads in the canonical hook and retires shared synthetic fallbacks', () => {
+    const useSubmit = read('features/identity/useSubmit.js');
+    expect(useSubmit).toContain('toProblem(failure)');
+    expect(useSubmit).not.toContain('instanceof IdentityProblem');
+    expect(useSubmit).not.toContain("code: 'internal_server_error', status: 0");
+
+    const useRead = read('features/identity/useRead.js');
+    expect(useRead.match(/toProblem\(failure\)/g) ?? []).toHaveLength(1);
+    expect(useRead.match(/isRetryable\(problem\)/g) ?? []).toHaveLength(1);
+    expect(useRead).not.toMatch(/failure\.problem\s*\?\?/);
+    expect(useRead).not.toContain("code: 'unexpected'");
+    expect(has('features/platform/shared/usePlatformRead.js')).toBe(false);
+
+    const provider = read('features/identity/context/IdentityProvider.jsx');
+    expect(provider).toContain('toProblem(failure)');
+    expect(provider).not.toContain('context_unreadable');
   });
 });

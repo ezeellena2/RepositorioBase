@@ -11,6 +11,7 @@ import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
+import { toProblem } from '../api/apiTransport';
 import { useIdentity } from '../context/IdentityProvider';
 import { ProblemMessage } from '../ProblemMessage';
 import { useFragmentToken } from '../useFragmentToken';
@@ -68,7 +69,7 @@ export function AccountPage() {
     setIsBusy(true);
     setProblem(null);
     try { await act(); }
-    catch (error) { setProblem(error.problem ?? { code: 'unexpected' }); }
+    catch (error) { setProblem(toProblem(error)); }
     finally { setPassword(''); setIsBusy(false); }
   }, []);
 

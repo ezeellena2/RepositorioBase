@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link as RouterLink, useNavigate, useSearchParams } from 'react-router-dom';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -12,11 +12,12 @@ import Skeleton from '@mui/material/Skeleton';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
+import { toProblem } from '../api/apiTransport';
 import { useIdentity } from '../context/IdentityProvider';
 import { forgetPendingProof, markPendingProofProved } from '../useIdentityProof';
 import { ProblemMessage } from '../ProblemMessage';
 import { externalNavigation } from '../externalNavigation';
-import { useTranslation } from '../../../i18n';
+import { useRead } from '../useRead';
 
 /**
  * One width for the whole screen, chosen rather than inherited. This is a single-object screen — one identity, the
@@ -58,52 +59,39 @@ export function ExternalAccountsPage() {
   const { t } = useTranslation('identity');
   const navigate = useNavigate();
   const [params] = useSearchParams();
-  const [links, setLinks] = useState(null);
-  const [available, setAvailable] = useState([]);
-  const [hasPassword, setHasPassword] = useState(true);
-  const [problem, setProblem] = useState(null);
+  const [actionProblem, setActionProblem] = useState(null);
+  const [actionTarget, setActionTarget] = useState(null);
   const [password, setPassword] = useState('');
   const [isBusy, setIsBusy] = useState(false);
   const outcome = params.get('outcome');
 
-  const load = useCallback(async () => {
-    try {
-      // Both, because what this page may offer depends on both: a link it could remove, and something else to
-      // sign in with afterwards. Only the server can count that, so only the server is asked.
-      const [listed, credentials] = await Promise.all([
-        identity.client.listExternalLinks(),
-        identity.client.getOwnCredentials(),
-      ]);
-      setLinks(listed.items);
-      setAvailable(listed.available);
-      setHasPassword(credentials.hasPassword);
-      setProblem(null);
-    } catch (error) {
-      setProblem(error.problem ?? { code: 'unexpected' });
-    }
-  }, [identity]);
+  const read = useRead(useCallback(async ({ signal }) => {
+    // Both, because what this page may offer depends on both: a link it could remove, and something else to
+    // sign in with afterwards. Only the server can count that, so only the server is asked.
+    const [listed, credentials] = await Promise.all([
+      identity.client.listExternalLinks({ signal }),
+      identity.client.getOwnCredentials({ signal }),
+    ]);
+    return { ...listed, hasPassword: credentials.hasPassword };
+  }, [identity.client]));
+  const links = read.data?.items ?? null;
+  const available = read.data?.available ?? [];
+  const hasPassword = read.data?.hasPassword ?? true;
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      if (!cancelled) await load();
-    })();
-    return () => { cancelled = true; };
-  }, [load]);
-
-  const run = async (act) => {
+  const run = async (provider, act) => {
     setIsBusy(true);
-    setProblem(null);
+    setActionTarget(provider);
+    setActionProblem(null);
     try {
       await act();
     } catch (error) {
-      setProblem(error.problem ?? { code: 'unexpected' });
+      setActionProblem(toProblem(error));
     } finally {
       setIsBusy(false);
     }
   };
 
-  const link = (provider) => run(async () => {
+  const link = (provider) => run(provider, async () => {
     // The proof is bought here, before the browser ever leaves for the provider: somebody who cannot prove it is
     // still them should not reach a consent screen at all.
     await identity.client.reauthenticate('external.link', password);
@@ -112,11 +100,11 @@ export function ExternalAccountsPage() {
     externalNavigation.leaveFor(authorizationRequestUri);
   });
 
-  const unlink = (provider) => run(async () => {
+  const unlink = (provider) => run(provider, async () => {
     await identity.client.reauthenticate('external.unlink', password);
     setPassword('');
     await identity.client.unlinkExternal(provider);
-    await load();
+    await read.refresh(undefined);
   });
 
   const linked = (provider) => (links ?? []).find((row) => row.provider === provider);
@@ -132,7 +120,6 @@ export function ExternalAccountsPage() {
         </Typography>
       </Box>
 
-      <ProblemMessage problem={problem} />
       {/* Only the refusal is taken from the address bar, and only because it claims nothing: it says a round
           trip did not happen. What did happen is never announced from a query parameter — the list below is
           loaded from the server, and it is the only thing on this page that reports a link. */}
@@ -156,7 +143,12 @@ export function ExternalAccountsPage() {
         </Paper>
       )}
 
-      {links === null ? (
+      <ProblemMessage problem={read.problem} />
+      {read.status === 'errored' && (
+        <Button type="button" variant="outlined" onClick={() => read.refresh(undefined)}>Try again</Button>
+      )}
+
+      {read.status === 'loading' && read.data === null ? (
         // The wait holds the shape of the rows that are coming, so the list does not arrive by pushing the page
         // down. The word is what a reader of the status region is told, so it stays — as the region's name rather
         // than as a line of content the rows then have to replace.
@@ -164,7 +156,7 @@ export function ExternalAccountsPage() {
         <Stack spacing={1} role="status" aria-label={t('credentials.external.loading')}>
           {[0, 1].map((placeholder) => <Skeleton key={placeholder} variant="rounded" height={64} />)}
         </Stack>
-      ) : available.length === 0 ? (
+      ) : links === null ? null : available.length === 0 ? (
         <Paper variant="outlined" sx={empty}>
           <Typography variant="body2" color="text.secondary">
             {t('credentials.external.empty')}
@@ -199,17 +191,23 @@ export function ExternalAccountsPage() {
                   />
                   {/* Row weight, not page weight: a provider's button is one of several equals down the list, so
                       none of them is the screen's primary action and none of them is filled. */}
-                  {row ? (
-                    !isOnlyWayIn && (
-                      <Button type="button" variant="outlined" color="error" size="small" disabled={isBusy} onClick={() => unlink(provider)}>
-                        {t('credentials.external.unlink', { provider })}
+                  <Stack spacing={1}>
+                    <ProblemMessage
+                      problem={actionTarget === provider ? actionProblem : null}
+                      autoFocus
+                    />
+                    {row ? (
+                      !isOnlyWayIn && (
+                        <Button type="button" variant="outlined" color="error" size="small" disabled={isBusy} onClick={() => unlink(provider)}>
+                          Unlink {provider}
+                        </Button>
+                      )
+                    ) : (
+                      <Button type="button" variant="outlined" size="small" disabled={isBusy} onClick={() => link(provider)}>
+                        Link {provider}
                       </Button>
-                    )
-                  ) : (
-                    <Button type="button" variant="outlined" size="small" disabled={isBusy} onClick={() => link(provider)}>
-                        {t('credentials.external.link', { provider })}
-                    </Button>
-                  )}
+                    )}
+                  </Stack>
                 </ListItem>
               );
             })}
@@ -279,7 +277,7 @@ export function ExternalReturnPage() {
       } catch (error) {
         // The completion failed, so nothing was proved and nothing may resume.
         forgetPendingProof();
-        if (mounted.current) setProblem(error.problem ?? { code: 'unexpected' });
+        if (mounted.current) setProblem(toProblem(error));
       }
     })();
   }, [identity, navigate, outcome]);
@@ -288,8 +286,8 @@ export function ExternalReturnPage() {
     // A session already exists by the time anyone is here, so this is a screen inside the application, not the
     // centred card of the entrance: the heading belongs to the page and the state belongs to a section of it.
     <Stack component="section" aria-labelledby="external-return-heading" spacing={3} sx={returnPage}>
-      <Typography id="external-return-heading" component="h1" variant="h5">{t('credentials.externalReturn.title')}</Typography>
-      <ProblemMessage problem={problem} />
+      <Typography id="external-return-heading" component="h1" variant="h5">Finishing up</Typography>
+      <ProblemMessage problem={problem} autoFocus />
       <Paper variant="outlined" sx={section}>
         {problem === null ? (
           <Stack direction="row" spacing={2} role="status" sx={waiting}>
@@ -301,7 +299,15 @@ export function ExternalReturnPage() {
           // says "you can try again" and offers nothing to try again with — the control belongs here, but its
           // label would be a user-visible string this screen has never carried, so it is reported not written.
           <Stack spacing={2} sx={refusal}>
-            <Typography variant="body2">{t('credentials.externalReturn.refused')}</Typography>
+            <Typography variant="body2">Nothing was changed. You can try again.</Typography>
+            <Button
+              component={RouterLink}
+              to={outcome === 'signed_in' ? '/login' : '/identity/external'}
+              variant="text"
+              sx={back}
+            >
+              {outcome === 'signed_in' ? 'Back to sign in' : 'Back to sign-in providers'}
+            </Button>
           </Stack>
         )}
       </Paper>

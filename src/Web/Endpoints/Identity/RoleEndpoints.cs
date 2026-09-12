@@ -22,29 +22,30 @@ internal static class RoleEndpoints
         group.MapGet("/{tenantId:guid}/permission-catalog", Catalog)
             .RequireAuthorization()
             .Produces<IReadOnlyList<PermissionCatalogEntryResponse>>(StatusCodes.Status200OK)
-            .WithApiProblemDetails(ApiProblemMetadata.AuthenticationRequired, ApiProblemMetadata.InvalidSession, ApiProblemMetadata.PermissionDenied, ApiProblemMetadata.InvalidRoleOperation, ApiProblemMetadata.InternalServerError);
+            .WithApiProblemDetails(ApiProblemMetadata.AuthenticationRequired, ApiProblemMetadata.InvalidSession, ApiProblemMetadata.PermissionDenied, ApiProblemMetadata.NotFound, ApiProblemMetadata.InternalServerError);
 
         group.MapGet("/{tenantId:guid}/roles", List)
             .RequireAuthorization()
             .Produces<RolePageResponse>(StatusCodes.Status200OK)
-            .WithApiProblemDetails(ApiProblemMetadata.AuthenticationRequired, ApiProblemMetadata.InvalidSession, ApiProblemMetadata.PermissionDenied, ApiProblemMetadata.InvalidRoleOperation, ApiProblemMetadata.InternalServerError);
+            .WithApiProblemDetails(ApiProblemMetadata.AuthenticationRequired, ApiProblemMetadata.InvalidSession, ApiProblemMetadata.PermissionDenied, ApiProblemMetadata.NotFound, ApiProblemMetadata.InternalServerError)
+            .WithBodyBindingFailureCode(ApiProblemMetadata.InvalidRequest.Code);
 
         group.MapGet("/{tenantId:guid}/roles/{roleId:guid}", Get)
             .RequireAuthorization()
             .Produces<RoleResponse>(StatusCodes.Status200OK)
-            .WithApiProblemDetails(ApiProblemMetadata.AuthenticationRequired, ApiProblemMetadata.InvalidSession, ApiProblemMetadata.PermissionDenied, ApiProblemMetadata.InvalidRoleOperation, ApiProblemMetadata.NotFound, ApiProblemMetadata.InternalServerError);
+            .WithApiProblemDetails(ApiProblemMetadata.AuthenticationRequired, ApiProblemMetadata.InvalidSession, ApiProblemMetadata.PermissionDenied, ApiProblemMetadata.NotFound, ApiProblemMetadata.InternalServerError);
 
         group.MapPost("/{tenantId:guid}/roles", Create)
             .RequireAuthorization()
             .WithCreatedLocation<RoleResponse>()
-            .WithApiProblemDetails(ApiProblemMetadata.AntiforgeryValidationFailed, ApiProblemMetadata.AuthenticationRequired, ApiProblemMetadata.InvalidSession, ApiProblemMetadata.PermissionDenied, ApiProblemMetadata.RecentProofRequired, ApiProblemMetadata.InvalidRoleOperation, ApiProblemMetadata.RoleConcurrencyConflict, ApiProblemMetadata.LastAdministratorRequired, ApiProblemMetadata.InternalServerError)
-            .WithBodyBindingFailureCode(ApiProblemMetadata.InvalidRoleOperation.Code);
+            .WithApiProblemDetails(ApiProblemMetadata.AntiforgeryValidationFailed, ApiProblemMetadata.ValidationFailed, ApiProblemMetadata.AuthenticationRequired, ApiProblemMetadata.InvalidSession, ApiProblemMetadata.PermissionDenied, ApiProblemMetadata.RecentProofRequired, ApiProblemMetadata.InvalidRoleOperation, ApiProblemMetadata.RoleConcurrencyConflict, ApiProblemMetadata.InternalServerError)
+            .WithBodyBindingFailureCode(ApiProblemMetadata.ValidationFailed.Code);
 
         group.MapPut("/{tenantId:guid}/roles/{roleId:guid}", Update)
             .RequireAuthorization()
             .Produces<RoleResponse>(StatusCodes.Status200OK)
-            .WithApiProblemDetails(ApiProblemMetadata.AntiforgeryValidationFailed, ApiProblemMetadata.AuthenticationRequired, ApiProblemMetadata.InvalidSession, ApiProblemMetadata.PermissionDenied, ApiProblemMetadata.RecentProofRequired, ApiProblemMetadata.InvalidRoleOperation, ApiProblemMetadata.NotFound, ApiProblemMetadata.RoleConcurrencyConflict, ApiProblemMetadata.LastAdministratorRequired, ApiProblemMetadata.InternalServerError)
-            .WithBodyBindingFailureCode(ApiProblemMetadata.InvalidRoleOperation.Code);
+            .WithApiProblemDetails(ApiProblemMetadata.AntiforgeryValidationFailed, ApiProblemMetadata.ValidationFailed, ApiProblemMetadata.AuthenticationRequired, ApiProblemMetadata.InvalidSession, ApiProblemMetadata.PermissionDenied, ApiProblemMetadata.RecentProofRequired, ApiProblemMetadata.InvalidRoleOperation, ApiProblemMetadata.NotFound, ApiProblemMetadata.RoleConcurrencyConflict, ApiProblemMetadata.LastAdministratorRequired, ApiProblemMetadata.InternalServerError)
+            .WithBodyBindingFailureCode(ApiProblemMetadata.ValidationFailed.Code);
 
         group.MapPost("/{tenantId:guid}/roles/{roleId:guid}/retire", Retire)
             .RequireAuthorization()

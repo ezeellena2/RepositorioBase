@@ -54,18 +54,8 @@ public sealed class InviteMemberCommandHandler(
             return Invalid();
         }
 
-        if (!TryNormalizeRecipient(request.Email, out var recipient))
-        {
-            return Invalid();
-        }
-
-        var requestedRoleIds = request.RoleIds?.Distinct().ToArray() ?? [];
-        if (requestedRoleIds.Length == 0 || Array.Exists(requestedRoleIds, id => id == Guid.Empty))
-        {
-            // An empty identifier is bad input. Letting it through would reach RoleId.From, which throws, and the
-            // caller would read a 500 for something decidable from the request alone.
-            return Invalid();
-        }
+        var recipient = Invitation.Canonicalize(request.Email!);
+        var requestedRoleIds = request.RoleIds!.Distinct().ToArray();
 
         // IA-REQ-005. The pipeline proves the permission, never the confirmation, so this gate is the handler's.
         if (await identities.FindByIdAsync(inviterId, cancellationToken) is not { IsActive: true })
@@ -262,26 +252,6 @@ public sealed class InviteMemberCommandHandler(
         var envelope = await context.OutboxSecrets
             .FirstOrDefaultAsync(secret => secret.VersionedHash == supersededHash && secret.Status == OutboxSecretStatus.Pending, cancellationToken);
         envelope?.Terminate(OutboxSecretStatus.Expired, "invitation.superseded", now);
-    }
-
-    private static bool TryNormalizeRecipient(string? email, out string recipient)
-    {
-        recipient = string.Empty;
-        if (email is null || email.Length > 256)
-        {
-            return false;
-        }
-
-        try
-        {
-            recipient = Invitation.Canonicalize(email);
-            return true;
-        }
-        catch (ArgumentException)
-        {
-            // The aggregate is the authority on what a recipient is; a value it refuses is bad input, not a fault.
-            return false;
-        }
     }
 
     /// <summary>

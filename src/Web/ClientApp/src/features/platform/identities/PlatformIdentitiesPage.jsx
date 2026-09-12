@@ -25,9 +25,9 @@ import { useIdentity } from '../../identity/context/IdentityProvider';
 import { ProblemMessage } from '../../identity/ProblemMessage';
 import { PermissionLabel } from '../../identity/PermissionLabel';
 import { useSubmit } from '../../identity/useSubmit';
+import { useRead } from '../../identity/useRead';
 import { usePlatformClient } from '../invitations/PlatformInvitationPages';
 import { PlatformStepUpForm } from '../shared/PlatformStepUpForm';
-import { usePlatformRead } from '../shared/usePlatformRead';
 import { usePlatformStepUp } from '../shared/usePlatformStepUp';
 import { useTranslation } from '../../../i18n';
 
@@ -50,19 +50,79 @@ const header = { alignItems: 'flex-start', justifyContent: 'space-between', flex
 const section = { p: { xs: 2, sm: 3 } };
 const confirmation = { ...section, maxWidth: 560 };
 const emptyBlock = { p: 4, textAlign: 'center' };
-const rowActions = { justifyContent: 'flex-end', flexWrap: 'wrap' };
+const rowActions = { justifyContent: { xs: 'flex-start', sm: 'flex-end' }, flexWrap: 'wrap', minWidth: 0 };
 const buttons = { flexWrap: 'wrap', alignItems: 'center' };
 const selfStart = { alignSelf: 'flex-start' };
 const pagerSlot = { px: 2, py: 1.5 };
 
 /**
- * A row of this directory is a `Table size="small"` row, so its height is what such a row holds: 6px of cell
- * padding above and below, the tallest thing any of its cells carries — the `size="small"` button in the Actions
- * cell at 31px, taller than the 24px status chip and than the 20px line the address sits on — and the 1px rule to
- * the next row. The wait is drawn at that height so the directory arrives into space already held for it rather
- * than pushing the page down. (The 53 this replaces was a pixel guess at the same thing.)
+ * Text- and chip-only rows keep the 44px minimum. A row with an action grows to hold the theme's 40px control,
+ * the 6px cell padding above and below it, and the 1px divider. The wait reserves that action-bearing shape so
+ * the directory arrives into space already held for it.
  */
-const ROW_HEIGHT = 6 + 31 + 6 + 1;
+const ROW_MIN_HEIGHT = 44;
+const ACTION_ROW_HEIGHT = 6 + 40 + 6 + 1;
+
+const mobileValue = { minWidth: 0, overflowWrap: 'anywhere' };
+const responsiveTable = (minimumWidth) => (theme) => ({
+  minWidth: 0,
+  '& .MuiTableRow-root': { height: ROW_MIN_HEIGHT },
+  [theme.breakpoints.up('sm')]: { minWidth: minimumWidth },
+  [theme.breakpoints.down('sm')]: {
+    display: 'block',
+    '& .MuiTableHead-root, & .MuiTableHead-root .MuiTableRow-root': {
+      display: 'block',
+      height: 0,
+    },
+    '& .MuiTableHead-root .MuiTableCell-root': { ...visuallyHidden },
+    '& .MuiTableBody-root': { display: 'block', width: '100%' },
+    '& .MuiTableBody-root .MuiTableRow-root': {
+      display: 'block',
+      width: '100%',
+      height: 'auto',
+      py: 1,
+      borderBottom: 1,
+      borderColor: 'divider',
+    },
+    '& .MuiTableBody-root .MuiTableRow-root:last-of-type': { borderBottom: 0 },
+    '& .MuiTableBody-root .MuiTableCell-root': {
+      display: 'grid',
+      gridTemplateColumns: 'minmax(112px, 38%) minmax(0, 1fr)',
+      gap: 1,
+      alignItems: 'center',
+      minWidth: 0,
+      px: 2,
+      py: 0.75,
+      borderBottom: 0,
+      textAlign: 'left',
+      overflowWrap: 'anywhere',
+    },
+    '& .MuiTableBody-root .MuiTableCell-root[data-mobile-label]::before': {
+      content: 'attr(data-mobile-label)',
+      ...theme.typography.caption,
+      color: 'text.secondary',
+      fontWeight: 600,
+    },
+    '& .MuiTableBody-root .MuiButton-root': {
+      maxWidth: '100%',
+      whiteSpace: 'normal',
+      overflowWrap: 'anywhere',
+      textAlign: 'left',
+    },
+    '& .MuiTableBody-root .MuiChip-root': {
+      minWidth: 0,
+      maxWidth: '100%',
+      height: 'auto',
+      minHeight: 24,
+      justifySelf: 'start',
+    },
+    '& .MuiTableBody-root .MuiChip-label': {
+      whiteSpace: 'normal',
+      overflowWrap: 'anywhere',
+      py: 0.25,
+    },
+  },
+});
 
 /**
  * `LinearProgress` is 4px tall and so is the slot that holds it. A reload with rows already on screen is announced
@@ -79,7 +139,7 @@ const progressSlot = { height: 4 };
  */
 const statusColor = {
   Active: 'success',
-  AdministrativelySuspended: 'error',
+  AdministrativelySuspended: 'warning',
   SelfDeactivated: 'warning',
   Closed: 'error',
 };
@@ -136,7 +196,7 @@ export function PlatformIdentitiesPage() {
   const owesFactor = context?.session?.requiresTwoFactor === true;
   const mayLoad = mayRead && !owesFactor;
 
-  const { page, problem: readProblem, refresh, status } = usePlatformRead(
+  const { data: page, problem: readProblem, refresh, status } = useRead(
     useCallback((options) => platform.listIdentities(options), [platform]),
     mayLoad,
   );
@@ -151,6 +211,7 @@ export function PlatformIdentitiesPage() {
     if (mayLoad) await refresh(undefined);
   }, [mayLoad, refresh]);
   const stepUp = usePlatformStepUp(onProved);
+  const stepUpProblemForSummary = stepUp.problem?.code === 'invalid_mfa_code' ? null : stepUp.problem;
 
   const run = (action) => submit(async () => {
     setProofRefusal(null);
@@ -217,7 +278,7 @@ export function PlatformIdentitiesPage() {
             <Typography variant="body2" color="text.secondary">
               {t('panel.stepUpDescription')}
             </Typography>
-            <ProblemMessage problem={stepUp.problem} claimed={['code']} />
+            <ProblemMessage problem={stepUpProblemForSummary} />
             <PlatformStepUpForm
               inputId={identitiesStepUpInputId}
               code={stepUp.code}
@@ -259,7 +320,7 @@ export function PlatformIdentitiesPage() {
             <Typography variant="body2">
               {t('identities.recentProof')}
             </Typography>
-            <ProblemMessage problem={stepUp.problem} claimed={['code']} />
+            <ProblemMessage problem={stepUpProblemForSummary} />
             <PlatformStepUpForm
               inputId={identitiesStepUpInputId}
               code={stepUp.code}
@@ -267,7 +328,7 @@ export function PlatformIdentitiesPage() {
               onSubmit={stepUp.onSubmit}
               isBusy={stepUp.isBusy}
               problem={stepUp.problem}
-              submitVariant={outlinedSubmitVariant}
+              submitVariant="outlined"
             />
           </Stack>
         </Paper>
@@ -366,14 +427,13 @@ export function PlatformIdentitiesPage() {
         <Stack spacing={1} role="status">
           <Typography variant="body2" sx={visuallyHidden}>{t('identities.loading')}</Typography>
           {[0, 1, 2].map((placeholder) => (
-            <Skeleton key={placeholder} variant="rounded" height={ROW_HEIGHT} />
+            <Skeleton key={placeholder} variant="rounded" height={ACTION_ROW_HEIGHT} />
           ))}
         </Stack>
       )}
 
-      {/* A refused read and a failed one are different statements, and neither is "there is nothing here". Only
-          the second is worth offering a retry for: the first will answer the same way however often it is asked.
-          The retry belongs to the message that asks for it, so the two are one block and not two. */}
+      {/* A non-retryable refusal and a retryable failure are different statements, and neither is "there is
+          nothing here". The retry belongs to the message that asks for it, so the two are one block and not two. */}
       {(status === 'refused' || status === 'errored') && (
         <Stack spacing={2}>
           <ProblemMessage problem={readProblem} />
@@ -396,8 +456,11 @@ export function PlatformIdentitiesPage() {
           <Box sx={progressSlot}>
             {status === 'loading' && <LinearProgress aria-label={t('identities.loading')} />}
           </Box>
-          <TableContainer>
-            <Table size="small">
+          <TableContainer sx={{ overflowX: { xs: 'hidden', sm: 'auto' } }}>
+            <Table
+              size="small"
+              sx={responsiveTable(mayManage ? 760 : 640)}
+            >
               <TableHead>
                 <TableRow>
                   <TableCell component="th" scope="col">{t('identities.columns.address')}</TableCell>
@@ -411,10 +474,12 @@ export function PlatformIdentitiesPage() {
               <TableBody>
                 {rows.map((row) => (
                   <TableRow key={row.identityId} hover selected={pending?.identityId === row.identityId}>
-                    <TableCell><Typography variant="body2">{row.normalizedEmail}</Typography></TableCell>
+                    <TableCell data-mobile-label="Address">
+                      <Typography variant="body2" sx={mobileValue}>{row.normalizedEmail}</Typography>
+                    </TableCell>
                     {/* The cell states the account status and nothing else: it is the one a journey reads back, and
                         an operator acts on the state they were shown. */}
-                    <TableCell>
+                    <TableCell data-mobile-label="Account status">
                       <Chip
                         size="small"
                         variant="outlined"
@@ -424,11 +489,13 @@ export function PlatformIdentitiesPage() {
                     </TableCell>
                     {/* Rendered so an operator can copy it: it is what every other record of this account is keyed
                         by, and an address is not a stable way to name one. */}
-                    <TableCell>
-                      <Typography variant="caption" color="text.secondary">{row.identityId}</Typography>
+                    <TableCell data-mobile-label="Identity">
+                      <Typography variant="caption" color="text.secondary" sx={mobileValue}>
+                        {row.identityId}
+                      </Typography>
                     </TableCell>
                     {mayManage && (
-                      <TableCell align="right">
+                      <TableCell align="right" data-mobile-label="Actions">
                         <Stack direction="row" spacing={1} useFlexGap sx={rowActions}>
                           {offeredTransition(row.accountStatus, mayManage) === actionKinds.suspend && (
                             <Button
@@ -474,7 +541,7 @@ export function PlatformIdentitiesPage() {
                   type="button"
                   variant="outlined"
                   size="small"
-                  disabled={isBusy}
+                  disabled={isBusy || status === 'loading'}
                   onClick={() => refresh(page.nextCursor)}
                 >
                   {t('identities.more')}

@@ -2,7 +2,7 @@
 
 ## Technical Approach
 
-Reconcile the partial MUI foundation, then migrate shell, demos, Identity, and Platform screens to direct Material UI components. `src/theme.jsx` remains the single theme, but only defines Manrope/Source Sans 3 and selected brand palette roles from read-only `tokens.css`. Standard MUI owns spacing, breakpoints, shape, elevation, interaction states, responsive behavior, generated tonal roles, and grey/common/info/warning palettes. All routes, behavior, copy, APIs, DOM contracts, 293 existing tests, and 32 journeys remain unchanged.
+Reconcile the partial MUI foundation, then migrate the shell, Home, Identity, and Platform screens to direct Material UI components. `src/theme.jsx` remains the single theme, but only defines Manrope/Source Sans 3 and selected brand palette roles from read-only `tokens.css`. Standard MUI owns spacing, breakpoints, shape, elevation, interaction states, responsive behavior, generated tonal roles, and grey/common/info/warning palettes. All retained routes, behavior, copy, APIs, DOM contracts, tests, and 30 journeys remain unchanged.
 
 ## Architecture Decisions
 
@@ -38,7 +38,7 @@ existing screen state/API -> direct MUI component -> preserved native role/id/na
 | Action | Files |
 | --- | --- |
 | Reconcile | `src/theme.jsx`, `src/test/materialUiMigration.contract.test.js`, `src/main.jsx`, `src/App.jsx` |
-| Modify | `src/components/{Layout,NavMenu,ThemeToggle,Home,Counter}.jsx` |
+| Modify | `src/components/{Layout,NavMenu,ThemeToggle,Home}.jsx` |
 | Modify | Identity presentation: `ProblemMessage.jsx`; `context/IdentityContextPage.jsx`; login, register, people, lifecycle, credentials, invitations, tenants, sessions, roles, and members page JSX files |
 | Modify | Platform presentation: `PlatformPanel.jsx`, `shared/PlatformStepUpForm.jsx`, identities, retention, invitation, and MFA page JSX files |
 | Create | `src/components/NativeDialog.jsx` only |
@@ -48,7 +48,7 @@ existing screen state/API -> direct MUI component -> preserved native role/id/na
 
 ## Strict TDD and Rollout
 
-Revise the new migration contract test so it verifies selected branding, fonts, ThemeProvider/CssBaseline/color-mode integration, direct MUI usage, justified native adapters, and preserved contracts; it must not inspect or freeze MUI internals, generated palettes, channels, states, spacing, radii, or shadows. For each unit—foundation, shell/demos, Identity groups, Platform groups—add a focused new failing contract assertion, observe RED, migrate minimally to GREEN, then refactor. After every screen run all 293 unchanged legacy tests plus migration tests and lint; run final build and 32 unchanged journeys when Docker is available.
+Revise the new migration contract test so it verifies selected branding, fonts, ThemeProvider/CssBaseline/color-mode integration, direct MUI usage, justified native adapters, and preserved contracts; it must not inspect or freeze MUI internals, generated palettes, channels, states, spacing, radii, or shadows. For each unit—foundation, shell/Home, Identity groups, Platform groups—add a focused new failing contract assertion, observe RED, migrate minimally to GREEN, then refactor. After every screen run the remaining legacy tests plus migration tests and lint; run the final build and 30 journeys when Docker is available.
 
 Each unit is independently revertible. Remove Pico/theme context/styles only after every screen is on MUI; rollback restores the unit and, for final cleanup, those dependencies/files together. No data migration or feature flag.
 

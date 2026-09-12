@@ -18,7 +18,7 @@ namespace CleanArchitecture.Application.FunctionalTests.IdentityAccess.Platform;
 /// </summary>
 public sealed class PlatformProjectionTests : TestBase
 {
-    private const string Cuit = "30123456789";
+    private const string Cuit = "30123456781";
     private const string LegalName = "Acme Sociedad Anónima";
 
     [Test]

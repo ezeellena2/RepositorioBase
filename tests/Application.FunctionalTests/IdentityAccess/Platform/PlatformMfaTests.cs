@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using CleanArchitecture.Application.FunctionalTests.Infrastructure;
+using CleanArchitecture.Application.Common.Models;
 using CleanArchitecture.Application.IdentityAccess.Platform.Invitations;
 using CleanArchitecture.Application.IdentityAccess.Platform.Mfa;
 using CleanArchitecture.Domain.IdentityAccess.Memberships;
@@ -33,16 +34,23 @@ public sealed class PlatformMfaTests : TestBase
         (await TestApp.CountAsync<TenantMembership>()).ShouldBe(0, "enrolling grants nothing.");
     }
 
-    /// <summary>A code the authenticator never produced is not a proof, so the factor stays unproved.</summary>
+    /// <summary>
+    /// Missing enrollment and a code the authenticator never produced are deliberately one answer. The caller is
+    /// authenticated and bound to the invitation, but neither state is a session or invitation failure.
+    /// </summary>
     [Test]
-    public async Task A_wrong_code_does_not_verify_the_factor()
+    public async Task A_missing_enrollment_and_a_wrong_code_share_the_mfa_code_refusal()
     {
         var invitee = await ConfirmedInviteeAsync();
+        var missingEnrollment = await TestApp.SendAsync(
+            new VerifyPlatformMfaEnrollmentCommand(invitee.Token, "000000"));
         await TestApp.SendAsync(new BeginPlatformMfaEnrollmentCommand(invitee.Token));
 
-        var result = await TestApp.SendAsync(new VerifyPlatformMfaEnrollmentCommand(invitee.Token, "000000"));
+        var wrongCode = await TestApp.SendAsync(new VerifyPlatformMfaEnrollmentCommand(invitee.Token, "000000"));
 
-        result.IsFailure.ShouldBeTrue();
+        AssertInvalidMfaCode(missingEnrollment.Error!);
+        AssertInvalidMfaCode(wrongCode.Error!);
+        missingEnrollment.Error!.Detail.ShouldBe(wrongCode.Error!.Detail);
         (await TestApp.ListAsync<PlatformMfaEnrollment>()).Single().Status.ShouldBe(PlatformMfaEnrollmentStatus.Pending);
     }
 
@@ -153,7 +161,7 @@ public sealed class PlatformMfaTests : TestBase
 
         var result = await TestApp.SendAsync(new StepUpPlatformMfaCommand(TotpCode(enrollment.Value!.SharedKey)));
 
-        result.IsFailure.ShouldBeTrue();
+        AssertInvalidMfaCode(result.Error!);
     }
 
     [Test]
@@ -163,7 +171,30 @@ public sealed class PlatformMfaTests : TestBase
 
         var result = await TestApp.SendAsync(new StepUpPlatformMfaCommand("000000"));
 
-        result.IsFailure.ShouldBeTrue();
+        AssertInvalidMfaCode(result.Error!);
+    }
+
+    [Test]
+    public async Task Step_up_without_an_enrollment_is_the_same_mfa_code_refusal()
+    {
+        await ConfirmedInviteeAsync();
+
+        var result = await TestApp.SendAsync(new StepUpPlatformMfaCommand("000000"));
+
+        AssertInvalidMfaCode(result.Error!);
+    }
+
+    [Test]
+    public async Task Step_up_keeps_invalid_session_for_a_genuine_session_failure()
+    {
+        TestApp.SetUserId(Guid.NewGuid());
+        TestApp.SetSessionId(null);
+        TestApp.SetApplicationPermissionGranted(true);
+
+        var result = await TestApp.SendAsync(new StepUpPlatformMfaCommand("000000"));
+
+        result.Error!.Code.ShouldBe("invalid_session");
+        result.Error.Category.ShouldBe(ApplicationErrorCategory.Authentication);
     }
 
     /// <summary>
@@ -241,6 +272,15 @@ public sealed class PlatformMfaTests : TestBase
         }
 
         return [.. bytes];
+    }
+
+    private static void AssertInvalidMfaCode(ApplicationError error)
+    {
+        error.Code.ShouldBe("invalid_mfa_code");
+        error.Category.ShouldBe(ApplicationErrorCategory.Validation);
+        error.Detail.ShouldBe("The authenticator code is not valid.");
+        error.ValidationErrors.ShouldBeEmpty();
+        error.RetryAfterSeconds.ShouldBeNull();
     }
 
 }

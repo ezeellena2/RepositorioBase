@@ -1,4 +1,3 @@
-/* eslint-disable i18next/no-literal-string -- bounded wire field names, not display copy. */
 import { useEffect, useRef, useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import Alert from '@mui/material/Alert';
@@ -10,15 +9,29 @@ import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
+import { toProblem } from '../api/apiTransport';
 import { useIdentity } from '../context/IdentityProvider';
+import {
+  claimedFieldNames,
+  fieldErrorText,
+  selectFieldErrors,
+} from '../fieldErrors';
 import { ProblemMessage } from '../ProblemMessage';
 import { useFragmentToken } from '../useFragmentToken';
 import { useSubmit } from '../useSubmit';
-import { fieldError, firstInvalid } from '../fieldErrors';
 import { Trans, useTranslation } from '../../../i18n';
 
 /** Required without the asterisk MUI would add, which would rename the field for everything that reads its label. */
 const requiredField = { inputLabel: { required: false } };
+const resetFields = ['newPassword'];
+const resetFieldIds = { newPassword: 'reset-password' };
+const changeFields = ['password', 'newPassword'];
+const changeFieldIds = { password: 'change-current', newPassword: 'change-next' };
+
+const focusFirstField = (errors, fields, fieldIds) => {
+  const field = fields.find((candidate) => errors[candidate]?.length > 0);
+  if (field) document.getElementById(fieldIds[field])?.focus();
+};
 
 /**
  * Three screens, two frames, because two of these are entrances and one is not.
@@ -106,12 +119,32 @@ export function ResetPasswordPage() {
   const identity = useIdentity();
   const { t } = useTranslation('identity');
   const token = useFragmentToken();
+  const passwordInput = useRef(null);
   const [password, setPassword] = useState('');
+  const [clearedServerFields, setClearedServerFields] = useState([]);
   const { submit, problem, isBusy, result } = useSubmit((secret, next) => identity.client.resetPassword(secret, next));
   const isSet = result !== null && result !== undefined;
-  const passwordRef = useRef(null);
-  const invalid = firstInvalid(problem, ['newPassword']);
-  useEffect(() => { if (invalid) passwordRef.current?.focus(); }, [invalid]);
+  const fieldErrors = selectFieldErrors(
+    problem,
+    resetFields.filter((field) => !clearedServerFields.includes(field)),
+  );
+
+  useEffect(() => {
+    if (!problem) return;
+    const nextErrors = selectFieldErrors(problem, resetFields);
+    if (nextErrors.newPassword) passwordInput.current?.focus();
+  }, [problem]);
+
+  const editPassword = (event) => {
+    setPassword(event.target.value);
+    setClearedServerFields((current) => current.includes('newPassword') ? current : [...current, 'newPassword']);
+  };
+
+  const resetPassword = (event) => {
+    event.preventDefault();
+    setClearedServerFields([]);
+    submit(token ?? '', password);
+  };
 
   return (
     <Paper component="section" elevation={3} aria-labelledby="reset-heading" sx={card}>
@@ -134,24 +167,29 @@ export function ResetPasswordPage() {
           </>
         ) : (
           <>
-            <ProblemMessage problem={problem} claimed={['newPassword']} autoFocus={!invalid} />
+            <ProblemMessage
+              problem={problem}
+              claimedFields={claimedFieldNames(problem, resetFields)}
+              fieldIds={resetFieldIds}
+            />
             <Stack
               component="form"
               spacing={2}
-              onSubmit={(event) => { event.preventDefault(); submit(token ?? emptyToken, password); }}
+              onSubmit={resetPassword}
             >
               <TextField
                 id="reset-password"
-                label={t('credentials.newPassword')}
+                inputRef={passwordInput}
+                label="New password"
                 type="password"
                 autoComplete="new-password"
                 required
                 fullWidth
                 slotProps={requiredField}
-                inputRef={passwordRef}
-                {...fieldError(problem, 'newPassword', t)}
+                error={Boolean(fieldErrors.newPassword)}
+                helperText={fieldErrorText(fieldErrors, 'newPassword', t) || undefined}
                 value={password}
-                onChange={(event) => setPassword(event.target.value)}
+                onChange={editPassword}
               />
               <Button type="submit" variant="contained" size="large" fullWidth disabled={isBusy || !token}>
                 {t('credentials.reset.submit')}
@@ -180,13 +218,21 @@ export function ChangePasswordPage() {
   const [problem, setProblem] = useState(null);
   const [isBusy, setIsBusy] = useState(false);
   const [done, setDone] = useState(false);
-  const nextRef = useRef(null);
-  const invalid = firstInvalid(problem, ['newPassword']);
-  useEffect(() => { if (invalid) nextRef.current?.focus(); }, [invalid]);
+  const [clearedServerFields, setClearedServerFields] = useState([]);
+  const fieldErrors = selectFieldErrors(
+    problem,
+    changeFields.filter((field) => !clearedServerFields.includes(field)),
+  );
+
+  useEffect(() => {
+    if (!problem) return;
+    focusFirstField(selectFieldErrors(problem, changeFields), changeFields, changeFieldIds);
+  }, [problem]);
 
   const change = async () => {
     setIsBusy(true);
     setProblem(null);
+    setClearedServerFields([]);
     try {
       await identity.client.reauthenticate('credentials.password.change', current);
       await identity.client.changePassword(next);
@@ -194,7 +240,7 @@ export function ChangePasswordPage() {
       setNext('');
       setDone(true);
     } catch (error) {
-      setProblem(error.problem ?? { code: 'unexpected' });
+      setProblem(toProblem(error));
     } finally {
       setIsBusy(false);
     }
@@ -205,9 +251,10 @@ export function ChangePasswordPage() {
    * for are being filled in again. Clearing it on the first keystroke is what keeps a settled message from standing
    * over a live form and claiming a second change already happened.
    */
-  const edit = (set) => (event) => {
+  const edit = (field, set) => (event) => {
     setDone(false);
     set(event.target.value);
+    setClearedServerFields((current) => current.includes(field) ? current : [...current, field]);
   };
 
   return (
@@ -216,7 +263,11 @@ export function ChangePasswordPage() {
         <Typography id="change-heading" component="h1" variant="h5">{t('credentials.change.title')}</Typography>
       </Box>
 
-      <ProblemMessage problem={problem} claimed={['newPassword']} autoFocus={!invalid} />
+      <ProblemMessage
+        problem={problem}
+        claimedFields={claimedFieldNames(problem, changeFields)}
+        fieldIds={changeFieldIds}
+      />
 
       {/* Deliberately role="status" and not the role="alert" MUI gives every severity: a refusal can arrive over a
           confirmation, and a page that resolves its alert as one element cannot be handed two. */}
@@ -241,8 +292,10 @@ export function ChangePasswordPage() {
             required
             fullWidth
             slotProps={requiredField}
+            error={Boolean(fieldErrors.password)}
+            helperText={fieldErrorText(fieldErrors, 'password', t) || undefined}
             value={current}
-            onChange={edit(setCurrent)}
+            onChange={edit('password', setCurrent)}
           />
           <TextField
             id="change-next"
@@ -252,10 +305,10 @@ export function ChangePasswordPage() {
             required
             fullWidth
             slotProps={requiredField}
-            inputRef={nextRef}
-            {...fieldError(problem, 'newPassword', t)}
+            error={Boolean(fieldErrors.newPassword)}
+            helperText={fieldErrorText(fieldErrors, 'newPassword', t) || undefined}
             value={next}
-            onChange={edit(setNext)}
+            onChange={edit('newPassword', setNext)}
           />
           <Button type="submit" variant="contained" disabled={isBusy} sx={{ alignSelf: 'flex-start' }}>
             {t('credentials.change.submit')}

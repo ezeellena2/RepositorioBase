@@ -60,7 +60,7 @@ public sealed class RecoverPlatformMfaCommandHandler(
                 var now = PlatformInvitationDelivery.ToStorablePrecision(timeProvider.GetUtcNow());
                 var enrollment = await PlatformMfaGate.FindEnrollmentAsync(context, identityId, ct);
                 if (enrollment is null)
-                    return Result<PlatformMfaEnrollmentDetails>.Failure(IdentityAccessErrors.InvalidCredentialProof());
+                    return Result<PlatformMfaEnrollmentDetails>.Failure(IdentityAccessErrors.InvalidRecoveryCode());
 
                 var identity = (await identities.FindByIdAsync(identityId, ct))!;
                 var secret = verifier.Create(identity.Email);
@@ -73,7 +73,7 @@ public sealed class RecoverPlatformMfaCommandHandler(
                     context.AuditEvents.Add(AuditEvent.CreateSessionEvent(
                         identityId, sessionId.Value, "platform.mfa.recovered", AuditCorrelation.Current(), "code_reused"));
                     await context.SaveChangesAsync(ct);
-                    return Result<PlatformMfaEnrollmentDetails>.Failure(IdentityAccessErrors.InvalidCredentialProof());
+                    return Result<PlatformMfaEnrollmentDetails>.Failure(IdentityAccessErrors.InvalidRecoveryCode());
                 }
 
                 context.AuditEvents.Add(AuditEvent.CreateSessionEvent(

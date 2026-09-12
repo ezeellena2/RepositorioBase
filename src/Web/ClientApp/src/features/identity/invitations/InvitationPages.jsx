@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
@@ -10,6 +10,7 @@ import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { useIdentity } from '../context/IdentityProvider';
+import { claimedFieldNames, fieldErrorText, selectFieldErrors } from '../fieldErrors';
 import { ProblemMessage } from '../ProblemMessage';
 import { useFragmentToken } from '../useFragmentToken';
 import { useSubmit } from '../useSubmit';
@@ -17,6 +18,8 @@ import { Trans, useTranslation } from '../../../i18n';
 
 /** Required without the asterisk MUI would add, which would rename the field for everything that reads its label. */
 const requiredField = { inputLabel: { required: false } };
+const passwordField = ['password'];
+const passwordFieldIds = { password: 'invitation-password' };
 
 /**
  * The public entrance card, shared verbatim with LoginPage and ConfirmEmailPage: on those routes the card *is*
@@ -42,9 +45,16 @@ export function RegisterFromInvitationPage() {
   const identity = useIdentity();
   const { t } = useTranslation();
   const token = useFragmentToken();
+  const passwordInput = useRef(null);
   const [password, setPassword] = useState('');
   const { submit, problem, isBusy, result } = useSubmit((secret, chosen) =>
     identity.client.registerFromInvitation(secret, chosen));
+  const passwordErrors = selectFieldErrors(problem, passwordField);
+  const claimedPasswordFields = claimedFieldNames(problem, passwordField);
+
+  useEffect(() => {
+    if (passwordErrors.password?.length > 0) passwordInput.current?.focus();
+  }, [passwordErrors]);
 
   if (result) {
     return (
@@ -62,21 +72,36 @@ export function RegisterFromInvitationPage() {
   return (
     <Paper component="section" elevation={3} aria-labelledby="invitation-register-heading" sx={card}>
       <Stack spacing={3}>
-        <Typography id="invitation-register-heading" component="h1" variant="h5">{t('identity:invitations.register.title')}</Typography>
-        <ProblemMessage problem={problem} />
+        <Box>
+          <Typography id="invitation-register-heading" component="h1" variant="h5">{t('identity:invitations.register.title')}</Typography>
+          {!token && (
+            <Typography variant="body2" sx={supporting}>
+              {t('identity:invitations.register.missingToken')}
+            </Typography>
+          )}
+        </Box>
+        <ProblemMessage
+          problem={problem}
+          claimedFields={claimedPasswordFields}
+          fieldIds={passwordFieldIds}
+          autoFocus={claimedPasswordFields.length === 0}
+        />
         <Stack component="form" spacing={2} onSubmit={(event) => { event.preventDefault(); submit(token ?? emptyToken, password); }}>
           <TextField
             id="invitation-password"
+            inputRef={passwordInput}
             label={t('identity:invitations.register.choosePassword')}
             type="password"
             autoComplete="new-password"
             required
             fullWidth
             slotProps={requiredField}
+            error={Boolean(passwordErrors.password)}
+            helperText={fieldErrorText(passwordErrors, 'password', t) || undefined}
             value={password}
             onChange={(event) => setPassword(event.target.value)}
           />
-          <Button type="submit" variant="contained" size="large" fullWidth disabled={isBusy}>{t('identity:invitations.register.continue')}</Button>
+          <Button type="submit" variant="contained" size="large" fullWidth disabled={isBusy || !token}>{t('identity:invitations.register.continue')}</Button>
         </Stack>
       </Stack>
     </Paper>

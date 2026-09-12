@@ -152,11 +152,18 @@ public sealed class RegistrationPrivacySequenceTests : TestBase
 /// <summary>Distinct valid CUIT values, so two runs never collide by accident.</summary>
 internal static class IdentityAccessCuit
 {
+    private static readonly int[] Weights = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2];
     private static int _next;
 
     internal static string Next()
     {
-        var serial = Interlocked.Increment(ref _next) % 90_000_000 + 10_000_000;
-        return $"30-{serial:D8}-9";
+        while (true)
+        {
+            var serial = Interlocked.Increment(ref _next) % 90_000_000 + 10_000_000;
+            var digits = $"30{serial:D8}";
+            var sum = Weights.Select((weight, index) => weight * (digits[index] - '0')).Sum();
+            var checkDigit = (11 - sum % 11) % 11;
+            if (checkDigit != 10) return $"30-{serial:D8}-{checkDigit}";
+        }
     }
 }

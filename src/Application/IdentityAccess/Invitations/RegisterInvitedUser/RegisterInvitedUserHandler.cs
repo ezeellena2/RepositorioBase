@@ -49,10 +49,11 @@ public sealed class RegisterInvitedUserCommandHandler(
 
     public async Task<Result> Handle(RegisterInvitedUserCommand request, CancellationToken cancellationToken)
     {
-        if (request.Password is null || request.Password.Length > 256 ||
-            !(await identities.ValidatePasswordAsync(request.Password, cancellationToken)).IsValid)
+        var passwordValidation = await identities.ValidatePasswordAsync(request.Password, cancellationToken);
+        if (!passwordValidation.IsValid)
         {
-            return Result.Failure(IdentityAccessErrors.InvalidInvitation());
+            return Result.Failure(IdentityAccessErrors.PasswordPolicyFailed(
+                new Dictionary<string, string[]> { ["password"] = [.. passwordValidation.Errors] }));
         }
 
         try

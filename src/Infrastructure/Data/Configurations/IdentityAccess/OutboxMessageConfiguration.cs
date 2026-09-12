@@ -19,6 +19,7 @@ public sealed class OutboxMessageConfiguration : IEntityTypeConfiguration<Outbox
         builder.Property(x => x.FirstAttemptAt);
         builder.Property(x => x.RequestFingerprint).HasMaxLength(64);
         builder.Property(x => x.DeliveryLanguage).HasMaxLength(16);
+        builder.Property(x => x.TraceId).HasMaxLength(32);
         builder.Property(x => x.Status).HasConversion<string>().HasMaxLength(32).IsRequired();
         builder.Property(x => x.LeaseOwner).HasMaxLength(128);
         builder.Property(x => x.LeaseExpiresAt);

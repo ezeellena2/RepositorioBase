@@ -14,6 +14,7 @@ internal sealed class ApiExceptionOperationTransformer : IOpenApiOperationTransf
         var contracts = context.Description.ActionDescriptor.EndpointMetadata
             .OfType<ApiProblemContractMetadata>()
             .SelectMany(metadata => metadata.Contracts)
+            .DistinctBy(contract => (contract.StatusCode, contract.Code))
             .GroupBy(contract => contract.StatusCode);
 
         foreach (var statusContracts in contracts)

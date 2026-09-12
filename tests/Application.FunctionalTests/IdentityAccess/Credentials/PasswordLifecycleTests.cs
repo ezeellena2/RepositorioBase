@@ -344,8 +344,22 @@ public sealed class PasswordLifecycleTests : TestBase
 
         var refused = await ChangeAsync(client, host, cookie, "short");
 
-        refused.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
-        (await IdentityHttpHarness.ReadProblemAsync(refused)).GetProperty("code").GetString().ShouldBe("validation_failed");
+        var payload = await IdentityHttpHarness.AssertProblemAsync(
+            refused,
+            HttpStatusCode.BadRequest,
+            "validation_failed",
+            hasErrors: true);
+        payload.GetProperty("instance").GetString().ShouldBe("/api/identity/credentials/password");
+        payload.GetProperty("errors").EnumerateObject().Select(error => error.Name).ShouldBe(["newPassword"]);
+        payload.GetProperty("errors").GetProperty("newPassword").EnumerateArray()
+            .Select(message => message.GetString())
+            .ShouldBe([
+                "Passwords must be at least 12 characters.",
+                "Passwords must have at least one non alphanumeric character.",
+                "Passwords must have at least one digit ('0'-'9').",
+                "Passwords must have at least one uppercase ('A'-'Z')."
+            ]);
+        payload.GetRawText().ShouldNotContain("short", Case.Insensitive);
         (await ContextAsync(client, host, cookie)).StatusCode.ShouldBe(HttpStatusCode.OK, "the session that asked is untouched");
         await SignInAsync(client, host, email, Password);
     }

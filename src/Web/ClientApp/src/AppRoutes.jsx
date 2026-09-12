@@ -1,5 +1,5 @@
-import { Counter } from "./components/Counter";
 import { Home } from "./components/Home";
+import { NotFoundPage } from "./components/NotFoundPage";
 import { ProtectedRoute } from "./components/api-authorization/ProtectedRoute";
 import { LoginPage } from "./features/identity/login/LoginPage";
 import { RegisterOrganizationPage } from "./features/identity/register/RegisterOrganizationPage";
@@ -35,7 +35,6 @@ import { AccountPage, RequestReactivationPage, ReactivateAccountPage } from "./f
 // Platform tenant until the last gate completes, so requiring one would make the gates unreachable.
 const AppRoutes = [
   { index: true, element: <Home /> },
-  { path: '/counter', element: <Counter /> },
   { path: '/login', element: <LoginPage /> },
   // Where a visitor chooses what they are registering. It exists because the two answers are different products
   // for the same person, and guessing for them is how somebody ends up with the wrong one.
@@ -76,7 +75,8 @@ const AppRoutes = [
   // policy are separately granted and an operator can hold any of them without the others.
   { path: '/platform/identities', element: <ProtectedRoute><PlatformIdentitiesPage /></ProtectedRoute> },
   { path: '/platform/retention', element: <ProtectedRoute><PlatformRetentionPage /></ProtectedRoute> },
-  { path: '/platform', element: <ProtectedRoute><PlatformPanel /></ProtectedRoute> }
+  { path: '/platform', element: <ProtectedRoute><PlatformPanel /></ProtectedRoute> },
+  { path: '*', element: <NotFoundPage /> }
 ];
 
 export default AppRoutes;

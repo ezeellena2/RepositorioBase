@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { MemoryRouter } from 'react-router-dom';
@@ -47,6 +47,12 @@ const proofAccepted = (spent) => http.post('/api/identity/credentials/reauthenti
   spent.push(await request.json());
   return new HttpResponse(null, { status: 204 });
 });
+
+const deferred = () => {
+  let resolve;
+  const promise = new Promise((settle) => { resolve = settle; });
+  return { promise, resolve };
+};
 
 beforeEach(() => {
   vi.spyOn(window, 'confirm').mockReturnValue(true);
@@ -151,8 +157,102 @@ describe('members page', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: 'Remove Ana' }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/no administrator/i);
+    const memberRow = screen.getByRole('button', { name: 'Remove Ana' }).closest('li');
+    const alert = await within(memberRow).findByRole('alert');
+    expect(alert).toHaveTextContent(/no administrator/i);
+    expect(alert).toHaveFocus();
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
     expect(screen.getByRole('button', { name: 'Remove Ana' })).toBeInTheDocument();
+  });
+
+  it('does not flash role identifiers and places a catalog refusal inside the member editor', async () => {
+    server.use(
+      membersAre([member({ roleIds: ['private-role-id'] })]),
+      http.get(`/api/tenants/${TENANT}/roles`, () => problem(403, 'permission_denied')),
+    );
+    renderPage();
+
+    const edit = await screen.findByRole('button', { name: 'Edit roles of Ana' });
+    expect(screen.queryByText('private-role-id')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+    await userEvent.click(edit);
+    const editor = screen.getByRole('group', { name: 'Roles for Ana' }).closest('form');
+    expect(await within(editor).findByText(/cannot see this organization’s roles/i)).toBeInTheDocument();
+    expect(within(editor).queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('replaces an initial roster wait with a retryable error and loads members after Try again', async () => {
+    let attempts = 0;
+    server.use(
+      http.get(`/api/tenants/${TENANT}/members`, () => {
+        attempts += 1;
+        return attempts === 1
+          ? problem(500, 'internal_server_error', { traceId: 'trace-members' })
+          : HttpResponse.json({ items: [member()], nextCursor: null });
+      }),
+      rolesAre([role()]),
+    );
+    renderPage();
+
+    expect(await screen.findByText('Reference: trace-members')).toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+
+    expect(await screen.findByRole('button', { name: 'Suspend Ana' })).toBeInTheDocument();
+    expect(attempts).toBe(2);
+  });
+
+  it('ends the page skeleton when the roster fails even while the catalog is still loading', async () => {
+    const catalog = deferred();
+    server.use(
+      http.get(`/api/tenants/${TENANT}/members`, () => (
+        problem(500, 'internal_server_error', { traceId: 'trace-roster-terminal' })
+      )),
+      http.get(`/api/tenants/${TENANT}/roles`, async () => {
+        await catalog.promise;
+        return HttpResponse.json({ items: [role()], nextCursor: null });
+      }),
+    );
+    renderPage();
+
+    expect(await screen.findByText('Reference: trace-roster-terminal')).toBeInTheDocument();
+    const statusWhileCatalogLoads = screen.queryByRole('status');
+    catalog.resolve();
+    await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
+
+    expect(statusWhileCatalogLoads).toBeNull();
+  });
+
+  it('keeps the loaded roster visible while a failed catalog retries inside the editor', async () => {
+    let catalogAttempts = 0;
+    const retry = deferred();
+    server.use(
+      membersAre([member()]),
+      http.get(`/api/tenants/${TENANT}/roles`, async () => {
+        catalogAttempts += 1;
+        if (catalogAttempts === 1) {
+          return problem(500, 'internal_server_error', { traceId: 'trace-member-catalog' });
+        }
+        await retry.promise;
+        return HttpResponse.json({ items: [role()], nextCursor: null });
+      }),
+    );
+    renderPage();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Edit roles of Ana' }));
+    const editor = screen.getByRole('group', { name: 'Roles for Ana' }).closest('form');
+    await userEvent.click(await within(editor).findByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(catalogAttempts).toBe(2));
+
+    const rosterStayedVisible = screen.queryByRole('button', { name: 'Suspend Ana' });
+    const pageStatusDuringRetry = screen.queryByRole('status');
+    retry.resolve();
+    expect(await screen.findByLabelText('Bookkeeper')).toBeInTheDocument();
+
+    expect(rosterStayedVisible).toBeInTheDocument();
+    expect(pageStatusDuringRetry).toBeNull();
   });
 
   it('confirms before giving the organization away, and spends its own proof', async () => {

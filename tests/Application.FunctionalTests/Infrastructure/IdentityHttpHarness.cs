@@ -76,7 +76,28 @@ internal static class IdentityHttpHarness
     {
         response.Content.Headers.ContentType!.MediaType.ShouldBe("application/problem+json");
         using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        return document.RootElement.Clone();
+        var payload = document.RootElement.Clone();
+        payload.GetProperty("status").GetInt32().ShouldBe((int)response.StatusCode);
+        payload.GetProperty("type").GetString().ShouldBe("about:blank");
+        payload.GetProperty("title").GetString().ShouldNotBeNullOrWhiteSpace();
+        payload.GetProperty("instance").GetString().ShouldNotBeNullOrWhiteSpace();
+        payload.GetProperty("code").GetString().ShouldNotBeNullOrWhiteSpace();
+        payload.GetProperty("traceId").GetString().ShouldNotBeNullOrWhiteSpace();
+        return payload;
+    }
+
+    internal static async Task<JsonElement> AssertProblemAsync(
+        HttpResponseMessage response,
+        HttpStatusCode status,
+        string code,
+        bool hasErrors = false)
+    {
+        response.StatusCode.ShouldBe(status);
+        var payload = await ReadProblemAsync(response);
+        payload.GetProperty("status").GetInt32().ShouldBe((int)status);
+        payload.GetProperty("code").GetString().ShouldBe(code);
+        payload.TryGetProperty("errors", out _).ShouldBe(hasErrors);
+        return payload;
     }
 
     internal static async Task<JsonElement> ReadJsonAsync(HttpResponseMessage response)

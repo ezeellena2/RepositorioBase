@@ -28,12 +28,12 @@ public sealed class RegistrationTests : TestBase
     public async Task Normalized_equivalent_anonymous_requests_are_neutral_and_finalize_into_one_registration_graph()
     {
         var suffix = Guid.NewGuid().ToString("N");
-        var command = new RegisterOrganizationCommand($"owner-{suffix}@example.test", "Testing1234!", "Northwind Registration", "30-12345678-9");
+        var command = new RegisterOrganizationCommand($"owner-{suffix}@example.test", "Testing1234!", "Northwind Registration", "30-12345678-1");
         var normalizedVariant = command with
         {
             Email = $"  OWNER-{suffix.ToUpperInvariant()}@EXAMPLE.TEST ",
             LegalName = "  northwind registration  ",
-            Cuit = "30 12345678 9"
+            Cuit = "30 12345678 1"
         };
 
         var first = await TestApp.SendAsync(command);
@@ -74,7 +74,7 @@ public sealed class RegistrationTests : TestBase
     {
         var suffix = Guid.NewGuid().ToString("N");
         var email = $"race-email-{suffix}@example.test";
-        var first = new RegisterOrganizationCommand(email, "Testing1234!", "Northwind One", "30-12345678-9");
+        var first = new RegisterOrganizationCommand(email, "Testing1234!", "Northwind One", "30-12345678-1");
         var second = new RegisterOrganizationCommand(email.ToUpperInvariant(), "Testing1234!", "Northwind Two", "30-87654321-0");
         using var barrier = new Barrier(2);
 
@@ -108,8 +108,8 @@ public sealed class RegistrationTests : TestBase
     public async Task Concurrent_anonymous_requests_with_different_intents_and_the_same_cuit_complete_their_own_durable_outcomes_without_a_duplicate_graph()
     {
         var suffix = Guid.NewGuid().ToString("N");
-        var first = new RegisterOrganizationCommand($"race-cuit-one-{suffix}@example.test", "Testing1234!", "Northwind One", "30-12345678-9");
-        var second = new RegisterOrganizationCommand($"race-cuit-two-{suffix}@example.test", "Testing1234!", "Northwind Two", "30 12345678 9");
+        var first = new RegisterOrganizationCommand($"race-cuit-one-{suffix}@example.test", "Testing1234!", "Northwind One", "30-12345678-1");
+        var second = new RegisterOrganizationCommand($"race-cuit-two-{suffix}@example.test", "Testing1234!", "Northwind Two", "30 12345678 1");
         using var barrier = new Barrier(2);
 
         var results = await Task.WhenAll(
@@ -146,7 +146,7 @@ public sealed class RegistrationTests : TestBase
         var email = $"owner-{Guid.NewGuid():N}@example.test";
         var identityId = await TestApp.RunAsUserAsync(email, "Testing1234!", []);
         TestApp.SetValidatedOptionalSession(identityId, email);
-        var command = new RegisterOrganizationCommand(email, "Testing1234!", "Northwind Registration", "30-12345678-9");
+        var command = new RegisterOrganizationCommand(email, "Testing1234!", "Northwind Registration", "30-12345678-1");
         TestApp.ForceRegistrationRollbackAfterPersistedEffects();
 
         await Should.ThrowAsync<InvalidOperationException>(() => TestApp.SendAsync(command));
@@ -171,7 +171,7 @@ public sealed class RegistrationTests : TestBase
         var email = $"existing-{Guid.NewGuid():N}@example.test";
         await TestApp.RunAsUserAsync(email, "Testing1234!", []);
 
-        var result = await TestApp.SendAsync(new RegisterOrganizationCommand(email, "Testing1234!", "Existing Identity", "30-12345678-9"));
+        var result = await TestApp.SendAsync(new RegisterOrganizationCommand(email, "Testing1234!", "Existing Identity", "30-12345678-1"));
 
         result.IsSuccess.ShouldBeTrue();
         (await TestApp.CountAsync<ApplicationUser>()).ShouldBe(1);
@@ -195,14 +195,14 @@ public sealed class RegistrationTests : TestBase
     {
         var tenant = Tenant.CreateOrganization(TenantSlug.From($"existing-{Guid.NewGuid():N}"));
         await TestApp.AddAsync(tenant);
-        await TestApp.AddAsync(OrganizationProfile.Create(tenant, "Existing Organization", NormalizedCuit.From("30-12345678-9")));
+        await TestApp.AddAsync(OrganizationProfile.Create(tenant, "Existing Organization", NormalizedCuit.From("30-12345678-1")));
         var known = $"known-{Guid.NewGuid():N}@example.test";
         await TestApp.RunAsUserAsync(known, "Testing1234!", []);
         TestApp.SetUserId(null);
         TestApp.SetValidatedOptionalSession(null, null);
 
-        var takenAddress = await TestApp.SendAsync(new RegisterOrganizationCommand(known, "Testing1234!", "Conflicting One", "30-12345678-9"));
-        var unknownAddress = await TestApp.SendAsync(new RegisterOrganizationCommand($"unknown-{Guid.NewGuid():N}@example.test", "Testing1234!", "Conflicting Two", "30-12345678-9"));
+        var takenAddress = await TestApp.SendAsync(new RegisterOrganizationCommand(known, "Testing1234!", "Conflicting One", "30-12345678-1"));
+        var unknownAddress = await TestApp.SendAsync(new RegisterOrganizationCommand($"unknown-{Guid.NewGuid():N}@example.test", "Testing1234!", "Conflicting Two", "30-12345678-1"));
 
         takenAddress.IsSuccess.ShouldBeTrue();
         unknownAddress.IsSuccess.ShouldBeTrue("an occupied CUIT must not make the answer depend on the address.");
@@ -224,8 +224,8 @@ public sealed class RegistrationTests : TestBase
     {
         var tenant = Tenant.CreateOrganization(TenantSlug.From($"existing-{Guid.NewGuid():N}"));
         await TestApp.AddAsync(tenant);
-        await TestApp.AddAsync(OrganizationProfile.Create(tenant, "Existing Organization", NormalizedCuit.From("30-12345678-9")));
-        var command = new RegisterOrganizationCommand($"conflict-{Guid.NewGuid():N}@example.test", "Testing1234!", "Conflicting Organization", "30-12345678-9");
+        await TestApp.AddAsync(OrganizationProfile.Create(tenant, "Existing Organization", NormalizedCuit.From("30-12345678-1")));
+        var command = new RegisterOrganizationCommand($"conflict-{Guid.NewGuid():N}@example.test", "Testing1234!", "Conflicting Organization", "30-12345678-1");
 
         var first = await TestApp.SendAsync(command);
         var replay = await TestApp.SendAsync(command);
@@ -248,11 +248,11 @@ public sealed class RegistrationTests : TestBase
     {
         var tenant = Tenant.CreateOrganization(TenantSlug.From($"existing-{Guid.NewGuid():N}"));
         await TestApp.AddAsync(tenant);
-        await TestApp.AddAsync(OrganizationProfile.Create(tenant, "Existing Organization", NormalizedCuit.From("30-12345678-9")));
+        await TestApp.AddAsync(OrganizationProfile.Create(tenant, "Existing Organization", NormalizedCuit.From("30-12345678-1")));
         var email = $"member-{Guid.NewGuid():N}@example.test";
         var identityId = await TestApp.RunAsUserAsync(email, "Testing1234!", []);
         TestApp.SetValidatedOptionalSession(identityId, email);
-        var command = new RegisterOrganizationCommand(email, "Testing1234!", "Conflicting Organization", "30-12345678-9");
+        var command = new RegisterOrganizationCommand(email, "Testing1234!", "Conflicting Organization", "30-12345678-1");
 
         var first = await TestApp.SendAsync(command);
         var replay = await TestApp.SendAsync(command);
@@ -292,7 +292,7 @@ public sealed class RegistrationTests : TestBase
         var identityId = await TestApp.RunAsUserAsync(email, "Testing1234!", []);
         TestApp.SetValidatedOptionalSession(identityId, email);
 
-        (await TestApp.SendAsync(new RegisterOrganizationCommand(email, "Testing1234!", "Trusted Session", "30-12345678-9"))).IsSuccess.ShouldBeTrue();
+        (await TestApp.SendAsync(new RegisterOrganizationCommand(email, "Testing1234!", "Trusted Session", "30-12345678-1"))).IsSuccess.ShouldBeTrue();
         (await TestApp.CountAsync<ApplicationUser>()).ShouldBe(1);
         (await TestApp.CountAsync<Tenant>()).ShouldBe(1);
         (await TestApp.CountAsync<OrganizationProfile>()).ShouldBe(1);
@@ -328,15 +328,9 @@ public sealed class RegistrationTests : TestBase
     }
 
     /// <summary>
-    /// Registration is neutral about whether an address is taken — except that today it validates the password
-    /// only when the address is free, so a policy-violating password answers <c>invalid_registration</c> for a
-    /// free address and neutrally succeeds for a taken one. That difference is an enumeration oracle: anyone can
-    /// probe any address with a deliberately weak password and read the answer.
-    /// <para>
-    /// Password policy depends on the submitted password alone, so it is decidable before any address is looked
-    /// up, and deciding it there is what makes the two cases identical. The same rule governs the invited
-    /// registration flow, which has the same shape and the same hazard.
-    /// </para>
+    /// Password policy depends on the submitted password alone, so it is decided before any address is looked up.
+    /// The field-indexed refusal must therefore be identical for a taken and a free address; otherwise a caller
+    /// could deliberately submit a weak password and use the answer as an address-existence oracle.
     /// </summary>
     [Test]
     public async Task A_password_that_violates_the_policy_is_refused_whether_or_not_the_address_is_taken()
@@ -345,14 +339,24 @@ public sealed class RegistrationTests : TestBase
         await TestApp.RunAsUserAsync(takenEmail, "Testing1234!", []);
         var freeEmail = $"free-{Guid.NewGuid():N}@example.test";
 
-        var free = await TestApp.SendAsync(new RegisterOrganizationCommand(freeEmail, "short", "Northwind Free", "30-12345678-9"));
+        var free = await TestApp.SendAsync(new RegisterOrganizationCommand(freeEmail, "short", "Northwind Free", "30-12345678-1"));
         var taken = await TestApp.SendAsync(new RegisterOrganizationCommand(takenEmail, "short", "Northwind Taken", "30-87654321-0"));
 
         free.IsFailure.ShouldBeTrue();
-        free.Error!.Code.ShouldBe("invalid_registration");
+        free.Error!.Code.ShouldBe("validation_failed");
+        free.Error.Category.ShouldBe(ApplicationErrorCategory.Validation);
+        free.Error.ValidationErrors.Keys.ShouldBe(["password"]);
+        free.Error.ValidationErrors["password"].ShouldBe([
+            "Passwords must be at least 12 characters.",
+            "Passwords must have at least one non alphanumeric character.",
+            "Passwords must have at least one digit ('0'-'9').",
+            "Passwords must have at least one uppercase ('A'-'Z')."
+        ]);
         taken.IsFailure.ShouldBeTrue("a weak password must not double as an address-existence oracle");
         taken.Error!.Code.ShouldBe(free.Error.Code);
         taken.Error.Category.ShouldBe(free.Error.Category);
+        taken.Error.ValidationErrors.Keys.ShouldBe(free.Error.ValidationErrors.Keys);
+        taken.Error.ValidationErrors["password"].ShouldBe(free.Error.ValidationErrors["password"]);
         (await TestApp.CountAsync<Tenant>()).ShouldBe(0, "neither refusal creates an organization");
         (await TestApp.CountAsync<ApplicationUser>()).ShouldBe(1, "the only identity is the one seeded before the test");
     }
@@ -370,7 +374,7 @@ public sealed class RegistrationTests : TestBase
         await TestApp.RunAsUserAsync(takenEmail, "Testing1234!", []);
         var freeEmail = $"free-{Guid.NewGuid():N}@example.test";
 
-        var free = await TestApp.SendAsync(new RegisterOrganizationCommand(freeEmail, "Testing1234!", "Northwind Free", "30-12345678-9"));
+        var free = await TestApp.SendAsync(new RegisterOrganizationCommand(freeEmail, "Testing1234!", "Northwind Free", "30-12345678-1"));
         var taken = await TestApp.SendAsync(new RegisterOrganizationCommand(takenEmail, "Testing1234!", "Northwind Taken", "30-87654321-0"));
 
         free.IsSuccess.ShouldBeTrue();
@@ -386,7 +390,7 @@ public sealed class RegistrationTests : TestBase
     private static RegisterOrganizationCommand NewCommand()
     {
         var suffix = Guid.NewGuid().ToString("N");
-        return new RegisterOrganizationCommand($"owner-{suffix}@example.test", "Testing1234!", "Northwind Registration", "30-12345678-9");
+        return new RegisterOrganizationCommand($"owner-{suffix}@example.test", "Testing1234!", "Northwind Registration", "30-12345678-1");
     }
 
     private static async Task<Result> SendFromIndependentScopeAsync(RegisterOrganizationCommand command, Barrier barrier)

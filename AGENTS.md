@@ -119,6 +119,14 @@ Multiple skills can apply at once. Match by file context (extensions, paths) and
 - For each delegation that performs that work, inject `C:/Users/ezequ/source/repos/RepositorioBase/.agents/skills/localization-standards/SKILL.md` under `Skills to load before work`. Pass the exact canonical path, not copied rules.
 - This standard overrides UI-copy defaults that prescribe English-only artifacts: copy is authored in `en` and delivered in every supported language. Spanish catalog values use neutral professional Spanish.
 
+### Project error-handling standards
+
+- Register [error-handling-standards](.agents/skills/error-handling-standards/SKILL.md) as the local skill for any change that creates, maps, shows, logs or tests a failure: a command, validator or value-object rule, an error code, an endpoint's problem contract, response-writing middleware, the SPA transport (`features/*/api/`), `useSubmit`, `ProblemMessage`, a screen that renders a refusal, a background loop, and the tests for any of them. Agents doing that work must read it and its [error-handling rules](.agents/skills/error-handling-standards/references/error-handling-rules.md) before starting, together with `engineering-standards`, and with `frontend-design-standards` for anything that renders.
+- For each delegation that touches a failure path, inject `C:/Users/ezequ/source/repos/RepositorioBase/.agents/skills/error-handling-standards/SKILL.md` under `Skills to load before work`. Pass the exact path, not copied rules.
+- **It extends the existing architecture and never replaces it:** `Result`/`ApplicationError` with a stable code and category, one RFC 9457 writer, a generic safe `500`, and the strict client reader (IA-REQ-038). A code is born once — factory, endpoint contract, `problemCodes.json`, client message and test in the same change.
+- **Enumeration safety outranks helpfulness.** Neutral public flows (organization and personal registration, invitation sign-up, password recovery, reactivation requests, sign-in, Platform invitations and bootstrap recovery) never distinguish account or token state. Input-only field errors are allowed on them only when they pass the skill's three-part test, proven by a parity test.
+- Error-handling work may edit `features/*/api/`, add routes such as the not-found page, add tests and update the ones that pin a behaviour it deliberately changes, and amend the SPEC in the same change when a SPEC row pins the old behaviour. Visual changes made alongside it stay bound by `frontend-design-standards`.
+
 <!-- gentle-ai:engram-protocol -->
 ## Engram Persistent Memory — Protocol
 

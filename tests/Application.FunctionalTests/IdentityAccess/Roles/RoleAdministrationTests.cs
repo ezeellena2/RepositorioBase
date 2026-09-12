@@ -48,6 +48,50 @@ public sealed class RoleAdministrationTests : TestBase
         role.Version.ShouldNotBeNullOrWhiteSpace();
     }
 
+    [Test]
+    public async Task Blank_and_oversized_role_names_are_field_validation_and_change_no_roles()
+    {
+        using var scenario = await OrganizationAsync();
+        var before = await TestApp.CountAsync<Role>();
+        var createPath = $"/api/tenants/{scenario.TenantId.Value}/roles";
+
+        await scenario.Owner.ProveAsync(ProofActions.RoleChange);
+        using var blank = await CreateRoleAsync(scenario.Owner, scenario, " ", [], prove: false);
+        await AssertNameValidationAsync(blank, createPath, "A role name is required.");
+        (await TestApp.CountAsync<Role>()).ShouldBe(before);
+
+        using var validCreate = await CreateRoleAsync(scenario.Owner, scenario, "Proof survives validation", [], prove: false);
+        validCreate.StatusCode.ShouldBe(HttpStatusCode.Created,
+            "field validation must not spend the proof needed by the valid follow-up");
+        var created = (await validCreate.Content.ReadFromJsonAsync<RoleRow>())!;
+        (await TestApp.CountAsync<Role>()).ShouldBe(before + 1);
+
+        using var createOversized = await CreateRoleAsync(scenario.Owner, scenario, new string('r', 129), []);
+        await AssertNameValidationAsync(
+            createOversized, createPath, "The role name must be 128 characters or fewer.", new string('r', 129));
+        (await TestApp.CountAsync<Role>()).ShouldBe(before + 1);
+
+        var updatePath = $"/api/tenants/{scenario.TenantId.Value}/roles/{created.RoleId}";
+        await scenario.Owner.ProveAsync(ProofActions.RoleChange);
+        using var updateBlank = await UpdateRoleAsync(
+            scenario.Owner, scenario, created.RoleId, " ", created.Permissions, created.Version, prove: false);
+        await AssertNameValidationAsync(updateBlank, updatePath, "A role name is required.");
+
+        using var validUpdate = await UpdateRoleAsync(
+            scenario.Owner, scenario, created.RoleId, "Proof reused after validation", created.Permissions, created.Version, prove: false);
+        validUpdate.StatusCode.ShouldBe(HttpStatusCode.OK,
+            "field validation must not spend the proof needed by the valid follow-up");
+        var updated = (await validUpdate.Content.ReadFromJsonAsync<RoleRow>())!;
+
+        using var oversized = await UpdateRoleAsync(
+            scenario.Owner, scenario, updated.RoleId, new string('r', 129), updated.Permissions, updated.Version);
+        await AssertNameValidationAsync(
+            oversized, updatePath, "The role name must be 128 characters or fewer.", new string('r', 129));
+
+        (await TestApp.CountAsync<Role>()).ShouldBe(before + 1, "invalid names must reach no role write");
+        (await GetRoleAsync(scenario.Owner, scenario, updated.RoleId)).Name.ShouldBe("Proof reused after validation");
+    }
+
     /// <summary>
     /// The ceiling, which is the whole of C5's grant rule: what an actor may put into a role is bounded by what
     /// the actor itself effectively holds. Without it, `roles.manage` alone would be every permission there is.
@@ -136,6 +180,27 @@ public sealed class RoleAdministrationTests : TestBase
 
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound,
             "a 403 would confirm the identifier exists somewhere (IA-REQ-030)");
+    }
+
+    [Test]
+    public async Task A_role_mutation_route_tenant_mismatch_keeps_the_existing_operation_refusal()
+    {
+        using var scenario = await OrganizationAsync();
+        using var elsewhere = await OrganizationAsync();
+        var before = await TestApp.CountAsync<Role>();
+        await scenario.Owner.ProveAsync(ProofActions.RoleChange);
+
+        using var response = await scenario.Owner.SendAsync(
+            HttpMethod.Post,
+            $"/api/tenants/{elsewhere.TenantId.Value}/roles",
+            new { name = "Wrong scope", permissions = Array.Empty<string>() });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        var problem = await IdentityHttpHarness.ReadProblemAsync(response);
+        problem.GetProperty("status").GetInt32().ShouldBe((int)HttpStatusCode.BadRequest);
+        problem.GetProperty("code").GetString().ShouldBe("invalid_role_operation");
+        problem.TryGetProperty("errors", out _).ShouldBeFalse();
+        (await TestApp.CountAsync<Role>()).ShouldBe(before);
     }
 
     /// <summary>
@@ -239,14 +304,29 @@ public sealed class RoleAdministrationTests : TestBase
     }
 
     [Test]
-    public async Task A_personal_context_administers_no_roles()
+    public async Task Read_scope_mismatches_are_native_absence_for_real_and_random_tenants()
     {
         using var scenario = await OrganizationAsync();
+        using var elsewhere = await OrganizationAsync();
+        var roleId = (await ListRolesAsync(elsewhere.Owner, elsewhere)).Single().RoleId;
 
-        var refused = await scenario.Owner.GetAsync($"/api/tenants/{Guid.NewGuid()}/roles");
-
-        refused.StatusCode.ShouldBe(HttpStatusCode.BadRequest,
-            "a route naming a tenant the session is not operating in is refused, never honoured");
+        foreach (var tenantId in new[] { elsewhere.TenantId.Value, Guid.NewGuid() })
+        {
+            foreach (var path in new[]
+            {
+                $"/api/tenants/{tenantId}/permission-catalog",
+                $"/api/tenants/{tenantId}/roles",
+                $"/api/tenants/{tenantId}/roles/{roleId}"
+            })
+            {
+                using var refused = await scenario.Owner.GetAsync(path);
+                refused.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+                var problem = await IdentityHttpHarness.ReadProblemAsync(refused);
+                problem.GetProperty("status").GetInt32().ShouldBe((int)HttpStatusCode.NotFound);
+                problem.GetProperty("code").GetString().ShouldBe("not_found");
+                problem.GetProperty("detail").GetString().ShouldBe("That role is not available.");
+            }
+        }
     }
 
     private static async Task<OrganizationScenario> OrganizationAsync() => await OrganizationScenario.CreateAsync("roles");
@@ -264,9 +344,9 @@ public sealed class RoleAdministrationTests : TestBase
         return await actor.SendAsync(HttpMethod.Post, $"/api/tenants/{scenario.TenantId.Value}/roles", new { name, permissions });
     }
 
-    private static async Task<HttpResponseMessage> UpdateRoleAsync(Administrator actor, OrganizationScenario scenario, Guid roleId, string name, IReadOnlyList<string> permissions, string version)
+    private static async Task<HttpResponseMessage> UpdateRoleAsync(Administrator actor, OrganizationScenario scenario, Guid roleId, string name, IReadOnlyList<string> permissions, string version, bool prove = true)
     {
-        await actor.ProveAsync(ProofActions.RoleChange);
+        if (prove) await actor.ProveAsync(ProofActions.RoleChange);
         return await actor.SendAsync(HttpMethod.Put, $"/api/tenants/{scenario.TenantId.Value}/roles/{roleId}", new { name, permissions, version });
     }
 
@@ -284,4 +364,27 @@ public sealed class RoleAdministrationTests : TestBase
 
     private static async Task<RoleRow> GetRoleAsync(Administrator actor, OrganizationScenario scenario, Guid roleId) =>
         await actor.ReadAsync<RoleRow>($"/api/tenants/{scenario.TenantId.Value}/roles/{roleId}");
+
+    private static async Task AssertNameValidationAsync(
+        HttpResponseMessage response,
+        string instance,
+        string message,
+        params string[] submittedValues)
+    {
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        response.Content.Headers.ContentType!.MediaType.ShouldBe("application/problem+json");
+        var raw = await response.Content.ReadAsStringAsync();
+        using var document = System.Text.Json.JsonDocument.Parse(raw);
+        var problem = document.RootElement;
+        problem.GetProperty("status").GetInt32().ShouldBe((int)HttpStatusCode.BadRequest);
+        problem.GetProperty("type").GetString().ShouldBe("about:blank");
+        problem.GetProperty("title").GetString().ShouldBe("Bad Request");
+        problem.GetProperty("instance").GetString().ShouldBe(instance);
+        problem.GetProperty("code").GetString().ShouldBe("validation_failed");
+        problem.GetProperty("traceId").GetString().ShouldNotBeNullOrWhiteSpace();
+        var errors = problem.GetProperty("errors");
+        errors.EnumerateObject().Select(property => property.Name).ShouldBe(["name"]);
+        errors.GetProperty("name").EnumerateArray().Select(entry => entry.GetString()).ShouldBe([message]);
+        foreach (var value in submittedValues) raw.ShouldNotContain(value);
+    }
 }

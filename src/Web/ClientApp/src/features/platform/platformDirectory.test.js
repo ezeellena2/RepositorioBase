@@ -83,7 +83,11 @@ describe('platform directories', () => {
   it('refuses a directory page that is missing its cursor member', async () => {
     server.use(http.get('/api/platform/organizations', () => HttpResponse.json({ items: [] })));
 
-    await expect(client().listOrganizations()).rejects.toThrow(/nextCursor/);
+    const failure = await client().listOrganizations().catch((candidate) => candidate);
+
+    expect(failure.problem).toEqual({ code: 'unreadable_response', status: 0 });
+    expect(failure.message).not.toContain('nextCursor');
+    expect(JSON.stringify(failure.problem)).not.toContain('nextCursor');
   });
 
   it('refuses a directory page that answers with a bare array', async () => {

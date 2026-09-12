@@ -33,7 +33,8 @@ internal static class ExternalLoginEndpoints
         group.MapPost("/external/{provider}/login/start", StartLogin)
             .RequireLoginAttemptBudgets()
             .Produces<ExternalChallengeResponse>(StatusCodes.Status200OK)
-            .WithApiProblemDetails(ApiProblemMetadata.AntiforgeryValidationFailed, ApiProblemMetadata.InvalidExternalLogin, ApiProblemMetadata.InvalidSession, ApiProblemMetadata.RateLimitExceeded, ApiProblemMetadata.ServiceUnavailable, ApiProblemMetadata.InternalServerError);
+            .WithApiProblemDetails(ApiProblemMetadata.AntiforgeryValidationFailed, ApiProblemMetadata.InvalidExternalLogin, ApiProblemMetadata.InvalidSession, ApiProblemMetadata.RateLimitExceeded, ApiProblemMetadata.ServiceUnavailable, ApiProblemMetadata.InternalServerError)
+            .WithInvalidOptionalSessionRefusal();
 
         group.MapPost("/external/{provider}/link/start", StartLink)
             .RequireAuthorization()
@@ -55,7 +56,8 @@ internal static class ExternalLoginEndpoints
         group.MapPost("/external/complete", Complete)
             .RequireLoginAttemptBudgets()
             .Produces(StatusCodes.Status204NoContent)
-            .WithApiProblemDetails(ApiProblemMetadata.AntiforgeryValidationFailed, ApiProblemMetadata.AuthenticationRequired, ApiProblemMetadata.InvalidSession, ApiProblemMetadata.PermissionDenied, ApiProblemMetadata.InvalidExternalLogin, ApiProblemMetadata.ExternalLoginConflict, ApiProblemMetadata.ProviderAlreadyLinked, ApiProblemMetadata.RateLimitExceeded, ApiProblemMetadata.ServiceUnavailable, ApiProblemMetadata.InternalServerError);
+            .WithApiProblemDetails(ApiProblemMetadata.AntiforgeryValidationFailed, ApiProblemMetadata.AuthenticationRequired, ApiProblemMetadata.InvalidSession, ApiProblemMetadata.PermissionDenied, ApiProblemMetadata.InvalidExternalLogin, ApiProblemMetadata.ExternalLoginConflict, ApiProblemMetadata.ProviderAlreadyLinked, ApiProblemMetadata.RateLimitExceeded, ApiProblemMetadata.ServiceUnavailable, ApiProblemMetadata.InternalServerError)
+            .WithInvalidOptionalSessionRefusal();
 
         group.MapGet("/external", ListLinks)
             .RequireAuthorization()
@@ -70,7 +72,7 @@ internal static class ExternalLoginEndpoints
 
     private static async Task<IResult> StartLogin(HttpContext context, IAntiforgery antiforgery, ApiProblemDetailsMapper problems, ISender sender, string provider)
     {
-        var antiforgeryFailure = await Identity.ValidateAntiforgery(context, antiforgery, problems, rejectInvalidOptionalSession: true);
+        var antiforgeryFailure = await Identity.ValidateAntiforgery(context, antiforgery, problems);
         if (antiforgeryFailure is not null) return antiforgeryFailure;
         if (ExternalProviders.Canonical(provider) is not { } canonical) return Refused(problems);
         return Handoff(context, problems, await sender.Send(new StartExternalLoginCommand(canonical), context.RequestAborted));
@@ -116,7 +118,7 @@ internal static class ExternalLoginEndpoints
     /// </summary>
     private static async Task<IResult> Complete(HttpContext context, IAntiforgery antiforgery, ApiProblemDetailsMapper problems, ISender sender, IExternalHandoffContext handoffs)
     {
-        var antiforgeryFailure = await Identity.ValidateAntiforgery(context, antiforgery, problems, rejectInvalidOptionalSession: true);
+        var antiforgeryFailure = await Identity.ValidateAntiforgery(context, antiforgery, problems);
         if (antiforgeryFailure is not null) return antiforgeryFailure;
 
         var purpose = handoffs.CurrentPurpose;

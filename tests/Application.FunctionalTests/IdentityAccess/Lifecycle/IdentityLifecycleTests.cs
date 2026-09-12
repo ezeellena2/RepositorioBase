@@ -448,7 +448,8 @@ public sealed class IdentityLifecycleTests : TestBase
         var sink = new LifecycleDeliverySink();
         var dispatcher = new OutboxDispatcher(context, scope.ServiceProvider.GetRequiredService<IOutboxSecretReader>(),
             scope.ServiceProvider.GetServices<IOutboxDeliveryHandler>(), TimeProvider.System, sink,
-            scope.ServiceProvider.GetRequiredService<Application.IdentityAccess.Lifecycle.IRecoveryAdmission>(), FunctionalTestMetrics.Instance);
+            scope.ServiceProvider.GetRequiredService<Application.IdentityAccess.Lifecycle.IRecoveryAdmission>(), FunctionalTestMetrics.Instance,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<OutboxDispatcher>.Instance);
         await dispatcher.DispatchDueAsync(CancellationToken.None);
         await dispatcher.DispatchDueAsync(CancellationToken.None);
         return sink;

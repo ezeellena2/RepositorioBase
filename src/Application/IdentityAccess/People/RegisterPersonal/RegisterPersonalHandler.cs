@@ -56,9 +56,11 @@ public sealed class RegisterPersonalCommandHandler(
 
         // Password policy depends on the submitted password alone, so it is decided before any address is looked
         // up: validating it only for a free address would make a weak password answer differently for a taken one.
-        if (!(await identities.ValidatePasswordAsync(request.Password, cancellationToken)).IsValid)
+        var password = await identities.ValidatePasswordAsync(request.Password, cancellationToken);
+        if (!password.IsValid)
         {
-            return Result.Failure(IdentityAccessErrors.InvalidRegistration());
+            return Result.Failure(IdentityAccessErrors.PasswordPolicyFailed(
+                new Dictionary<string, string[]> { ["password"] = password.Errors.ToArray() }));
         }
 
         return await transaction.ExecuteAsync(async ct =>

@@ -16,7 +16,7 @@ internal static class ContextEndpoints
         group.MapGet("/context", Get)
             .RequireAuthorization()
             .Produces<IdentityContextResponse>(StatusCodes.Status200OK)
-            .WithApiProblemDetails(ApiProblemMetadata.AuthenticationRequired, ApiProblemMetadata.InvalidSession, ApiProblemMetadata.InternalServerError);
+            .WithApiProblemDetails(ApiProblemMetadata.AuthenticationRequired, ApiProblemMetadata.InvalidSession, ApiProblemMetadata.PermissionDenied, ApiProblemMetadata.InternalServerError);
         group.MapPut("/context/tenant", SelectTenant)
             .RequireAuthorization()
             .Produces<IdentityContextResponse>(StatusCodes.Status200OK)

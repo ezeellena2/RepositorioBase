@@ -197,7 +197,9 @@ describe('R6C: directories can reach records after the default 100-item page', (
       const cursor = url.searchParams.get('cursor');
       const limit = Number(url.searchParams.get('limit') ?? PAGE_SIZE);
       requested.push({ cursor, limit });
-      if (cursor !== null && cursor !== CURSOR) return problem(400, 'invalid_cursor');
+      if (cursor !== null && cursor !== CURSOR) {
+        throw new Error(`The ${name} page requested an unexpected cursor: ${cursor}`);
+      }
       const start = cursor === CURSOR ? PAGE_SIZE : 0;
       const page = rows.slice(start, start + Math.min(limit, PAGE_SIZE));
       delivered.set(cursor, page.map(label));

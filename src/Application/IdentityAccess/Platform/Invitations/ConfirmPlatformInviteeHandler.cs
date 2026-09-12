@@ -50,25 +50,25 @@ public sealed class ConfirmPlatformInviteeCommandHandler(
             }
 
             if (secret.Status == OutboxSecretStatus.Consumed) return Result.Success();
+
+            var message = await context.OutboxMessages.SingleOrDefaultAsync(item => item.Id == secret.OutboxMessageId, ct);
+
+            // The purpose is established before terminality. A Platform confirmation never borrows the
+            // organization-registration conflict merely because its envelope can no longer be spent.
+            if (message is null || !string.Equals(message.Type, PlatformInvitationDelivery.ConfirmationMessageType, StringComparison.Ordinal))
+            {
+                return Result.Failure(IdentityAccessErrors.InvalidConfirmation());
+            }
+
             if (secret.Status is not (OutboxSecretStatus.Pending or OutboxSecretStatus.Delivered))
             {
-                return Result.Failure(IdentityAccessErrors.RegistrationConflict());
+                return Result.Failure(IdentityAccessErrors.InvalidConfirmation());
             }
 
             if (secret.ExpiresAt <= now)
             {
                 secret.Terminate(OutboxSecretStatus.Expired, "confirmation_expired", now);
                 await context.SaveChangesAsync(ct);
-                return Result.Failure(IdentityAccessErrors.RegistrationConflict());
-            }
-
-            var message = await context.OutboxMessages.SingleOrDefaultAsync(item => item.Id == secret.OutboxMessageId, ct);
-
-            // The purpose is established by message type rather than by the shape of the payload: a shape test
-            // would silently match whichever envelope happened to deserialize, and confirming an organization's
-            // registration through this path would activate a tenant nobody asked it to.
-            if (message is null || !string.Equals(message.Type, PlatformInvitationDelivery.ConfirmationMessageType, StringComparison.Ordinal))
-            {
                 return Result.Failure(IdentityAccessErrors.InvalidConfirmation());
             }
 
@@ -91,7 +91,7 @@ public sealed class ConfirmPlatformInviteeCommandHandler(
 
             if (!invitation.IsPendingAt(now))
             {
-                return Result.Failure(IdentityAccessErrors.RegistrationConflict());
+                return Result.Failure(IdentityAccessErrors.InvalidConfirmation());
             }
 
             await identities.ActivateAsync(envelope.IdentityId, ct);

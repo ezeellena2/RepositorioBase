@@ -164,6 +164,23 @@ public sealed class ConfirmEmailTests : TestBase
         await AssertNothingWasCreatedAsync();
     }
 
+    [Test]
+    public async Task Expired_pre_upgrade_organization_confirmation_keeps_the_organization_conflict_contract()
+    {
+        await RegisterAsSignedInCallerAsync();
+        await TestApp.ExpireConfirmationSecretAsync();
+
+        var result = await TestApp.SendAsync(new ConfirmEmailCommand(TestApp.GetRegistrationRawToken()));
+
+        result.IsFailure.ShouldBeTrue();
+        result.Error!.Code.ShouldBe("registration_conflict");
+        (await TestApp.ListAsync<OutboxSecret>()).Single().Status.ShouldBe(OutboxSecretStatus.Expired);
+        (await TestApp.ListAsync<Tenant>()).Single().Status.ShouldBe(TenantStatus.PendingConfirmation);
+        (await TestApp.ListAsync<TenantMembership>()).Single().Status.ShouldBe(MembershipStatus.PendingConfirmation);
+        (await TestApp.ListAsync<ApplicationUser>()).Single().EmailConfirmed.ShouldBeFalse();
+        (await TestApp.ListAsync<AuditEvent>()).Count(item => item.EventType == "identity.confirmed").ShouldBe(0);
+    }
+
     [TestCase(TenantStatus.Suspended, "PendingConfirmation")]
     [TestCase(TenantStatus.Closed, "PendingConfirmation")]
     [TestCase(TenantStatus.Active, "Suspended")]
@@ -208,7 +225,7 @@ public sealed class ConfirmEmailTests : TestBase
     private static async Task<RegistrationInput> RegisterAsync()
     {
         var suffix = Guid.NewGuid().ToString("N");
-        var input = new RegistrationInput($"confirm-{suffix}@example.test", "30-12345678-9");
+        var input = new RegistrationInput($"confirm-{suffix}@example.test", "30-12345678-1");
         var result = await TestApp.SendAsync(new RegisterOrganizationCommand(input.Email, "Testing1234!", "Confirmation Org", input.Cuit));
         result.IsSuccess.ShouldBeTrue();
         return input;
@@ -224,7 +241,7 @@ public sealed class ConfirmEmailTests : TestBase
         var email = $"confirm-{Guid.NewGuid():N}@example.test";
         var identityId = await TestApp.RunAsUserAsync(email, "Testing1234!", []);
         TestApp.SetValidatedOptionalSession(identityId, email);
-        var result = await TestApp.SendAsync(new RegisterOrganizationCommand(email, "Testing1234!", "Confirmation Org", "30-12345678-9"));
+        var result = await TestApp.SendAsync(new RegisterOrganizationCommand(email, "Testing1234!", "Confirmation Org", "30-12345678-1"));
         result.IsSuccess.ShouldBeTrue();
     }
 

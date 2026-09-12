@@ -1,4 +1,3 @@
-/* eslint-disable i18next/no-literal-string -- bounded wire field names, not display copy. */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import Alert from '@mui/material/Alert';
@@ -13,8 +12,14 @@ import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { useIdentity } from '../../identity/context/IdentityProvider';
+import {
+  claimedFieldNames,
+  fieldError,
+  fieldErrorText,
+  firstInvalid,
+  selectFieldErrors,
+} from '../../identity/fieldErrors';
 import { ProblemMessage } from '../../identity/ProblemMessage';
-import { fieldError, firstInvalid } from '../../identity/fieldErrors';
 import { useFragmentToken } from '../../identity/useFragmentToken';
 import { useSubmit } from '../../identity/useSubmit';
 import { createPlatformClient } from '../api/platformClient';
@@ -22,6 +27,8 @@ import { useTranslation } from '../../../i18n';
 
 /** Required without the asterisk MUI would add, which would rename the field for everything that reads its label. */
 const requiredField = { inputLabel: { required: false } };
+const passwordField = ['password'];
+const passwordFieldIds = { password: 'platform-password' };
 
 /**
  * The public entrance is a single raised card; the screens inside the shell are sections under a heading.
@@ -97,19 +104,35 @@ export function RegisterPlatformInviteePage() {
   const identity = useIdentity();
   const platform = usePlatformClient();
   const token = useFragmentToken();
+  const passwordInput = useRef(null);
   const [password, setPassword] = useState('');
   const [continuing, setContinuing] = useState(false);
   const { submit, problem, isBusy, result } = useSubmit((secret, chosen) => platform.registerFromInvitation(secret, chosen));
-  const passwordRef = useRef(null);
-  const invalid = firstInvalid(problem, ['password']);
-  useEffect(() => { if (invalid) passwordRef.current?.focus(); }, [invalid]);
+  const passwordErrors = selectFieldErrors(problem, passwordField);
+  const claimedPasswordFields = claimedFieldNames(problem, passwordField);
+
+  useEffect(() => {
+    if (passwordErrors.password?.length > 0) passwordInput.current?.focus();
+  }, [passwordErrors]);
 
   return (
-    <EntranceCard headingId={invitationHeadings.register} title={t('invitations.register.title')}>
+    <EntranceCard headingId="platform-register-heading" title={t('invitations.register.title')}>
+      {!token && (
+        <Typography variant="body2">
+          {t('invitations.register.missingToken')}
+        </Typography>
+      )}
       {/* Gated on the branch that can raise it. The registration form unmounts the moment the ceremony starts, so
           `problem` can only ever be stale from here on — and the ceremony renders a refusal slot of its own. Two
           `Alert`s are two `role="alert"` elements, and this screen is read as having exactly one. */}
-      {!continuing && <ProblemMessage problem={problem} claimed={['password']} autoFocus={!invalid} />}
+      {!continuing && (
+        <ProblemMessage
+          problem={problem}
+          claimedFields={claimedPasswordFields}
+          fieldIds={passwordFieldIds}
+          autoFocus={claimedPasswordFields.length === 0}
+        />
+      )}
 
       {continuing ? (
         // The ceremony runs here rather than behind a link because the invitation token cannot travel to another
@@ -125,18 +148,19 @@ export function RegisterPlatformInviteePage() {
           <Stack component="form" spacing={2} onSubmit={(event) => { event.preventDefault(); submit(token ?? emptyToken, password); }}>
             <TextField
               id="platform-password"
+              inputRef={passwordInput}
               label={t('invitations.register.password')}
               type="password"
               autoComplete="new-password"
               required
               fullWidth
               slotProps={requiredField}
-              inputRef={passwordRef}
-              {...fieldError(problem, 'password', t)}
+              error={Boolean(passwordErrors.password)}
+              helperText={fieldErrorText(passwordErrors, 'password', t) || undefined}
               value={password}
               onChange={(event) => setPassword(event.target.value)}
             />
-            <Button type="submit" variant="contained" size="large" fullWidth disabled={isBusy}>{t('invitations.register.continue')}</Button>
+            <Button type="submit" variant="contained" size="large" fullWidth disabled={isBusy || !token}>{t('invitations.register.continue')}</Button>
           </Stack>
           {/* Signed in already means the account exists and the address is confirmed, so what is left of the
               invitation is its last gate. Offering it here is what makes the mailed link the whole journey rather
@@ -269,21 +293,33 @@ function PlatformSecondFactor({ token }) {
   const { t } = useTranslation('platform');
   const identity = useIdentity();
   const platform = usePlatformClient();
+  const codeInput = useRef(null);
   const [enrollment, setEnrollment] = useState(null);
   const [code, setCode] = useState('');
   const [stage, setStage] = useState(mfaStages.start);
-  const { submit, problem, isBusy } = useSubmit(async (action) => action());
-  const codeRef = useRef(null);
-  const invalidCode = stage === mfaStages.verify ? firstInvalid(problem, ['code']) : undefined;
-  useEffect(() => { if (invalidCode) codeRef.current?.focus(); }, [invalidCode]);
+  const { submit, clearProblem, problem, isBusy } = useSubmit(async (action) => action());
+  const { submit: finishHousekeeping, problem: housekeepingProblem } = useSubmit(async () => {
+    const reloaded = await identity.reload();
+    const platformTenant = reloaded?.availableTenants?.find((tenant) => tenant.type === platformTenantType);
+    if (!platformTenant) throw new Error();
+    await identity.selectTenant(platformTenant.id);
+  });
+  const codeError = fieldError(problem, 'code', t);
+  const invalidCode = firstInvalid(problem, ['code']) === 'code';
+  const invalidMfaCode = problem?.code === 'invalid_mfa_code';
+
+  useEffect(() => {
+    if (invalidCode || invalidMfaCode) codeInput.current?.focus();
+  }, [invalidCode, invalidMfaCode]);
 
   return (
     <Stack spacing={3}>
       <ProblemMessage
-        problem={problem}
-        claimed={stage === mfaStages.verify ? ['code'] : []}
+        problem={invalidMfaCode ? null : problem}
+        claimedFields={['code']}
         autoFocus={!invalidCode}
       />
+      <ProblemMessage problem={housekeepingProblem} />
 
       {stage === mfaStages.start && (
         <Button
@@ -350,15 +386,19 @@ function PlatformSecondFactor({ token }) {
         >
           <TextField
             id="platform-mfa-code"
+            inputRef={codeInput}
             label={t('mfa.codeFromAuthenticator')}
             type="text"
             required
             fullWidth
-            slotProps={mfaCodeFieldSlots}
-            inputRef={codeRef}
-            {...fieldError(problem, 'code', t)}
+            slotProps={{ ...requiredField, htmlInput: { inputMode: 'numeric' } }}
+            error={invalidCode || invalidMfaCode}
+            helperText={invalidMfaCode ? t('errors:invalid_mfa_code') : codeError.helperText}
             value={code}
-            onChange={(event) => setCode(event.target.value)}
+            onChange={(event) => {
+              setCode(event.target.value);
+              if (invalidMfaCode) clearProblem();
+            }}
           />
           <Button type="submit" variant="contained" disabled={isBusy} sx={leading}>{t('mfa.verify')}</Button>
         </Stack>
@@ -376,10 +416,10 @@ function PlatformSecondFactor({ token }) {
               setStage(mfaStages.done);
               // The membership only exists as of this moment, so the session that completed the ceremony still
               // has no active tenant. Selecting it here is what makes the ceremony end somewhere rather than
-              // leaving the new administrator to work out that they must go and choose one.
-              const reloaded = await identity.reload();
-              const platformTenant = reloaded?.availableTenants?.find((tenant) => tenant.type === platformTenantType);
-              if (platformTenant) await identity.selectTenant(platformTenant.id);
+              // leaving the new administrator to work out that they must go and choose one. This follow-up has
+              // its own refusal state: acknowledgement already succeeded and remains a success if refreshing or
+              // selecting the new context does not.
+              await finishHousekeeping();
             }
           }}
         >

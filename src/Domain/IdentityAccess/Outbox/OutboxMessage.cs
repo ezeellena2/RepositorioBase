@@ -19,6 +19,7 @@ public sealed class OutboxMessage : BaseEntity<Guid>
     /// content, and keeps retries stable when an account preference changes after the first attempt (IA-REQ-059).
     /// </summary>
     public string? DeliveryLanguage { get; private set; }
+    public string? TraceId { get; private set; }
 
     public OutboxMessageStatus Status { get; private set; }
 

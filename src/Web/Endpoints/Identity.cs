@@ -30,11 +30,18 @@ public sealed class Identity : IEndpointGroup
             .WithApiProblemDetails(ApiProblemMetadata.InternalServerError);
         group.MapPost("/organizations/register", Register)
             .Produces(StatusCodes.Status202Accepted)
-            .WithApiProblemDetails(ApiProblemMetadata.AntiforgeryValidationFailed, ApiProblemMetadata.InvalidRegistration, ApiProblemMetadata.InvalidSession, ApiProblemMetadata.RegistrationConflict, ApiProblemMetadata.InternalServerError)
-            .WithBodyBindingFailureCode(ApiProblemMetadata.InvalidRegistration.Code);
+            .WithApiProblemDetails(ApiProblemMetadata.AntiforgeryValidationFailed, ApiProblemMetadata.ValidationFailed, ApiProblemMetadata.InvalidRegistration, ApiProblemMetadata.InvalidSession, ApiProblemMetadata.RegistrationConflict, ApiProblemMetadata.InternalServerError)
+            .WithInvalidOptionalSessionRefusal()
+            .WithBodyBindingFailureCode(ApiProblemMetadata.ValidationFailed.Code);
         group.MapPost("/confirm-email", Confirm)
             .Produces(StatusCodes.Status204NoContent)
-            .WithApiProblemDetails(ApiProblemMetadata.AntiforgeryValidationFailed, ApiProblemMetadata.InvalidConfirmation, ApiProblemMetadata.RegistrationConflict, ApiProblemMetadata.InternalServerError)
+            .WithApiProblemDetails([
+                ApiProblemMetadata.AntiforgeryValidationFailed,
+                ApiProblemMetadata.InvalidConfirmation,
+                ApiProblemMetadata.RegistrationConflict,
+                ApiProblemMetadata.PersonalRegistrationConflict,
+                ApiProblemMetadata.InternalServerError,
+                .. ApiProblemMetadata.BoundedAttempt])
             .WithBodyBindingFailureCode(ApiProblemMetadata.InvalidConfirmation.Code);
     }
 
@@ -51,7 +58,7 @@ public sealed class Identity : IEndpointGroup
 
     private static async Task<IResult> Register(HttpContext context, IAntiforgery antiforgery, ISender sender, ApiProblemDetailsMapper problems, RegisterOrganizationCommand command)
     {
-        var antiForgeryFailure = await ValidateAntiforgery(context, antiforgery, problems, rejectInvalidOptionalSession: true);
+        var antiForgeryFailure = await ValidateAntiforgery(context, antiforgery, problems);
         if (antiForgeryFailure is not null) return antiForgeryFailure;
         var result = await sender.Send(command, context.RequestAborted);
         return result.IsSuccess ? Results.StatusCode(StatusCodes.Status202Accepted) : problems.ToHttpResult(result.Error!);
@@ -65,7 +72,11 @@ public sealed class Identity : IEndpointGroup
         return result.IsSuccess ? Results.NoContent() : problems.ToHttpResult(result.Error!);
     }
 
-    internal static async Task<IResult?> ValidateAntiforgery(HttpContext context, IAntiforgery antiforgery, ApiProblemDetailsMapper problems, bool rejectInvalidOptionalSession = false)
+    internal static async Task<IResult?> ValidateAntiforgery(
+        HttpContext context,
+        IAntiforgery antiforgery,
+        ApiProblemDetailsMapper problems,
+        Endpoint? endpoint = null)
     {
         if (!HasExactSameOrigin(context))
             return AntiforgeryFailure(problems);
@@ -75,7 +86,8 @@ public sealed class Identity : IEndpointGroup
         if (context.Request.Cookies.ContainsKey(AuthenticationCookieName))
         {
             await context.AuthenticateAsync(IdentityConstants.ApplicationScheme);
-            if (rejectInvalidOptionalSession && context.Items.ContainsKey(SessionCookieEvents.InvalidSessionKey))
+            if ((endpoint ?? context.GetEndpoint())?.Metadata.GetMetadata<ApiInvalidOptionalSessionMetadata>() is not null
+                && context.Items.ContainsKey(SessionCookieEvents.InvalidSessionKey))
             {
                 return problems.ToHttpResult(new CleanArchitecture.Application.Common.Models.ApplicationError(
                     "invalid_session",

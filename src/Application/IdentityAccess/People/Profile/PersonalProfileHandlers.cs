@@ -50,13 +50,6 @@ public sealed class UpdatePersonalProfileCommandHandler(
             return Result<PersonalProfileResponse>.Failure(IdentityAccessErrors.InvalidSession());
 
         var identityId = currentSession.IdentityId.Value;
-        if (request.FullName is null || string.IsNullOrWhiteSpace(request.FullName) || request.FullName.Length > 200)
-            return Result<PersonalProfileResponse>.Failure(IdentityAccessErrors.ProfileFieldNotEditable("fullName"));
-        if (request.DisplayName is null || string.IsNullOrWhiteSpace(request.DisplayName) || request.DisplayName.Length > 60)
-            return Result<PersonalProfileResponse>.Failure(IdentityAccessErrors.ProfileFieldNotEditable("displayName"));
-        if (string.IsNullOrWhiteSpace(request.Version))
-            return Result<PersonalProfileResponse>.Failure(IdentityAccessErrors.PersonalProfileConcurrencyConflict());
-
         return await transaction.ExecuteAsync(async ct =>
         {
             var profile = await context.PersonProfiles.SingleOrDefaultAsync(candidate => candidate.IdentityId == identityId, ct);
@@ -69,7 +62,7 @@ public sealed class UpdatePersonalProfileCommandHandler(
             if (before is null || !string.Equals(before.Value.Version, request.Version, StringComparison.Ordinal))
                 return Result<PersonalProfileResponse>.Failure(IdentityAccessErrors.PersonalProfileConcurrencyConflict());
 
-            profile.Rename(request.FullName, request.DisplayName);
+            profile.Rename(request.FullName!.Trim(), request.DisplayName!.Trim());
             try
             {
                 await context.SaveChangesAsync(ct);

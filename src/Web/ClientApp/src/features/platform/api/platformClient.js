@@ -59,10 +59,22 @@ export function createPlatformClient(transport) {
       expect: ['sharedKey', 'provisioningUri', 'recoveryCodes'],
     }),
 
-    listOrganizations: (options) => send(page('/api/platform/organizations', options), { expect: DIRECTORY }),
-    listIdentities: (options) => send(page('/api/platform/identities', options), { expect: DIRECTORY }),
-    listAdministrators: (options) => send(page('/api/platform/admins', options), { expect: DIRECTORY }),
-    listAudit: (options) => send(page('/api/platform/audit', options), { expect: DIRECTORY }),
+    listOrganizations: (options) => send(page('/api/platform/organizations', options), {
+      expect: DIRECTORY,
+      signal: options?.signal,
+    }),
+    listIdentities: (options) => send(page('/api/platform/identities', options), {
+      expect: DIRECTORY,
+      signal: options?.signal,
+    }),
+    listAdministrators: (options) => send(page('/api/platform/admins', options), {
+      expect: DIRECTORY,
+      signal: options?.signal,
+    }),
+    listAudit: (options) => send(page('/api/platform/audit', options), {
+      expect: DIRECTORY,
+      signal: options?.signal,
+    }),
 
     // Stopping and restarting one account. `expectedStatus` is the state the operator read in the directory, and
     // the server only lands the write if the account is still in it (IA-REQ-054): it is a precondition the client
@@ -84,8 +96,9 @@ export function createPlatformClient(transport) {
     // "this system will not delete anything" (IA-REQ-056). Declaring them would make every such deployment read as
     // contract drift instead, because a declared member has to be present. `getContext` omits `activeTenant` for
     // the same reason.
-    readRetentionPolicy: () => send('/api/platform/retention/policy', {
+    readRetentionPolicy: (options) => send('/api/platform/retention/policy', {
       expect: ['personalDataMode', 'activeHoldCount', 'categories'],
+      signal: options?.signal,
     }),
 
     // `releasedAt` is absent for the same reason: a hold that was just placed has not been released, so the field

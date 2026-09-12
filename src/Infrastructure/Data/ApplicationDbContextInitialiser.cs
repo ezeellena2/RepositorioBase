@@ -1,35 +1,16 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
 
 namespace CleanArchitecture.Infrastructure.Data;
 
-public sealed class ApplicationDbContextInitialiser
+public sealed class ApplicationDbContextInitialiser(
+    ApplicationDbContext context,
+    PermissionCatalogSynchronizer permissionCatalogSynchronizer)
 {
-    private readonly ILogger<ApplicationDbContextInitialiser> _logger;
-    private readonly ApplicationDbContext _context;
-    private readonly PermissionCatalogSynchronizer _permissionCatalogSynchronizer;
-
-    public ApplicationDbContextInitialiser(
-        ILogger<ApplicationDbContextInitialiser> logger,
-        ApplicationDbContext context,
-        PermissionCatalogSynchronizer permissionCatalogSynchronizer)
-    {
-        _logger = logger;
-        _context = context;
-        _permissionCatalogSynchronizer = permissionCatalogSynchronizer;
-    }
-
     public async Task InitialiseAsync(CancellationToken cancellationToken = default)
     {
-        try
-        {
-            await _context.Database.MigrateAsync(cancellationToken);
-            await _permissionCatalogSynchronizer.SynchronizeAsync(cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "An error occurred while initialising the database.");
-            throw;
-        }
+        // This layer does not swallow the failure, so it does not own an Error record. The hosting boundary
+        // decides whether startup can continue; logging here would duplicate that terminal observation.
+        await context.Database.MigrateAsync(cancellationToken);
+        await permissionCatalogSynchronizer.SynchronizeAsync(cancellationToken);
     }
 }

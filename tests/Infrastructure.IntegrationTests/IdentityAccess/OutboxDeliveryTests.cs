@@ -1,6 +1,7 @@
 using CleanArchitecture.Application.Common.Interfaces;
 using CleanArchitecture.Application.Common.Localization;
 using CleanArchitecture.Application.IdentityAccess.Organizations.RegisterOrganization;
+using System.Diagnostics;
 using System.Text.Json;
 using CleanArchitecture.Domain.IdentityAccess.Authorization;
 using CleanArchitecture.Domain.IdentityAccess.Invitations;
@@ -14,6 +15,7 @@ using CleanArchitecture.Infrastructure.Outbox;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace CleanArchitecture.Infrastructure.IntegrationTests.IdentityAccess;
 
@@ -201,7 +203,8 @@ public sealed class OutboxDeliveryTests
             new ControlledTimeProvider(Origin),
             sink,
             NotRecovering,
-            TestMetrics.Instance);
+            TestMetrics.Instance,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<OutboxDispatcher>.Instance);
 
         (await dispatcher.DispatchDueAsync(CancellationToken.None)).ShouldBe(1);
 
@@ -230,7 +233,8 @@ public sealed class OutboxDeliveryTests
             new ControlledTimeProvider(Origin),
             new TestEmailSink(),
             NotRecovering,
-            TestMetrics.Instance);
+            TestMetrics.Instance,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<OutboxDispatcher>.Instance);
 
         (await dispatcher.DispatchDueAsync(CancellationToken.None)).ShouldBe(0);
 
@@ -255,7 +259,8 @@ public sealed class OutboxDeliveryTests
             new ControlledTimeProvider(Origin),
             new TestEmailSink(),
             NotRecovering,
-            TestMetrics.Instance);
+            TestMetrics.Instance,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<OutboxDispatcher>.Instance);
 
         await Should.ThrowAsync<InvalidOperationException>(() => dispatcher.DispatchDueAsync(CancellationToken.None));
 
@@ -425,6 +430,104 @@ public sealed class OutboxDeliveryTests
         abandoned.Status.ShouldBe(OutboxMessageStatus.Abandoned);
         abandoned.AttemptCount.ShouldBe(1, "a permanent refusal costs one attempt, not the whole budget");
         (await SecretOfAsync(scope, message.Id)).Ciphertext.ShouldBeNull();
+    }
+
+    [Test]
+    public async Task Only_a_committed_abandonment_emits_one_safe_warning_and_replay_is_silent()
+    {
+        using var scope = TestServices.CreateScope();
+        var clock = new ControlledTimeProvider(Origin);
+        var logger = new CapturingLogger<OutboxDispatcher>();
+        var sink = new TestEmailSink
+        {
+            Throw = new InvalidOperationException("smtp token=SUPER-SECRET recipient=trace@example.test")
+        };
+        OutboxMessage message;
+        using (new Activity("enqueue")
+            .SetIdFormat(ActivityIdFormat.W3C)
+            .SetParentId("00-0123456789abcdef0123456789abcdef-0123456789abcdef-01")
+            .Start())
+        {
+            message = await SeedAsync(scope, InvitationType, Origin);
+        }
+
+        for (var attempt = 0; attempt < 8; attempt++)
+        {
+            await DispatcherFor(scope, clock, sink, logger).DispatchDueAsync(CancellationToken.None);
+            clock.Advance(TimeSpan.FromHours(1));
+        }
+        await DispatcherFor(scope, clock, sink, logger).DispatchDueAsync(CancellationToken.None);
+
+        var warning = logger.Entries.Single(entry => entry.Level == LogLevel.Warning);
+        warning.Exception.ShouldBeNull();
+        warning.Properties.Keys.Where(key => key != "{OriginalFormat}")
+            .ShouldBe(["FailureCode", "TraceId"], ignoreOrder: true);
+        warning.Properties["FailureCode"].ShouldBe("provider_error");
+        warning.Properties["TraceId"].ShouldBe("0123456789abcdef0123456789abcdef");
+        warning.Text.ShouldNotContain(message.Id.ToString());
+        warning.Text.ShouldNotContain("SUPER-SECRET");
+        warning.Text.ShouldNotContain("trace@example.test");
+        logger.Entries.Count(entry => entry.Level == LogLevel.Warning).ShouldBe(1);
+    }
+
+    [Test]
+    public async Task Delivered_transient_and_stale_settlements_do_not_emit_abandonment_warnings()
+    {
+        using var first = TestServices.CreateScope();
+        using var second = TestServices.CreateScope();
+        var clock = new ControlledTimeProvider(Origin);
+        var logger = new CapturingLogger<OutboxDispatcher>();
+
+        await SeedAsync(first, InvitationType, Origin);
+        await DispatcherFor(first, clock, new TestEmailSink(), logger).DispatchDueAsync(CancellationToken.None);
+
+        var transient = await SeedAsync(first, InvitationType, Origin.AddSeconds(1));
+        clock.Advance(TimeSpan.FromSeconds(1));
+        var transientSink = new TestEmailSink { Respond = _ => new EmailDeliveryReceipt(false, null, false) };
+        await DispatcherFor(first, clock, transientSink, logger).DispatchDueAsync(CancellationToken.None);
+        (await ReloadAsync(first, transient.Id)).Status.ShouldBe(OutboxMessageStatus.Pending);
+
+        var stale = await SeedAsync(first, InvitationType, Origin.AddSeconds(2));
+        clock.Advance(TimeSpan.FromSeconds(1));
+        var sink = new TestEmailSink();
+        sink.BeforeSend = async () =>
+        {
+            sink.BeforeSend = null;
+            clock.Advance(TimeSpan.FromMinutes(6));
+            await DispatcherFor(second, clock, sink, logger).DispatchDueAsync(CancellationToken.None);
+        };
+        (await DispatcherFor(first, clock, sink, logger).DispatchDueAsync(CancellationToken.None)).ShouldBe(0);
+        (await ReloadAsync(first, stale.Id)).Status.ShouldBe(OutboxMessageStatus.Delivered);
+
+        logger.Entries.ShouldNotContain(entry => entry.Level == LogLevel.Warning);
+    }
+
+    [Test]
+    public async Task A_failed_abandonment_commit_emits_no_warning()
+    {
+        using var scope = TestServices.CreateScope();
+        var message = await SeedAsync(scope, InvitationType, Origin);
+        var shared = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseNpgsql(shared.Database.GetConnectionString())
+            .AddInterceptors(new RejectFailedSecretSave())
+            .Options;
+        await using var failing = new ApplicationDbContext(options);
+        var logger = new CapturingLogger<OutboxDispatcher>();
+        var protector = scope.ServiceProvider.GetRequiredService<Microsoft.AspNetCore.DataProtection.IDataProtectionProvider>();
+        var dispatcher = new OutboxDispatcher(
+            failing,
+            new OutboxSecretReader(failing, protector),
+            [new InvitationEmailDeliveryHandler(failing, EmailOptions, LocalizerFor(failing, scope))],
+            new ControlledTimeProvider(Origin),
+            new TestEmailSink { Respond = _ => new EmailDeliveryReceipt(false, null, true) },
+            NotRecovering,
+            TestMetrics.Instance,
+            logger);
+
+        await Should.ThrowAsync<InvalidOperationException>(() => dispatcher.DispatchDueAsync(CancellationToken.None));
+        logger.Entries.ShouldNotContain(entry => entry.Level == LogLevel.Warning);
+        (await ReloadAsync(scope, message.Id)).Status.ShouldBe(OutboxMessageStatus.Pending);
     }
 
     /// <summary>
@@ -610,7 +713,8 @@ public sealed class OutboxDeliveryTests
         await using (var failing = new ApplicationDbContext(failingOptions))
         {
             var first = new OutboxDispatcher(failing, new OutboxSecretReader(failing, protector),
-                [new InvitationEmailDeliveryHandler(failing, EmailOptions, LocalizerFor(failing, scope))], clock, sender, NotRecovering, TestMetrics.Instance);
+                [new InvitationEmailDeliveryHandler(failing, EmailOptions, LocalizerFor(failing, scope))], clock, sender, NotRecovering, TestMetrics.Instance,
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<OutboxDispatcher>.Instance);
             await Should.ThrowAsync<InvalidOperationException>(() => first.DispatchDueAsync(CancellationToken.None));
         }
         transport.AcceptedCount.ShouldBe(1);
@@ -626,7 +730,8 @@ public sealed class OutboxDeliveryTests
         clock.Advance(TimeSpan.FromMinutes(minutes));
         if (rotateKey) emailOptions.Value.ApiKey = "rotated-isolated-test-key";
         var retry = new OutboxDispatcher(context, new OutboxSecretReader(context, protector),
-            [new InvitationEmailDeliveryHandler(context, EmailOptions, LocalizerFor(context, scope, "es"))], clock, sender, NotRecovering, TestMetrics.Instance);
+            [new InvitationEmailDeliveryHandler(context, EmailOptions, LocalizerFor(context, scope, "es"))], clock, sender, NotRecovering, TestMetrics.Instance,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<OutboxDispatcher>.Instance);
         await retry.DispatchDueAsync(CancellationToken.None);
         await retry.DispatchDueAsync(CancellationToken.None);
         transport.AcceptedCount.ShouldBe(1, "the transport accepts one logical message even after a process restart");
@@ -652,6 +757,46 @@ public sealed class OutboxDeliveryTests
                 throw new InvalidOperationException("isolated settlement failure");
             return ValueTask.FromResult(result);
         }
+    }
+
+    private sealed class RejectFailedSecretSave : Microsoft.EntityFrameworkCore.Diagnostics.SaveChangesInterceptor
+    {
+        public override ValueTask<Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<int>> SavingChangesAsync(
+            Microsoft.EntityFrameworkCore.Diagnostics.DbContextEventData eventData,
+            Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            if (eventData.Context!.ChangeTracker.Entries<OutboxSecret>()
+                .Any(entry => entry.Entity.Status == OutboxSecretStatus.Failed))
+                throw new InvalidOperationException("isolated abandonment commit failure");
+            return ValueTask.FromResult(result);
+        }
+    }
+
+    private sealed class CapturingLogger<T> : ILogger<T>
+    {
+        public List<Entry> Entries { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            var properties = state is IEnumerable<KeyValuePair<string, object?>> values
+                ? values.ToDictionary(item => item.Key, item => item.Value)
+                : new Dictionary<string, object?>();
+            Entries.Add(new Entry(logLevel, formatter(state, exception), exception, properties));
+        }
+
+        public sealed record Entry(
+            LogLevel Level,
+            string Text,
+            Exception? Exception,
+            IReadOnlyDictionary<string, object?> Properties);
     }
 
     private sealed class IdempotentResendTransport : HttpMessageHandler
@@ -750,7 +895,11 @@ public sealed class OutboxDeliveryTests
     }
     private const string KnownToken = "MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI=";
 
-    private static OutboxDispatcher DispatcherFor(IServiceScope scope, TimeProvider clock, TestEmailSink sink)
+    private static OutboxDispatcher DispatcherFor(
+        IServiceScope scope,
+        TimeProvider clock,
+        TestEmailSink sink,
+        ILogger<OutboxDispatcher>? logger = null)
     {
         var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         return new OutboxDispatcher(
@@ -760,7 +909,7 @@ public sealed class OutboxDeliveryTests
                 new InvitationEmailDeliveryHandler(context, EmailOptions, LocalizerFor(context, scope)),
                 new EmailConfirmationDeliveryHandler(context, EmailOptions, LocalizerFor(context, scope))
             ],
-            clock, sink, NotRecovering, TestMetrics.Instance);
+            clock, sink, NotRecovering, TestMetrics.Instance, logger ?? new CapturingLogger<OutboxDispatcher>());
     }
 
     /// <summary>
@@ -815,7 +964,8 @@ public sealed class OutboxDeliveryTests
             [new PasswordRecoveryDeliveryHandler(context, EmailOptions, LocalizerFor(context, scope))],
             clock,
             sink,
-            NotRecovering, TestMetrics.Instance);
+            NotRecovering, TestMetrics.Instance,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<OutboxDispatcher>.Instance);
         (await dispatcher.DispatchDueAsync(CancellationToken.None)).ShouldBe(1);
 
         var sent = sink.Sent.Single();

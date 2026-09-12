@@ -22,7 +22,7 @@ public sealed class ListMembersQueryHandler(
     public async Task<Result<MemberPage>> Handle(ListMembersQuery request, CancellationToken cancellationToken)
     {
         if (!RoleScope.Resolve(request.TenantId, currentTenant, user, out var tenantId, out _))
-            return Result<MemberPage>.Failure(IdentityAccessErrors.InvalidMembershipOperation());
+            return Result<MemberPage>.Failure(IdentityAccessErrors.MembershipNotFound());
 
         return Result<MemberPage>.Success(await members.ListAsync(tenantId, request.Limit, request.Cursor, cancellationToken));
     }
@@ -36,7 +36,7 @@ public sealed class ListTenantInvitationsQueryHandler(
     public async Task<Result<InvitationSummaryPage>> Handle(ListTenantInvitationsQuery request, CancellationToken cancellationToken)
     {
         if (!RoleScope.Resolve(request.TenantId, currentTenant, user, out var tenantId, out _))
-            return Result<InvitationSummaryPage>.Failure(IdentityAccessErrors.InvalidMembershipOperation());
+            return Result<InvitationSummaryPage>.Failure(IdentityAccessErrors.MembershipNotFound());
 
         return Result<InvitationSummaryPage>.Success(await members.ListInvitationsAsync(tenantId, request.Limit, request.Cursor, cancellationToken));
     }

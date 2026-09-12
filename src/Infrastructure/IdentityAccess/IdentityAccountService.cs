@@ -165,12 +165,14 @@ public sealed class IdentityAccountService(
         // Only the password validators. The user validators would read the store to reject a duplicate name, and
         // running them here would make this answer depend on whether the address exists — exactly the disclosure
         // this method exists to avoid.
+        var errors = new List<string>();
         foreach (var validator in passwordValidators)
         {
-            if (!(await validator.ValidateAsync(userManager, DecoyUser, password)).Succeeded) return new IdentityAccountValidationResult(false);
+            var result = await validator.ValidateAsync(userManager, DecoyUser, password);
+            errors.AddRange(result.Errors.Select(error => error.Description));
         }
 
-        return new IdentityAccountValidationResult(true);
+        return new IdentityAccountValidationResult(errors.Count == 0, errors);
     }
 
     public async Task<IdentityAccountCreationResult> CreatePendingAsync(

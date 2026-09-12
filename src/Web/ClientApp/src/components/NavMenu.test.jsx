@@ -1,10 +1,12 @@
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { http } from 'msw';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 import { NavMenu } from './NavMenu';
 import { IdentityProvider } from '../features/identity/context/IdentityProvider';
 import { server } from '../test/server';
-import { antiforgery, contextIs, signedInContext } from '../test/identityServer';
+import { antiforgery, contextIs, problem, signedInContext } from '../test/identityServer';
 
 const renderMenu = () => render(
   <MemoryRouter><IdentityProvider><NavMenu /></IdentityProvider></MemoryRouter>
@@ -30,6 +32,7 @@ describe('navigation', () => {
     expect(hrefOf('Your password')).toBe('/identity/password');
     expect(hrefOf('Sign-in providers')).toBe('/identity/external');
     expect(hrefOf('Organizations')).toBe('/organizations/select');
+    expect(hrefOf('Add an organization')).toBe('/organizations/register');
   });
 
   it('offers a visitor with no session only the two ways to get one', async () => {
@@ -41,6 +44,7 @@ describe('navigation', () => {
     expect(screen.getByRole('link', { name: 'Register' })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Sign-in providers' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Your devices' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Add an organization' })).not.toBeInTheDocument();
   });
 
   /**
@@ -84,5 +88,32 @@ describe('navigation', () => {
     expect(await screen.findByRole('link', { name: 'Retention' })).toBeInTheDocument();
     expect(hrefOf('Retention')).toBe('/platform/retention');
     expect(screen.queryByRole('link', { name: 'Platform identities' })).not.toBeInTheDocument();
+  });
+
+  it('keeps the current organization and shows the exact refusal while a tenant switch becomes idle again', async () => {
+    const selections = [];
+    let releaseSelection;
+    const responseGate = new Promise((resolve) => { releaseSelection = resolve; });
+    server.use(antiforgery(), contextIs(signedInContext()));
+    server.use(http.put('/api/identity/context/tenant', async ({ request }) => {
+      selections.push(await request.json());
+      await responseGate;
+      return problem(409, 'session_concurrency_conflict');
+    }));
+
+    renderMenu();
+    const switcher = await screen.findByRole('button', { name: 'Change organization' });
+    await userEvent.click(switcher);
+    await userEvent.click(screen.getByRole('menuitem', { name: /Globex/ }));
+    await waitFor(() => expect(selections).toEqual([{ tenantId: 'tenant-2' }]));
+
+    const wasBusy = switcher.disabled;
+    releaseSelection();
+
+    const alert = await screen.findByRole('alert');
+    expect(wasBusy).toBe(true);
+    expect(alert).toHaveTextContent('Something changed while you were working. Try again.');
+    expect(switcher).toHaveTextContent('Acme');
+    expect(switcher).toBeEnabled();
   });
 });

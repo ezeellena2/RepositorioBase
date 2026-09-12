@@ -38,3 +38,23 @@ public sealed record UpdateRoleCommand(TenantId TenantId, Guid RoleId, string? N
 [Authorize(Permissions.RolesManage, true)]
 public sealed record RetireRoleCommand(TenantId TenantId, Guid RoleId, string? Version)
     : IRequest<Result>, ISensitiveRequest;
+
+public sealed class CreateRoleCommandValidator : AbstractValidator<CreateRoleCommand>
+{
+    public CreateRoleCommandValidator() => AddNameRules(RuleFor(command => command.Name));
+
+    private static void AddNameRules(IRuleBuilderInitial<CreateRoleCommand, string?> rule) => rule
+        .Cascade(CascadeMode.Stop)
+        .NotEmpty().WithMessage("A role name is required.")
+        .MaximumLength(128).WithMessage("The role name must be 128 characters or fewer.")
+        .OverridePropertyName("name");
+}
+
+public sealed class UpdateRoleCommandValidator : AbstractValidator<UpdateRoleCommand>
+{
+    public UpdateRoleCommandValidator() => RuleFor(command => command.Name)
+        .Cascade(CascadeMode.Stop)
+        .NotEmpty().WithMessage("A role name is required.")
+        .MaximumLength(128).WithMessage("The role name must be 128 characters or fewer.")
+        .OverridePropertyName("name");
+}

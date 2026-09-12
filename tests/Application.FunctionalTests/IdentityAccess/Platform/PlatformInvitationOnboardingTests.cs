@@ -1,9 +1,13 @@
+using System.Net;
 using CleanArchitecture.Application.FunctionalTests.Infrastructure;
 using CleanArchitecture.Application.IdentityAccess.Platform.Invitations;
 using CleanArchitecture.Domain.IdentityAccess.Memberships;
 using CleanArchitecture.Domain.IdentityAccess.Outbox;
 using CleanArchitecture.Domain.IdentityAccess.Platform;
+using CleanArchitecture.Infrastructure.Data;
 using CleanArchitecture.Infrastructure.Identity;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace CleanArchitecture.Application.FunctionalTests.IdentityAccess.Platform;
 
@@ -60,13 +64,35 @@ public sealed class PlatformInvitationOnboardingTests : TestBase
     {
         var (_, token) = await PlatformScenario.PendingInvitationAsync();
         PlatformScenario.RunAnonymously();
+        TestApp.ResetConfirmationTokenHashInvocationCount();
+        var identitiesBefore = await TestApp.CountAsync<ApplicationUser>();
+        var messagesBefore = await TestApp.CountAsync<OutboxMessage>();
+        var secretsBefore = await TestApp.CountAsync<OutboxSecret>();
 
         var real = await TestApp.SendAsync(new RegisterPlatformInviteeCommand(token, PolicyViolatingPassword));
         var unknown = await TestApp.SendAsync(new RegisterPlatformInviteeCommand(UnknownToken(), PolicyViolatingPassword));
 
         real.IsFailure.ShouldBeTrue();
-        real.Error!.Code.ShouldBe(unknown.Error!.Code);
-        (await TestApp.CountAsync<ApplicationUser>()).ShouldBe(0, "a refused password creates nothing.");
+        real.Error!.Code.ShouldBe("validation_failed");
+        real.Error.ValidationErrors.Keys.ShouldBe(["password"]);
+        real.Error.ValidationErrors["password"].ShouldBe([
+            "Passwords must be at least 12 characters.",
+            "Passwords must have at least one non alphanumeric character.",
+            "Passwords must have at least one digit ('0'-'9').",
+            "Passwords must have at least one uppercase ('A'-'Z')."
+        ]);
+        string.Join(' ', real.Error.ValidationErrors["password"]).ShouldNotContain(PolicyViolatingPassword);
+        unknown.IsFailure.ShouldBeTrue();
+        unknown.Error!.Code.ShouldBe(real.Error.Code);
+        unknown.Error.Category.ShouldBe(real.Error.Category);
+        unknown.Error.ValidationErrors["password"].ShouldBe(real.Error.ValidationErrors["password"]);
+        TestApp.ConfirmationTokenHashInvocationCount.ShouldBe(0, "a refused password is decided before the token is read at all");
+        (await TestApp.CountAsync<ApplicationUser>()).ShouldBe(identitiesBefore, "a refused password creates nothing.");
+        (await TestApp.CountAsync<OutboxMessage>()).ShouldBe(messagesBefore);
+        (await TestApp.CountAsync<OutboxSecret>()).ShouldBe(secretsBefore);
+        var invitation = await PlatformScenario.SingleInvitationAsync();
+        invitation.Status.ShouldBe(PlatformAdminInvitationStatus.Pending);
+        invitation.BoundIdentityId.ShouldBeNull();
     }
 
     [Test]
@@ -265,6 +291,129 @@ public sealed class PlatformInvitationOnboardingTests : TestBase
         (await TestApp.CountAsync<TenantMembership>()).ShouldBe(0);
     }
 
+    [Test]
+    public async Task An_expired_confirmation_is_invalid_on_every_spend_and_has_no_onboarding_effects()
+    {
+        var (email, token) = await PlatformScenario.PendingInvitationAsync();
+        PlatformScenario.RunAnonymously();
+        await TestApp.SendAsync(new RegisterPlatformInviteeCommand(token, ValidPassword));
+        var message = (await PlatformScenario.MessagesAsync()).Single();
+        var confirmationToken = await PlatformScenario.SealedTokenAsync(message.Id);
+        await PlatformScenario.ExpireConfirmationEnvelopeAsync();
+
+        var first = await TestApp.SendAsync(new ConfirmPlatformInviteeCommand(confirmationToken));
+        var replay = await TestApp.SendAsync(new ConfirmPlatformInviteeCommand(confirmationToken));
+
+        first.IsFailure.ShouldBeTrue();
+        first.Error!.Code.ShouldBe("invalid_confirmation");
+        replay.IsFailure.ShouldBeTrue();
+        replay.Error!.Code.ShouldBe("invalid_confirmation");
+        (await TestApp.ListAsync<ApplicationUser>()).Single(user => user.Email == email).EmailConfirmed.ShouldBeFalse();
+        (await TestApp.ListAsync<OutboxSecret>()).Single().Status.ShouldBe(OutboxSecretStatus.Expired);
+        (await PlatformScenario.SingleInvitationAsync()).Status.ShouldBe(PlatformAdminInvitationStatus.Pending);
+        (await TestApp.CountAsync<TenantMembership>()).ShouldBe(0);
+        (await TestApp.ListAsync<Domain.IdentityAccess.Auditing.AuditEvent>())
+            .ShouldNotContain(item => item.EventType == "identity.confirmed");
+    }
+
+    [Test]
+    public async Task A_failed_platform_confirmation_is_invalid_over_http_and_preserves_all_durable_state()
+    {
+        var (email, token) = await PlatformScenario.PendingInvitationAsync();
+        PlatformScenario.RunAnonymously();
+        (await TestApp.SendAsync(new RegisterPlatformInviteeCommand(token, ValidPassword))).IsSuccess.ShouldBeTrue();
+        var message = (await PlatformScenario.MessagesAsync()).Single();
+        var confirmationToken = await PlatformScenario.SealedTokenAsync(message.Id);
+        await TestApp.FailConfirmationSecretAsync(message.Id);
+        var identityBefore = (await TestApp.ListAsync<ApplicationUser>()).Single(user => user.Email == email);
+        var invitationBefore = await PlatformScenario.SingleInvitationAsync();
+        var secretBefore = (await TestApp.ListAsync<OutboxSecret>()).Single();
+        var usersBefore = await TestApp.CountAsync<ApplicationUser>();
+        var messagesBefore = await TestApp.CountAsync<OutboxMessage>();
+        var secretsBefore = await TestApp.CountAsync<OutboxSecret>();
+        var membershipsBefore = await TestApp.CountAsync<TenantMembership>();
+        var auditsBefore = await TestApp.CountAsync<Domain.IdentityAccess.Auditing.AuditEvent>();
+
+        var host = $"https://failed-platform-confirmation-{Guid.NewGuid():N}.localhost";
+        var antiforgery = await IdentityHttpHarness.GetAntiforgeryAsync(FunctionalTestSetup.HttpClient, host);
+        using var request = IdentityHttpHarness.JsonRequest(
+            HttpMethod.Post,
+            $"{host}/api/platform/invitations/confirm",
+            new { confirmationToken },
+            antiforgery);
+        using var response = await FunctionalTestSetup.HttpClient.SendAsync(request);
+
+        var problem = await IdentityHttpHarness.AssertProblemAsync(
+            response,
+            HttpStatusCode.BadRequest,
+            "invalid_confirmation");
+        problem.GetProperty("instance").GetString().ShouldBe("/api/platform/invitations/confirm");
+        var identityAfter = (await TestApp.ListAsync<ApplicationUser>()).Single(user => user.Email == email);
+        identityAfter.Id.ShouldBe(identityBefore.Id);
+        identityAfter.Status.ShouldBe(identityBefore.Status);
+        identityAfter.EmailConfirmed.ShouldBeFalse();
+        var invitationAfter = await PlatformScenario.SingleInvitationAsync();
+        invitationAfter.Status.ShouldBe(PlatformAdminInvitationStatus.Pending);
+        invitationAfter.BoundIdentityId.ShouldBe(invitationBefore.BoundIdentityId);
+        var secretAfter = (await TestApp.ListAsync<OutboxSecret>()).Single();
+        secretAfter.Status.ShouldBe(OutboxSecretStatus.Failed);
+        secretAfter.TerminalReason.ShouldBe(secretBefore.TerminalReason);
+        secretAfter.CompletedAt.ShouldBe(secretBefore.CompletedAt);
+        secretAfter.VersionedHash.ShouldBe(secretBefore.VersionedHash);
+        (await TestApp.CountAsync<ApplicationUser>()).ShouldBe(usersBefore);
+        (await TestApp.CountAsync<OutboxMessage>()).ShouldBe(messagesBefore);
+        (await TestApp.CountAsync<OutboxSecret>()).ShouldBe(secretsBefore);
+        (await TestApp.CountAsync<TenantMembership>()).ShouldBe(membershipsBefore);
+        (await TestApp.CountAsync<Domain.IdentityAccess.Auditing.AuditEvent>()).ShouldBe(auditsBefore);
+        (await TestApp.ListAsync<Domain.IdentityAccess.Auditing.AuditEvent>())
+            .ShouldNotContain(item => item.EventType == "identity.confirmed");
+    }
+
+    [Test]
+    public async Task A_confirmation_for_an_invitation_that_is_no_longer_pending_is_invalid_and_leaves_the_secret_unspent()
+    {
+        var (email, token) = await PlatformScenario.PendingInvitationAsync();
+        PlatformScenario.RunAnonymously();
+        await TestApp.SendAsync(new RegisterPlatformInviteeCommand(token, ValidPassword));
+        var message = (await PlatformScenario.MessagesAsync()).Single();
+        var confirmationToken = await PlatformScenario.SealedTokenAsync(message.Id);
+        await CancelInvitationAsync();
+
+        var result = await TestApp.SendAsync(new ConfirmPlatformInviteeCommand(confirmationToken));
+
+        result.IsFailure.ShouldBeTrue();
+        result.Error!.Code.ShouldBe("invalid_confirmation");
+        (await TestApp.ListAsync<ApplicationUser>()).Single(user => user.Email == email).EmailConfirmed.ShouldBeFalse();
+        (await TestApp.ListAsync<OutboxSecret>()).Single().Status.ShouldBe(OutboxSecretStatus.Pending);
+        (await TestApp.CountAsync<TenantMembership>()).ShouldBe(0);
+        (await TestApp.ListAsync<Domain.IdentityAccess.Auditing.AuditEvent>())
+            .ShouldNotContain(item => item.EventType == "identity.confirmed");
+    }
+
+    [Test]
+    public async Task A_confirmation_whose_invitation_binding_moved_is_invalid_and_has_no_onboarding_effects()
+    {
+        var (email, token) = await PlatformScenario.PendingInvitationAsync();
+        PlatformScenario.RunAnonymously();
+        await TestApp.SendAsync(new RegisterPlatformInviteeCommand(token, ValidPassword));
+        var message = (await PlatformScenario.MessagesAsync()).Single();
+        var confirmationToken = await PlatformScenario.SealedTokenAsync(message.Id);
+        var stranger = await IdentityHttpHarness.SeedConfirmedUserAsync(
+            $"stranger-{Guid.NewGuid():N}@example.test",
+            ValidPassword);
+        await MoveInvitationBindingAsync(stranger);
+
+        var result = await TestApp.SendAsync(new ConfirmPlatformInviteeCommand(confirmationToken));
+
+        result.IsFailure.ShouldBeTrue();
+        result.Error!.Code.ShouldBe("invalid_confirmation");
+        (await TestApp.ListAsync<ApplicationUser>()).Single(user => user.Email == email).EmailConfirmed.ShouldBeFalse();
+        (await TestApp.ListAsync<OutboxSecret>()).Single().Status.ShouldBe(OutboxSecretStatus.Pending);
+        (await TestApp.CountAsync<TenantMembership>()).ShouldBe(0);
+        (await TestApp.ListAsync<Domain.IdentityAccess.Auditing.AuditEvent>())
+            .ShouldNotContain(item => item.EventType == "identity.confirmed");
+    }
+
     /// <summary>
     /// A confirmation belongs to the offer whose envelope was sealed with it, and to the identity that answered
     /// that offer. Neither comes from the caller, so a token can only ever complete its own onboarding.
@@ -299,6 +448,24 @@ public sealed class PlatformInvitationOnboardingTests : TestBase
         result.IsFailure.ShouldBeTrue();
         result.Error!.Code.ShouldBe("invalid_confirmation");
         (await TestApp.ListAsync<ApplicationUser>()).Single().EmailConfirmed.ShouldBeFalse();
+    }
+
+    private static async Task CancelInvitationAsync()
+    {
+        using var scope = FunctionalTestSetup.ScopeFactory.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var invitation = await context.PlatformAdminInvitations.SingleAsync();
+        invitation.Cancel(DateTimeOffset.UtcNow);
+        await context.SaveChangesAsync();
+    }
+
+    private static async Task MoveInvitationBindingAsync(Guid identityId)
+    {
+        using var scope = FunctionalTestSetup.ScopeFactory.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var invitationId = (await context.PlatformAdminInvitations.SingleAsync()).Id.Value;
+        await context.Database.ExecuteSqlAsync(
+            $"UPDATE \"PlatformAdminInvitations\" SET \"BoundIdentityId\" = {identityId} WHERE \"Id\" = {invitationId}");
     }
 
     private static string UnknownToken() =>

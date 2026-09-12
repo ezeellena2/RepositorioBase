@@ -61,7 +61,7 @@ public sealed class IdentityAccessStepDefinitions(ScenarioContext scenario)
         var email = $"founder-{Guid.NewGuid():N}@example.test";
         scenario.Set(email, "email");
         await Register.GotoAsync();
-        await Register.RegisterAsync($"Acceptance {Guid.NewGuid():N}", $"30-{Random.Shared.Next(10000000, 99999999)}-1", email, IdentityAccessFixtures.Password);
+        await Register.RegisterAsync($"Acceptance {Guid.NewGuid():N}", IdentityAccessFixtures.NextCuit(), email, IdentityAccessFixtures.Password);
     }
 
     [Then("the registration answers neutrally without revealing whether the address was taken")]
@@ -132,15 +132,15 @@ public sealed class IdentityAccessStepDefinitions(ScenarioContext scenario)
 
     /// <summary>
     /// Registering while signed in is a distinct path: the handler reuses the identity in the session instead
-    /// of creating one, and refuses outright if the submitted address is not that identity's own.
+    /// of creating one, and the form does not ask the caller to resubmit credentials the session already proves.
     /// </summary>
     [When("they register another organization with their own address")]
     public async Task WhenTheyRegisterAnotherOrganization()
     {
-        var cuit = $"30{Random.Shared.Next(100_000_000, 999_999_999)}";
+        var cuit = IdentityAccessFixtures.NextCuit();
         scenario.Set($"org-{cuit}", "secondSlug");
         await Register.GotoAsync();
-        await Register.RegisterAsync($"Acceptance {Guid.NewGuid():N}", cuit, Identity.Email, IdentityAccessFixtures.Password);
+        await Register.RegisterSignedInAsync($"Acceptance {Guid.NewGuid():N}", cuit);
         await Register.AssertNeutralAcknowledgementAsync();
     }
 

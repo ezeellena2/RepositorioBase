@@ -26,14 +26,14 @@ internal static class InvitationEndpoints
             .WithCreatedLocation<InvitationCreatedResponse>()
             .WithApiProblemDetails(
                 ApiProblemMetadata.AntiforgeryValidationFailed,
+                ApiProblemMetadata.ValidationFailed,
                 ApiProblemMetadata.InvalidInvitation,
                 ApiProblemMetadata.AuthenticationRequired,
                 ApiProblemMetadata.InvalidSession,
                 ApiProblemMetadata.PermissionDenied,
-                ApiProblemMetadata.NotFound,
                 ApiProblemMetadata.InvitationConflict,
                 ApiProblemMetadata.InternalServerError)
-            .WithBodyBindingFailureCode(ApiProblemMetadata.InvalidInvitation.Code);
+            .WithBodyBindingFailureCode(ApiProblemMetadata.ValidationFailed.Code);
 
         // Reissuing and withdrawing carry no body: the invitation is named by the route and everything else about
         // the offer is already recorded. They answer 204 because there is nothing new to hand back — a reissue
@@ -61,9 +61,9 @@ internal static class InvitationEndpoints
             .Produces(StatusCodes.Status202Accepted)
             .WithApiProblemDetails(
                 ApiProblemMetadata.AntiforgeryValidationFailed,
-                ApiProblemMetadata.InvalidInvitation,
+                ApiProblemMetadata.ValidationFailed,
                 ApiProblemMetadata.InternalServerError)
-            .WithBodyBindingFailureCode(ApiProblemMetadata.InvalidInvitation.Code);
+            .WithBodyBindingFailureCode(ApiProblemMetadata.ValidationFailed.Code);
         group.MapPost("/accept", Accept)
             .RequireAuthorization()
             .Produces<InvitationAcceptanceResponse>(StatusCodes.Status200OK)
@@ -100,7 +100,7 @@ internal static class InvitationEndpoints
         if (tenantId == Guid.Empty) return problems.ToHttpResult(IdentityAccessErrors.InvalidInvitation());
 
         var result = await sender.Send(
-            new InviteMemberCommand(TenantId.From(tenantId), request.Email, request.RoleIds ?? []),
+            new InviteMemberCommand(TenantId.From(tenantId), request.Email!, request.RoleIds!),
             context.RequestAborted);
 
         return result.ToHttpResult(context, problems, issued => Results.Created(
@@ -163,7 +163,7 @@ internal static class InvitationEndpoints
             Results.Ok(new InvitationAcceptanceResponse(accepted.TenantId, accepted.MembershipId)));
     }
 
-    internal sealed record InviteMemberRequest(string Email, IReadOnlyList<Guid> RoleIds);
+    internal sealed record InviteMemberRequest(string? Email, IReadOnlyList<Guid>? RoleIds);
 
     internal sealed record RegisterInvitedUserRequest(string Token, string Password);
 

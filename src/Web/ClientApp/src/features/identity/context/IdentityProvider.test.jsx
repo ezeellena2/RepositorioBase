@@ -11,7 +11,18 @@ import { i18n, setLanguage } from '../../../i18n';
 function Probe() {
   const identity = useIdentity();
   const [problem, setProblem] = useState(null);
+  const [signOutOutcome, setSignOutOutcome] = useState('');
   if (!identity || identity.isLoading) return <p>loading</p>;
+
+  const signOut = async () => {
+    try {
+      await identity.signOut();
+      setSignOutOutcome('resolved');
+    } catch (failure) {
+      setSignOutOutcome(`${failure.problem?.status ?? 0}:${failure.problem?.code ?? 'unknown'}`);
+    }
+  };
+
   return (
     <>
       <p data-testid="authenticated">{String(identity.isAuthenticated)}</p>
@@ -20,10 +31,11 @@ function Probe() {
       <p data-testid="preferred-language">{identity.context?.preferredLanguage ?? 'none'}</p>
       <p data-testid="pending-language">{identity.pendingLanguage ?? 'none'}</p>
       <p data-testid="language-problem">{identity.languageProblem?.code ?? ''}</p>
-      <p data-testid="context-problem">{identity.contextProblem?.code ?? ''}</p>
       <p data-testid="problem">{problem ?? ''}</p>
+      <p data-testid="context-problem">{identity.contextProblem ? `${identity.contextProblem.status}:${identity.contextProblem.code}` : ''}</p>
+      <p data-testid="sign-out-outcome">{signOutOutcome}</p>
       <button onClick={() => identity.signIn('ana@example.test', 'Testing1234!').catch((failure) => setProblem(failure.problem?.code ?? 'unknown'))}>sign in</button>
-      <button onClick={() => identity.signOut()}>sign out</button>
+      <button onClick={signOut}>sign out</button>
       <button onClick={() => identity.changeLanguage('es').catch(() => undefined)}>language es</button>
       <button onClick={() => identity.changeLanguage('en').catch(() => undefined)}>language en</button>
       <button onClick={() => identity.selectTenant('tenant-2').catch(() => undefined)}>select tenant</button>
@@ -126,6 +138,39 @@ describe('identity provider', () => {
     expect(sent).toEqual([ANTIFORGERY_TOKEN]);
   });
 
+  it('loads the authenticated context when the post-sign-in token refresh fails', async () => {
+    let bootstraps = 0;
+    let contextReads = 0;
+    let signIns = 0;
+    server.use(
+      http.get('/api/identity/antiforgery', () => {
+        bootstraps += 1;
+        return bootstraps === 1
+          ? HttpResponse.json({ requestToken: ANTIFORGERY_TOKEN })
+          : HttpResponse.error();
+      }),
+      http.get('/api/identity/context', () => {
+        contextReads += 1;
+        return contextReads === 1
+          ? problem(401, 'authentication_required')
+          : HttpResponse.json(signedInContext());
+      }),
+      http.post('/api/identity/sessions', () => {
+        signIns += 1;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    renderProbe();
+    await waitFor(() => expect(screen.getByTestId('authenticated')).toHaveTextContent('false'));
+
+    await userEvent.click(screen.getByRole('button', { name: 'sign in' }));
+
+    await waitFor(() => expect(screen.getByTestId('authenticated')).toHaveTextContent('true'));
+    expect(screen.getByTestId('problem')).toHaveTextContent('');
+    expect(signIns).toBe(1);
+    expect(contextReads).toBe(2);
+  });
+
   /** Signing out clears what the client knows; leaving a stale context on screen invites acting on it. */
   it('clears the context on sign out', async () => {
     server.use(
@@ -143,6 +188,59 @@ describe('identity provider', () => {
 
     await waitFor(() => expect(screen.getByTestId('authenticated')).toHaveTextContent('false'));
     expect(screen.getByTestId('tenant')).toHaveTextContent('none');
+    expect(screen.getByTestId('sign-out-outcome')).toHaveTextContent('resolved');
+    expect(screen.getByTestId('context-problem')).toHaveTextContent('');
+  });
+
+  it('preserves the authenticated context when sign out is refused', async () => {
+    server.use(
+      antiforgery(),
+      contextIs(signedInContext()),
+      http.delete('/api/identity/sessions/current', () => problem(409, 'session_concurrency_conflict')),
+    );
+    renderProbe();
+    await waitFor(() => expect(screen.getByTestId('authenticated')).toHaveTextContent('true'));
+
+    await userEvent.click(screen.getByRole('button', { name: 'sign out' }));
+
+    await waitFor(() => expect(screen.getByTestId('sign-out-outcome')).toHaveTextContent('409:session_concurrency_conflict'));
+    expect(screen.getByTestId('authenticated')).toHaveTextContent('true');
+    expect(screen.getByTestId('tenant')).toHaveTextContent('Acme');
+    expect(screen.getByTestId('context-problem')).toHaveTextContent('');
+  });
+
+  it('preserves the authenticated context when sign out does not confirm the declared 204', async () => {
+    server.use(
+      antiforgery(),
+      contextIs(signedInContext()),
+      http.delete('/api/identity/sessions/current', () => HttpResponse.json({}, { status: 200 })),
+    );
+    renderProbe();
+    await waitFor(() => expect(screen.getByTestId('authenticated')).toHaveTextContent('true'));
+
+    await userEvent.click(screen.getByRole('button', { name: 'sign out' }));
+
+    await waitFor(() => expect(screen.getByTestId('sign-out-outcome')).toHaveTextContent('0:unreadable_response'));
+    expect(screen.getByTestId('authenticated')).toHaveTextContent('true');
+    expect(screen.getByTestId('tenant')).toHaveTextContent('Acme');
+    expect(screen.getByTestId('context-problem')).toHaveTextContent('');
+  });
+
+  it('clears the context but retains the exact reason when sign out finds a lost session', async () => {
+    server.use(
+      antiforgery(),
+      contextIs(signedInContext()),
+      http.delete('/api/identity/sessions/current', () => problem(401, 'invalid_session')),
+    );
+    renderProbe();
+    await waitFor(() => expect(screen.getByTestId('authenticated')).toHaveTextContent('true'));
+
+    await userEvent.click(screen.getByRole('button', { name: 'sign out' }));
+
+    await waitFor(() => expect(screen.getByTestId('authenticated')).toHaveTextContent('false'));
+    expect(screen.getByTestId('tenant')).toHaveTextContent('none');
+    expect(screen.getByTestId('sign-out-outcome')).toHaveTextContent('resolved');
+    expect(screen.getByTestId('context-problem')).toHaveTextContent('401:invalid_session');
   });
 
   /**

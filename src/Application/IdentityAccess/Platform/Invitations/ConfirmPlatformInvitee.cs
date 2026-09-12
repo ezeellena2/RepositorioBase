@@ -25,6 +25,7 @@ public sealed class ConfirmPlatformInviteeCommandValidator : AbstractValidator<C
 {
     public ConfirmPlatformInviteeCommandValidator() =>
         RuleFor(command => command.ConfirmationToken)
-            .NotEmpty().WithErrorCode(ValidationErrorCodes.Required)
-            .MaximumLength(256).WithErrorCode(ValidationErrorCodes.TooLong);
+            .NotEmpty().WithErrorCode(ValidationErrorCodes.Required).WithMessage("A confirmation token is required.")
+            .MaximumLength(256).WithErrorCode(ValidationErrorCodes.TooLong).WithMessage("The confirmation token must be 256 characters or fewer.")
+            .OverridePropertyName("confirmationToken");
 }

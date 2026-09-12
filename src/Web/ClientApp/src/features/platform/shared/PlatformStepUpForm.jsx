@@ -1,10 +1,9 @@
-/* eslint-disable i18next/no-literal-string -- bounded wire field name, not display copy. */
 import { useEffect, useRef } from 'react';
 import Button from '@mui/material/Button';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import { useTranslation } from '../../../i18n';
-import { fieldError, firstInvalid } from '../../identity/fieldErrors';
+import { fieldError } from '../../identity/fieldErrors';
 
 const form = { maxWidth: 360 };
 const stepUpFieldSlots = { inputLabel: { required: false }, htmlInput: { inputMode: 'numeric' } };
@@ -23,9 +22,14 @@ const stepUpFieldSlots = { inputLabel: { required: false }, htmlInput: { inputMo
  */
 export function PlatformStepUpForm({ inputId, code, onCodeChange, onSubmit, isBusy, problem, submitVariant = 'contained' }) {
   const { t } = useTranslation('platform');
-  const codeRef = useRef(null);
-  const invalid = firstInvalid(problem, ['code']);
-  useEffect(() => { if (invalid) codeRef.current?.focus(); }, [invalid]);
+  const codeInput = useRef(null);
+  const structured = fieldError(problem, 'code', t);
+  const invalidMfaCode = problem?.code === 'invalid_mfa_code';
+  const invalid = structured.error || invalidMfaCode;
+
+  useEffect(() => {
+    if (invalid) codeInput.current?.focus();
+  }, [invalid]);
 
   return (
     <Stack
@@ -37,13 +41,14 @@ export function PlatformStepUpForm({ inputId, code, onCodeChange, onSubmit, isBu
     >
       <TextField
         id={inputId}
+        inputRef={codeInput}
         label={t('stepUp.authenticatorCode')}
         type="text"
         required
         fullWidth
-        slotProps={stepUpFieldSlots}
-        inputRef={codeRef}
-        {...fieldError(problem, 'code', t)}
+        slotProps={{ inputLabel: { required: false }, htmlInput: { inputMode: 'numeric' } }}
+        error={invalid}
+        helperText={invalidMfaCode ? t('errors:invalid_mfa_code') : structured.helperText}
         value={code}
         onChange={(event) => onCodeChange(event.target.value)}
       />

@@ -15,6 +15,7 @@ namespace CleanArchitecture.Web.AcceptanceTests;
 internal static class IdentityAccessFixtures
 {
     internal const string Password = "Acceptance1234!";
+    private static readonly int[] CuitWeights = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2];
 
     internal sealed record SeededIdentity(Guid Id, string Email);
 
@@ -280,6 +281,15 @@ internal static class IdentityAccessFixtures
     /// that fits it. Drawn at random rather than counted, because the acceptance database outlives a run and
     /// a counter would collide with the previous one on the unique index.
     /// </summary>
-    private static string NextCuit() =>
-        $"30{System.Security.Cryptography.RandomNumberGenerator.GetInt32(100_000_000, 1_000_000_000):D9}";
+    internal static string NextCuit()
+    {
+        while (true)
+        {
+            var serial = System.Security.Cryptography.RandomNumberGenerator.GetInt32(10_000_000, 100_000_000);
+            var digits = $"30{serial:D8}";
+            var sum = CuitWeights.Select((weight, index) => weight * (digits[index] - '0')).Sum();
+            var checkDigit = (11 - sum % 11) % 11;
+            if (checkDigit != 10) return $"{digits}{checkDigit}";
+        }
+    }
 }

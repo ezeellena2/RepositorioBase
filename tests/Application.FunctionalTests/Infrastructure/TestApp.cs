@@ -2,7 +2,6 @@ using CleanArchitecture.Domain.Constants;
 using CleanArchitecture.Infrastructure.Data;
 using CleanArchitecture.Infrastructure.Identity;
 using CleanArchitecture.Domain.IdentityAccess.Tenants;
-using CleanArchitecture.Application.IdentityAccess.Common;
 using CleanArchitecture.Application.IdentityAccess.Sessions;
 using CleanArchitecture.Domain.IdentityAccess.Outbox;
 using MediatR;
@@ -21,6 +20,7 @@ public static class TestApp
     private static bool _httpAuthorizationGranted;
     private static bool _applicationPermissionGranted;
     private static bool _forceUnexpectedFailure;
+    private static int _forcedDownstreamBindingShapedFailure;
     private static bool _forceRegistrationRollbackAfterPersistedEffects;
     private static bool _forceConfirmationRollbackAfterPersistedEffects;
     private static bool _forceInvitationRollbackAfterPersistedEffects;
@@ -81,6 +81,16 @@ public static class TestApp
     public static bool IsApplicationPermissionGranted() => _applicationPermissionGranted;
 
     public static bool ConsumeForcedUnexpectedFailure() => Interlocked.Exchange(ref _forceUnexpectedFailure, false);
+
+    public static Exception? ConsumeForcedDownstreamBindingShapedFailure() =>
+        Interlocked.Exchange(ref _forcedDownstreamBindingShapedFailure, 0) switch
+        {
+            1 => new System.Text.Json.JsonException("downstream-json-secret"),
+            2 => new Microsoft.AspNetCore.Http.BadHttpRequestException(
+                "downstream-bad-request-secret",
+                Microsoft.AspNetCore.Http.StatusCodes.Status400BadRequest),
+            _ => null
+        };
 
     public static bool ConsumeForcedRegistrationRollbackAfterPersistedEffects() => Interlocked.Exchange(ref _forceRegistrationRollbackAfterPersistedEffects, false);
 
@@ -325,6 +335,12 @@ public static class TestApp
 
     public static void ForceUnexpectedFailure() => _forceUnexpectedFailure = true;
 
+    public static void ForceDownstreamJsonFailure() =>
+        Interlocked.Exchange(ref _forcedDownstreamBindingShapedFailure, 1);
+
+    public static void ForceDownstreamBadRequestFailure() =>
+        Interlocked.Exchange(ref _forcedDownstreamBindingShapedFailure, 2);
+
     public static void ForceRegistrationRollbackAfterPersistedEffects() => _forceRegistrationRollbackAfterPersistedEffects = true;
 
     public static void ForceConfirmationRollbackAfterPersistedEffects() => _forceConfirmationRollbackAfterPersistedEffects = true;
@@ -418,7 +434,7 @@ public static class TestApp
             return _userId.Value;
         }
 
-        throw new Exception($"Unable to create test identity. Error code: {result.ToApplicationResult(IdentityAccessErrors.UserCreationFailed()).Error?.Code ?? "unknown"}.");
+        throw new InvalidOperationException("Unable to create test identity.");
     }
 
     public static async Task ResetState()
@@ -435,6 +451,7 @@ public static class TestApp
         _httpAuthorizationGranted = false;
         _applicationPermissionGranted = false;
         _forceUnexpectedFailure = false;
+        Interlocked.Exchange(ref _forcedDownstreamBindingShapedFailure, 0);
         _forceRegistrationRollbackAfterPersistedEffects = false;
         _forceConfirmationRollbackAfterPersistedEffects = false;
         _forceInvitationRollbackAfterPersistedEffects = false;
@@ -524,6 +541,15 @@ public static class TestApp
         var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var secret = await context.OutboxSecrets.SingleAsync();
         await context.Database.ExecuteSqlAsync($"UPDATE outbox_secrets SET \"ExpiresAt\" = {DateTimeOffset.UtcNow.AddMinutes(-1)} WHERE \"Id\" = {secret.Id}");
+    }
+
+    public static async Task FailConfirmationSecretAsync(Guid outboxMessageId)
+    {
+        using var scope = FunctionalTestSetup.ScopeFactory.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var secret = await context.OutboxSecrets.SingleAsync(item => item.OutboxMessageId == outboxMessageId);
+        secret.Terminate(OutboxSecretStatus.Failed, "delivery_failed", DateTimeOffset.UtcNow);
+        await context.SaveChangesAsync();
     }
 
     public static async Task SetConfirmationSecretHashAsync(string versionedHash)

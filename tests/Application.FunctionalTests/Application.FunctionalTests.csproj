@@ -37,4 +37,8 @@
         <ProjectReference Include="..\TestAppHost\TestAppHost.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+        <None Update="Infrastructure\TestWebRoot\index.html" CopyToOutputDirectory="PreserveNewest" />
+    </ItemGroup>
+
 </Project>

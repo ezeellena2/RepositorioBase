@@ -1,4 +1,5 @@
 import { createContext, startTransition, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { isSessionLostProblem, toProblem } from '../api/apiTransport';
 import { createIdentityClient, IdentityProblem } from '../api/identityClient';
 import { setLanguage } from '../../../i18n';
 
@@ -82,9 +83,7 @@ export function IdentityProvider({ children, client }) {
       // is a refusal, though, and must reach the submit path so the sign-in card can explain the neutral outcome.
       // `invalid_session` still lands here, because an expired session is precisely what the paragraph above
       // wants the sign-in page to be able to say.
-      const problem = failure instanceof IdentityProblem
-        ? failure.problem
-        : { code: 'context_unreadable', status: 0, detail: String(failure.message ?? failure) };
+      const problem = toProblem(failure);
       const authenticationRequired = problem.code === 'authentication_required';
       if (mounted.current
         && requestRevision === contextRequestRevision.current
@@ -127,7 +126,7 @@ export function IdentityProvider({ children, client }) {
     contextRequestRevision.current += 1;
     cancelLanguageChange();
     await identityClient.signIn(email, password);
-    await identityClient.bootstrapAntiforgery();
+    await identityClient.bootstrapAntiforgery().catch(() => undefined);
     return loadContext({ suppressAuthenticationRequired: false });
   }, [identityClient, loadContext, cancelLanguageChange]);
 
@@ -135,15 +134,20 @@ export function IdentityProvider({ children, client }) {
     const session = ++sessionRevision.current;
     contextRequestRevision.current += 1;
     cancelLanguageChange();
+    let sessionLostProblem = null;
     try {
       await identityClient.signOut();
-    } finally {
-      if (mounted.current && session === sessionRevision.current) {
-        setContext(null);
-        setContextProblem(null);
-      }
-      await identityClient.bootstrapAntiforgery().catch(() => undefined);
+    } catch (failure) {
+      if (!(failure instanceof IdentityProblem) || !isSessionLostProblem(failure.problem)) throw failure;
+      sessionLostProblem = failure.problem;
     }
+
+    if (mounted.current && session === sessionRevision.current) {
+      setContext(null);
+      setContextProblem(sessionLostProblem);
+    }
+    await identityClient.bootstrapAntiforgery().catch(() => undefined);
+    return true;
   }, [identityClient, cancelLanguageChange]);
 
   const selectTenant = useCallback(async (tenantId) => {
