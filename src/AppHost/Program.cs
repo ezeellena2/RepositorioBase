@@ -41,7 +41,7 @@ var web = builder.AddProject<Projects.Web>(Services.WebApi)
     .WithUrlForEndpoint("http", url =>
     {
         url.DisplayText = "Scalar API Reference";
-        url.Url = "/scalar";
+        url.Url = "/swagger";
     });
 
 // The dispatcher runs here rather than inside the web application. Registered there it would also poll from
