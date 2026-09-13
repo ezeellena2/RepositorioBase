@@ -1,7 +1,9 @@
 # Identity Access — running and trying it locally
 
-Everything here is local. Nothing in this file activates an email provider or sends a real message; see
-[EMAIL-SETUP.md](EMAIL-SETUP.md) for that, and read the section on delivery below before assuming a link arrived.
+Everything here is local. By default nothing sends a real message; the one exception is
+[Gmail SMTP](#sending-real-mail-through-gmail-smtp), which you switch on deliberately. See
+[EMAIL-SETUP.md](EMAIL-SETUP.md) for a deployment's provider, and read the section on delivery below before
+assuming a link arrived.
 
 Two neighbours: [OPERATIONS.md](OPERATIONS.md) is what an operator configures and watches once this run is behind
 them, and [RECOVERY-AND-RETENTION.md](RECOVERY-AND-RETENTION.md) is what happens to a lost second factor and to
@@ -252,10 +254,90 @@ be established by doing the five steps above and signing in once.
   opens them. Nothing leaves the machine.
 - With `IdentityAccess:Email:Enabled` unset or `false`, nothing is delivered either — a registration, invitation
   or confirmation writes an outbox message and an encrypted envelope and stops there.
-- **Real sending requires the separate, deliberate activation in [EMAIL-SETUP.md](EMAIL-SETUP.md)**: a provider
-  API key, a shared Data Protection key ring, a wrapping certificate, and `IdentityAccess:Email:Enabled=true` with
-  no `LocalDropPath`. None of that is set by running locally, and none of it should be pointed at a real mailbox
-  while trying things out.
+- With `IdentityAccess:Email:Provider=GmailSmtp`, messages really leave the machine through your Gmail account —
+  see [the section below](#sending-real-mail-through-gmail-smtp). It is never selected unless you name it.
+- **Deployment sending requires the separate, deliberate activation in [EMAIL-SETUP.md](EMAIL-SETUP.md)**: a
+  provider API key, a shared Data Protection key ring, a wrapping certificate, and `IdentityAccess:Email:Enabled=true`
+  with no `LocalDropPath`. None of that is set by running locally.
+
+## Sending real mail through Gmail SMTP
+
+The drop folder is the default because it cannot reach anybody. When you need to see a message arrive in a real
+inbox — how a client renders it, whether a link survives the trip — switch to Gmail SMTP. It is a development
+option, not a deployment one; [EMAIL-SETUP.md](EMAIL-SETUP.md#gmail-smtp--local-and-development-only) explains why.
+
+**Before you start**, in your own Google account: turn on 2-Step Verification, then create an app password at
+<https://myaccount.google.com/apppasswords>. Google shows it once, as 16 letters. That is the SMTP password; your
+normal Google password will be refused.
+
+**Switch.** Run these in a local terminal, not in a chat window, from the repository root. They write to this
+project's user secrets, outside the repository:
+
+```bash
+dotnet user-secrets --project src/AppHost remove "IdentityAccess:Email:LocalDropPath"
+```
+
+```bash
+dotnet user-secrets --project src/AppHost set "IdentityAccess:Email:Provider" "GmailSmtp"
+```
+
+```bash
+dotnet user-secrets --project src/AppHost set "IdentityAccess:Email:FromAddress" "you@gmail.com"
+```
+
+```bash
+dotnet user-secrets --project src/AppHost set "IdentityAccess:Email:Smtp:Host" "smtp.gmail.com"
+```
+
+```bash
+dotnet user-secrets --project src/AppHost set "IdentityAccess:Email:Smtp:Port" "587"
+```
+
+```bash
+dotnet user-secrets --project src/AppHost set "IdentityAccess:Email:Smtp:UseStartTls" "true"
+```
+
+```bash
+dotnet user-secrets --project src/AppHost set "IdentityAccess:Email:Smtp:Username" "you@gmail.com"
+```
+
+```bash
+dotnet user-secrets --project src/AppHost set "IdentityAccess:Email:Smtp:Password" "your-16-letter-app-password"
+```
+
+`IdentityAccess:Email:Enabled` is already `true` from the first run. `PublicOrigin` needs nothing: the app host
+fills in the frontend's origin for both processes. Set it only if links must point somewhere else:
+
+```bash
+dotnet user-secrets --project src/AppHost set "IdentityAccess:Email:PublicOrigin" "https://localhost:5173"
+```
+
+The same keys work as environment variables of the app host process, with `__` in place of `:` — for example
+`IdentityAccess__Email__Provider=GmailSmtp` and `IdentityAccess__Email__Smtp__Password=…`. The app host forwards
+them to the API and the worker.
+
+Restart `dotnet run --project src/AppHost`. What changes:
+
+- **The outbox worker starts.** Without a drop folder the web application no longer delivers in-process; the
+  `outboxworker` resource in the dashboard is the process that sends, through the same outbox, lease and retry
+  rules as a deployment. Its logs are where a refusal shows up.
+- **`FromAddress` must be the Gmail account or a verified alias.** Otherwise Gmail rewrites it to the account.
+- **The links point at `https://localhost:…`.** They open only on the machine running the app, so send to an
+  address you read on that machine.
+- **A retry can send twice.** SMTP has no idempotency key; a copy after an uncertain attempt carries the same
+  `Message-Id`.
+
+If start-up says `Identity email delivery is not configured`, a setting above is missing, `Enabled` is `false`, or
+`LocalDropPath` is still present — `GmailSmtp` and a drop folder together are refused rather than guessed between.
+
+**Switch back** to the folder by removing the provider. The next run fills in the drop path again:
+
+```bash
+dotnet user-secrets --project src/AppHost remove "IdentityAccess:Email:Provider"
+```
+
+The SMTP keys can stay; they are ignored unless `GmailSmtp` is selected. Remove the password when you no longer
+need it, and revoke the app password in your Google account.
 
 ## If nothing happens
 

@@ -27,6 +27,7 @@ internal static class LocalDevelopmentSetup
     private const string EmailEnabledKey = "IdentityAccess:Email:Enabled";
     private const string EmailFromAddressKey = "IdentityAccess:Email:FromAddress";
     private const string EmailDropPathKey = "IdentityAccess:Email:LocalDropPath";
+    private const string EmailProviderKey = "IdentityAccess:Email:Provider";
     private const string FingerprintVersionKey = "IdentityAccess:People:DocumentProtection:CurrentKeyVersion";
     private const string FingerprintKeyKey = "IdentityAccess:People:DocumentProtection:FingerprintKeys:1";
 
@@ -61,6 +62,13 @@ internal static class LocalDevelopmentSetup
             [FingerprintKeyKey] = () => Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
         };
 
+        // A developer who named a real provider asked for real delivery. Filling the drop path in behind them would
+        // contradict that choice, and the application refuses the combination, so the default is not offered.
+        var provider = builder.Configuration[EmailProviderKey];
+        var deliversToFolder = string.IsNullOrWhiteSpace(provider) ||
+            string.Equals(provider.Trim(), "LocalFolder", StringComparison.OrdinalIgnoreCase);
+        if (!deliversToFolder) defaults.Remove(EmailDropPathKey);
+
         var added = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var (key, produce) in defaults)
         {
@@ -74,7 +82,7 @@ internal static class LocalDevelopmentSetup
         }
 
         Directory.CreateDirectory(builder.Configuration[KeyRingPathKey]!);
-        Directory.CreateDirectory(builder.Configuration[EmailDropPathKey]!);
+        if (deliversToFolder) Directory.CreateDirectory(builder.Configuration[EmailDropPathKey]!);
 
         if (added.Count == 0) return;
         Persist(added);

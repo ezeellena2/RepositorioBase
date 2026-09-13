@@ -1,6 +1,6 @@
 # Configure identity email delivery
 
-Identity confirmation, invitations, invited-user confirmation, and generic sign-in notices use Resend's REST API. Local implementation and isolated tests are complete; external activation requires your Resend account, verified domain, API key, and deployment key configuration. No account, subscription, DNS record, credential, or real email is created by this change.
+Identity confirmation, invitations, invited-user confirmation, and generic sign-in notices use Resend's REST API in a deployment. Two local options exist beside it — a drop folder and Gmail SMTP, both described under [Development and isolated tests](#development-and-isolated-tests). Local implementation and isolated tests are complete; external activation requires your Resend account, verified domain, API key, and deployment key configuration. No account, subscription, DNS record, credential, or real email is created by this change.
 
 ## Activate delivery
 
@@ -54,13 +54,51 @@ Omitting `ApplicationName` in disabled Development preserves the previous Web de
 
 Delivery is disabled by default in Development. Aspire's local run starts OutboxWorker only when `IdentityAccess:Email:Enabled` is explicitly enabled. A directly started disabled worker has no polling service. Web may still create pending outbox intents; disabled delivery is not an assertion that mail was sent.
 
-`IdentityAccess__Email__LocalDropPath` is the third mode, and it belongs only to a developer's machine: with it
+`IdentityAccess__Email__LocalDropPath` is the local folder mode, and it belongs only to a developer's machine: with it
 set, messages are written to that folder as text files instead of being sent, no provider is contacted, and no API
 key is needed. It is refused outside an explicit `Development`, `Test` or `Testing` environment, and refused at
 start-up rather than at the first message — so a deployment cannot acquire it by accident. Do not set it here.
 [RUNNING-LOCALLY.md](RUNNING-LOCALLY.md#reading-the-mail-the-application-sends) is where it is documented.
 
-Automated tests use explicit in-memory sinks or fake HTTP transports and an isolated PostgreSQL database. They do not contact Resend or require a provider account. The generic-host test uses the same worker registration as the executable and delivers a seeded notice through its isolated sink.
+### Gmail SMTP — local and development only
+
+`IdentityAccess__Email__Provider=GmailSmtp` sends through Gmail's SMTP submission server with a Google app
+password, so a developer can receive real mail in a real inbox without a Resend account or a verified domain.
+[RUNNING-LOCALLY.md](RUNNING-LOCALLY.md#sending-real-mail-through-gmail-smtp) has the step-by-step switch.
+
+**It is not the recommended production default**, and nothing selects it unless you name it:
+
+- SMTP has no idempotency key. A retry after an uncertain answer — a connection lost after the message was handed
+  over — can deliver a second copy. The outbox message id is sent as the `Message-Id`, so the copies are
+  recognisably the same message, but the server does not refuse the second one the way Resend's key does.
+- The sender is a personal account. Gmail rewrites `From` to the authenticated account unless the address is a
+  verified "Send mail as" alias, applies personal sending limits, and offers no domain-level SPF/DKIM of your own.
+- A quota refusal is a `5xx` reply, so it is classified as permanent and the message is abandoned.
+
+| Setting | Required value |
+|---|---|
+| `IdentityAccess__Email__Enabled` | `true`; a named `GmailSmtp` provider with delivery disabled refuses to start |
+| `IdentityAccess__Email__Provider` | `GmailSmtp` |
+| `IdentityAccess__Email__FromAddress` | The Gmail address you authenticate as, or one of its verified aliases |
+| `IdentityAccess__Email__PublicOrigin` | As above; filled in by the app host locally |
+| `IdentityAccess__Email__Smtp__Host` | `smtp.gmail.com` |
+| `IdentityAccess__Email__Smtp__Port` | `587` with STARTTLS, or `465` with `UseStartTls=false` |
+| `IdentityAccess__Email__Smtp__UseStartTls` | `true` (default) upgrades with STARTTLS; `false` uses implicit TLS. There is no plaintext mode |
+| `IdentityAccess__Email__Smtp__Username` | The Gmail address |
+| `IdentityAccess__Email__Smtp__Password` | A Google app password (requires 2-Step Verification), supplied externally |
+
+`LocalDropPath` must be removed when `GmailSmtp` is selected: the combination is refused at start-up rather than
+silently writing files. Start-up also refuses a missing host, port, username, password, from-address or public
+origin with the same fixed `Identity email delivery is not configured.` message, which never includes a value.
+
+Failures are classified without keeping anything the server said: a `4xx` reply, a dropped session, a socket or
+stream error or the 20-second deadline is transient; a `5xx` reply, a refused credential, a TLS mode the server does
+not speak, or a missing STARTTLS/AUTH capability is permanent. The request fingerprint covers the provider, host,
+port, TLS mode, username, from-address, recipient, subject, body and a SHA-256 hash of the app password, so rotating
+the password or pointing at another account while a delivery is uncertain terminalizes it as `request_changed`.
+MailKit's protocol logger is never attached, so the AUTH exchange and message content are not written anywhere.
+
+Automated tests use explicit in-memory sinks or fake HTTP transports and an isolated PostgreSQL database. They do not contact Resend or require a provider account. The Gmail SMTP sender is tested through a recording SMTP transport and never contacts Google. The generic-host test uses the same worker registration as the executable and delivers a seeded notice through its isolated sink.
 
 ## Retry and delivery limits
 

@@ -50,11 +50,12 @@ var web = builder.AddProject<Projects.Web>(Services.WebApi)
 // A local drop folder is the exception: the web application delivers those itself, so that one process seals
 // the tokens and opens them. Starting this worker as well would mean sharing a key ring between two processes
 // to accomplish nothing a developer asked for.
+IResourceBuilder<ProjectResource>? worker = null;
 if (!builder.ExecutionContext.IsRunMode ||
     (builder.Configuration.GetValue<bool>("IdentityAccess:Email:Enabled") &&
      string.IsNullOrWhiteSpace(builder.Configuration["IdentityAccess:Email:LocalDropPath"])))
 {
-    builder.AddProject<Projects.OutboxWorker>(Services.OutboxWorker)
+    worker = builder.AddProject<Projects.OutboxWorker>(Services.OutboxWorker)
         .WithReference(databaseServer)
         .WaitFor(databaseServer)
         .WithHttpEndpoint(targetPort: 8080, name: "http")
@@ -73,11 +74,21 @@ if (!builder.ExecutionContext.IsRunMode ||
 // for a deployment; forwarding it here is what lets a local run deliver at all.
 void ForwardEmailSettings(EnvironmentCallbackContext context)
 {
-    foreach (var key in new[] { "Enabled", "FromAddress", "PublicOrigin", "LocalDropPath" })
+    foreach (var key in new[] { "Enabled", "Provider", "FromAddress", "PublicOrigin", "LocalDropPath" })
     {
         if (builder.Configuration[$"IdentityAccess:Email:{key}"] is { Length: > 0 } value)
         {
             context.EnvironmentVariables[$"IdentityAccess__Email__{key}"] = value;
+        }
+    }
+
+    // Both processes validate the same selection at start-up, so both receive the SMTP server — the web
+    // application would otherwise refuse to start over settings only the worker uses to send.
+    foreach (var key in new[] { "Host", "Port", "Username", "Password", "UseStartTls" })
+    {
+        if (builder.Configuration[$"IdentityAccess:Email:Smtp:{key}"] is { Length: > 0 } value)
+        {
+            context.EnvironmentVariables[$"IdentityAccess__Email__Smtp__{key}"] = value;
         }
     }
 
@@ -140,6 +151,9 @@ if (builder.ExecutionContext.IsRunMode)
     if (string.IsNullOrWhiteSpace(builder.Configuration["IdentityAccess:Email:PublicOrigin"]))
     {
         web.WithEnvironment("IdentityAccess__Email__PublicOrigin", frontend.GetEndpoint("https"));
+
+        // The worker is the process that renders the links when mail really leaves the machine.
+        worker?.WithEnvironment("IdentityAccess__Email__PublicOrigin", frontend.GetEndpoint("https"));
     }
 }
 #endif

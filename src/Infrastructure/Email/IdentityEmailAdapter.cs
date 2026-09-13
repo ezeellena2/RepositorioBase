@@ -10,11 +10,51 @@ using Microsoft.Extensions.Options;
 
 namespace CleanArchitecture.Infrastructure.Email;
 
+public enum IdentityEmailProvider
+{
+    LocalFolder,
+    Resend,
+    GmailSmtp
+}
+
+/// <summary>
+/// The SMTP submission server for <see cref="IdentityEmailProvider.GmailSmtp"/>. There is no plaintext mode: the
+/// connection is either upgraded with STARTTLS or encrypted from the first byte, because the password crosses it.
+/// </summary>
+public sealed class IdentitySmtpOptions
+{
+    public string? Host { get; set; }
+
+    public int? Port { get; set; }
+
+    public string? Username { get; set; }
+
+    /// <summary>A Google app password, supplied from user secrets or the environment and never persisted.</summary>
+    public string? Password { get; set; }
+
+    /// <summary><c>true</c> upgrades with STARTTLS (port 587); <c>false</c> uses implicit TLS (port 465).</summary>
+    public bool UseStartTls { get; set; } = true;
+
+    public bool IsValid() =>
+        !string.IsNullOrWhiteSpace(Host) && !Host.Any(char.IsWhiteSpace) &&
+        Port is > 0 and <= 65535 &&
+        !string.IsNullOrWhiteSpace(Username) &&
+        !string.IsNullOrWhiteSpace(Password);
+}
+
 public sealed class IdentityEmailOptions
 {
     public const string SectionName = "IdentityAccess:Email";
 
     public bool Enabled { get; set; }
+
+    /// <summary>
+    /// <c>LocalFolder</c>, <c>Resend</c> or <c>GmailSmtp</c>. Unset keeps the original selection: a local drop path
+    /// writes to a folder, and anything else goes to Resend.
+    /// </summary>
+    public string? Provider { get; set; }
+
+    public IdentitySmtpOptions Smtp { get; set; } = new();
 
     public string? ApiKey { get; set; }
 
@@ -35,10 +75,37 @@ public sealed class IdentityEmailOptions
     public static bool IsLocalEnvironment(Microsoft.Extensions.Hosting.IHostEnvironment environment) =>
         environment.IsDevelopment() || environment.IsEnvironment("Test") || environment.IsEnvironment("Testing");
 
+    /// <summary>
+    /// Which sender this configuration asks for. A named provider that contradicts the drop path — a real provider
+    /// with a folder still configured, or a folder provider without one — resolves to nothing rather than to a
+    /// guess, so a developer who switched to real delivery cannot keep writing files without noticing.
+    /// </summary>
+    public bool TryResolveProvider(out IdentityEmailProvider provider)
+    {
+        if (string.IsNullOrWhiteSpace(Provider))
+        {
+            provider = DeliversLocally ? IdentityEmailProvider.LocalFolder : IdentityEmailProvider.Resend;
+            return true;
+        }
+
+        // Names only: Enum.TryParse would also accept "2" or "LocalFolder, GmailSmtp".
+        var name = Enum.GetNames<IdentityEmailProvider>()
+            .FirstOrDefault(candidate => string.Equals(candidate, Provider.Trim(), StringComparison.OrdinalIgnoreCase));
+        provider = name is null ? default : Enum.Parse<IdentityEmailProvider>(name);
+        return name is not null && (provider == IdentityEmailProvider.LocalFolder) == DeliversLocally;
+    }
+
     // A local drop needs no credential, because there is no provider to authenticate to. Everything else is
     // still required: without a from-address and a public origin there is no usable link to write down.
     public bool IsValid() =>
-        (DeliversLocally || (!string.IsNullOrWhiteSpace(ApiKey) && !ApiKey.Any(char.IsWhiteSpace))) &&
+        TryResolveProvider(out var provider) &&
+        provider switch
+        {
+            IdentityEmailProvider.LocalFolder => true,
+            // Gmail is chosen deliberately, for real mail, so a disabled one is a mistake rather than a default.
+            IdentityEmailProvider.GmailSmtp => Enabled && Smtp.IsValid(),
+            _ => !string.IsNullOrWhiteSpace(ApiKey) && !ApiKey.Any(char.IsWhiteSpace)
+        } &&
         System.Net.Mail.MailAddress.TryCreate(FromAddress, out var from) && from.Address == FromAddress &&
         Uri.TryCreate(PublicOrigin, UriKind.Absolute, out var origin) && origin.Scheme == Uri.UriSchemeHttps &&
         string.IsNullOrEmpty(origin.UserInfo) && string.IsNullOrEmpty(origin.Query) && string.IsNullOrEmpty(origin.Fragment) && origin.AbsolutePath == "/";

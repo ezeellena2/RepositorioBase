@@ -190,14 +190,22 @@ public static class DependencyInjection
             ConnectTimeout = TimeSpan.FromSeconds(5),
             ActivityHeadersPropagator = null
         }) { Timeout = TimeSpan.FromSeconds(20) });
-        // A configured local drop selects the folder sender. It is chosen here rather than by a flag inside the
-        // adapter so that no code path can reach the provider with local settings, or the reverse.
+        builder.Services.AddSingleton<ISmtpMailTransport, MailKitSmtpTransport>();
+        // A configured local drop selects the folder sender, Provider=GmailSmtp the SMTP sender, and anything else
+        // Resend. It is chosen here rather than by a flag inside an adapter so that no code path can reach one
+        // provider with another's settings. A contradictory selection still gets a sender — the one its drop path
+        // implies — and that sender refuses at validation, before the dispatcher claims anything.
         builder.Services.AddScoped<IIdentityEmailSender>(provider =>
         {
             var emailOptions = provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<IdentityEmailOptions>>();
-            return emailOptions.Value.DeliversLocally
-                ? new LocalFolderEmailSender(emailOptions, builder.Environment)
-                : new IdentityEmailAdapter(emailOptions, provider.GetRequiredKeyedService<HttpClient>("identity-email"));
+            var selected = emailOptions.Value.TryResolveProvider(out var resolved) ? resolved
+                : emailOptions.Value.DeliversLocally ? IdentityEmailProvider.LocalFolder : IdentityEmailProvider.Resend;
+            return selected switch
+            {
+                IdentityEmailProvider.LocalFolder => new LocalFolderEmailSender(emailOptions, builder.Environment),
+                IdentityEmailProvider.GmailSmtp => new GmailSmtpEmailSender(emailOptions, provider.GetRequiredService<ISmtpMailTransport>()),
+                _ => new IdentityEmailAdapter(emailOptions, provider.GetRequiredKeyedService<HttpClient>("identity-email"))
+            };
         });
         builder.Services.AddSingleton<ISecureTokenGenerator, SecureTokenGenerator>();
         builder.Services.AddSingleton<ITokenHasher, VersionedTokenHasher>();
@@ -255,7 +263,9 @@ public static class DependencyInjection
             // deployment that inherited the setting by accident never starts at all.
             if (email.DeliversLocally && !IdentityEmailOptions.IsLocalEnvironment(environment))
                 throw new InvalidOperationException($"Local folder email delivery is not permitted in the {environment.EnvironmentName} environment.");
-            if ((environment.IsProduction() && !email.Enabled) || ((environment.IsProduction() || email.Enabled) && !email.IsValid()))
+            // A named provider is a deliberate choice, so it is checked even while delivery is disabled.
+            var validate = environment.IsProduction() || email.Enabled || !string.IsNullOrWhiteSpace(email.Provider);
+            if ((environment.IsProduction() && !email.Enabled) || (validate && !email.IsValid()))
                 throw new InvalidOperationException("Identity email delivery is not configured.");
             return Task.CompletedTask;
         }
