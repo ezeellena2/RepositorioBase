@@ -6,7 +6,8 @@ import Button from '@mui/material/Button';
 import FormControl from '@mui/material/FormControl';
 import InputLabel from '@mui/material/InputLabel';
 import Link from '@mui/material/Link';
-import NativeSelect from '@mui/material/NativeSelect';
+import MenuItem from '@mui/material/MenuItem';
+import Select from '@mui/material/Select';
 import Paper from '@mui/material/Paper';
 import Skeleton from '@mui/material/Skeleton';
 import Stack from '@mui/material/Stack';
@@ -31,6 +32,7 @@ const requiredField = { inputLabel: { required: false } };
 const DocumentType = 'DNI';
 const organizationRegisterPath = '/organizations/register';
 const disputeReasonId = 'dispute-reason';
+const disputeReasonLabelId = 'dispute-reason-label';
 const numericDocumentField = {
   ...requiredField,
   htmlInput: { inputMode: 'numeric', autoComplete: 'off' },
@@ -294,16 +296,19 @@ function DocumentDispute({ client, available, country, type }) {
           onChange={(event) => setClaimedNumber(event.target.value)}
         />
         <FormControl fullWidth>
-          <InputLabel htmlFor={disputeReasonId}>{t('identity:people.dispute.reason')}</InputLabel>
-          <NativeSelect
-            inputProps={{ id: disputeReasonId, name: disputeReasonId }}
+          <InputLabel id={disputeReasonLabelId} htmlFor={disputeReasonId}>{t('identity:people.dispute.reason')}</InputLabel>
+          <Select
+            labelId={disputeReasonLabelId}
+            id={disputeReasonId}
+            name={disputeReasonId}
+            label={t('identity:people.dispute.reason')}
             value={reasonCode}
             onChange={(event) => setReasonCode(event.target.value)}
           >
-            <option value={disputeReason.typedWrongAtSignup}>{t('identity:people.dispute.typedWrongAtSignup')}</option>
-            <option value={disputeReason.documentReissued}>{t('identity:people.dispute.documentReissued')}</option>
-            <option value={disputeReason.recordedByMistake}>{t('identity:people.dispute.recordedByMistake')}</option>
-          </NativeSelect>
+            <MenuItem value={disputeReason.typedWrongAtSignup}>{t('identity:people.dispute.typedWrongAtSignup')}</MenuItem>
+            <MenuItem value={disputeReason.documentReissued}>{t('identity:people.dispute.documentReissued')}</MenuItem>
+            <MenuItem value={disputeReason.recordedByMistake}>{t('identity:people.dispute.recordedByMistake')}</MenuItem>
+          </Select>
         </FormControl>
         {/* Outlined, not filled: the page's own action is saving the names below, and a correction that takes two
             parties and days of review is not the thing to press by reflex. */}

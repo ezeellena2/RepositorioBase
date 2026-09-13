@@ -11,14 +11,14 @@ Reconcile the partial MUI foundation, then migrate the shell, Home, Identity, an
 | Standard component vocabulary | Screens import MUI components directly. Do not create `Presentation.jsx`, named visual recipes, generic wrappers, or a parallel design system; stock components already solve these presentation needs. |
 | Minimal theme | Simplify the partial theme by removing custom neutral/action palettes, disabled ripples, zeroed shadows, overlays, and the `visual` extension. Use normal `createTheme({ colorSchemes, typography, palette })`; override only selected brand roles such as primary/error/success from `tokens.css`, plus the fonts. Do not import/copy mockup CSS, variables, gradients, radii, shadows, or transitions. |
 | Color mode | One MUI `ThemeProvider` with `CssBaseline` owns light/dark/system behavior and persistence. `ThemeToggle` uses MUI `useColorScheme`; visible/accessible `auto` maps to `system`. Delete the competing Pico `ThemeContext`. |
-| Semantic exceptions | Use stock `NativeSelect` with `InputLabel htmlFor` and original `id`/`name` for all five real selects. The only new adapter is `NativeDialog`: `forwardRef` over MUI System `Box component="dialog"`, preserving native `showModal()`/`close()` and close labels while its contents use direct MUI. It is behavioral, not a styling vocabulary; no MUI Modal portal replaces the native contract. |
+| Semantic exceptions | Selects use stock MUI `Select` (`InputLabel id` + `labelId`, original `id`/`name`, `MenuItem` options); the original `NativeSelect` choice was superseded on 2026-09-12 because its appearance was rejected. The only new adapter is `NativeDialog`: `forwardRef` over MUI System `Box component="dialog"`, preserving native `showModal()`/`close()` and close labels while its contents use direct MUI. It is behavioral, not a styling vocabulary; no MUI Modal portal replaces the native contract. |
 
 ## Direct Component Mapping
 
 | Existing pattern | MUI target |
 | --- | --- |
 | Shell/navigation | `AppBar`, `Toolbar`, `Container`, `Box`, `Link`, `IconButton` |
-| Forms/actions | `TextField`, `FormControl`, `InputLabel`, `NativeSelect`, `Checkbox`, `FormControlLabel`, `Button`, `Stack` |
+| Forms/actions | `TextField`, `FormControl`, `InputLabel`, `Select`, `MenuItem`, `Checkbox`, `FormControlLabel`, `Button`, `Stack` |
 | Page composition | `Typography`, `Card`/`Paper`, `Container`, `Stack`, `Grid`, `Box` using ordinary theme spacing |
 | Collections/data | `List`, `ListItem`, `Table`, `TableHead`, `TableBody`, `TableRow`, `TableCell` with asserted `scope="col"` |
 | Feedback | `Alert` with retained alert role; `Typography`/`Box` with retained status or busy role |

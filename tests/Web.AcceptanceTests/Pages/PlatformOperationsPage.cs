@@ -170,7 +170,8 @@ public sealed class PlatformOperationsPage(IPage page) : BasePage(page)
     public async Task SuspendAsync(string slug, string reason)
     {
         await Page.GetByRole(AriaRole.Button, new() { Name = $"Suspend {slug}" }).ClickAsync();
-        await Page.SelectOptionAsync("#platform-suspension-reason", reason);
+        await Page.ClickAsync("#platform-suspension-reason");
+        await Page.ClickAsync($"[role='option'][data-value='{reason}']");
         var response = await Page.RunAndWaitForResponseAsync(
             () => Page.GetByRole(AriaRole.Button, new() { Name = "Confirm suspension" }).ClickAsync(),
             candidate => candidate.Url.Contains("/suspend", StringComparison.Ordinal));
@@ -210,7 +211,7 @@ public sealed class PlatformOperationsPage(IPage page) : BasePage(page)
                 .ShouldBe(0, $"the panel must offer no {forbidden} control.");
         }
 
-        (await Page.Locator("select#platform-tenant, input[name='tenantId']").CountAsync())
+        (await Page.Locator("#platform-tenant, input[name='tenantId']").CountAsync())
             .ShouldBe(0, "the acting tenant comes from the session, never from the panel.");
     }
 
@@ -276,7 +277,8 @@ public sealed class PlatformIdentitiesPage(IPage page) : BasePage(page)
     {
         await Page.GetByRole(AriaRole.Button, new() { Name = $"Suspend {address}" }).ClickAsync();
         await Assertions.Expect(SuspensionForm).ToBeVisibleAsync();
-        await Page.SelectOptionAsync("#platform-identity-suspension-reason", reason);
+        await Page.ClickAsync("#platform-identity-suspension-reason");
+        await Page.ClickAsync($"[role='option'][data-value='{reason}']");
     }
 
     public async Task ConfirmSuspensionAsync()

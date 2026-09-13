@@ -32,7 +32,6 @@ import Drawer from '@mui/material/Drawer';
 import FormControl from '@mui/material/FormControl';
 import InputAdornment from '@mui/material/InputAdornment';
 import InputLabel from '@mui/material/InputLabel';
-import NativeSelect from '@mui/material/NativeSelect';
 import OutlinedInput from '@mui/material/OutlinedInput';
 import IconButton from '@mui/material/IconButton';
 import List from '@mui/material/List';
@@ -43,6 +42,7 @@ import ListItemText from '@mui/material/ListItemText';
 import Menu from '@mui/material/Menu';
 import MenuItem from '@mui/material/MenuItem';
 import Popper from '@mui/material/Popper';
+import Select from '@mui/material/Select';
 import Stack from '@mui/material/Stack';
 import Toolbar from '@mui/material/Toolbar';
 import Tooltip from '@mui/material/Tooltip';
@@ -103,6 +103,7 @@ const hideAtWide = (theme) => ({ [theme.breakpoints.up('md')]: { display: 'none'
  */
 const switcherTrigger = { maxWidth: drawerWidth };
 const languageInputProps = { id: 'shell-language', name: 'language' };
+const languageLabelId = 'shell-language-label';
 const languageFieldIds = { language: languageInputProps.id };
 const languageControlSize = 'small';
 const languageAdornment = (
@@ -125,11 +126,15 @@ function LanguageSelector() {
   return (
     <>
       <FormControl size={languageControlSize} sx={{ minWidth: 96, flexShrink: 0 }}>
-        <InputLabel htmlFor={languageInputProps.id} sx={visuallyHidden}>{t('language.label')}</InputLabel>
-        <NativeSelect
+        <InputLabel id={languageLabelId} htmlFor={languageInputProps.id} sx={visuallyHidden}>
+          {t('language.label')}
+        </InputLabel>
+        <Select
+          labelId={languageLabelId}
+          id={languageInputProps.id}
+          name={languageInputProps.name}
           input={<OutlinedInput startAdornment={languageAdornment} />}
-          inputProps={{
-            ...languageInputProps,
+          SelectDisplayProps={{
             'aria-busy': identity.pendingLanguage !== null ? true : undefined,
           }}
           value={displayedLanguage}
@@ -139,9 +144,9 @@ function LanguageSelector() {
           }}
         >
           {supportedLanguages.map((language) => (
-            <option key={language} value={language}>{t(`language.${language}`)}</option>
+            <MenuItem key={language} value={language}>{t(`language.${language}`)}</MenuItem>
           ))}
-        </NativeSelect>
+        </Select>
       </FormControl>
       {identity.languageProblem !== null && (
         <Box sx={{ position: 'fixed', left: '50%', bottom: 24, zIndex: 'snackbar', transform: 'translateX(-50%)' }}>

@@ -210,9 +210,10 @@ describe('Spanish system presentation', () => {
     expect(screen.getByText('Activa (propietario)')).toBeVisible();
     expect(screen.getByText('Verificado')).toBeVisible();
     await userEvent.click(screen.getByRole('button', { name: 'Suspender acme-1' }));
-    expect(screen.getByRole('option', { name: 'Incumplimiento de políticas' })).toHaveValue('PolicyViolation');
-    await userEvent.selectOptions(screen.getByLabelText('Motivo'), 'BillingHold');
-    expect(screen.getByLabelText('Motivo')).toHaveValue('BillingHold');
+    await userEvent.click(screen.getByRole('combobox', { name: 'Motivo' }));
+    expect(screen.getByRole('option', { name: 'Incumplimiento de políticas' })).toHaveAttribute('data-value', 'PolicyViolation');
+    await userEvent.click(screen.getByRole('option', { name: 'Bloqueo por facturación' }));
+    expect(screen.getByRole('combobox', { name: 'Motivo' })).toHaveTextContent('Bloqueo por facturación');
   });
 
   it('localizes account state and the separate identity suspension reason picker', async () => {
@@ -220,7 +221,8 @@ describe('Spanish system presentation', () => {
     show(PlatformIdentitiesPage, platformContext());
     expect(await screen.findByText('Desactivada por su titular')).toBeVisible();
     await userEvent.click(screen.getByRole('button', { name: 'Suspender a person@example.test' }));
-    expect(screen.getByRole('option', { name: 'Solicitud del operador' })).toHaveValue('OperatorRequest');
+    await userEvent.click(document.getElementById('platform-identity-suspension-reason'));
+    expect(screen.getByRole('option', { name: 'Solicitud del operador' })).toHaveAttribute('data-value', 'OperatorRequest');
   });
 
   it('localizes retention policy values and receipt time while preserving operator data and durations', async () => {

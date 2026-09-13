@@ -70,10 +70,10 @@ describe('development pseudo-language startup override', () => {
     await screen.findByRole('link', { name: pseudoAccessLabel });
     const selector = screen.getByRole('combobox');
     expect(isPseudoLanguageOverrideActive()).toBe(true);
-    expect(selector).toBeDisabled();
-    expect(selector).toHaveValue(sourceLanguage);
-    expect([...selector.options].map((option) => option.value)).toEqual(supportedLanguages);
-    expect([...selector.options].map((option) => option.value)).not.toContain(PSEUDO_LANGUAGE);
+    expect(selector).toHaveAttribute('aria-disabled', 'true');
+    expect(selector).toHaveTextContent(i18n.t(`language.${sourceLanguage}`));
+    expect(document.querySelector('input[name="language"]')).toHaveValue(sourceLanguage);
+    expect(supportedLanguages).not.toContain(PSEUDO_LANGUAGE);
 
     await userEvent.click(screen.getByTestId('request-language-change'));
 

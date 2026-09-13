@@ -34,13 +34,15 @@ Screens MUST use MUI directly for Button, TextField, Card/Paper, AppBar, Contain
 
 #### Scenario: Semantic adapter has a justified boundary
 
-- GIVEN contract requires a native select or dialog lifecycle
+- GIVEN contract requires a native dialog lifecycle
 - WHEN the screen is migrated
 - THEN a thin adapter preserves that contract without recreating MUI
 
 ### Requirement: Semantic and locator contract preservation
 
-The migration MUST preserve DOM/test contracts: five selects remain native <select> elements; submit buttons retain type and IDs; table headers retain scope="col"; roles, labels, names, headings, lists, and definition lists remain queryable.
+The migration MUST preserve DOM/test contracts: selects are MUI `Select` comboboxes named by their label, keeping their `id` on the combobox, their `name` on the hidden value input and each option's invariant value as `data-value`; submit buttons retain type and IDs; table headers retain scope="col"; roles, labels, names, headings, lists, and definition lists remain queryable.
+
+> **Amendment (2026-09-12):** the original contract kept five native `<select>` elements. Product rejected their appearance, so selects move to styled MUI `Select`. Tests and page objects open the combobox and choose the option instead of calling native select APIs.
 
 #### Scenario: Form and table semantics survive
 

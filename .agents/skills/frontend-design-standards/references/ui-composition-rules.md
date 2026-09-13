@@ -254,8 +254,30 @@ public auth cards, where the card *is* the form and a full-width button is the c
 
 Preserve every field's `id`, `name`, label, `type`, `autoComplete`, `required` and `disabled` expression.
 Required `TextField` controls keep `slotProps={{ inputLabel: { required: false } }}` so MUI does not append an
-asterisk to the accessible label. Native selects remain `FormControl` + `InputLabel htmlFor` + `NativeSelect
-inputProps={{ id, name }}`.
+asterisk to the accessible label.
+
+Selects are styled MUI `Select` controls; `NativeSelect` and bare `<select>` are not used. Keep the field's `id`,
+`name` and label, and pass `label` so the outlined notch fits it:
+
+```jsx
+<FormControl fullWidth>
+  <InputLabel id="dispute-reason-label" htmlFor="dispute-reason">{t('people.dispute.reason')}</InputLabel>
+  <Select
+    labelId="dispute-reason-label"
+    id="dispute-reason"
+    name="dispute-reason"
+    label={t('people.dispute.reason')}
+    value={reasonCode}
+    onChange={(event) => setReasonCode(event.target.value)}
+  >
+    <MenuItem value="TypedWrongAtSignup">{t('people.dispute.typedWrongAtSignup')}</MenuItem>
+  </Select>
+</FormControl>
+```
+
+The `id` lands on the `combobox` and names it through `labelId`; `name` lands on the hidden value input; each
+`MenuItem` exposes its invariant value as `data-value`. Tests open the combobox and click the option by its
+translated name, and page objects click `[role='option'][data-value='…']` so a locator never reads copy.
 
 Keep destructive confirmations inline when they are inline today. Invitation withdrawal and organization
 ownership transfer retain `window.confirm` until separately authorized; do not migrate them to the dormant

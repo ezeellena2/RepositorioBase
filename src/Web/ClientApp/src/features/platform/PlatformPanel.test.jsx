@@ -196,7 +196,8 @@ describe('platform panel', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Suspend acme-1' }));
     expect(suspensions).toHaveLength(0);
 
-    await userEvent.selectOptions(screen.getByLabelText('Reason'), 'SecurityIncident');
+    await userEvent.click(screen.getByRole('combobox', { name: 'Reason' }));
+    await userEvent.click(screen.getByRole('option', { name: 'Security incident' }));
     await userEvent.click(screen.getByRole('button', { name: 'Confirm suspension' }));
 
     await waitFor(() => expect(suspensions).toHaveLength(1));

@@ -37,7 +37,10 @@ not a copy change; a copy change is a change of its own, made in every supported
 
 - `TextField` with `required` **must** pass `slotProps={{ inputLabel: { required: false } }}` — MUI otherwise
   appends `" *"` to the label and renames the field.
-- Native `<select>` stays native (`FormControl` + `InputLabel htmlFor` + `NativeSelect inputProps={{ id, name }}`).
+- Selects are styled MUI `Select`, never `NativeSelect` or a bare `<select>`: `FormControl` + `InputLabel id htmlFor`
+  + `Select labelId id name label` with `MenuItem` options. The `id` lands on the `combobox`, `name` on its hidden
+  value input, and each option carries its invariant value as `data-value`. Tests open the combobox and click the
+  option (`getByRole('option')`, or `[role='option'][data-value='…']` in page objects).
 - Native `<dialog>` keeps its lifecycle through `src/components/NativeDialog.jsx`; do not swap in MUI `Dialog`.
 - `MuiButton` sets `textTransform: 'none'` in the theme on purpose: a tenant's own name is rendered on a button
   and an unchanged page object reads that text back and compares it ordinally.

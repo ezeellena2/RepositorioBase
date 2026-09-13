@@ -26,7 +26,7 @@ Read the [UI composition rules](references/ui-composition-rules.md) completely b
 - Preserve every route, API, permission, security, MFA/proof, error, retry, confirmation and state-transition
   contract. Restyling never changes `id`, `name`, `data-testid`, `role`, label/accessibility text, heading level,
   `type`, `autoComplete`, `required`, `disabled` or existing `aria-*` relationships.
-- Preserve required-label suppression, native-select association and `MuiButton.textTransform: 'none'` exactly as
+- Preserve required-label suppression, the labelled MUI `Select` contract and `MuiButton.textTransform: 'none'` exactly as
   detailed in the reference. Invitation withdrawal and ownership transfer keep `window.confirm`; do not migrate
   them to dormant `NativeDialog` or MUI `Dialog` without separate authorization.
 - Load `.agents/skills/localization-standards/SKILL.md` for every human-readable or accessibility string and use

@@ -12,15 +12,20 @@ vi.mock('./AppRoutes', () => {
   return { default: [{ path: '/', element: <TablePagination component={paginationComponent} count={0} page={0} rowsPerPage={10} onPageChange={() => {}} /> }] };
 });
 
+async function chooseShellLanguage(label, option) {
+  await userEvent.click(screen.getByRole('combobox', { name: label }));
+  await userEvent.click(screen.getByRole('option', { name: option }));
+}
+
 describe('localized application theme', () => {
   it('updates MUI component copy with the shell language and switches back to English', async () => {
     server.use(antiforgery(), contextIs(null));
     render(<MemoryRouter><App /></MemoryRouter>);
     await screen.findByRole('link', { name: 'Log in' });
     expect(screen.getByText('Rows per page:')).toBeVisible();
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Language' }), 'es');
+    await chooseShellLanguage('Language', 'Español');
     expect(screen.getByText('Filas por página:')).toBeVisible();
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Idioma' }), 'en');
+    await chooseShellLanguage('Idioma', 'English');
     expect(screen.getByText('Rows per page:')).toBeVisible();
   });
 });

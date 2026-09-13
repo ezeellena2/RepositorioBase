@@ -10,7 +10,8 @@ import FormControl from '@mui/material/FormControl';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import InputLabel from '@mui/material/InputLabel';
 import LinearProgress from '@mui/material/LinearProgress';
-import NativeSelect from '@mui/material/NativeSelect';
+import MenuItem from '@mui/material/MenuItem';
+import Select from '@mui/material/Select';
 import Paper from '@mui/material/Paper';
 import Skeleton from '@mui/material/Skeleton';
 import Stack from '@mui/material/Stack';
@@ -41,7 +42,7 @@ const actionKinds = { suspend: 'suspend', reactivate: 'reactivate' };
 const identitiesHeadingId = 'platform-identities-heading';
 const identitiesStepUpInputId = 'platform-identities-step-up';
 const suspensionReasonInputId = 'platform-identity-suspension-reason';
-const suspensionReasonInputProps = { id: suspensionReasonInputId };
+const suspensionReasonLabelId = 'platform-identity-suspension-reason-label';
 const outlinedSubmitVariant = 'outlined';
 const readPermission = 'platform.identities.read';
 
@@ -354,14 +355,16 @@ export function PlatformIdentitiesPage() {
                 is asked, so only the weight is ours to choose. */}
             <Typography component="h2" variant="subtitle1">{t('identities.suspension.prompt', { email: pending.subject })}</Typography>
             <FormControl fullWidth>
-              <InputLabel htmlFor={suspensionReasonInputId}>{t('identities.suspension.reason')}</InputLabel>
-              <NativeSelect
-                inputProps={suspensionReasonInputProps}
+              <InputLabel id={suspensionReasonLabelId} htmlFor={suspensionReasonInputId}>{t('identities.suspension.reason')}</InputLabel>
+              <Select
+                labelId={suspensionReasonLabelId}
+                id={suspensionReasonInputId}
+                label={t('identities.suspension.reason')}
                 value={reason}
                 onChange={(event) => setReason(event.target.value)}
               >
-                {SUSPENSION_REASONS.map((value) => <option key={value} value={value}>{t(`enums:identitySuspensionReason.${value}`)}</option>)}
-              </NativeSelect>
+                {SUSPENSION_REASONS.map((value) => <MenuItem key={value} value={value}>{t(`enums:identitySuspensionReason.${value}`)}</MenuItem>)}
+              </Select>
             </FormControl>
             <Stack direction="row" spacing={1} useFlexGap sx={buttons}>
               <Button type="submit" variant="contained" color="error" disabled={isBusy}>{t('identities.suspension.confirm')}</Button>

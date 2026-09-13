@@ -12,8 +12,8 @@ public sealed class LocalizationPage(IPage page) : BasePage(page)
     public async Task ChooseLanguageAsync(string language)
     {
         text = LocalizationText.Load(language);
-        await Page.GetByRole(AriaRole.Combobox, new() { Name = text.SourceLanguageLabel, Exact = true })
-            .SelectOptionAsync(new SelectOptionValue { Label = text.TargetAutonym });
+        await Page.GetByRole(AriaRole.Combobox, new() { Name = text.SourceLanguageLabel, Exact = true }).ClickAsync();
+        await Page.GetByRole(AriaRole.Option, new() { Name = text.TargetAutonym, Exact = true }).ClickAsync();
         await Assertions.Expect(Page.Locator("html")).ToHaveAttributeAsync("lang", text.Language);
         var signIn = Page.GetByRole(AriaRole.Link, new() { Name = text.SignInLink, Exact = true });
         var register = Page.GetByRole(AriaRole.Link, new() { Name = text.RegisterLink, Exact = true });
@@ -65,7 +65,8 @@ public sealed class LocalizationPage(IPage page) : BasePage(page)
         await Assertions.Expect(Page.GetByRole(AriaRole.Heading, new() { Level = 1 })).ToHaveTextAsync(text.AccessTitle);
         await Assertions.Expect(Page.GetByText(text.NoneSelected, new() { Exact = true })).ToBeVisibleAsync();
         await Assertions.Expect(Page.GetByRole(AriaRole.Combobox, new() { Name = text.TargetLanguageLabel, Exact = true }))
-            .ToHaveValueAsync(text.Language);
+            .ToBeVisibleAsync();
+        await Assertions.Expect(Page.Locator("input[name='language']")).ToHaveValueAsync(text.Language);
         await Assertions.Expect(Page.Locator("body")).Not.ToContainTextAsync(
             new Regex(@"\b(?:common|identity|platform|errors|enums):[\w.]+|\b(?:navigation|context|login|permissions|roles\.system)\.[\w.]+"));
     }

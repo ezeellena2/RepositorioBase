@@ -6,7 +6,8 @@ import userEvent from '@testing-library/user-event';
 import { delay, http } from 'msw';
 import FormControl from '@mui/material/FormControl';
 import InputLabel from '@mui/material/InputLabel';
-import NativeSelect from '@mui/material/NativeSelect';
+import MenuItem from '@mui/material/MenuItem';
+import Select from '@mui/material/Select';
 import { ThemeProvider as MaterialThemeProvider } from '@mui/material/styles';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
@@ -85,21 +86,37 @@ describe('Material UI visual foundation', () => {
     expect(appTheme.colorSchemes.dark).toBeUndefined();
   });
 
-  it('uses stock NativeSelect with an associated native select element', () => {
+  /**
+   * Selects are styled MUI `Select` controls, not native ones. What a test or a journey relies on is pinned here:
+   * the label names the combobox, the `id` lands on it, the `name` carries the value on a hidden input, and every
+   * option exposes its invariant value as `data-value`, so a locator never has to read translated text.
+   */
+  it('uses stock Select with a labelled combobox, a named value input and valued options', async () => {
     renderWithMui(createElement(
       FormControl,
       null,
-      createElement(InputLabel, { htmlFor: 'future-native-select' }, 'Future native select'),
+      createElement(InputLabel, { id: 'future-select-label', htmlFor: 'future-select' }, 'Future select'),
       createElement(
-        NativeSelect,
-        { inputProps: { id: 'future-native-select', name: 'future-native-select' } },
-        createElement('option', { value: 'one' }, 'One'),
+        Select,
+        { labelId: 'future-select-label', id: 'future-select', name: 'future-select', label: 'Future select', value: 'one', onChange: () => {} },
+        createElement(MenuItem, { value: 'one' }, 'One'),
+        createElement(MenuItem, { value: 'two' }, 'Two'),
       ),
     ));
 
-    const select = screen.getByLabelText('Future native select');
-    expect(select.tagName).toBe('SELECT');
-    expect(select).toHaveAttribute('name', 'future-native-select');
+    const select = screen.getByRole('combobox', { name: 'Future select' });
+    expect(select).toHaveAttribute('id', 'future-select');
+    expect(document.querySelector('input[name="future-select"]')).toHaveValue('one');
+    await userEvent.click(select);
+    expect(screen.getByRole('option', { name: 'Two' })).toHaveAttribute('data-value', 'two');
+  });
+
+  it('renders no native select anywhere in the application', () => {
+    const sources = import.meta.glob(['../**/*.jsx', '!../**/*.test.jsx'], { query: '?raw', import: 'default', eager: true });
+    const offenders = Object.entries(sources)
+      .filter(([, source]) => /NativeSelect|<select[\s>]/.test(source))
+      .map(([path]) => path);
+    expect(offenders).toEqual([]);
   });
 
   it('forwards native dialog methods through a real dialog element', () => {

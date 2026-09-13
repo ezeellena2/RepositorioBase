@@ -9,7 +9,8 @@ import InputLabel from '@mui/material/InputLabel';
 import List from '@mui/material/List';
 import ListItem from '@mui/material/ListItem';
 import ListItemText from '@mui/material/ListItemText';
-import NativeSelect from '@mui/material/NativeSelect';
+import MenuItem from '@mui/material/MenuItem';
+import Select from '@mui/material/Select';
 import Paper from '@mui/material/Paper';
 import Skeleton from '@mui/material/Skeleton';
 import Stack from '@mui/material/Stack';
@@ -48,7 +49,7 @@ const platformAdministratorsManage = 'platform.admins.manage';
 const recordedOutcome = 'recorded';
 const platformStepUpInputId = 'platform-step-up';
 const suspensionReasonInputId = 'platform-suspension-reason';
-const suspensionReasonInputProps = { id: suspensionReasonInputId };
+const suspensionReasonLabelId = 'platform-suspension-reason-label';
 const outlinedVariant = 'outlined';
 
 /** Required without the asterisk MUI would add, which would rename the field for everything that reads its label. */
@@ -334,14 +335,16 @@ export function PlatformPanel() {
                 autoFocus
               />
               <FormControl fullWidth>
-                <InputLabel htmlFor={suspensionReasonInputId}>{t('suspension.reason')}</InputLabel>
-                <NativeSelect
-                  inputProps={suspensionReasonInputProps}
+                <InputLabel id={suspensionReasonLabelId} htmlFor={suspensionReasonInputId}>{t('suspension.reason')}</InputLabel>
+                <Select
+                  labelId={suspensionReasonLabelId}
+                  id={suspensionReasonInputId}
+                  label={t('suspension.reason')}
                   value={reason}
                   onChange={(event) => setReason(event.target.value)}
                 >
-                  {REASONS.map((value) => <option key={value} value={value}>{t(`enums:tenantSuspensionReason.${value}`)}</option>)}
-                </NativeSelect>
+                  {REASONS.map((value) => <MenuItem key={value} value={value}>{t(`enums:tenantSuspensionReason.${value}`)}</MenuItem>)}
+                </Select>
               </FormControl>
               <Stack direction="row" spacing={1} useFlexGap sx={buttons}>
                 <Button type="submit" variant="outlined" color="error" disabled={isBusy}>{t('suspension.confirm')}</Button>

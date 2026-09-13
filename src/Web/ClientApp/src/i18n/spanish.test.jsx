@@ -20,6 +20,11 @@ import { IdentityProvider } from '../features/identity/context/IdentityProvider'
 import { server } from '../test/server';
 import { antiforgery, contextIs, problem, signedInContext } from '../test/identityServer';
 
+async function chooseShellLanguage(label, option) {
+  await userEvent.click(screen.getByRole('combobox', { name: label }));
+  await userEvent.click(screen.getByRole('option', { name: option }));
+}
+
 describe('Spanish language selection', () => {
   it('negotiates preference, cookie, browser and default without writing an inferred cookie', () => {
     const browser = vi.spyOn(navigator, 'languages', 'get').mockReturnValue(['es-AR']);
@@ -57,12 +62,14 @@ describe('Spanish language selection', () => {
     render(<MemoryRouter><IdentityProvider><NavMenu /></IdentityProvider></MemoryRouter>);
     await screen.findByRole('link', { name: 'Log in' });
     const selector = screen.getByRole('combobox', { name: 'Language' });
-    expect(selector.tagName).toBe('SELECT');
-    expect(selector).toHaveAttribute('name', 'language');
-    expect(selector.labels[0]).toHaveAttribute('for', selector.id);
+    expect(selector).toHaveAttribute('id', 'shell-language');
+    expect(document.querySelector('input[name="language"]')).toHaveValue('en');
+    expect(document.getElementById('shell-language-label')).toHaveTextContent('Language');
+    await userEvent.click(selector);
     expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual(['English', 'Español']);
-    await userEvent.selectOptions(selector, 'es');
-    expect(screen.getByRole('combobox', { name: 'Idioma' })).toHaveValue('es');
+    await userEvent.click(screen.getByRole('option', { name: 'Español' }));
+    expect(screen.getByRole('combobox', { name: 'Idioma' })).toHaveTextContent('Español');
+    expect(document.querySelector('input[name="language"]')).toHaveValue('es');
     expect(document.documentElement.lang).toBe('es');
     expect(preferenceWrites).toBe(0);
   });
@@ -77,11 +84,12 @@ describe('Spanish language selection', () => {
     render(<MemoryRouter><IdentityProvider><NavMenu /></IdentityProvider></MemoryRouter>);
     await screen.findByRole('link', { name: 'Your access' });
 
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Language' }), 'es');
+    await chooseShellLanguage('Language', 'Español');
 
     const alert = await screen.findByRole('alert');
     await waitFor(() => expect(alert).toHaveFocus());
-    expect(screen.getByRole('combobox', { name: 'Language' })).toHaveValue('en');
+    expect(screen.getByRole('combobox', { name: 'Language' })).toHaveTextContent('English');
+    expect(document.querySelector('input[name="language"]')).toHaveValue('en');
     expect(i18n.resolvedLanguage).toBe('en');
     expect(document.documentElement.lang).toBe('en');
     expect(document.cookie).toContain('c=en|uic=en');
@@ -99,12 +107,13 @@ describe('Spanish language selection', () => {
     render(<MemoryRouter><IdentityProvider><NavMenu /></IdentityProvider></MemoryRouter>);
     await screen.findByRole('link', { name: 'Su acceso' });
 
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Idioma' }), 'en');
+    await chooseShellLanguage('Idioma', 'English');
 
     const alert = await screen.findByRole('alert');
     await waitFor(() => expect(alert).toHaveFocus());
     expect(alert).toHaveTextContent('Idioma: Este valor no es compatible.');
-    expect(screen.getByRole('combobox', { name: 'Idioma' })).toHaveValue('es');
+    expect(screen.getByRole('combobox', { name: 'Idioma' })).toHaveTextContent('Español');
+    expect(document.querySelector('input[name="language"]')).toHaveValue('es');
     expect(i18n.resolvedLanguage).toBe('es');
     expect(document.documentElement.lang).toBe('es');
     expect(document.body).not.toHaveTextContent(/unsupported_value/);
