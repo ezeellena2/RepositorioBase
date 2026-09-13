@@ -8,6 +8,7 @@ import {
   ChevronUp,
   CircleUserRound,
   ContactRound,
+  Globe,
   House,
   KeyRound,
   Link as LinkIcon,
@@ -29,8 +30,10 @@ import Collapse from '@mui/material/Collapse';
 import Divider from '@mui/material/Divider';
 import Drawer from '@mui/material/Drawer';
 import FormControl from '@mui/material/FormControl';
+import InputAdornment from '@mui/material/InputAdornment';
 import InputLabel from '@mui/material/InputLabel';
 import NativeSelect from '@mui/material/NativeSelect';
+import OutlinedInput from '@mui/material/OutlinedInput';
 import IconButton from '@mui/material/IconButton';
 import List from '@mui/material/List';
 import ListItem from '@mui/material/ListItem';
@@ -44,6 +47,7 @@ import Stack from '@mui/material/Stack';
 import Toolbar from '@mui/material/Toolbar';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
+import visuallyHidden from '@mui/utils/visuallyHidden';
 import { useIdentity } from '../features/identity/context/IdentityProvider';
 import { ProblemMessage } from '../features/identity/ProblemMessage';
 import { useSubmit } from '../features/identity/useSubmit';
@@ -101,7 +105,16 @@ const switcherTrigger = { maxWidth: drawerWidth };
 const languageInputProps = { id: 'shell-language', name: 'language' };
 const languageFieldIds = { language: languageInputProps.id };
 const languageControlSize = 'small';
+const languageAdornment = (
+  <InputAdornment position="start">
+    <Globe aria-hidden size={18} strokeWidth={2} />
+  </InputAdornment>
+);
 
+/**
+ * On the bar the globe already says what the control is, so the label is hidden from sight rather than floated over
+ * the chosen language. It stays in the DOM and bound by `htmlFor`, because it is still the select's accessible name.
+ */
 function LanguageSelector() {
   const identity = useIdentity();
   const { t, i18n } = useTranslation('common');
@@ -112,8 +125,9 @@ function LanguageSelector() {
   return (
     <>
       <FormControl size={languageControlSize} sx={{ minWidth: 96, flexShrink: 0 }}>
-        <InputLabel htmlFor={languageInputProps.id}>{t('language.label')}</InputLabel>
+        <InputLabel htmlFor={languageInputProps.id} sx={visuallyHidden}>{t('language.label')}</InputLabel>
         <NativeSelect
+          input={<OutlinedInput startAdornment={languageAdornment} />}
           inputProps={{
             ...languageInputProps,
             'aria-busy': identity.pendingLanguage !== null ? true : undefined,
