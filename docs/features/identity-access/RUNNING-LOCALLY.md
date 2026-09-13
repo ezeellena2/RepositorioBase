@@ -33,8 +33,9 @@ stored personal data.
 dotnet run --project src/AppHost
 ```
 
-The dashboard lists the API and the frontend. Open the frontend URL. That is the whole of it — there is no JSON to
-write first.
+The dashboard lists the API and the frontend. Open the frontend at `https://localhost:44447` — the port is fixed for
+an interactive run so an OAuth redirect URI registered once keeps working; set `WebFrontend:Port` to move it. That is
+the whole of it — there is no JSON to write first.
 
 On the first run the app host fills in the settings the application refuses to start without, and writes them to
 **this project's user secrets**, a file outside the repository:
@@ -206,28 +207,30 @@ none of it belongs in this repository.
    its **OAuth consent screen**. External user type, in Testing mode, with your own address added as a test user
    is enough for a local run; the only scopes needed are `openid` and `email`.
 2. Under **APIs & Services → Credentials**, create an **OAuth client ID** of type **Web application**.
-3. Give it the **authorized redirect URI** — exactly this, with your own frontend port from the Aspire dashboard:
+3. Give it the **authorized redirect URI** — exactly this:
 
    ```text
-   https://localhost:<port>/api/identity/external/google/callback
+   https://localhost:44447/api/identity/external/google/callback
    ```
 
-   It has to match character for character, including the scheme and the trailing path. There is no wildcard, and
-   a different port is a different URI, so add one line per port you actually use. The authorized JavaScript
-   origins list can stay empty: the browser never talks to Google from a script here.
+   It has to match character for character, including the scheme and the trailing path. There is no wildcard. An
+   interactive run always serves the frontend on port `44447` for exactly this reason; if you move it with
+   `WebFrontend:Port`, register the new port as well. The authorized JavaScript origins list can stay empty: the
+   browser never talks to Google from a script here.
 4. Google shows you a **client ID** and a **client secret**. Put them in this project's user secrets, which live
-   outside the repository — run these two commands in a terminal and paste each value at its prompt rather than
-   into a chat window or a file:
+   outside the repository — run these two commands in a terminal rather than pasting the values into a chat window
+   or a file:
 
    ```bash
-   dotnet user-secrets --project src/AppHost set "IdentityAccess:ExternalLogins:Google:ClientId"
+   dotnet user-secrets --project src/AppHost set "IdentityAccess:ExternalLogins:Google:ClientId" "YOUR_CLIENT_ID.apps.googleusercontent.com"
    ```
 
    ```bash
-   dotnet user-secrets --project src/AppHost set "IdentityAccess:ExternalLogins:Google:ClientSecret"
+   dotnet user-secrets --project src/AppHost set "IdentityAccess:ExternalLogins:Google:ClientSecret" "YOUR_CLIENT_SECRET"
    ```
 
-5. Restart `dotnet run --project src/AppHost`.
+   The app host forwards both to the API, and to nothing else.
+5. Restart `dotnet run --project src/AppHost` and open `https://localhost:44447`.
 
 Two settings and nothing else. `IdentityAccess:ExternalLogins:Google:Authority` exists so the automated tests can
 stand a controlled provider up in place of Google; leave it unset and the real `https://accounts.google.com` is

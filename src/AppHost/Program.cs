@@ -38,6 +38,8 @@ var web = builder.AddProject<Projects.Web>(Services.WebApi)
     // Only the web application records documents, so only it needs the fingerprint keys. Forwarding them to the
     // worker as well would spread key material to a process that has no use for it.
     .WithEnvironment(ForwardDocumentProtectionSettings)
+    // Only the web application runs the provider round trip, so only it receives the OAuth client.
+    .WithEnvironment(ForwardExternalLoginSettings)
     .WithUrlForEndpoint("http", url =>
     {
         url.DisplayText = "Scalar API Reference";
@@ -130,9 +132,29 @@ void ForwardDocumentProtectionSettings(EnvironmentCallbackContext context)
     }
 }
 
+// The Google client registered for a local run. Without forwarding, a developer who followed RUNNING-LOCALLY.md
+// would put both values in this host's user secrets and the web application would never see them: the provider
+// would stay unregistered and the sign-in button inert. An absent pair is absent all the way down.
+void ForwardExternalLoginSettings(EnvironmentCallbackContext context)
+{
+    foreach (var key in new[] { "ClientId", "ClientSecret" })
+    {
+        if (builder.Configuration[$"IdentityAccess:ExternalLogins:Google:{key}"] is { Length: > 0 } value)
+        {
+            context.EnvironmentVariables[$"IdentityAccess__ExternalLogins__Google__{key}"] = value;
+        }
+    }
+}
+
 #if (!UseApiOnly)
 if (builder.ExecutionContext.IsRunMode)
 {
+    // An OAuth provider registers the exact redirect URI, port included, so an interactive run keeps the frontend
+    // on one port instead of a new one per start. A harness that turns local setup off keeps a host-allocated
+    // port, because a fixed one would collide with a developer's own run. WebFrontend:Port overrides either.
+    var frontendPort = builder.Configuration.GetValue<int?>("WebFrontend:Port") ??
+        (builder.Configuration.GetValue("IdentityAccess:LocalSetup:Enabled", true) ? 44447 : (int?)null);
+
     var frontend = builder.AddJavaScriptApp(Services.WebFrontend, "./../Web/ClientApp")
         .WithRunScript("start")
         .WithReference(web)
@@ -141,7 +163,7 @@ if (builder.ExecutionContext.IsRunMode)
         // origin, session and antiforgery cookies are issued Secure, and the API compares the browser Origin
         // against the scheme it was reached on. Serving this over HTTP made the proxy hop change the scheme,
         // so every mutation from the SPA was refused as antiforgery_validation_failed.
-        .WithHttpsEndpoint(env: "PORT")
+        .WithHttpsEndpoint(port: frontendPort, env: "PORT")
         .WithExternalHttpEndpoints();
 
     // Locally, the origin the links point at is this frontend, and its port does not exist until the host has
