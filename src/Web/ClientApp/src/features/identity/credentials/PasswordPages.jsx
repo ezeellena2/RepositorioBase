@@ -9,14 +9,14 @@ import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
-import { toProblem } from '../api/apiTransport';
+import { toProblem } from '../../../api/apiTransport';
 import { useIdentity } from '../context/IdentityProvider';
 import {
   claimedFieldNames,
   fieldErrorText,
   selectFieldErrors,
-} from '../fieldErrors';
-import { ProblemMessage } from '../ProblemMessage';
+} from '../../../components/problemFields';
+import { ProblemMessage } from '../../../components/ProblemMessage';
 import { useFragmentToken } from '../useFragmentToken';
 import { useSubmit } from '../useSubmit';
 import { Trans, useTranslation } from '../../../i18n';

@@ -12,11 +12,10 @@ import {
   claimedFieldNames,
   clearFieldError,
   fieldErrorText,
-  organizationRegistrationFields,
   selectFieldErrors,
-  validateOrganizationRegistration,
-} from '../fieldErrors';
-import { ProblemMessage } from '../ProblemMessage';
+} from '../../../components/problemFields';
+import { organizationRegistrationFields, validateOrganizationRegistration } from '../fieldErrors';
+import { ProblemMessage } from '../../../components/ProblemMessage';
 import { useSubmit } from '../useSubmit';
 import { Trans, useTranslation } from '../../../i18n';
 

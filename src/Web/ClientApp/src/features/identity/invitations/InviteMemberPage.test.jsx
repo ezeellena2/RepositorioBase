@@ -35,11 +35,71 @@ const invitation = (overrides = {}) => ({
   ...overrides,
 });
 
+/** One offset page, exactly as the API answers it. */
+const pageOf = (items, { pageNumber = 1, pageSize = 25, totalCount = items.length } = {}) => {
+  const totalPages = totalCount === 0 ? 0 : Math.ceil(totalCount / pageSize);
+  return {
+    items,
+    pageNumber,
+    pageSize,
+    totalCount,
+    totalPages,
+    hasPreviousPage: pageNumber > 1 && totalPages > 0,
+    hasNextPage: pageNumber < totalPages,
+  };
+};
+
 const rolesAre = (items) =>
-  http.get(`/api/tenants/${TENANT}/roles`, () => HttpResponse.json({ items, nextCursor: null }));
+  http.get(`/api/tenants/${TENANT}/roles`, () => HttpResponse.json(pageOf(items)));
 
 const invitationsAre = (items) =>
-  http.get(`/api/tenants/${TENANT}/invitations`, () => HttpResponse.json({ items, nextCursor: null }));
+  http.get(`/api/tenants/${TENANT}/invitations`, () => HttpResponse.json(pageOf(items)));
+
+const pageAskedFor = (request) => {
+  const { searchParams } = new URL(request.url);
+  return { pageNumber: Number(searchParams.get('pageNumber')), pageSize: Number(searchParams.get('pageSize')) };
+};
+
+/** The API's side of the offers: every invitation served a page at a time, with each query string it was asked with. */
+const invitationsServed = (all) => {
+  const searches = [];
+  server.use(http.get(`/api/tenants/${TENANT}/invitations`, ({ request }) => {
+    searches.push(new URL(request.url).search);
+    const { pageNumber, pageSize } = pageAskedFor(request);
+    return HttpResponse.json(pageOf(
+      all.slice((pageNumber - 1) * pageSize, pageNumber * pageSize),
+      { pageNumber, pageSize, totalCount: all.length },
+    ));
+  }));
+  return searches;
+};
+
+/**
+ * Roles served at most 25 to a page, whatever page size was asked for, as a server with a smaller cap would. Each
+ * page number asked for is recorded, so a picker that stops after one page is caught.
+ */
+const rolesServedTwentyFiveAtATime = (all) => {
+  const pageNumbers = [];
+  server.use(http.get(`/api/tenants/${TENANT}/roles`, ({ request }) => {
+    const { pageNumber } = pageAskedFor(request);
+    pageNumbers.push(pageNumber);
+    return HttpResponse.json(pageOf(
+      all.slice((pageNumber - 1) * 25, pageNumber * 25),
+      { pageNumber, pageSize: 25, totalCount: all.length },
+    ));
+  }));
+  return pageNumbers;
+};
+
+const numberedRoles = (count) => Array.from({ length: count }, (_, index) => role({
+  roleId: `role-${index + 1}`,
+  name: `Role ${index + 1}`,
+}));
+
+const numberedInvitations = (count) => Array.from({ length: count }, (_, index) => invitation({
+  invitationId: `invitation-${index + 1}`,
+  normalizedEmail: `person${index + 1}@example.test`,
+}));
 
 beforeEach(() => {
   vi.spyOn(window, 'confirm').mockReturnValue(true);
@@ -134,7 +194,7 @@ describe('invite member page', () => {
     server.use(rolesAre([role()]));
     server.use(http.get(`/api/tenants/${TENANT}/invitations`, () => {
       listed += 1;
-      return HttpResponse.json({ items: [invitation()], nextCursor: null });
+      return HttpResponse.json(pageOf([invitation()]));
     }));
     server.use(http.post(`/api/tenants/${TENANT}/invitations/invitation-1/resend`, () => {
       resent.push('invitation-1');
@@ -231,7 +291,7 @@ describe('invite member page', () => {
       listed += 1;
       return listed === 1
         ? problem(500, 'internal_server_error', { traceId: 'trace-invitations' })
-        : HttpResponse.json({ items: [invitation()], nextCursor: null });
+        : HttpResponse.json(pageOf([invitation()]));
     }));
 
     const invitationSection = (await screen.findByRole('heading', { name: 'Invitations' })).parentElement;
@@ -244,31 +304,56 @@ describe('invite member page', () => {
     expect(listed).toBe(2);
   });
 
-  it('keeps stale invitations and the retry beside Show more when pagination fails', async () => {
-    let listed = 0;
-    renderPage();
+  it('reaches the 26th invitation by page number', async () => {
     server.use(rolesAre([role()]));
-    server.use(http.get(`/api/tenants/${TENANT}/invitations`, () => {
-      listed += 1;
-      if (listed === 1) return HttpResponse.json({ items: [invitation()], nextCursor: 'page-2' });
-      if (listed === 2) return problem(500, 'internal_server_error', { traceId: 'trace-invitation-page' });
-      return HttpResponse.json({
-        items: [invitation({ invitationId: 'invitation-2', normalizedEmail: 'otro@example.test' })],
-        nextCursor: null,
-      });
+    const searches = invitationsServed(numberedInvitations(26));
+    renderPage();
+
+    const invitationSection = (await screen.findByRole('heading', { name: 'Invitations' })).parentElement;
+    expect(await within(invitationSection).findByText('1–25 of 26')).toBeInTheDocument();
+    await userEvent.click(within(invitationSection).getByRole('button', { name: 'Go to next page' }));
+
+    expect(await within(invitationSection).findByText('26–26 of 26')).toBeInTheDocument();
+    expect(within(invitationSection).getByRole('button', { name: /Resend to person26@example\.test/ })).toBeInTheDocument();
+    expect(within(invitationSection).queryByRole('button', { name: /Resend to person1@example\.test/ })).toBeNull();
+    expect(searches).toEqual(['?pageNumber=1&pageSize=25', '?pageNumber=2&pageSize=25']);
+  });
+
+  /**
+   * A failed page change is answered beside the control that asked for it (AD15). The offers already on screen
+   * stay, and "Try again" asks for the page that was requested rather than going back to the first one.
+   */
+  it('keeps the loaded invitations and retries the requested page beside the page control when a page change fails', async () => {
+    const invitationPages = [];
+    const all = numberedInvitations(26);
+    server.use(rolesAre([role()]));
+    server.use(http.get(`/api/tenants/${TENANT}/invitations`, ({ request }) => {
+      const { pageNumber, pageSize } = pageAskedFor(request);
+      invitationPages.push(pageNumber);
+      if (invitationPages.length === 2) return problem(500, 'internal_server_error', { traceId: 'trace-invitation-page' });
+      return HttpResponse.json(pageOf(
+        all.slice((pageNumber - 1) * pageSize, pageNumber * pageSize),
+        { pageNumber, pageSize, totalCount: all.length },
+      ));
     }));
+    renderPage();
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Show more invitations' }));
+    const invitationSection = (await screen.findByRole('heading', { name: 'Invitations' })).parentElement;
+    await userEvent.click(await within(invitationSection).findByRole('button', { name: 'Go to next page' }));
 
-    const invitationSection = screen.getByRole('heading', { name: 'Invitations' }).parentElement;
-    expect(within(invitationSection).getByRole('button', { name: /Resend to nuevo@example.test/ })).toBeInTheDocument();
     const retry = await within(invitationSection).findByRole('button', { name: 'Try again' });
-    expect(within(invitationSection).getByRole('alert')).toHaveTextContent('Something went wrong. Try again.');
+    const alert = within(invitationSection).getByRole('alert');
+    expect(alert).toHaveTextContent('Something went wrong. Try again.');
+    expect(alert).toHaveTextContent('Reference: trace-invitation-page');
+    expect(within(invitationSection).getByRole('button', { name: /Resend to person1@example\.test/ })).toBeInTheDocument();
+    expect(within(invitationSection).getByText('1–25 of 26').compareDocumentPosition(alert))
+      .toBe(Node.DOCUMENT_POSITION_FOLLOWING);
 
     await userEvent.click(retry);
 
-    expect(await within(invitationSection).findByRole('button', { name: /Resend to otro@example.test/ })).toBeInTheDocument();
-    expect(within(invitationSection).getByRole('button', { name: /Resend to nuevo@example.test/ })).toBeInTheDocument();
+    expect(await within(invitationSection).findByRole('button', { name: /Resend to person26@example\.test/ })).toBeInTheDocument();
+    expect(within(invitationSection).queryByRole('alert')).toBeNull();
+    expect(invitationPages).toEqual([1, 2, 2]);
   });
 
   it('uses the shared network message for a manual resend catch and re-enables the action', async () => {
@@ -282,6 +367,68 @@ describe('invite member page', () => {
       'We could not reach the service. Check your connection. If you were saving something, refresh to see whether it was saved before trying again.',
     );
     expect(screen.getByRole('button', { name: /Resend to nuevo@example.test/ })).toBeEnabled();
+  });
+
+  /**
+   * The form offers roles by name, so it has to know every role the organization has, not the first page of them.
+   * Pages are read until the server says there is no next one, and not a request more.
+   */
+  it('offers every role when the organization has more roles than one page carries', async () => {
+    server.use(invitationsAre([]));
+    const rolePages = rolesServedTwentyFiveAtATime(numberedRoles(30));
+    renderPage();
+
+    const roles = await screen.findByRole('group', { name: 'Roles to offer' });
+    expect(await within(roles).findByLabelText('Role 30')).toBeInTheDocument();
+    expect(within(roles).getAllByRole('checkbox')).toHaveLength(30);
+    expect(rolePages).toEqual([1, 2]);
+  });
+
+  it('reports a role catalogue that never ends as an unreadable answer, with a retry and no role offered', async () => {
+    const rolePages = [];
+    server.use(invitationsAre([]));
+    server.use(http.get(`/api/tenants/${TENANT}/roles`, ({ request }) => {
+      const { pageNumber } = pageAskedFor(request);
+      rolePages.push(pageNumber);
+      return HttpResponse.json(pageOf(
+        [role({ roleId: `role-${pageNumber}`, name: `Role ${pageNumber}` })],
+        { pageNumber, pageSize: 25, totalCount: 10000 },
+      ));
+    }));
+    renderPage();
+
+    const roles = await screen.findByRole('group', { name: 'Roles to offer' });
+    expect(await within(roles).findByRole('alert')).toHaveTextContent('We could not read the answer.');
+    expect(rolePages).toHaveLength(100);
+    expect(rolePages.at(-1)).toBe(100);
+    expect(within(roles).getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+    expect(within(roles).queryAllByRole('checkbox')).toHaveLength(0);
+  });
+
+  it('reports a failed page of the role catalogue in the roles fieldset, and starts the walk again from page 1', async () => {
+    const rolePages = [];
+    const thirty = numberedRoles(30);
+    server.use(invitationsAre([]));
+    server.use(http.get(`/api/tenants/${TENANT}/roles`, ({ request }) => {
+      const { pageNumber } = pageAskedFor(request);
+      rolePages.push(pageNumber);
+      if (rolePages.length === 2) return HttpResponse.error();
+      return HttpResponse.json(pageOf(
+        thirty.slice((pageNumber - 1) * 25, pageNumber * 25),
+        { pageNumber, pageSize: 25, totalCount: thirty.length },
+      ));
+    }));
+    renderPage();
+
+    const roles = await screen.findByRole('group', { name: 'Roles to offer' });
+    expect(await within(roles).findByRole('alert')).toHaveTextContent('We could not reach the service.');
+    expect(within(roles).queryAllByRole('checkbox')).toHaveLength(0);
+    expect(rolePages).toEqual([1, 2]);
+
+    await userEvent.click(within(roles).getByRole('button', { name: 'Try again' }));
+
+    expect(await within(roles).findByLabelText('Role 30')).toBeInTheDocument();
+    expect(rolePages).toEqual([1, 2, 1, 2]);
   });
 
   /**

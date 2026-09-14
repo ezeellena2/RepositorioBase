@@ -1,3 +1,4 @@
+using CleanArchitecture.Application.Common.Models;
 using CleanArchitecture.Application.IdentityAccess.Roles;
 using CleanArchitecture.Domain.IdentityAccess.Tenants;
 using CleanArchitecture.Web.Endpoints;
@@ -57,23 +58,20 @@ internal static class RoleEndpoints
     private static async Task<IResult> Catalog(HttpContext context, ApiProblemDetailsMapper problems, ISender sender, Guid tenantId)
     {
         var result = await sender.Send(new GetPermissionCatalogQuery(TenantId.From(tenantId)), context.RequestAborted);
-        return result.IsSuccess
-            ? Results.Ok(result.Value!.Select(entry => new PermissionCatalogEntryResponse(entry.Code, entry.Grantable)).ToArray())
-            : problems.ToHttpResult(result.Error!);
+        return result.ToHttpResult(context, problems, catalog =>
+            Results.Ok(catalog.Select(entry => new PermissionCatalogEntryResponse(entry.Code, entry.Grantable)).ToArray()));
     }
 
-    private static async Task<IResult> List(HttpContext context, ApiProblemDetailsMapper problems, ISender sender, Guid tenantId, int? limit, string? cursor)
+    private static async Task<IResult> List(HttpContext context, ApiProblemDetailsMapper problems, ISender sender, Guid tenantId, int? pageNumber, int? pageSize)
     {
-        var result = await sender.Send(new ListRolesQuery(TenantId.From(tenantId), limit ?? 0, cursor), context.RequestAborted);
-        return result.IsSuccess
-            ? Results.Ok(new RolePageResponse(result.Value!.Items.Select(Describe).ToArray(), result.Value.NextCursor))
-            : problems.ToHttpResult(result.Error!);
+        var result = await sender.Send(new ListRolesQuery(TenantId.From(tenantId), PaginationQuery.From(pageNumber, pageSize)), context.RequestAborted);
+        return result.ToHttpResult(context, problems, page => Results.Ok(RolePageResponse.From(page, Describe)));
     }
 
     private static async Task<IResult> Get(HttpContext context, ApiProblemDetailsMapper problems, ISender sender, Guid tenantId, Guid roleId)
     {
         var result = await sender.Send(new GetRoleQuery(TenantId.From(tenantId), roleId), context.RequestAborted);
-        return result.IsSuccess ? Results.Ok(Describe(result.Value!)) : problems.ToHttpResult(result.Error!);
+        return result.ToHttpResult(context, problems, role => Results.Ok(Describe(role)));
     }
 
     private static async Task<IResult> Create(HttpContext context, IAntiforgery antiforgery, ApiProblemDetailsMapper problems, ISender sender, Guid tenantId, CreateRoleRequest body)
@@ -82,9 +80,8 @@ internal static class RoleEndpoints
         if (antiforgeryFailure is not null) return antiforgeryFailure;
 
         var result = await sender.Send(new CreateRoleCommand(TenantId.From(tenantId), body.Name, body.Permissions), context.RequestAborted);
-        return result.IsSuccess
-            ? Results.Created($"/api/tenants/{tenantId}/roles/{result.Value!.RoleId}", Describe(result.Value))
-            : problems.ToHttpResult(result.Error!);
+        return result.ToHttpResult(context, problems, role =>
+            Results.Created($"/api/tenants/{tenantId}/roles/{role.RoleId}", Describe(role)));
     }
 
     private static async Task<IResult> Update(HttpContext context, IAntiforgery antiforgery, ApiProblemDetailsMapper problems, ISender sender, Guid tenantId, Guid roleId, UpdateRoleRequest body)
@@ -93,7 +90,7 @@ internal static class RoleEndpoints
         if (antiforgeryFailure is not null) return antiforgeryFailure;
 
         var result = await sender.Send(new UpdateRoleCommand(TenantId.From(tenantId), roleId, body.Name, body.Permissions, body.Version), context.RequestAborted);
-        return result.IsSuccess ? Results.Ok(Describe(result.Value!)) : problems.ToHttpResult(result.Error!);
+        return result.ToHttpResult(context, problems, role => Results.Ok(Describe(role)));
     }
 
     private static async Task<IResult> Retire(HttpContext context, IAntiforgery antiforgery, ApiProblemDetailsMapper problems, ISender sender, Guid tenantId, Guid roleId, RetireRoleRequest body)
@@ -102,7 +99,7 @@ internal static class RoleEndpoints
         if (antiforgeryFailure is not null) return antiforgeryFailure;
 
         var result = await sender.Send(new RetireRoleCommand(TenantId.From(tenantId), roleId, body.Version), context.RequestAborted);
-        return result.IsSuccess ? Results.NoContent() : problems.ToHttpResult(result.Error!);
+        return result.ToHttpResult(context, problems);
     }
 
     private static RoleResponse Describe(RoleView role) =>
@@ -113,7 +110,13 @@ public sealed record PermissionCatalogEntryResponse(string Code, bool Grantable)
 
 public sealed record RoleResponse(Guid RoleId, string Name, bool IsSystem, bool IsRetired, IReadOnlyList<string> Permissions, string Version);
 
-public sealed record RolePageResponse(IReadOnlyList<RoleResponse> Items, string? NextCursor);
+public sealed record RolePageResponse(
+    IReadOnlyList<RoleResponse> Items, int PageNumber, int PageSize, int TotalCount, int TotalPages, bool HasPreviousPage, bool HasNextPage)
+{
+    public static RolePageResponse From(PaginatedList<RoleView> page, Func<RoleView, RoleResponse> describe) =>
+        new(page.Items.Select(describe).ToArray(), page.PageNumber, page.PageSize, page.TotalCount,
+            page.TotalPages, page.HasPreviousPage, page.HasNextPage);
+}
 
 public sealed record CreateRoleRequest(string? Name, IReadOnlyList<string>? Permissions);
 

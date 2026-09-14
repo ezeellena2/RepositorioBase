@@ -9,6 +9,7 @@ import { antiforgery, contextIs, signedInContext } from './test/identityServer';
 import { externalNavigation } from './features/identity/externalNavigation';
 
 const renderAt = (path) => render(<MemoryRouter initialEntries={[path]}><App /></MemoryRouter>);
+const emptyPage = { items: [], pageNumber: 1, pageSize: 25, totalCount: 0, totalPages: 0, hasPreviousPage: false, hasNextPage: false };
 
 /**
  * Every journey the SPEC declares has to be reachable from the router before Playwright is worth writing. A page
@@ -38,10 +39,10 @@ describe('identity routes', () => {
   ])('renders the protected route %s for a signed-in visitor', async (path, heading) => {
     server.use(antiforgery(), contextIs(signedInContext()));
     server.use(http.get('/api/identity/external', () => HttpResponse.json({ items: [], available: [] })));
-    server.use(http.get('/api/tenants/tenant-1/roles', () => HttpResponse.json({ items: [], nextCursor: null })));
+    server.use(http.get('/api/tenants/tenant-1/roles', () => HttpResponse.json(emptyPage)));
     server.use(http.get('/api/tenants/tenant-1/permission-catalog', () => HttpResponse.json([])));
-    server.use(http.get('/api/tenants/tenant-1/members', () => HttpResponse.json({ items: [], nextCursor: null })));
-    server.use(http.get('/api/tenants/tenant-1/invitations', () => HttpResponse.json({ items: [], nextCursor: null })));
+    server.use(http.get('/api/tenants/tenant-1/members', () => HttpResponse.json(emptyPage)));
+    server.use(http.get('/api/tenants/tenant-1/invitations', () => HttpResponse.json(emptyPage)));
     renderAt(path);
 
     expect(await screen.findByRole('heading', { name: heading })).toBeInTheDocument();

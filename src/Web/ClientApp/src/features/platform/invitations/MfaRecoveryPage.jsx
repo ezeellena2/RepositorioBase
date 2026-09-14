@@ -11,8 +11,8 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { useIdentity } from '../../identity/context/IdentityProvider';
 import { usePlatformClient } from './PlatformInvitationPages';
-import { fieldError, firstInvalid } from '../../identity/fieldErrors';
-import { ProblemMessage } from '../../identity/ProblemMessage';
+import { fieldError, firstInvalid } from '../../../components/problemFields';
+import { ProblemMessage } from '../../../components/ProblemMessage';
 import { useSubmit } from '../../identity/useSubmit';
 import { useTranslation } from '../../../i18n';
 

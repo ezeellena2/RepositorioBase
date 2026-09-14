@@ -1,3 +1,4 @@
+using CleanArchitecture.Application.Common.Models;
 using CleanArchitecture.Domain.IdentityAccess.Tenants;
 
 namespace CleanArchitecture.Application.IdentityAccess.Roles;
@@ -10,9 +11,6 @@ public sealed record RoleView(
     bool IsRetired,
     IReadOnlyList<string> Permissions,
     string Version);
-
-/// <summary>A page of roles, bounded by the caller's `limit` and continued by an opaque cursor.</summary>
-public sealed record RolePage(IReadOnlyList<RoleView> Items, string? NextCursor);
 
 /// <summary>
 /// One entry of the catalogue as this caller sees it: the code, and whether this caller could grant it. The
@@ -55,7 +53,8 @@ public sealed record RoleWriteResult(RoleWriteStatus Status, RoleView? Role);
 /// </summary>
 public interface IRoleAdministrationStore
 {
-    Task<RolePage> ListAsync(TenantId tenantId, int limit, string? cursor, CancellationToken cancellationToken);
+    /// <summary>One offset page of the tenant's roles, in a stable order that ends in the role's unique identifier.</summary>
+    Task<PaginatedList<RoleView>> ListAsync(TenantId tenantId, PaginationQuery pagination, CancellationToken cancellationToken);
 
     Task<RoleView?> FindAsync(TenantId tenantId, Guid roleId, CancellationToken cancellationToken);
 

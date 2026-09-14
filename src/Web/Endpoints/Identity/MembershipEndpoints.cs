@@ -1,3 +1,4 @@
+using CleanArchitecture.Application.Common.Models;
 using CleanArchitecture.Application.IdentityAccess.Members;
 using CleanArchitecture.Domain.IdentityAccess.Tenants;
 using CleanArchitecture.Web.Endpoints;
@@ -71,25 +72,20 @@ internal static class MembershipEndpoints
         if (antiforgeryFailure is not null) return antiforgeryFailure;
 
         var result = await sender.Send(new ChangeMemberStatusCommand(TenantId.From(tenantId), membershipId, change, body.Version), context.RequestAborted);
-        return result.IsSuccess ? Results.NoContent() : problems.ToHttpResult(result.Error!);
+        return result.ToHttpResult(context, problems);
     }
 
-    private static async Task<IResult> ListMembers(HttpContext context, ApiProblemDetailsMapper problems, ISender sender, Guid tenantId, int? limit, string? cursor)
+    private static async Task<IResult> ListMembers(HttpContext context, ApiProblemDetailsMapper problems, ISender sender, Guid tenantId, int? pageNumber, int? pageSize)
     {
-        var result = await sender.Send(new ListMembersQuery(TenantId.From(tenantId), limit ?? 0, cursor), context.RequestAborted);
-        return result.IsSuccess
-            ? Results.Ok(new MemberPageResponse(result.Value!.Items.Select(Describe).ToArray(), result.Value.NextCursor))
-            : problems.ToHttpResult(result.Error!);
+        var result = await sender.Send(new ListMembersQuery(TenantId.From(tenantId), PaginationQuery.From(pageNumber, pageSize)), context.RequestAborted);
+        return result.ToHttpResult(context, problems, page => Results.Ok(MemberPageResponse.From(page, Describe)));
     }
 
-    private static async Task<IResult> ListInvitations(HttpContext context, ApiProblemDetailsMapper problems, ISender sender, Guid tenantId, int? limit, string? cursor)
+    private static async Task<IResult> ListInvitations(HttpContext context, ApiProblemDetailsMapper problems, ISender sender, Guid tenantId, int? pageNumber, int? pageSize)
     {
-        var result = await sender.Send(new ListTenantInvitationsQuery(TenantId.From(tenantId), limit ?? 0, cursor), context.RequestAborted);
-        return result.IsSuccess
-            ? Results.Ok(new InvitationSummaryPageResponse(
-                result.Value!.Items.Select(item => new InvitationSummaryResponse(item.InvitationId, item.NormalizedEmail, item.Status, item.CreatedAt, item.ExpiresAt, item.RoleIds)).ToArray(),
-                result.Value.NextCursor))
-            : problems.ToHttpResult(result.Error!);
+        var result = await sender.Send(new ListTenantInvitationsQuery(TenantId.From(tenantId), PaginationQuery.From(pageNumber, pageSize)), context.RequestAborted);
+        return result.ToHttpResult(context, problems, page => Results.Ok(InvitationSummaryPageResponse.From(page, item =>
+            new InvitationSummaryResponse(item.InvitationId, item.NormalizedEmail, item.Status, item.CreatedAt, item.ExpiresAt, item.RoleIds))));
     }
 
     private static async Task<IResult> UpdateRoles(HttpContext context, IAntiforgery antiforgery, ApiProblemDetailsMapper problems, ISender sender, Guid tenantId, Guid membershipId, UpdateMemberRolesRequest body)
@@ -98,7 +94,7 @@ internal static class MembershipEndpoints
         if (antiforgeryFailure is not null) return antiforgeryFailure;
 
         var result = await sender.Send(new UpdateMemberRolesCommand(TenantId.From(tenantId), membershipId, body.RoleIds, body.Version), context.RequestAborted);
-        return result.IsSuccess ? Results.Ok(Describe(result.Value!)) : problems.ToHttpResult(result.Error!);
+        return result.ToHttpResult(context, problems, member => Results.Ok(Describe(member)));
     }
 
     private static async Task<IResult> Transfer(HttpContext context, IAntiforgery antiforgery, ApiProblemDetailsMapper problems, ISender sender, Guid tenantId, TransferOwnershipRequest body)
@@ -107,7 +103,7 @@ internal static class MembershipEndpoints
         if (antiforgeryFailure is not null) return antiforgeryFailure;
 
         var result = await sender.Send(new TransferOwnershipCommand(TenantId.From(tenantId), body.ToMembershipId, body.Version), context.RequestAborted);
-        return result.IsSuccess ? Results.NoContent() : problems.ToHttpResult(result.Error!);
+        return result.ToHttpResult(context, problems);
     }
 
     private static MemberResponse Describe(MemberView member) =>
@@ -124,7 +120,13 @@ public sealed record MemberResponse(
     bool IsOwner,
     string Version);
 
-public sealed record MemberPageResponse(IReadOnlyList<MemberResponse> Items, string? NextCursor);
+public sealed record MemberPageResponse(
+    IReadOnlyList<MemberResponse> Items, int PageNumber, int PageSize, int TotalCount, int TotalPages, bool HasPreviousPage, bool HasNextPage)
+{
+    public static MemberPageResponse From(PaginatedList<MemberView> page, Func<MemberView, MemberResponse> describe) =>
+        new(page.Items.Select(describe).ToArray(), page.PageNumber, page.PageSize, page.TotalCount,
+            page.TotalPages, page.HasPreviousPage, page.HasNextPage);
+}
 
 public sealed record InvitationSummaryResponse(
     Guid InvitationId,
@@ -134,7 +136,14 @@ public sealed record InvitationSummaryResponse(
     DateTimeOffset ExpiresAt,
     IReadOnlyList<Guid> RoleIds);
 
-public sealed record InvitationSummaryPageResponse(IReadOnlyList<InvitationSummaryResponse> Items, string? NextCursor);
+public sealed record InvitationSummaryPageResponse(
+    IReadOnlyList<InvitationSummaryResponse> Items, int PageNumber, int PageSize, int TotalCount, int TotalPages, bool HasPreviousPage, bool HasNextPage)
+{
+    public static InvitationSummaryPageResponse From(
+        PaginatedList<InvitationSummaryView> page, Func<InvitationSummaryView, InvitationSummaryResponse> describe) =>
+        new(page.Items.Select(describe).ToArray(), page.PageNumber, page.PageSize, page.TotalCount,
+            page.TotalPages, page.HasPreviousPage, page.HasNextPage);
+}
 
 public sealed record UpdateMemberRolesRequest(IReadOnlyList<Guid>? RoleIds, string? Version);
 

@@ -304,6 +304,32 @@ public sealed class RoleAdministrationTests : TestBase
             "the permission is gone on the next request, not at some later refresh");
     }
 
+    /// <summary>
+    /// A role list is one offset page: the page asked for, with the metadata a caller needs to reach the rest. A page
+    /// size outside 1–100 is clamped rather than refused, because it is a client bug and not a validation failure.
+    /// </summary>
+    [Test]
+    public async Task A_requested_role_page_carries_its_offset_metadata_and_clamps_the_page_size()
+    {
+        using var scenario = await OrganizationAsync();
+        await SeedRolesAsync(scenario, 29);
+        var path = $"/api/tenants/{scenario.TenantId.Value}/roles";
+
+        var second = await scenario.Owner.ReadAsync<System.Text.Json.JsonElement>($"{path}?pageNumber=2&pageSize=25");
+        PageMember(second, "totalCount").GetInt32().ShouldBe(30, "the system Owner role plus the 29 seeded ones");
+        PageMember(second, "pageNumber").GetInt32().ShouldBe(2);
+        PageMember(second, "pageSize").GetInt32().ShouldBe(25);
+        second.GetProperty("items").GetArrayLength().ShouldBe(5);
+
+        var zero = await scenario.Owner.ReadAsync<System.Text.Json.JsonElement>($"{path}?pageSize=0");
+        PageMember(zero, "pageSize").GetInt32().ShouldBe(1, "a page size of zero or less means one row");
+        zero.GetProperty("items").GetArrayLength().ShouldBe(1);
+
+        var huge = await scenario.Owner.ReadAsync<System.Text.Json.JsonElement>($"{path}?pageSize=500");
+        PageMember(huge, "pageSize").GetInt32().ShouldBe(100, "a page size above the bound is clamped, never a validation failure");
+        huge.GetProperty("items").GetArrayLength().ShouldBe(30);
+    }
+
     [Test]
     public async Task Read_scope_mismatches_are_native_absence_for_real_and_random_tenants()
     {
@@ -316,7 +342,7 @@ public sealed class RoleAdministrationTests : TestBase
             foreach (var path in new[]
             {
                 $"/api/tenants/{tenantId}/permission-catalog",
-                $"/api/tenants/{tenantId}/roles",
+                $"/api/tenants/{tenantId}/roles?pageNumber=1&pageSize=25",
                 $"/api/tenants/{tenantId}/roles/{roleId}"
             })
             {
@@ -332,9 +358,28 @@ public sealed class RoleAdministrationTests : TestBase
 
     private static async Task<OrganizationScenario> OrganizationAsync() => await OrganizationScenario.CreateAsync("roles");
 
+    private static async Task SeedRolesAsync(OrganizationScenario scenario, int count)
+    {
+        using var scope = FunctionalTestSetup.ScopeFactory.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var tenant = await context.Tenants.SingleAsync(candidate => candidate.Id == scenario.TenantId);
+        for (var index = 0; index < count; index++)
+        {
+            context.TenantRoles.Add(Role.Create(tenant, $"Seeded role {index:D2}"));
+        }
+
+        await context.SaveChangesAsync();
+    }
+
+    private static System.Text.Json.JsonElement PageMember(System.Text.Json.JsonElement page, string name)
+    {
+        page.TryGetProperty(name, out var value).ShouldBeTrue($"the role page must carry {name}");
+        return value;
+    }
+
     private sealed record RoleRow(Guid RoleId, string Name, bool IsSystem, bool IsRetired, string[] Permissions, string Version);
 
-    private sealed record RolePageRow(RoleRow[] Items, string? NextCursor);
+    private sealed record RolePageRow(RoleRow[] Items);
 
     private sealed record CatalogRow(string Code, bool Grantable);
 

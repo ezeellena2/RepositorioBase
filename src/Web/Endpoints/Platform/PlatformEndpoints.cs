@@ -1,3 +1,4 @@
+using CleanArchitecture.Application.Common.Models;
 using CleanArchitecture.Application.IdentityAccess.Platform.Administrators;
 using CleanArchitecture.Application.IdentityAccess.Platform.Bootstrap;
 using CleanArchitecture.Application.IdentityAccess.Platform.Identities;
@@ -142,49 +143,43 @@ internal static class PlatformEndpoints
         if (failure is not null) return failure;
 
         var result = await sender.Send(new RecoverPendingPlatformOwnerInvitationCommand(), context.RequestAborted);
-        return result.IsSuccess
-            ? Results.StatusCode(StatusCodes.Status202Accepted)
-            : problems.ToHttpResult(result.Error!);
+        return result.ToAcceptedHttpResult(context, problems);
     }
 
-    private static async Task<IResult> ListOrganizations(HttpContext context, ApiProblemDetailsMapper problems, ISender sender, int? limit, string? cursor)
+    private static async Task<IResult> ListOrganizations(HttpContext context, ApiProblemDetailsMapper problems, ISender sender, int? pageNumber, int? pageSize)
     {
-        var result = await sender.Send(new ListPlatformOrganizationsQuery(Page(limit, cursor)), context.RequestAborted);
-        return result.ToHttpResult(context, problems, page => Results.Ok(new PlatformOrganizationDirectoryResponse(
-            page.Items.Select(item => new PlatformOrganizationResponse(
+        var result = await sender.Send(new ListPlatformOrganizationsQuery(PaginationQuery.From(pageNumber, pageSize)), context.RequestAborted);
+        return result.ToHttpResult(context, problems, page => Results.Ok(PlatformOrganizationDirectoryResponse.From(page, item =>
+            new PlatformOrganizationResponse(
                 item.TenantId, item.Slug, item.Type, item.Status, item.CreatedAtUtc, item.UpdatedAtUtc,
-                item.SuspensionReason, item.SuspendedAtUtc, item.AuthorizationVersion)).ToArray(),
-            page.NextCursor)));
+                item.SuspensionReason, item.SuspendedAtUtc, item.AuthorizationVersion))));
     }
 
-    private static async Task<IResult> ListIdentities(HttpContext context, ApiProblemDetailsMapper problems, ISender sender, int? limit, string? cursor)
+    private static async Task<IResult> ListIdentities(HttpContext context, ApiProblemDetailsMapper problems, ISender sender, int? pageNumber, int? pageSize)
     {
-        var result = await sender.Send(new ListPlatformIdentitiesQuery(Page(limit, cursor)), context.RequestAborted);
-        return result.ToHttpResult(context, problems, page => Results.Ok(new PlatformIdentityDirectoryResponse(
-            page.Items.Select(item => new PlatformIdentityResponse(
+        var result = await sender.Send(new ListPlatformIdentitiesQuery(PaginationQuery.From(pageNumber, pageSize)), context.RequestAborted);
+        return result.ToHttpResult(context, problems, page => Results.Ok(PlatformIdentityDirectoryResponse.From(page, item =>
+            new PlatformIdentityResponse(
                 item.IdentityId, item.NormalizedEmail, item.AccountStatus, item.EmailConfirmed, item.IsLockedOut,
-                item.MembershipCount, item.MfaStatus, item.LastSeenUtc)).ToArray(),
-            page.NextCursor)));
+                item.MembershipCount, item.MfaStatus, item.LastSeenUtc))));
     }
 
-    private static async Task<IResult> ListAdministrators(HttpContext context, ApiProblemDetailsMapper problems, ISender sender, int? limit, string? cursor)
+    private static async Task<IResult> ListAdministrators(HttpContext context, ApiProblemDetailsMapper problems, ISender sender, int? pageNumber, int? pageSize)
     {
-        var result = await sender.Send(new ListPlatformAdministratorsQuery(Page(limit, cursor)), context.RequestAborted);
-        return result.ToHttpResult(context, problems, page => Results.Ok(new PlatformAdministratorDirectoryResponse(
-            page.Items.Select(item => new PlatformAdministratorResponse(
+        var result = await sender.Send(new ListPlatformAdministratorsQuery(PaginationQuery.From(pageNumber, pageSize)), context.RequestAborted);
+        return result.ToHttpResult(context, problems, page => Results.Ok(PlatformAdministratorDirectoryResponse.From(page, item =>
+            new PlatformAdministratorResponse(
                 item.MembershipId, item.IdentityId, item.NormalizedEmail, item.EmailConfirmed,
-                item.MembershipStatus, item.MfaStatus, item.IsOwner, item.SinceUtc)).ToArray(),
-            page.NextCursor)));
+                item.MembershipStatus, item.MfaStatus, item.IsOwner, item.SinceUtc))));
     }
 
-    private static async Task<IResult> ListAudit(HttpContext context, ApiProblemDetailsMapper problems, ISender sender, int? limit, string? cursor)
+    private static async Task<IResult> ListAudit(HttpContext context, ApiProblemDetailsMapper problems, ISender sender, int? pageNumber, int? pageSize)
     {
-        var result = await sender.Send(new ListPlatformAuditQuery(Page(limit, cursor)), context.RequestAborted);
-        return result.ToHttpResult(context, problems, page => Results.Ok(new PlatformAuditDirectoryResponse(
-            page.Items.Select(item => new PlatformAuditEventResponse(
+        var result = await sender.Send(new ListPlatformAuditQuery(PaginationQuery.From(pageNumber, pageSize)), context.RequestAborted);
+        return result.ToHttpResult(context, problems, page => Results.Ok(PlatformAuditDirectoryResponse.From(page, item =>
+            new PlatformAuditEventResponse(
                 item.EventId, item.EventType, item.OccurredAtUtc, item.CorrelationId,
-                item.ActorIdentityId, item.TenantId, item.Outcome, item.ReasonCode)).ToArray(),
-            page.NextCursor)));
+                item.ActorIdentityId, item.TenantId, item.Outcome, item.ReasonCode))));
     }
 
     private static async Task<IResult> Suspend(
@@ -207,7 +202,7 @@ internal static class PlatformEndpoints
         }
 
         var result = await sender.Send(new SuspendOrganizationTenantCommand(tenantId, reason), context.RequestAborted);
-        return result.IsSuccess ? Results.NoContent() : problems.ToHttpResult(result.Error!);
+        return result.ToHttpResult(context, problems);
     }
 
     private static async Task<IResult> Reactivate(
@@ -221,7 +216,7 @@ internal static class PlatformEndpoints
         if (failure is not null) return failure;
 
         var result = await sender.Send(new ReactivateOrganizationTenantCommand(tenantId), context.RequestAborted);
-        return result.IsSuccess ? Results.NoContent() : problems.ToHttpResult(result.Error!);
+        return result.ToHttpResult(context, problems);
     }
 
     private static async Task<IResult> SuspendIdentity(
@@ -245,7 +240,7 @@ internal static class PlatformEndpoints
         }
 
         var result = await sender.Send(new SuspendIdentityCommand(identityId, reason, expected), context.RequestAborted);
-        return result.IsSuccess ? Results.NoContent() : problems.ToHttpResult(result.Error!);
+        return result.ToHttpResult(context, problems);
     }
 
     private static async Task<IResult> ReactivateIdentity(
@@ -265,7 +260,7 @@ internal static class PlatformEndpoints
 
         var result = await sender.Send(
             new ReactivateIdentityCommand(identityId, expected, request.AcknowledgeSelfDeactivation), context.RequestAborted);
-        return result.IsSuccess ? Results.NoContent() : problems.ToHttpResult(result.Error!);
+        return result.ToHttpResult(context, problems);
     }
 
     /// <summary>
@@ -288,7 +283,7 @@ internal static class PlatformEndpoints
             new CleanArchitecture.Application.IdentityAccess.People.Documents.ResolveDocumentDisputeCommand(
                 identityId, disputeId, request.Outcome ?? string.Empty, request.EvidenceReference ?? string.Empty),
             context.RequestAborted);
-        return result.IsSuccess ? Results.NoContent() : problems.ToHttpResult(result.Error!);
+        return result.ToHttpResult(context, problems);
     }
 
     private static bool TryReadStatus(string? value, out CleanArchitecture.Domain.IdentityAccess.Identities.IdentityAccountStatus status) =>
@@ -306,9 +301,7 @@ internal static class PlatformEndpoints
         if (failure is not null) return failure;
 
         var result = await sender.Send(new InvitePlatformAdministratorCommand(request.Email), context.RequestAborted);
-        return result.IsSuccess
-            ? Results.StatusCode(StatusCodes.Status202Accepted)
-            : problems.ToHttpResult(result.Error!);
+        return result.ToAcceptedHttpResult(context, problems);
     }
 
     private static async Task<IResult> RevokeAdministrator(
@@ -322,9 +315,6 @@ internal static class PlatformEndpoints
         if (failure is not null) return failure;
 
         var result = await sender.Send(new RevokePlatformAdministratorCommand(membershipId), context.RequestAborted);
-        return result.IsSuccess ? Results.NoContent() : problems.ToHttpResult(result.Error!);
+        return result.ToHttpResult(context, problems);
     }
-
-    /// <summary>A missing limit means the default page, not every row.</summary>
-    private static PlatformDirectoryQuery Page(int? limit, string? cursor) => new(limit ?? 25, cursor);
 }

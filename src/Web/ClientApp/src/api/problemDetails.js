@@ -3,7 +3,7 @@
  * and nothing else: the server's internal Result type never crosses the wire, and a client that learned to read
  * one would keep working while the boundary it exists to police drifted away underneath it (IA-REQ-038).
  */
-import validationErrorSchema from '../../../../../../Application/Common/Validation/validationErrorSchema.json';
+import validationErrorSchema from '../../../../Application/Common/Validation/validationErrorSchema.json';
 
 export const PROBLEM_MEDIA_TYPE = 'application/problem+json';
 export const VALIDATION_CODE_SCHEMA = Object.freeze(Object.fromEntries(

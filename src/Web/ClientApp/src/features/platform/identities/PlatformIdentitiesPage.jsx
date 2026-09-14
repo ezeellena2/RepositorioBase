@@ -1,11 +1,10 @@
 /* eslint-disable i18next/no-literal-string -- bounded wire field name, not display copy. */
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { visuallyHidden } from '@mui/utils';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Checkbox from '@mui/material/Checkbox';
 import Chip from '@mui/material/Chip';
-import Divider from '@mui/material/Divider';
 import FormControl from '@mui/material/FormControl';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import InputLabel from '@mui/material/InputLabel';
@@ -20,10 +19,12 @@ import TableBody from '@mui/material/TableBody';
 import TableCell from '@mui/material/TableCell';
 import TableContainer from '@mui/material/TableContainer';
 import TableHead from '@mui/material/TableHead';
+import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
 import Typography from '@mui/material/Typography';
+import { DEFAULT_PAGE, pageSizeOptions } from '../../../api/pagination';
 import { useIdentity } from '../../identity/context/IdentityProvider';
-import { ProblemMessage } from '../../identity/ProblemMessage';
+import { ProblemMessage } from '../../../components/ProblemMessage';
 import { PermissionLabel } from '../../identity/PermissionLabel';
 import { useSubmit } from '../../identity/useSubmit';
 import { useRead } from '../../identity/useRead';
@@ -54,7 +55,6 @@ const emptyBlock = { p: 4, textAlign: 'center' };
 const rowActions = { justifyContent: { xs: 'flex-start', sm: 'flex-end' }, flexWrap: 'wrap', minWidth: 0 };
 const buttons = { flexWrap: 'wrap', alignItems: 'center' };
 const selfStart = { alignSelf: 'flex-start' };
-const pagerSlot = { px: 2, py: 1.5 };
 
 /**
  * Text- and chip-only rows keep the 44px minimum. A row with an action grows to hold the theme's 40px control,
@@ -197,10 +197,40 @@ export function PlatformIdentitiesPage() {
   const owesFactor = context?.session?.requiresTwoFactor === true;
   const mayLoad = mayRead && !owesFactor;
 
-  const { data: page, problem: readProblem, refresh, status } = useRead(
-    useCallback((options) => platform.listIdentities(options), [platform]),
+  // The page asked for travels through `refresh`, never through the loader, so turning a page holds the rows on
+  // screen instead of starting a new read, and "Try again" asks for the page that was requested rather than going
+  // back to the first one.
+  const { data: directory, problem: readProblem, refresh, status } = useRead(
+    useCallback(({ page, signal }) => platform.listIdentities(page ?? DEFAULT_PAGE, { signal }), [platform]),
     mayLoad,
   );
+  const [requested, setRequested] = useState(DEFAULT_PAGE);
+  const go = (page) => {
+    setRequested(page);
+    void refresh(page);
+  };
+  const retry = () => void refresh(requested);
+  // A change or a proof is shown on the page it was made from: the loaded page is read again at its own size, or the
+  // first page when nothing has loaded yet. That read failing is a read problem, never the change failing (E11).
+  const reloadPage = useCallback(() => {
+    const page = directory === null ? DEFAULT_PAGE : { pageNumber: directory.pageNumber, pageSize: directory.pageSize };
+    setRequested(page);
+    return refresh(page);
+  }, [directory, refresh]);
+  // A page past the end is what an operator lands on after the last accounts on it went elsewhere. The real last
+  // page is asked for once per answer, and nothing is said about it: the page that arrives is the explanation (E4).
+  const pastTheEnd = directory !== null && directory.items.length === 0
+    && directory.totalPages > 0 && directory.pageNumber > directory.totalPages;
+  useEffect(() => {
+    if (status !== 'loaded' || !pastTheEnd) return;
+    let cancelled = false;
+    // Asked for after this render rather than during it, as the first read is, so a newer answer cancels it.
+    void Promise.resolve().then(() => {
+      if (!cancelled) go({ pageNumber: directory.totalPages, pageSize: directory.pageSize });
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, directory]);
   const { submit, problem: actionProblem, isBusy } = useSubmit(async (action) => action());
 
   // Reload the rows, and nothing else. It holds no reference to whatever was refused, which is what makes "the
@@ -209,8 +239,8 @@ export function PlatformIdentitiesPage() {
   // would be a second request for the same page.
   const onProved = useCallback(async () => {
     setProofRefusal(null);
-    if (mayLoad) await refresh(undefined);
-  }, [mayLoad, refresh]);
+    if (mayLoad) await reloadPage();
+  }, [mayLoad, reloadPage]);
   const stepUp = usePlatformStepUp(onProved);
   const stepUpProblemForSummary = stepUp.problem?.code === 'invalid_mfa_code' ? null : stepUp.problem;
 
@@ -219,7 +249,7 @@ export function PlatformIdentitiesPage() {
     try {
       const outcome = await action();
       setPending(null);
-      await refresh(undefined);
+      await reloadPage();
       return outcome;
     } catch (failure) {
       const code = failure?.problem?.code;
@@ -232,7 +262,7 @@ export function PlatformIdentitiesPage() {
         setProofRefusal(failure.problem);
       } else if (code === 'identity_concurrency_conflict') {
         setPending(null);
-        await refresh(undefined);
+        await reloadPage();
       }
       throw failure;
     }
@@ -294,7 +324,7 @@ export function PlatformIdentitiesPage() {
     );
   }
 
-  const rows = page?.items ?? [];
+  const rows = directory?.items ?? [];
   // `useSubmit` clears its problem when the next attempt starts, which is the wrong lifetime for this one: the
   // gate has to outlive the attempt and come down only once the factor is settled. So the screen holds that
   // refusal itself, and `useSubmit`'s copy of it is never the one rendered.
@@ -441,14 +471,15 @@ export function PlatformIdentitiesPage() {
         <Stack spacing={2}>
           <ProblemMessage problem={readProblem} />
           {status === 'errored' && (
-            <Button type="button" variant="outlined" sx={selfStart} onClick={() => refresh(undefined)}>
+            <Button type="button" variant="outlined" sx={selfStart} onClick={retry}>
               {t('identities.retry')}
             </Button>
           )}
         </Stack>
       )}
 
-      {status === 'loaded' && rows.length === 0 && (
+      {/* A page past the end is not an empty directory, so it is not called one while the last page is asked for. */}
+      {status === 'loaded' && rows.length === 0 && !pastTheEnd && (
         <Paper variant="outlined" sx={emptyBlock}>
           <Typography variant="body2">{t('identities.empty')}</Typography>
         </Paper>
@@ -532,25 +563,22 @@ export function PlatformIdentitiesPage() {
             </Table>
           </TableContainer>
 
-          {/* The server answers one bounded page and names where the next one starts. Without this the directory is
+          {/* The server answers one bounded page and says how many accounts there are. Without this the directory is
               whatever the first page happened to contain, and an account past it cannot be reached at all — the
-              screen offers no search either, so the cursor is the only way through. It sits inside the section it
-              pages rather than floating under it, because it is a control of that table and of nothing else. */}
-          {page?.nextCursor && (
-            <>
-              <Divider />
-              <Box sx={pagerSlot}>
-                <Button
-                  type="button"
-                  variant="outlined"
-                  size="small"
-                  disabled={isBusy || status === 'loading'}
-                  onClick={() => refresh(page.nextCursor)}
-                >
-                  {t('identities.more')}
-                </Button>
-              </Box>
-            </>
+              screen offers no search either, so the page control is the only way through. It shows the page that was
+              loaded, never the one still on its way, and its words come from the MUI locale the theme composes for
+              the active language. It sits inside the section it pages rather than floating under it, because it is a
+              control of that table and of nothing else. */}
+          {directory.totalCount > 0 && (
+            <TablePagination
+              component="div"
+              count={directory.totalCount}
+              page={directory.pageNumber - 1}
+              rowsPerPage={directory.pageSize}
+              rowsPerPageOptions={pageSizeOptions}
+              onPageChange={(_, index) => go({ pageNumber: index + 1, pageSize: directory.pageSize })}
+              onRowsPerPageChange={(event) => go({ pageNumber: 1, pageSize: Number(event.target.value) })}
+            />
           )}
         </Paper>
       )}

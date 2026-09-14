@@ -3,7 +3,7 @@ import Button from '@mui/material/Button';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import { useTranslation } from '../../../i18n';
-import { fieldError } from '../../identity/fieldErrors';
+import { fieldError } from '../../../components/problemFields';
 
 const form = { maxWidth: 360 };
 const stepUpFieldSlots = { inputLabel: { required: false }, htmlInput: { inputMode: 'numeric' } };

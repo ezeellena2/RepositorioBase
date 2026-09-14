@@ -243,7 +243,7 @@ public sealed class MembershipAdministrationTests : TestBase
         {
             foreach (var suffix in new[] { "members", "invitations" })
             {
-                using var refused = await scenario.Owner.GetAsync($"/api/tenants/{tenantId}/{suffix}");
+                using var refused = await scenario.Owner.GetAsync($"/api/tenants/{tenantId}/{suffix}?pageNumber=1&pageSize=25");
                 refused.StatusCode.ShouldBe(HttpStatusCode.NotFound);
                 var problem = await IdentityHttpHarness.ReadProblemAsync(refused);
                 problem.GetProperty("status").GetInt32().ShouldBe((int)HttpStatusCode.NotFound);
@@ -317,7 +317,7 @@ public sealed class MembershipAdministrationTests : TestBase
 
     private sealed record MemberRow(Guid MembershipId, Guid IdentityId, string DisplayName, string NormalizedEmail, string Status, Guid[] RoleIds, bool IsOwner, string Version);
 
-    private sealed record MemberPageRow(MemberRow[] Items, string? NextCursor);
+    private sealed record MemberPageRow(MemberRow[] Items);
 
     private sealed record RoleRow(Guid RoleId, string Name, bool IsSystem, bool IsRetired, string[] Permissions, string Version);
 }

@@ -285,7 +285,7 @@ public async Task Malformed_registration_names_its_fields_and_answers_alike_for_
 
 ## 6. The catalogue — one source for server and client
 
-`src/Web/ClientApp/src/features/identity/problemCodes.json` is checked in, maps each code to its status, and is sorted:
+`src/Web/ClientApp/src/api/problemCodes.json` is checked in, maps each code to its status, and is sorted:
 
 ```json
 {
@@ -325,7 +325,7 @@ public async Task The_shared_catalogue_is_exactly_what_the_api_can_answer()
     }
 
     var catalogue = JsonSerializer.Deserialize<SortedDictionary<string, int>>(
-        File.ReadAllText(RepositoryFile("src/Web/ClientApp/src/features/identity/problemCodes.json")))!;
+        File.ReadAllText(RepositoryFile("src/Web/ClientApp/src/api/problemCodes.json")))!;
     declared.ShouldBe(catalogue);
 }
 
@@ -397,7 +397,7 @@ describe('problem catalogue', () => {
 });
 
 // test/identityServer.js
-import catalogue from '../features/identity/problemCodes.json';
+import catalogue from '../api/problemCodes.json';
 export const problem = (status, code, extra = {}, headers = {}) => {
   if (catalogue[code] !== status) throw new Error(`The API never answers ${status} ${code}; see problemCodes.json.`);
   return HttpResponse.json({ code, traceId: 'trace-1', ...extra }, { status, headers: { 'Content-Type': 'application/problem+json', ...headers } });
@@ -473,7 +473,7 @@ records[0].ShouldNotContain(token);
 
 ## 8. Transport: classify once, report session loss
 
-This goes in `features/identity/api/apiTransport.js`:
+This goes in `src/api/apiTransport.js`:
 
 ```js
 const CONTEXT = '/api/identity/context';
@@ -591,7 +591,7 @@ export function ProblemMessage({ problem, claimed = [], waitSeconds, autoFocus =
 }
 ```
 
-The field helper lives in `features/identity/fieldErrors.js`:
+The field helper lives in `src/components/problemFields.js`:
 
 ```js
 /** The field's refusal when there is one, otherwise the rule it always states. Keys are the JSON member names. */

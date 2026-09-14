@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using CleanArchitecture.Application.Common.Models;
 using CleanArchitecture.Application.FunctionalTests.IdentityAccess.Organizations;
 using CleanArchitecture.Application.FunctionalTests.Infrastructure;
 using CleanArchitecture.Application.IdentityAccess.Authorization;
@@ -111,7 +112,7 @@ public sealed class IndependentDevelopmentAdministrationReviewTests : TestBase
             new { name = "Offered administration", permissions = new[] { Permissions.RolesManage } });
         created.StatusCode.ShouldBe(HttpStatusCode.Created, await created.Content.ReadAsStringAsync());
         var offered = (await created.Content.ReadFromJsonAsync<RoleView>())!;
-        var actorRole = (await organization.Owner.ReadAsync<RolePage>($"/api/tenants/{organization.TenantId.Value}/roles"))
+        var actorRole = (await organization.Owner.ReadAsync<PaginatedList<RoleView>>($"/api/tenants/{organization.TenantId.Value}/roles"))
             .Items.Single(role => role.Name == "limited-role");
         var target = await MemberAsync(organization.Owner, organization.TenantId, targetId);
         var pause = new AssignmentPause(targetId, actorRole.RoleId);
@@ -177,7 +178,7 @@ public sealed class IndependentDevelopmentAdministrationReviewTests : TestBase
     }
 
     private static async Task<MemberView> MemberAsync(Administrator actor, TenantId tenantId, Guid membershipId) =>
-        (await actor.ReadAsync<MemberPage>($"/api/tenants/{tenantId.Value}/members")).Items.Single(member => member.MembershipId == membershipId);
+        (await actor.ReadAsync<PaginatedList<MemberView>>($"/api/tenants/{tenantId.Value}/members")).Items.Single(member => member.MembershipId == membershipId);
 
     private sealed class AssignmentPause(Guid targetMembershipId, Guid narrowedRoleId) : SaveChangesInterceptor
     {
@@ -213,8 +214,8 @@ public sealed class IndependentDevelopmentAdministrationReviewTests : TestBase
     private sealed class PausedMembershipStore(IMembershipAdministrationStore inner, ApplicationDbContext context, AssignmentPause pause)
         : IMembershipAdministrationStore
     {
-        public Task<MemberPage> ListAsync(TenantId tenantId, int limit, string? cursor, CancellationToken ct) => inner.ListAsync(tenantId, limit, cursor, ct);
-        public Task<InvitationSummaryPage> ListInvitationsAsync(TenantId tenantId, int limit, string? cursor, CancellationToken ct) => inner.ListInvitationsAsync(tenantId, limit, cursor, ct);
+        public Task<PaginatedList<MemberView>> ListAsync(TenantId tenantId, PaginationQuery pagination, CancellationToken ct) => inner.ListAsync(tenantId, pagination, ct);
+        public Task<PaginatedList<InvitationSummaryView>> ListInvitationsAsync(TenantId tenantId, PaginationQuery pagination, CancellationToken ct) => inner.ListInvitationsAsync(tenantId, pagination, ct);
         public Task<MemberView?> FindAsync(TenantId tenantId, Guid membershipId, CancellationToken ct) => inner.FindAsync(tenantId, membershipId, ct);
         public Task<IReadOnlyList<string>?> CodesOfRolesAsync(TenantId tenantId, IReadOnlyList<Guid> roleIds, CancellationToken ct) => inner.CodesOfRolesAsync(tenantId, roleIds, ct);
         public async Task<MembershipWriteResult> ReplaceRolesAsync(TenantId tenantId, Guid membershipId, IReadOnlyList<Guid> roleIds, string version, CancellationToken ct)

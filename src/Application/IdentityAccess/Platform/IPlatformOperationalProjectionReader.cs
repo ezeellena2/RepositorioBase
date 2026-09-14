@@ -1,3 +1,4 @@
+using CleanArchitecture.Application.Common.Models;
 using CleanArchitecture.Application.IdentityAccess.Platform.Queries;
 
 namespace CleanArchitecture.Application.IdentityAccess.Platform;
@@ -12,11 +13,11 @@ namespace CleanArchitecture.Application.IdentityAccess.Platform;
 /// </summary>
 public interface IPlatformOperationalProjectionReader
 {
-    Task<PlatformDirectoryPage<PlatformOrganizationProjection>> ReadOrganizationsAsync(PlatformDirectoryQuery query, CancellationToken cancellationToken);
+    Task<PaginatedList<PlatformOrganizationProjection>> ReadOrganizationsAsync(PaginationQuery query, CancellationToken cancellationToken);
 
-    Task<PlatformDirectoryPage<PlatformIdentityProjection>> ReadIdentitiesAsync(PlatformDirectoryQuery query, CancellationToken cancellationToken);
+    Task<PaginatedList<PlatformIdentityProjection>> ReadIdentitiesAsync(PaginationQuery query, CancellationToken cancellationToken);
 
-    Task<PlatformDirectoryPage<PlatformAdministratorProjection>> ReadAdministratorsAsync(PlatformDirectoryQuery query, CancellationToken cancellationToken);
+    Task<PaginatedList<PlatformAdministratorProjection>> ReadAdministratorsAsync(PaginationQuery query, CancellationToken cancellationToken);
 
-    Task<PlatformDirectoryPage<PlatformAuditEventProjection>> ReadAuditAsync(PlatformDirectoryQuery query, CancellationToken cancellationToken);
+    Task<PaginatedList<PlatformAuditEventProjection>> ReadAuditAsync(PaginationQuery query, CancellationToken cancellationToken);
 }

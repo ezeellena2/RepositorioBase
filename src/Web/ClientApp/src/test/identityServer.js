@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw';
-import problemCodes from '../features/identity/problemCodes.json';
+import problemCodes from '../api/problemCodes.json';
 
 export const ANTIFORGERY_TOKEN = 'request-token-1';
 

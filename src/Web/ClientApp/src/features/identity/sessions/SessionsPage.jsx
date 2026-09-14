@@ -12,9 +12,9 @@ import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { Trans, useFormat, useTranslation } from '../../../i18n';
-import { toProblem } from '../api/apiTransport';
+import { toProblem } from '../../../api/apiTransport';
 import { useIdentity } from '../context/IdentityProvider';
-import { ProblemMessage } from '../ProblemMessage';
+import { ProblemMessage } from '../../../components/ProblemMessage';
 import { useIdentityProof } from '../useIdentityProof';
 import { useRead } from '../useRead';
 

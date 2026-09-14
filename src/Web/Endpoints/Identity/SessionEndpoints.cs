@@ -55,7 +55,7 @@ internal static class SessionEndpoints
     private static async Task<IResult> List(HttpContext context, ApiProblemDetailsMapper problems, ISender sender)
     {
         var result = await sender.Send(new ListOwnSessionsQuery(), context.RequestAborted);
-        return result.IsSuccess ? Results.Ok(result.Value!) : problems.ToHttpResult(result.Error!);
+        return result.ToHttpResult(context, problems, sessions => Results.Ok(sessions));
     }
 
     private static async Task<IResult> RevokeOne(HttpContext context, IAntiforgery antiforgery, ApiProblemDetailsMapper problems, ISender sender, string sessionRef)
@@ -63,7 +63,7 @@ internal static class SessionEndpoints
         var antiforgeryFailure = await Identity.ValidateAntiforgery(context, antiforgery, problems);
         if (antiforgeryFailure is not null) return antiforgeryFailure;
         var result = await sender.Send(new RevokeOwnSessionCommand(sessionRef), context.RequestAborted);
-        return result.IsSuccess ? Results.NoContent() : problems.ToHttpResult(result.Error!);
+        return result.ToHttpResult(context, problems);
     }
 
     private static async Task<IResult> RevokeOthers(HttpContext context, IAntiforgery antiforgery, ApiProblemDetailsMapper problems, ISender sender)
@@ -71,7 +71,7 @@ internal static class SessionEndpoints
         var antiforgeryFailure = await Identity.ValidateAntiforgery(context, antiforgery, problems);
         if (antiforgeryFailure is not null) return antiforgeryFailure;
         var result = await sender.Send(new RevokeOtherSessionsCommand(), context.RequestAborted);
-        return result.IsSuccess ? Results.NoContent() : problems.ToHttpResult(result.Error!);
+        return result.ToHttpResult(context, problems);
     }
 
     private static async Task<IResult> Reauthenticate(HttpContext context, IAntiforgery antiforgery, ApiProblemDetailsMapper problems, ISender sender, ReauthenticateCommand command)
@@ -79,7 +79,7 @@ internal static class SessionEndpoints
         var antiforgeryFailure = await Identity.ValidateAntiforgery(context, antiforgery, problems);
         if (antiforgeryFailure is not null) return antiforgeryFailure;
         var result = await sender.Send(command, context.RequestAborted);
-        return result.IsSuccess ? Results.NoContent() : problems.ToHttpResult(result.Error!);
+        return result.ToHttpResult(context, problems);
     }
 
     private static async Task<IResult> Create(HttpContext context, IAntiforgery antiforgery, ApiProblemDetailsMapper problems, ISender sender, CreateSessionCommand command)

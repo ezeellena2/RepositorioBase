@@ -19,13 +19,15 @@ import TableBody from '@mui/material/TableBody';
 import TableCell from '@mui/material/TableCell';
 import TableContainer from '@mui/material/TableContainer';
 import TableHead from '@mui/material/TableHead';
+import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { useTranslation } from '../../i18n';
+import { DEFAULT_PAGE, pageSizeOptions } from '../../api/pagination';
 import { useIdentity } from '../identity/context/IdentityProvider';
-import { claimedFieldNames, fieldError } from '../identity/fieldErrors';
-import { ProblemMessage } from '../identity/ProblemMessage';
+import { claimedFieldNames, fieldError } from '../../components/problemFields';
+import { ProblemMessage } from '../../components/ProblemMessage';
 import { useRead } from '../identity/useRead';
 import { useSubmit } from '../identity/useSubmit';
 import { usePlatformClient } from './invitations/PlatformInvitationPages';
@@ -93,6 +95,60 @@ const EmptyBlock = ({ children }) => (
   </Paper>
 );
 
+/**
+ * One directory, read a page at a time. The page asked for travels through `refresh`, never through the loader, so
+ * turning a page holds the rows on screen instead of starting a new read, and "Try again" asks for the page that was
+ * requested rather than going back to the first one.
+ */
+function useDirectoryPages(list, enabled) {
+  const read = useRead(useCallback(({ page, signal }) => list(page ?? DEFAULT_PAGE, { signal }), [list]), enabled);
+  const [requested, setRequested] = useState(DEFAULT_PAGE);
+  const go = (page) => {
+    setRequested(page);
+    void read.refresh(page);
+  };
+  const retry = () => void read.refresh(requested);
+  // A change is shown on the page it was made from: the loaded page is read again at its own size, or the first page
+  // when nothing has loaded yet. That read failing is a read problem, never the change failing (E11).
+  const reload = () => {
+    const page = read.data === null ? DEFAULT_PAGE : { pageNumber: read.data.pageNumber, pageSize: read.data.pageSize };
+    setRequested(page);
+    return read.refresh(page);
+  };
+  // A page past the end is what an operator lands on after the last rows on it went elsewhere. The real last page is
+  // asked for once per answer, and nothing is said about it: the page that arrives is the whole explanation (E4).
+  const pastTheEnd = read.data !== null && read.data.items.length === 0
+    && read.data.totalPages > 0 && read.data.pageNumber > read.data.totalPages;
+  useEffect(() => {
+    if (read.status !== 'loaded' || !pastTheEnd) return;
+    let cancelled = false;
+    // Asked for after this render rather than during it, as the first read is, so a newer answer cancels it.
+    void Promise.resolve().then(() => {
+      if (!cancelled) go({ pageNumber: read.data.totalPages, pageSize: read.data.pageSize });
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [read.status, read.data]);
+  return { ...read, go, retry, reload, pastTheEnd };
+}
+
+/**
+ * The control shows the page that was loaded, never the one still on its way, and its words come from the MUI locale
+ * the theme composes for the active language. A directory with nothing in it keeps its empty block and no control, and
+ * a page past the end draws none while the last page is asked for.
+ */
+const DirectoryPagination = ({ directory }) => (directory.data !== null && !directory.pastTheEnd && directory.data.totalCount > 0 ? (
+  <TablePagination
+    component="div"
+    count={directory.data.totalCount}
+    page={directory.data.pageNumber - 1}
+    rowsPerPage={directory.data.pageSize}
+    rowsPerPageOptions={pageSizeOptions}
+    onPageChange={(_, index) => directory.go({ pageNumber: index + 1, pageSize: directory.data.pageSize })}
+    onRowsPerPageChange={(event) => directory.go({ pageNumber: 1, pageSize: Number(event.target.value) })}
+  />
+) : null);
+
 export function PlatformPanel() {
   const { t } = useTranslation('platform');
   const identity = useIdentity();
@@ -127,9 +183,9 @@ export function PlatformPanel() {
     (identityContext?.permissions ?? []).includes('platform.organizations.read');
   // The shared hook classifies retryability from status. Each directory offers a retry for transport and server
   // failures while leaving typed non-retryable refusals as the API answered them.
-  const organizations = useRead(useCallback((options) => platform.listOrganizations(options), [platform]), mayLoad);
-  const administrators = useRead(useCallback((options) => platform.listAdministrators(options), [platform]), mayLoad);
-  const audit = useRead(useCallback((options) => platform.listAudit(options), [platform]), mayLoad);
+  const organizations = useDirectoryPages(platform.listOrganizations, mayLoad);
+  const administrators = useDirectoryPages(platform.listAdministrators, mayLoad);
+  const audit = useDirectoryPages(platform.listAudit, mayLoad);
 
   const permissions = identity?.context?.permissions ?? [];
   const isPlatform = identity?.context?.activeTenant?.type === 'Platform';
@@ -156,7 +212,7 @@ export function PlatformPanel() {
     return submit(async () => {
     const outcome = await action();
     onSucceeded?.();
-    await Promise.all([organizations.refresh(undefined), administrators.refresh(undefined), audit.refresh(undefined)]);
+    await Promise.all([organizations.reload(), administrators.reload(), audit.reload()]);
     return outcome;
     });
   };
@@ -252,11 +308,11 @@ export function PlatformPanel() {
         <Typography id="platform-organizations-heading" component="h2" variant="subtitle1">{t('organizations.title')}</Typography>
         <ProblemMessage problem={organizations.problem} />
         {organizations.status === 'errored' && (
-          <Button type="button" variant="outlined" sx={{ alignSelf: 'flex-start' }} onClick={() => organizations.refresh(undefined)}>{t('common:actions.tryAgain')}</Button>
+          <Button type="button" variant="outlined" sx={{ alignSelf: 'flex-start' }} onClick={organizations.retry}>{t('common:actions.tryAgain')}</Button>
         )}
         {organizations.status === 'loading' && organizations.data === null ? (
           <Placeholder />
-        ) : organizations.data === null ? null : organizationRows.length === 0 ? (
+        ) : organizations.data === null || organizations.pastTheEnd ? null : organizationRows.length === 0 ? (
           <EmptyBlock>{t('organizations.empty')}</EmptyBlock>
         ) : (
           <TableContainer component={Paper} variant="outlined">
@@ -308,6 +364,7 @@ export function PlatformPanel() {
             </Table>
           </TableContainer>
         )}
+        <DirectoryPagination directory={organizations} />
 
         {/* Suspension and revocation are confirmed rather than done on a single click: both are visible to everyone
             inside the affected tenant, and neither is undone by simply clicking again. The confirmation belongs to
@@ -353,21 +410,17 @@ export function PlatformPanel() {
             </Stack>
           </Paper>
         )}
-
-        {organizations.data?.nextCursor && (
-          <Button type="button" variant="outlined" disabled={organizations.status === 'loading'} sx={{ alignSelf: 'flex-start' }} onClick={() => organizations.refresh(organizations.data.nextCursor)}>{t('organizations.more')}</Button>
-        )}
       </Stack>
 
       <Stack spacing={2} aria-busy={administrators.status === 'loading'}>
         <Typography id="platform-administrators-heading" component="h2" variant="subtitle1">{t('administrators.title')}</Typography>
         <ProblemMessage problem={administrators.problem} />
         {administrators.status === 'errored' && (
-          <Button type="button" variant="outlined" sx={{ alignSelf: 'flex-start' }} onClick={() => administrators.refresh(undefined)}>{t('common:actions.tryAgain')}</Button>
+          <Button type="button" variant="outlined" sx={{ alignSelf: 'flex-start' }} onClick={administrators.retry}>{t('common:actions.tryAgain')}</Button>
         )}
         {administrators.status === 'loading' && administrators.data === null ? (
           <Placeholder />
-        ) : administrators.data === null ? null : administratorRows.length === 0 ? (
+        ) : administrators.data === null || administrators.pastTheEnd ? null : administratorRows.length === 0 ? (
           <EmptyBlock>{t('administrators.empty')}</EmptyBlock>
         ) : (
           <TableContainer component={Paper} variant="outlined">
@@ -407,6 +460,7 @@ export function PlatformPanel() {
             </Table>
           </TableContainer>
         )}
+        <DirectoryPagination directory={administrators} />
 
         {pendingAction?.kind === pendingActionKind.revoke && (
           <Paper
@@ -490,11 +544,11 @@ export function PlatformPanel() {
         <Typography component="h2" variant="subtitle1">{t('audit.title')}</Typography>
         <ProblemMessage problem={audit.problem} />
         {audit.status === 'errored' && (
-          <Button type="button" variant="outlined" sx={{ alignSelf: 'flex-start' }} onClick={() => audit.refresh(undefined)}>{t('common:actions.tryAgain')}</Button>
+          <Button type="button" variant="outlined" sx={{ alignSelf: 'flex-start' }} onClick={audit.retry}>{t('common:actions.tryAgain')}</Button>
         )}
         {audit.status === 'loading' && audit.data === null ? (
           <Placeholder />
-        ) : audit.data === null ? null : auditRows.length === 0 ? (
+        ) : audit.data === null || audit.pastTheEnd ? null : auditRows.length === 0 ? (
           <EmptyBlock>{t('audit.empty')}</EmptyBlock>
         ) : (
           <Paper variant="outlined">
@@ -507,6 +561,7 @@ export function PlatformPanel() {
             </List>
           </Paper>
         )}
+        <DirectoryPagination directory={audit} />
       </Stack>
     </Stack>
   );

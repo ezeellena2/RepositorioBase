@@ -122,8 +122,7 @@
       "noRoles": "sin roles",
       "resend": "Reenviar a {{email}}",
       "withdrawConfirm": "¿Retirar la invitación a {{email}}? Su enlace dejará de funcionar.",
-      "withdraw": "Retirar invitación a {{email}}",
-      "showMore": "Mostrar más invitaciones"
+      "withdraw": "Retirar invitación a {{email}}"
     }
   },
   "lifecycle": {
@@ -172,8 +171,7 @@
     "rolesRefused": "No puede ver los roles de esta organización, por lo que no hay ninguno para asignar aquí.",
     "noRolesToGive": "Esta organización todavía no tiene roles para asignar.",
     "saveRoles": "Guardar roles",
-    "cancel": "Cancelar",
-    "showMore": "Mostrar más miembros"
+    "cancel": "Cancelar"
   },
   "people": {
     "fullName": "Nombre completo",
@@ -220,7 +218,6 @@
       "state": "Estado",
       "actions": "Acciones"
     },
-    "showMore": "Mostrar más roles",
     "new": "Nuevo rol",
     "editing": "Editando {{name}}",
     "name": "Nombre",

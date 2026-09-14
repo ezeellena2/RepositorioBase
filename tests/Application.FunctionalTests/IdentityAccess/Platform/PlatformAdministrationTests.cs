@@ -1,3 +1,4 @@
+using CleanArchitecture.Application.Common.Models;
 using CleanArchitecture.Application.FunctionalTests.Infrastructure;
 using CleanArchitecture.Application.IdentityAccess.Platform.Administrators;
 using CleanArchitecture.Application.IdentityAccess.Platform.Mfa;
@@ -23,7 +24,7 @@ public sealed class PlatformAdministrationTests : TestBase
     {
         var owner = await PlatformScenario.ActiveOwnerAsync();
 
-        var directory = await TestApp.SendAsync(new ListPlatformAdministratorsQuery(new PlatformDirectoryQuery(25, null)));
+        var directory = await TestApp.SendAsync(new ListPlatformAdministratorsQuery(new PaginationQuery(1, 25)));
         directory.IsSuccess.ShouldBeTrue();
         var listed = directory.Value!.Items.ShouldHaveSingleItem();
         listed.IdentityId.ShouldBe(owner.IdentityId);

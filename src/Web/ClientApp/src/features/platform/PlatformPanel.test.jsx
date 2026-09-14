@@ -51,11 +51,50 @@ const deferred = () => {
   return { promise, resolve };
 };
 
+/** One offset page, exactly as the API answers it. */
+const pageOf = (items, { pageNumber = 1, pageSize = 25, totalCount = items.length } = {}) => {
+  const totalPages = totalCount === 0 ? 0 : Math.ceil(totalCount / pageSize);
+  return {
+    items,
+    pageNumber,
+    pageSize,
+    totalCount,
+    totalPages,
+    hasPreviousPage: pageNumber > 1 && totalPages > 0,
+    hasNextPage: pageNumber < totalPages,
+  };
+};
+
 const directories = ({ organizations = [ORGANIZATION], administrators = [ADMINISTRATOR], audit = [] } = {}) => [
-  http.get('/api/platform/organizations', () => HttpResponse.json({ items: organizations, nextCursor: null })),
-  http.get('/api/platform/admins', () => HttpResponse.json({ items: administrators, nextCursor: null })),
-  http.get('/api/platform/audit', () => HttpResponse.json({ items: audit, nextCursor: null })),
+  http.get('/api/platform/organizations', () => HttpResponse.json(pageOf(organizations))),
+  http.get('/api/platform/admins', () => HttpResponse.json(pageOf(administrators))),
+  http.get('/api/platform/audit', () => HttpResponse.json(pageOf(audit))),
 ];
+
+const pageAskedFor = (request) => {
+  const { searchParams } = new URL(request.url);
+  return { pageNumber: Number(searchParams.get('pageNumber')), pageSize: Number(searchParams.get('pageSize')) };
+};
+
+const servedPage = (all, { pageNumber, pageSize }) => HttpResponse.json(pageOf(
+  all.slice((pageNumber - 1) * pageSize, pageNumber * pageSize),
+  { pageNumber, pageSize, totalCount: all.length },
+));
+
+/** One directory served a page at a time, as the API does, recording each page number it was asked for. */
+const directoryServed = (path, all) => {
+  const pageNumbers = [];
+  server.use(http.get(path, ({ request }) => {
+    const page = pageAskedFor(request);
+    pageNumbers.push(page.pageNumber);
+    return servedPage(all, page);
+  }));
+  return pageNumbers;
+};
+
+const numbered = (count, row) => Array.from({ length: count }, (_, index) => row(index + 1));
+
+const numberedOrganization = (number) => ({ ...ORGANIZATION, tenantId: `tenant-${number}`, slug: `acme-${number}` });
 
 const renderPanel = () => render(<IdentityProvider><PlatformPanel /></IdentityProvider>);
 
@@ -230,7 +269,7 @@ describe('platform panel', () => {
     server.use(http.get('/api/platform/organizations', () => {
       organizationReads += 1;
       return organizationReads === 1
-        ? HttpResponse.json({ items: [suspended], nextCursor: null })
+        ? HttpResponse.json(pageOf([suspended]))
         : refreshed.promise;
     }));
     server.use(...directories().slice(1));
@@ -249,7 +288,7 @@ describe('platform panel', () => {
     reactivate.click();
     expect(reactivations).toBe(1);
 
-    refreshed.resolve(HttpResponse.json({ items: [suspended], nextCursor: null }));
+    refreshed.resolve(HttpResponse.json(pageOf([suspended])));
     await waitFor(() => expect(reactivate).toBeEnabled());
   });
 
@@ -316,7 +355,7 @@ describe('platform panel', () => {
     server.use(http.get('/api/platform/organizations', () => {
       organizationReads += 1;
       return organizationReads === 1
-        ? HttpResponse.json({ items: [ORGANIZATION], nextCursor: null })
+        ? HttpResponse.json(pageOf([ORGANIZATION]))
         : problem(500, 'internal_server_error', { traceId: 'trace-after-invite' });
     }));
     server.use(...directories().slice(1));
@@ -355,7 +394,7 @@ describe('platform panel', () => {
     server.use(http.get('/api/platform/organizations', () => {
       reads += 1;
       return reads === 1
-        ? HttpResponse.json({ items: [ORGANIZATION], nextCursor: null })
+        ? HttpResponse.json(pageOf([ORGANIZATION]))
         : problem(500, 'internal_server_error', { traceId: 'trace-after-suspend' });
     }));
     server.use(...directories().slice(1));
@@ -410,7 +449,7 @@ describe('platform panel', () => {
       attempts += 1;
       return attempts === 1
         ? problem(500, 'internal_server_error', { traceId: 'trace-panel' })
-        : HttpResponse.json({ items: [ORGANIZATION], nextCursor: null });
+        : HttpResponse.json(pageOf([ORGANIZATION]));
     }));
     server.use(...directories().slice(1));
     renderPanel();
@@ -422,39 +461,88 @@ describe('platform panel', () => {
     expect(attempts).toBe(2);
   });
 
-  it('keeps a displayed directory through a retryable refresh and its in-place retry', async () => {
-    let attempts = 0;
+  /**
+   * Every directory has more rows than one page carries in a real deployment, so each one turns its own pages
+   * and nothing past the first page is out of reach (PD-6).
+   */
+  it.each([
+    {
+      title: 'Organizations',
+      path: '/api/platform/organizations',
+      row: numberedOrganization,
+      shown: (number) => `acme-${number}`,
+    },
+    {
+      title: 'Administrators',
+      path: '/api/platform/admins',
+      row: (number) => ({
+        ...ADMINISTRATOR,
+        membershipId: `membership-${number}`,
+        identityId: `identity-${number}`,
+        normalizedEmail: `admin${number}@example.test`,
+        isOwner: false,
+      }),
+      shown: (number) => `admin${number}@example.test`,
+    },
+    {
+      title: 'Audit',
+      path: '/api/platform/audit',
+      row: (number) => ({ eventId: `event-${number}`, eventType: `platform.event.${number}`, outcome: null }),
+      shown: (number) => `platform.event.${number}`,
+    },
+  ])('moves the $title directory to page 2 on its own and shows rows 26 to 30', async ({ title, path, row, shown }) => {
+    server.use(antiforgery(), contextIs(platformContext()), ...directories());
+    const pageNumbers = directoryServed(path, numbered(30, row));
+    renderPanel();
+
+    const section = (await screen.findByRole('heading', { name: title })).parentElement;
+    expect(await within(section).findByText('1–25 of 30')).toBeInTheDocument();
+    await userEvent.click(within(section).getByRole('button', { name: 'Go to next page' }));
+
+    expect(await within(section).findByText('26–30 of 30')).toBeInTheDocument();
+    expect(within(section).getByText(shown(26))).toBeInTheDocument();
+    expect(within(section).getByText(shown(30))).toBeInTheDocument();
+    expect(within(section).queryByText(shown(25))).toBeNull();
+    expect(pageNumbers).toEqual([1, 2]);
+  });
+
+  /**
+   * A deliberate rewrite of the retry this panel used to offer, which went back to the first page. A failed page
+   * change keeps what is on screen, and "Try again" asks for the page that was requested.
+   */
+  it('keeps a displayed directory through a failed page change and retries the page that was asked for', async () => {
+    const pageNumbers = [];
     const retry = deferred();
-    const refreshed = { ...ORGANIZATION, tenantId: 'tenant-2', slug: 'acme-2' };
+    const organizations = numbered(30, numberedOrganization);
     server.use(antiforgery(), contextIs(platformContext()));
-    server.use(http.get('/api/platform/organizations', () => {
-      attempts += 1;
-      if (attempts === 1) {
-        return HttpResponse.json({ items: [ORGANIZATION], nextCursor: 'next-organizations' });
-      }
-      if (attempts === 2) return problem(500, 'internal_server_error', { traceId: 'trace-refresh' });
-      return retry.promise;
+    server.use(http.get('/api/platform/organizations', ({ request }) => {
+      const page = pageAskedFor(request);
+      pageNumbers.push(page.pageNumber);
+      if (pageNumbers.length === 1) return servedPage(organizations, page);
+      if (pageNumbers.length === 2) return problem(500, 'internal_server_error', { traceId: 'trace-refresh' });
+      return retry.promise.then(() => servedPage(organizations, page));
     }));
     server.use(...directories().slice(1));
     renderPanel();
 
     expect(await screen.findByText('acme-1')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'More organizations' }));
+    const section = screen.getByRole('heading', { name: 'Organizations' }).parentElement;
+    await userEvent.click(within(section).getByRole('button', { name: 'Go to next page' }));
 
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('Something went wrong. Try again.');
     expect(alert).toHaveTextContent('Reference: trace-refresh');
     expect(screen.getByText('acme-1')).toBeInTheDocument();
+    expect(within(section).getByText('1–25 of 30')).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
-    await waitFor(() => expect(attempts).toBe(3));
-    const section = screen.getByRole('heading', { name: 'Organizations' }).parentElement;
+    await waitFor(() => expect(pageNumbers).toEqual([1, 2, 2]));
     expect(section).toHaveAttribute('aria-busy', 'true');
     expect(screen.getByText('acme-1')).toBeInTheDocument();
 
-    retry.resolve(HttpResponse.json({ items: [refreshed], nextCursor: null }));
+    retry.resolve();
 
-    expect(await screen.findByText('acme-2')).toBeInTheDocument();
+    expect(await screen.findByText('acme-26')).toBeInTheDocument();
     expect(section).toHaveAttribute('aria-busy', 'false');
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });

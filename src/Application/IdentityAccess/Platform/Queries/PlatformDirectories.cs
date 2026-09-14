@@ -5,23 +5,6 @@ using CleanArchitecture.Application.IdentityAccess.Authorization;
 namespace CleanArchitecture.Application.IdentityAccess.Platform.Queries;
 
 /// <summary>
-/// One page request, shared by every Platform directory (IA-REQ-045). The limit is bounded and the cursor is
-/// opaque, so a caller can walk a directory and can never ask for all of it, nor for a page keyed on anything it
-/// invented.
-/// </summary>
-public sealed record PlatformDirectoryQuery(int Limit, string? Cursor)
-{
-    internal const int MinimumLimit = 1;
-    internal const int MaximumLimit = 100;
-
-    /// <summary>Clamped rather than refused: a limit outside the range is a client bug, not a security event.</summary>
-    internal int BoundedLimit => Math.Clamp(Limit, MinimumLimit, MaximumLimit);
-}
-
-/// <summary>One page of a directory. The cursor is null when there is nothing after this page.</summary>
-public sealed record PlatformDirectoryPage<T>(IReadOnlyList<T> Items, string? NextCursor);
-
-/// <summary>
 /// An Organization as Platform may see it (IA-REQ-044): identity, lifecycle and concurrency, and nothing about
 /// the business inside it. There is deliberately no CUIT, no legal name and no profile payload.
 /// </summary>
@@ -81,18 +64,22 @@ public sealed record PlatformAuditEventProjection(
     string? Outcome,
     string? ReasonCode);
 
+// The four directory reads (IA-REQ-045) each take one offset page request. `PaginationQuery` clamps the page number
+// and the page size, so a caller can walk a directory page by page and can never ask for all of it at once; each
+// answers one `PaginatedList` page with its totals.
+
 [Authorize(Permissions.PlatformOrganizationsRead, true)]
-public sealed record ListPlatformOrganizationsQuery(PlatformDirectoryQuery Query)
-    : IRequest<Result<PlatformDirectoryPage<PlatformOrganizationProjection>>>;
+public sealed record ListPlatformOrganizationsQuery(PaginationQuery Query)
+    : IRequest<Result<PaginatedList<PlatformOrganizationProjection>>>;
 
 [Authorize(Permissions.PlatformIdentitiesRead, true)]
-public sealed record ListPlatformIdentitiesQuery(PlatformDirectoryQuery Query)
-    : IRequest<Result<PlatformDirectoryPage<PlatformIdentityProjection>>>;
+public sealed record ListPlatformIdentitiesQuery(PaginationQuery Query)
+    : IRequest<Result<PaginatedList<PlatformIdentityProjection>>>;
 
 [Authorize(Permissions.PlatformAdminsRead, true)]
-public sealed record ListPlatformAdministratorsQuery(PlatformDirectoryQuery Query)
-    : IRequest<Result<PlatformDirectoryPage<PlatformAdministratorProjection>>>;
+public sealed record ListPlatformAdministratorsQuery(PaginationQuery Query)
+    : IRequest<Result<PaginatedList<PlatformAdministratorProjection>>>;
 
 [Authorize(Permissions.PlatformAuditRead, true)]
-public sealed record ListPlatformAuditQuery(PlatformDirectoryQuery Query)
-    : IRequest<Result<PlatformDirectoryPage<PlatformAuditEventProjection>>>;
+public sealed record ListPlatformAuditQuery(PaginationQuery Query)
+    : IRequest<Result<PaginatedList<PlatformAuditEventProjection>>>;

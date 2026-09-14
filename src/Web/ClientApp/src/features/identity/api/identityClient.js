@@ -1,4 +1,5 @@
-import { ApiProblem, createApiTransport } from './apiTransport';
+import { ApiProblem, createApiTransport } from '../../../api/apiTransport';
+import { readEveryPage, sendPage } from '../../../api/pagination';
 
 /**
  * The identity half of the API surface.
@@ -10,15 +11,17 @@ import { ApiProblem, createApiTransport } from './apiTransport';
  */
 
 /** Kept as the identity-facing name for the error the transport throws, so existing callers still catch it. */
-export { ApiProblem as IdentityProblem } from './apiTransport';
+export { ApiProblem as IdentityProblem } from '../../../api/apiTransport';
 
 export function createIdentityClient(transport = createApiTransport()) {
   const { bootstrapAntiforgery, hasRequestToken, send } = transport;
 
-  // A directory answers one page and, when there is more, an opaque cursor for the next. The cursor is the only
-  // thing that continues a listing: `limit` is deliberately never sent, so the server's own page size stays the
-  // contract rather than something a caller can widen.
-  const continued = (path, cursor) => (cursor ? `${path}?cursor=${encodeURIComponent(cursor)}` : path);
+  // A tenant list answers one offset page, read through the shared page reader: the page asked for is bounded
+  // before it is sent, a missing one is the first page (D10), and metadata the contract cannot produce is reported
+  // as an unreadable response like any other drift (E7). The server clamps the page again.
+  const tenantPage = (tenantId, collection, page, options) =>
+    sendPage(send, `/api/tenants/${encodeURIComponent(tenantId)}/${collection}`, page, { signal: options?.signal });
+  const listRoles = (tenantId, page, options) => tenantPage(tenantId, 'roles', page, options);
   const identityContextMembers = [
     'user',
     'preferredLanguage',
@@ -118,10 +121,13 @@ export function createIdentityClient(transport = createApiTransport()) {
       expect: ['code', 'grantable'],
       signal: options?.signal,
     }),
-    listRoles: (tenantId, cursor = null, options) => send(continued(`/api/tenants/${encodeURIComponent(tenantId)}/roles`, cursor), {
-      expect: ['items', 'nextCursor'],
-      signal: options?.signal,
-    }),
+    listRoles,
+    // Every role, for a picker that must offer all of them: pages are walked until one has no next page, each role is
+    // kept once by its identifier, and a failed or endless walk offers no partial catalogue (PD-2, AD13).
+    listRoleCatalogue: (tenantId, options) =>
+      readEveryPage((page, pageOptions) => listRoles(tenantId, page, pageOptions), (role) => role.roleId, {
+        signal: options?.signal,
+      }),
     createRole: (tenantId, name, permissions) => send(`/api/tenants/${encodeURIComponent(tenantId)}/roles`, {
       method: 'POST',
       body: { name, permissions },
@@ -139,14 +145,8 @@ export function createIdentityClient(transport = createApiTransport()) {
 
     // Member administration. `version` is the row's own concurrency token, echoed back so a change made against
     // a member somebody else has since altered is refused rather than silently applied over theirs.
-    listMembers: (tenantId, cursor = null, options) => send(continued(`/api/tenants/${encodeURIComponent(tenantId)}/members`, cursor), {
-      expect: ['items', 'nextCursor'],
-      signal: options?.signal,
-    }),
-    listTenantInvitations: (tenantId, cursor = null, options) => send(continued(`/api/tenants/${encodeURIComponent(tenantId)}/invitations`, cursor), {
-      expect: ['items', 'nextCursor'],
-      signal: options?.signal,
-    }),
+    listMembers: (tenantId, page, options) => tenantPage(tenantId, 'members', page, options),
+    listTenantInvitations: (tenantId, page, options) => tenantPage(tenantId, 'invitations', page, options),
     updateMemberRoles: (tenantId, membershipId, roleIds, version) =>
       send(`/api/tenants/${encodeURIComponent(tenantId)}/members/${encodeURIComponent(membershipId)}/roles`, {
         method: 'PUT',

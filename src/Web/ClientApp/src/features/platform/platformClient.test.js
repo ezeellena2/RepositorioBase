@@ -1,6 +1,7 @@
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it, vi } from 'vitest';
-import { createApiTransport } from '../identity/api/apiTransport';
+import { ClientFailure, createApiTransport } from '../../api/apiTransport';
+import { paginationMembers } from '../../api/pagination';
 import { createPlatformClient } from './api/platformClient';
 import { server } from '../../test/server';
 import { ANTIFORGERY_TOKEN, antiforgery, problem } from '../../test/identityServer';
@@ -18,6 +19,23 @@ const captured = (method, path, respond) => {
   }));
   return seen;
 };
+
+const emptyDirectoryPage = {
+  items: [],
+  pageNumber: 1,
+  pageSize: 25,
+  totalCount: 0,
+  totalPages: 0,
+  hasPreviousPage: false,
+  hasNextPage: false,
+};
+
+const directories = [
+  ['listOrganizations', '/api/platform/organizations'],
+  ['listIdentities', '/api/platform/identities'],
+  ['listAdministrators', '/api/platform/admins'],
+  ['listAudit', '/api/platform/audit'],
+];
 
 /**
  * The Platform client's half of the contract (IA-REQ-045).
@@ -112,7 +130,7 @@ describe('platform client', () => {
   });
 
   it('does not carry an antiforgery token on a directory read', async () => {
-    const seen = captured('get', '/api/platform/organizations', () => HttpResponse.json({ items: [], nextCursor: null }));
+    const seen = captured('get', '/api/platform/organizations', () => HttpResponse.json(emptyDirectoryPage));
 
     await clientWith().listOrganizations();
 
@@ -121,7 +139,7 @@ describe('platform client', () => {
 
   it('refuses a Platform response shaped like an internal Result', async () => {
     server.use(http.get('/api/platform/organizations', () =>
-      HttpResponse.json({ succeeded: true, value: { items: [], nextCursor: null } })));
+      HttpResponse.json({ succeeded: true, value: emptyDirectoryPage })));
 
     await expect(clientWith().listOrganizations()).rejects.toMatchObject({
       problem: { code: 'unreadable_response', status: 0 },
@@ -130,17 +148,49 @@ describe('platform client', () => {
 
   it('forwards a caller signal through every effect-owned Platform read', async () => {
     const signal = new AbortController().signal;
-    const send = vi.fn().mockResolvedValue({ items: [], nextCursor: null });
+    const send = vi.fn().mockResolvedValue(emptyDirectoryPage);
     const client = createPlatformClient({ send });
 
-    await client.listOrganizations({ signal });
-    await client.listIdentities({ signal });
-    await client.listAdministrators({ signal });
-    await client.listAudit({ signal });
+    await client.listOrganizations(null, { signal });
+    await client.listIdentities(null, { signal });
+    await client.listAdministrators(null, { signal });
+    await client.listAudit(null, { signal });
     await client.readRetentionPolicy({ signal });
 
     expect(send).toHaveBeenCalledTimes(5);
     expect(send.mock.calls.every(([, options]) => options.signal === signal)).toBe(true);
+  });
+
+  /**
+   * Each directory reads one offset page (D21): the page is bounded before it is sent, and the caller's signal
+   * travels with it. The server clamps again, so a bound here only keeps the client inside the contract.
+   */
+  it.each(directories)('%s asks for a bounded offset page and passes the caller signal', async (method, path) => {
+    const signal = new AbortController().signal;
+    const send = vi.fn().mockResolvedValue(emptyDirectoryPage);
+
+    await createPlatformClient({ send })[method]({ pageNumber: 0, pageSize: 500 }, { signal });
+
+    expect(send).toHaveBeenCalledOnce();
+    expect(send).toHaveBeenCalledWith(`${path}?pageNumber=1&pageSize=100`, { expect: paginationMembers, signal });
+  });
+
+  it.each(directories)('%s reports malformed page metadata as an unreadable response, not as data', async (method) => {
+    const send = vi.fn().mockResolvedValue({ ...emptyDirectoryPage, pageNumber: 0 });
+
+    const failure = await createPlatformClient({ send })[method]({ pageNumber: 1, pageSize: 25 })
+      .catch((candidate) => candidate);
+
+    expect(failure).toBeInstanceOf(ClientFailure);
+    expect(failure.problem).toEqual({ code: 'unreadable_response', status: 0 });
+  });
+
+  it.each(directories)('%s reports the retired cursor shape as an unreadable response', async (method, path) => {
+    server.use(http.get(path, () => HttpResponse.json({ items: [], nextCursor: null })));
+
+    await expect(clientWith()[method]()).rejects.toMatchObject({
+      problem: { code: 'unreadable_response', status: 0 },
+    });
   });
 
   it('sends the reason and the status the operator read, and nothing else, when suspending an account', async () => {

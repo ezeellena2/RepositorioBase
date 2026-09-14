@@ -18,8 +18,8 @@ import {
   fieldErrorText,
   firstInvalid,
   selectFieldErrors,
-} from '../../identity/fieldErrors';
-import { ProblemMessage } from '../../identity/ProblemMessage';
+} from '../../../components/problemFields';
+import { ProblemMessage } from '../../../components/ProblemMessage';
 import { useFragmentToken } from '../../identity/useFragmentToken';
 import { useSubmit } from '../../identity/useSubmit';
 import { createPlatformClient } from '../api/platformClient';

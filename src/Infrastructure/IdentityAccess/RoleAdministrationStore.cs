@@ -1,3 +1,4 @@
+using CleanArchitecture.Application.Common.Models;
 using CleanArchitecture.Application.IdentityAccess.Authorization;
 using CleanArchitecture.Application.IdentityAccess.Roles;
 using CleanArchitecture.Domain.IdentityAccess.Authorization;
@@ -5,6 +6,7 @@ using CleanArchitecture.Domain.IdentityAccess.Identities;
 using CleanArchitecture.Domain.IdentityAccess.Memberships;
 using CleanArchitecture.Domain.IdentityAccess.Tenants;
 using CleanArchitecture.Infrastructure.Data;
+using CleanArchitecture.Infrastructure.Data.Pagination;
 using Microsoft.EntityFrameworkCore;
 
 namespace CleanArchitecture.Infrastructure.IdentityAccess;
@@ -15,22 +17,17 @@ namespace CleanArchitecture.Infrastructure.IdentityAccess;
 /// </summary>
 public sealed class RoleAdministrationStore(ApplicationDbContext context) : IRoleAdministrationStore
 {
-    /// <summary>Bounds the page whatever the caller asked for, so a route value cannot become a table scan.</summary>
-    private const int MaximumLimit = 100;
-
-    public async Task<RolePage> ListAsync(TenantId tenantId, int limit, string? cursor, CancellationToken cancellationToken)
+    public async Task<PaginatedList<RoleView>> ListAsync(TenantId tenantId, PaginationQuery pagination, CancellationToken cancellationToken)
     {
-        var size = Math.Clamp(limit <= 0 ? MaximumLimit : limit, 1, MaximumLimit);
-        var after = Cursor.Decode(cursor);
-
-        // Ordered by the identifier the cursor carries, so a page boundary is stable while roles are being added.
-        var query = context.TenantRoles.AsNoTracking().Where(role => role.TenantId == tenantId);
-        if (after is { } roleId) query = query.Where(role => role.Id > RoleId.From(roleId));
-
-        var page = await Project(query.OrderBy(role => role.Id)).Take(size + 1).ToListAsync(cancellationToken);
-        var items = page.Take(size).ToArray();
-        var views = await ViewsAsync(tenantId, items, cancellationToken);
-        return new RolePage(views, page.Count > size ? Cursor.Encode(items[^1].RoleId.Value) : null);
+        // Ordered by the unique identifier before paging, so consecutive pages of unchanged roles neither repeat nor
+        // skip one. The page is bounded by the clamped request, so a route value cannot become a table scan, and the
+        // views are built for the rows of this page only.
+        var roles = context.TenantRoles.AsNoTracking()
+            .Where(role => role.TenantId == tenantId)
+            .OrderBy(role => role.Id);
+        var page = await Project(roles).ToPaginatedListAsync(pagination, cancellationToken);
+        return new PaginatedList<RoleView>(
+            await ViewsAsync(tenantId, page.Items, cancellationToken), page.PageNumber, page.PageSize, page.TotalCount);
     }
 
     public async Task<RoleView?> FindAsync(TenantId tenantId, Guid roleId, CancellationToken cancellationToken)
@@ -289,32 +286,4 @@ public sealed class RoleAdministrationStore(ApplicationDbContext context) : IRol
         Render(context.Entry(role).Property<uint>("Version").CurrentValue);
 
     private sealed record RoleRow(RoleId RoleId, string Name, bool IsSystem, bool IsRetired, uint Version);
-
-    /// <summary>An opaque continuation. It carries a role identifier and nothing a caller could act on.</summary>
-    private static class Cursor
-    {
-        internal static string Encode(Guid roleId) =>
-            Convert.ToBase64String(roleId.ToByteArray()).TrimEnd('=').Replace('+', '-').Replace('/', '_');
-
-        internal static Guid? Decode(string? cursor)
-        {
-            if (string.IsNullOrWhiteSpace(cursor)) return null;
-            try
-            {
-                var padded = cursor.Replace('-', '+').Replace('_', '/');
-                padded += new string('=', (4 - (padded.Length % 4)) % 4);
-                var bytes = Convert.FromBase64String(padded);
-                // An all-zero identifier is not a position either: the strongly-typed identifiers refuse it by
-            // throwing, and a probe with sixteen zero bytes is well-formed base64url, so decoding it as a
-            // value would turn a harmless guess into a sanitized 500.
-            var decoded = bytes.Length == 16 ? new Guid(bytes) : (Guid?)null;
-            return decoded == Guid.Empty ? null : decoded;
-            }
-            catch (FormatException)
-            {
-                // An unreadable cursor is not an error to explain; it is simply not a position in this list.
-                return null;
-            }
-        }
-    }
 }

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { paginationMembers } from './pagination';
 import { PROBLEM_MEDIA_TYPE, isProblem, readProblem, readSuccess } from './problemDetails';
 
 const problem = (status, body, headers = {}) =>
@@ -130,6 +131,14 @@ describe('problem details', () => {
     ['a pagination wrapper', { items: [], nextCursor: null }],
   ])('refuses %s on an identity endpoint', async (_label, body) => {
     await expect(readSuccess(json(200, body), ['invitationId'])).rejects.toThrow();
+  });
+
+  /**
+   * No offset page declares `nextCursor`, so a server still answering the retired cursor shape is drift, not a page,
+   * even where `items` is a declared member (E7).
+   */
+  it('refuses the retired cursor shape even when items are declared', async () => {
+    await expect(readSuccess(json(200, { items: [], nextCursor: null }), paginationMembers)).rejects.toThrow(/nextCursor/);
   });
 
   it('reads a declared endpoint DTO', async () => {

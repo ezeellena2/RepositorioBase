@@ -39,14 +39,14 @@ public sealed class GetPermissionCatalogQueryHandler(
 public sealed class ListRolesQueryHandler(
     IRoleAdministrationStore roles,
     ICurrentTenant currentTenant,
-    IUser user) : IRequestHandler<ListRolesQuery, Result<RolePage>>
+    IUser user) : IRequestHandler<ListRolesQuery, Result<PaginatedList<RoleView>>>
 {
-    public async Task<Result<RolePage>> Handle(ListRolesQuery request, CancellationToken cancellationToken)
+    public async Task<Result<PaginatedList<RoleView>>> Handle(ListRolesQuery request, CancellationToken cancellationToken)
     {
         if (!RoleScope.Resolve(request.TenantId, currentTenant, user, out var tenantId, out _))
-            return Result<RolePage>.Failure(IdentityAccessErrors.RoleNotFound());
+            return Result<PaginatedList<RoleView>>.Failure(IdentityAccessErrors.RoleNotFound());
 
-        return Result<RolePage>.Success(await roles.ListAsync(tenantId, request.Limit, request.Cursor, cancellationToken));
+        return Result<PaginatedList<RoleView>>.Success(await roles.ListAsync(tenantId, request.Pagination, cancellationToken));
     }
 }
 

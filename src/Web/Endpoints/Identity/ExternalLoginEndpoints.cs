@@ -148,17 +148,16 @@ internal static class ExternalLoginEndpoints
         };
 
         ExternalHandoffCookie.Clear(context);
-        return result.IsSuccess ? Results.NoContent() : problems.ToHttpResult(result.Error!);
+        return result.ToHttpResult(context, problems);
     }
 
     private static async Task<IResult> ListLinks(HttpContext context, ApiProblemDetailsMapper problems, ISender sender)
     {
         var result = await sender.Send(new ListExternalLoginsQuery(), context.RequestAborted);
-        return result.IsSuccess
-            ? Results.Ok(new ExternalLinksResponse(
-                result.Value!.Items.Select(link => new ExternalLinkResponse(link.Handle, link.Provider, link.ProviderEmail, link.LinkedAt)).ToArray(),
-                result.Value.Available))
-            : problems.ToHttpResult(result.Error!);
+        return result.ToHttpResult(context, problems, links =>
+            Results.Ok(new ExternalLinksResponse(
+                links.Items.Select(link => new ExternalLinkResponse(link.Handle, link.Provider, link.ProviderEmail, link.LinkedAt)).ToArray(),
+                links.Available)));
     }
 
     private static async Task<IResult> Unlink(HttpContext context, IAntiforgery antiforgery, ApiProblemDetailsMapper problems, ISender sender, string provider)
@@ -171,7 +170,7 @@ internal static class ExternalLoginEndpoints
         }
 
         var result = await sender.Send(new UnlinkExternalLoginCommand(canonical), context.RequestAborted);
-        return result.IsSuccess ? Results.NoContent() : problems.ToHttpResult(result.Error!);
+        return result.ToHttpResult(context, problems);
     }
 
     /// <summary>

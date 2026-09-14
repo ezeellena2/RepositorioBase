@@ -17,28 +17,28 @@ namespace CleanArchitecture.Application.IdentityAccess.Members;
 public sealed class ListMembersQueryHandler(
     IMembershipAdministrationStore members,
     ICurrentTenant currentTenant,
-    IUser user) : IRequestHandler<ListMembersQuery, Result<MemberPage>>
+    IUser user) : IRequestHandler<ListMembersQuery, Result<PaginatedList<MemberView>>>
 {
-    public async Task<Result<MemberPage>> Handle(ListMembersQuery request, CancellationToken cancellationToken)
+    public async Task<Result<PaginatedList<MemberView>>> Handle(ListMembersQuery request, CancellationToken cancellationToken)
     {
         if (!RoleScope.Resolve(request.TenantId, currentTenant, user, out var tenantId, out _))
-            return Result<MemberPage>.Failure(IdentityAccessErrors.MembershipNotFound());
+            return Result<PaginatedList<MemberView>>.Failure(IdentityAccessErrors.MembershipNotFound());
 
-        return Result<MemberPage>.Success(await members.ListAsync(tenantId, request.Limit, request.Cursor, cancellationToken));
+        return Result<PaginatedList<MemberView>>.Success(await members.ListAsync(tenantId, request.Pagination, cancellationToken));
     }
 }
 
 public sealed class ListTenantInvitationsQueryHandler(
     IMembershipAdministrationStore members,
     ICurrentTenant currentTenant,
-    IUser user) : IRequestHandler<ListTenantInvitationsQuery, Result<InvitationSummaryPage>>
+    IUser user) : IRequestHandler<ListTenantInvitationsQuery, Result<PaginatedList<InvitationSummaryView>>>
 {
-    public async Task<Result<InvitationSummaryPage>> Handle(ListTenantInvitationsQuery request, CancellationToken cancellationToken)
+    public async Task<Result<PaginatedList<InvitationSummaryView>>> Handle(ListTenantInvitationsQuery request, CancellationToken cancellationToken)
     {
         if (!RoleScope.Resolve(request.TenantId, currentTenant, user, out var tenantId, out _))
-            return Result<InvitationSummaryPage>.Failure(IdentityAccessErrors.MembershipNotFound());
+            return Result<PaginatedList<InvitationSummaryView>>.Failure(IdentityAccessErrors.MembershipNotFound());
 
-        return Result<InvitationSummaryPage>.Success(await members.ListInvitationsAsync(tenantId, request.Limit, request.Cursor, cancellationToken));
+        return Result<PaginatedList<InvitationSummaryView>>.Success(await members.ListInvitationsAsync(tenantId, request.Pagination, cancellationToken));
     }
 }
 

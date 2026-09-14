@@ -25,7 +25,7 @@ const actionCatches = new Map([
 describe('identity feature files', () => {
   it.each([
     'features/identity/api/identityClient.js',
-    'features/identity/api/problemDetails.js',
+    'api/problemDetails.js',
     'features/identity/useRead.js',
     'features/identity/context/IdentityProvider.jsx',
     'features/identity/login/LoginPage.jsx',

@@ -17,7 +17,7 @@ import TableRow from '@mui/material/TableRow';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { useIdentity } from '../../identity/context/IdentityProvider';
-import { ProblemMessage } from '../../identity/ProblemMessage';
+import { ProblemMessage } from '../../../components/ProblemMessage';
 import { useRead } from '../../identity/useRead';
 import { useSubmit } from '../../identity/useSubmit';
 import { usePlatformClient } from '../invitations/PlatformInvitationPages';

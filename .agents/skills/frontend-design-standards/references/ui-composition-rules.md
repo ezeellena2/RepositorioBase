@@ -314,8 +314,8 @@ container, never from the screen.
 ## Prohibited additions
 
 Do not add a dashboard, search, notifications, tabs, filters, pagination, controls or copy merely because a
-reference image contains them. Preserve real cursor controls where the route already owns them. Do not add
-generic visual wrappers; repeat MUI composition until a third occurrence proves shared semantics.
+reference image contains them. Preserve real offset `TablePagination` controls where the route already owns
+them. Do not add generic visual wrappers; repeat MUI composition until a third occurrence proves shared semantics.
 
 ## What to check before calling a screen done
 

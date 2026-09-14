@@ -1,4 +1,5 @@
 using System.Text.Json;
+using CleanArchitecture.Application.Common.Models;
 using CleanArchitecture.Application.FunctionalTests.Infrastructure;
 using CleanArchitecture.Application.IdentityAccess.Platform.Queries;
 using CleanArchitecture.Domain.IdentityAccess.Organizations;
@@ -27,7 +28,7 @@ public sealed class PlatformProjectionTests : TestBase
         await PlatformScenario.ActiveOwnerAsync();
         await OrganizationWithProfileAsync();
 
-        var page = (await TestApp.SendAsync(new ListPlatformOrganizationsQuery(new PlatformDirectoryQuery(25, null)))).Value!;
+        var page = (await TestApp.SendAsync(new ListPlatformOrganizationsQuery(new PaginationQuery(1, 25)))).Value!;
 
         var item = page.Items.ShouldHaveSingleItem();
         Fields(item).ShouldBe([
@@ -50,7 +51,7 @@ public sealed class PlatformProjectionTests : TestBase
         await OrganizationWithProfileAsync();
 
         var payload = JsonSerializer.Serialize(
-            (await TestApp.SendAsync(new ListPlatformOrganizationsQuery(new PlatformDirectoryQuery(25, null)))).Value);
+            (await TestApp.SendAsync(new ListPlatformOrganizationsQuery(new PaginationQuery(1, 25)))).Value);
 
         payload.ShouldNotContain(Cuit, Case.Insensitive);
         payload.ShouldNotContain("Acme Sociedad", Case.Insensitive);
@@ -63,7 +64,7 @@ public sealed class PlatformProjectionTests : TestBase
     {
         var owner = await PlatformScenario.ActiveOwnerAsync();
 
-        var page = (await TestApp.SendAsync(new ListPlatformIdentitiesQuery(new PlatformDirectoryQuery(25, null)))).Value!;
+        var page = (await TestApp.SendAsync(new ListPlatformIdentitiesQuery(new PaginationQuery(1, 25)))).Value!;
 
         var item = page.Items.ShouldHaveSingleItem();
         Fields(item).ShouldBe([
@@ -89,7 +90,7 @@ public sealed class PlatformProjectionTests : TestBase
     {
         var owner = await PlatformScenario.ActiveOwnerAsync();
 
-        var page = (await TestApp.SendAsync(new ListPlatformAdministratorsQuery(new PlatformDirectoryQuery(25, null)))).Value!;
+        var page = (await TestApp.SendAsync(new ListPlatformAdministratorsQuery(new PaginationQuery(1, 25)))).Value!;
 
         var item = page.Items.ShouldHaveSingleItem();
         Fields(item).ShouldBe([
@@ -110,7 +111,7 @@ public sealed class PlatformProjectionTests : TestBase
     {
         var owner = await PlatformScenario.ActiveOwnerAsync();
 
-        var page = (await TestApp.SendAsync(new ListPlatformAuditQuery(new PlatformDirectoryQuery(100, null)))).Value!;
+        var page = (await TestApp.SendAsync(new ListPlatformAuditQuery(new PaginationQuery(1, 100)))).Value!;
 
         page.Items.ShouldNotBeEmpty();
         Fields(page.Items[0]).ShouldBe([
@@ -133,10 +134,10 @@ public sealed class PlatformProjectionTests : TestBase
 
         var payloads = new[]
         {
-            JsonSerializer.Serialize((await TestApp.SendAsync(new ListPlatformOrganizationsQuery(new PlatformDirectoryQuery(100, null)))).Value),
-            JsonSerializer.Serialize((await TestApp.SendAsync(new ListPlatformIdentitiesQuery(new PlatformDirectoryQuery(100, null)))).Value),
-            JsonSerializer.Serialize((await TestApp.SendAsync(new ListPlatformAdministratorsQuery(new PlatformDirectoryQuery(100, null)))).Value),
-            JsonSerializer.Serialize((await TestApp.SendAsync(new ListPlatformAuditQuery(new PlatformDirectoryQuery(100, null)))).Value)
+            JsonSerializer.Serialize((await TestApp.SendAsync(new ListPlatformOrganizationsQuery(new PaginationQuery(1, 100)))).Value),
+            JsonSerializer.Serialize((await TestApp.SendAsync(new ListPlatformIdentitiesQuery(new PaginationQuery(1, 100)))).Value),
+            JsonSerializer.Serialize((await TestApp.SendAsync(new ListPlatformAdministratorsQuery(new PaginationQuery(1, 100)))).Value),
+            JsonSerializer.Serialize((await TestApp.SendAsync(new ListPlatformAuditQuery(new PaginationQuery(1, 100)))).Value)
         };
 
         foreach (var payload in payloads)

@@ -53,9 +53,8 @@ internal static class DocumentDisputeEndpoints
 
         // The answer carries an opaque identifier and nothing else. Echoing any part of the claim back would
         // undo the protection applied a moment earlier.
-        return result.IsSuccess
-            ? Results.Created($"/api/identity/profile/document/disputes/{result.Value!.DisputeId}", result.Value)
-            : problems.ToHttpResult(result.Error!);
+        return result.ToHttpResult(context, problems, dispute =>
+            Results.Created($"/api/identity/profile/document/disputes/{dispute.DisputeId}", dispute));
     }
 }
 

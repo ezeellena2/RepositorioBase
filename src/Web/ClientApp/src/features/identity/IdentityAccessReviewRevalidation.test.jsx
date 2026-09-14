@@ -14,8 +14,8 @@ import { MembersPage } from './members/MembersPage';
 import { InviteMemberPage } from './invitations/InviteMemberPage';
 
 const TENANT = 'tenant-1';
-const PAGE_SIZE = 100;
-const CURSOR = 'AAAAAAAAAAAAAAAAAAAAZA';
+/** The page size a directory is asked for when nobody chose one (PD-1). */
+const DEFAULT_PAGE_SIZE = 25;
 const ADMIN_PERMISSIONS = [
   'members.read', 'members.manage', 'members.invite', 'roles.read', 'roles.manage',
   'tenant.ownership.transfer', 'identity.sessions.manage', 'identity.credentials.manage', 'identity.external.manage',
@@ -33,7 +33,20 @@ const invitation = (overrides = {}) => ({
   invitationId: 'invitation-1', normalizedEmail: 'invitee@example.test', status: 'Pending',
   createdAt: '2026-09-01T00:00:00Z', expiresAt: '2026-09-08T00:00:00Z', roleIds: [], ...overrides,
 });
-const pageResponse = (items, nextCursor = null) => HttpResponse.json({ items, nextCursor });
+/** One offset page, exactly as the API answers it: the items, and the six members that place them among the rest. */
+const pageOf = (items, { pageNumber = 1, pageSize = DEFAULT_PAGE_SIZE, totalCount = items.length } = {}) => {
+  const totalPages = totalCount === 0 ? 0 : Math.ceil(totalCount / pageSize);
+  return {
+    items,
+    pageNumber,
+    pageSize,
+    totalCount,
+    totalPages,
+    hasPreviousPage: pageNumber > 1 && totalPages > 0,
+    hasNextPage: pageNumber < totalPages,
+  };
+};
+const pageResponse = (items, page) => HttpResponse.json(pageOf(items, page));
 const rolesAre = (items) => http.get(`/api/tenants/${TENANT}/roles`, () => pageResponse(items));
 const membersAre = (items) => http.get(`/api/tenants/${TENANT}/members`, () => pageResponse(items));
 const invitationsAre = (items) => http.get(`/api/tenants/${TENANT}/invitations`, () => pageResponse(items));
@@ -183,52 +196,50 @@ const directories = [
   { name: 'invitations', path: 'invitations', Page: InviteMemberPage, make: (i) => invitation({ invitationId: `invitation-${i}`, normalizedEmail: `invitee${i}@example.test` }), label: (row) => row.normalizedEmail },
 ];
 
-describe('R6C: directories can reach records after the default 100-item page', () => {
-  it.each(directories)('continues the $name directory with 101 distinct records', async ({ name, path, Page, make, label }) => {
-    const rows = Array.from({ length: PAGE_SIZE + 1 }, (_, index) => make(index + 1));
+describe('R6C: directories can reach records after the default 25-item page', () => {
+  it.each(directories)('continues the $name directory with 26 distinct records', async ({ name, path, Page, make, label }) => {
+    const rows = Array.from({ length: DEFAULT_PAGE_SIZE + 1 }, (_, index) => make(index + 1));
+    const lastPage = Math.ceil(rows.length / DEFAULT_PAGE_SIZE);
     const requested = [];
+    const parameters = new Set();
     const delivered = new Map();
     server.use(
       rolesAre([role()]), membersAre([member()]), invitationsAre([]),
       http.get(`/api/tenants/${TENANT}/permission-catalog`, () => HttpResponse.json([])),
     );
     server.use(http.get(`/api/tenants/${TENANT}/${path}`, ({ request }) => {
-      const url = new URL(request.url);
-      const cursor = url.searchParams.get('cursor');
-      const limit = Number(url.searchParams.get('limit') ?? PAGE_SIZE);
-      requested.push({ cursor, limit });
-      if (cursor !== null && cursor !== CURSOR) {
-        throw new Error(`The ${name} page requested an unexpected cursor: ${cursor}`);
+      const { searchParams } = new URL(request.url);
+      searchParams.forEach((_, parameter) => parameters.add(parameter));
+      const pageNumber = Number(searchParams.get('pageNumber'));
+      const pageSize = Number(searchParams.get('pageSize'));
+      requested.push({ pageNumber, pageSize });
+      if (pageSize !== DEFAULT_PAGE_SIZE || !(pageNumber >= 1 && pageNumber <= lastPage)) {
+        throw new Error(`The ${name} directory requested an unexpected page: ${searchParams}`);
       }
-      const start = cursor === CURSOR ? PAGE_SIZE : 0;
-      const page = rows.slice(start, start + Math.min(limit, PAGE_SIZE));
-      delivered.set(cursor, page.map(label));
-      return pageResponse(page, start + page.length < rows.length ? CURSOR : null);
+      const page = rows.slice((pageNumber - 1) * pageSize, pageNumber * pageSize);
+      delivered.set(pageNumber, page.map(label));
+      return pageResponse(page, { pageNumber, pageSize, totalCount: rows.length });
     }));
 
     renderPage(<Page />);
     await screen.findByText(label(rows[0]));
-    expect(screen.getByText(label(rows[PAGE_SIZE - 1]))).toBeInTheDocument();
-    expect(requested[0].limit).toBe(PAGE_SIZE);
+    expect(screen.getByText(label(rows[DEFAULT_PAGE_SIZE - 1]))).toBeInTheDocument();
+    expect(requested[0]).toEqual({ pageNumber: 1, pageSize: DEFAULT_PAGE_SIZE });
+    expect(screen.queryByText(label(rows[DEFAULT_PAGE_SIZE]))).not.toBeInTheDocument();
     const visible = new Set(rows.filter((row) => screen.queryByText(label(row))).map(label));
 
-    // Allow either automatic loading or an accessible next/more/continuation control. There is no assertion
-    // about one particular label or about appending versus replacing the currently visible page.
-    if (!requested.some(({ cursor }) => cursor === CURSOR)) {
-      const continuationName = /next|more|continue|page\s*2|2\s*page|›|»/i;
-      const continuation = [
-        ...screen.queryAllByRole('button', { name: continuationName }),
-        ...screen.queryAllByRole('link', { name: continuationName }),
-      ].find(executable);
-      expect(continuation, `R6C: ${name} displays 100 of 101 records but offers no continuation for nextCursor`).toBeDefined();
-      await userEvent.click(continuation);
-    }
+    // The continuation is the page control's next-page button, named by the MUI locale. There is no assertion about
+    // appending versus replacing the currently visible page.
+    const continuation = screen.queryAllByRole('button', { name: 'Go to next page' }).find(executable);
+    expect(continuation, `R6C: ${name} displays ${DEFAULT_PAGE_SIZE} of ${rows.length} records but offers no next page`).toBeDefined();
+    await userEvent.click(continuation);
 
-    await waitFor(() => expect(requested).toContainEqual({ cursor: CURSOR, limit: PAGE_SIZE }));
-    expect(await screen.findByText(label(rows[PAGE_SIZE]))).toBeInTheDocument();
+    await waitFor(() => expect(requested).toContainEqual({ pageNumber: 2, pageSize: DEFAULT_PAGE_SIZE }));
+    expect(await screen.findByText(label(rows[DEFAULT_PAGE_SIZE]))).toBeInTheDocument();
     for (const row of rows.filter((candidate) => screen.queryByText(label(candidate)))) visible.add(label(row));
     expect([...visible].sort()).toEqual(rows.map(label).sort());
     const traversed = [...delivered.values()].flat();
     expect(new Set(traversed).size).toBe(traversed.length);
+    expect([...parameters].sort(), 'pages are asked for by page number and page size alone').toEqual(['pageNumber', 'pageSize']);
   });
 });

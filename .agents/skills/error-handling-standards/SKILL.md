@@ -106,7 +106,7 @@ A neutral outcome must still be explained with a next step that is true for ever
 ### The catalogue — one source of truth
 
 13. **A code is born once**: one factory in `<Context>Errors` (today `IdentityAccessErrors`) and one contract in `ApiProblemMetadata`. A factory that collapses several causes says so in its XML doc.
-14. **`src/Web/ClientApp/src/features/identity/problemCodes.json` is checked in** and maps every code the API can answer to its status.
+14. **`src/Web/ClientApp/src/api/problemCodes.json` is checked in** and maps every code the API can answer to its status.
     - A backend contract test fails when the served OpenAPI `x-problem-codes` union, plus the pre-routing boundary codes, differs from it.
     - A Vitest test fails when a code in it has no message, or when a message key is neither in it nor a client code.
     - The MSW `problem()` helper refuses any `(status, code)` pair that is not in it.

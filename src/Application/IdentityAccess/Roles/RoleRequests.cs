@@ -18,7 +18,7 @@ namespace CleanArchitecture.Application.IdentityAccess.Roles;
 public sealed record GetPermissionCatalogQuery(TenantId TenantId) : IRequest<Result<IReadOnlyList<PermissionCatalogEntry>>>;
 
 [Authorize(Permissions.RolesRead, true)]
-public sealed record ListRolesQuery(TenantId TenantId, int Limit, string? Cursor) : IRequest<Result<RolePage>>;
+public sealed record ListRolesQuery(TenantId TenantId, PaginationQuery Pagination) : IRequest<Result<PaginatedList<RoleView>>>;
 
 [Authorize(Permissions.RolesRead, true)]
 public sealed record GetRoleQuery(TenantId TenantId, Guid RoleId) : IRequest<Result<RoleView>>;

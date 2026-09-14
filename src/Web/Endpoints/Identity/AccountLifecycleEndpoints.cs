@@ -83,7 +83,7 @@ internal static class AccountLifecycleEndpoints
         var result = await sender.Send(command, context.RequestAborted);
 
         // Neutral either way: the same status for a parked address, a live one and one that does not exist.
-        return result.IsSuccess ? Results.StatusCode(StatusCodes.Status202Accepted) : problems.ToHttpResult(result.Error!);
+        return result.ToAcceptedHttpResult(context, problems);
     }
 
     private static async Task<IResult> Reactivate(HttpContext context, IAntiforgery antiforgery, ApiProblemDetailsMapper problems, ISender sender, ReactivateAccountCommand command)
@@ -94,6 +94,6 @@ internal static class AccountLifecycleEndpoints
 
         // No sign-in here, deliberately. Getting the account back and being signed into it are two things, and
         // the second one goes through the front door.
-        return result.IsSuccess ? Results.NoContent() : problems.ToHttpResult(result.Error!);
+        return result.ToHttpResult(context, problems);
     }
 }

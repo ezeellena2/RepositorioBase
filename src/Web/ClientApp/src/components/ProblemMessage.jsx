@@ -3,8 +3,8 @@ import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Link from '@mui/material/Link';
 import Typography from '@mui/material/Typography';
-import { useTranslation } from '../../i18n';
-import { fieldIdFor, unclaimedFieldErrors, validationDetailText } from './fieldErrors';
+import { useTranslation } from '../i18n';
+import { fieldIdFor, unclaimedFieldErrors, validationDetailText } from './problemFields';
 
 const validationFieldKey = (i18n, field) => {
   const catalog = i18n.getResource(i18n.resolvedLanguage, 'errors', 'validation.fields');

@@ -103,7 +103,7 @@ internal static class PlatformMfaEndpoints
         if (failure is not null) return failure;
 
         var result = await sender.Send(new VerifyPlatformMfaEnrollmentCommand(request.Token, request.Code), context.RequestAborted);
-        return result.IsSuccess ? Results.NoContent() : problems.ToHttpResult(result.Error!);
+        return result.ToHttpResult(context, problems);
     }
 
     private static async Task<IResult> Acknowledge(
@@ -117,7 +117,7 @@ internal static class PlatformMfaEndpoints
         if (failure is not null) return failure;
 
         var result = await sender.Send(new AcknowledgePlatformRecoveryCodesCommand(request.Token), context.RequestAborted);
-        return result.IsSuccess ? Results.NoContent() : problems.ToHttpResult(result.Error!);
+        return result.ToHttpResult(context, problems);
     }
 
     private static async Task<IResult> Recover(
@@ -147,6 +147,6 @@ internal static class PlatformMfaEndpoints
         if (failure is not null) return failure;
 
         var result = await sender.Send(new StepUpPlatformMfaCommand(request.Code), context.RequestAborted);
-        return result.IsSuccess ? Results.NoContent() : problems.ToHttpResult(result.Error!);
+        return result.ToHttpResult(context, problems);
     }
 }

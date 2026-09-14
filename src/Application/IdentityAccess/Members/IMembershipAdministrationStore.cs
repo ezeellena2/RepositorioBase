@@ -1,3 +1,4 @@
+using CleanArchitecture.Application.Common.Models;
 using CleanArchitecture.Domain.IdentityAccess.Memberships;
 using CleanArchitecture.Domain.IdentityAccess.Tenants;
 
@@ -18,8 +19,6 @@ public sealed record MemberView(
     bool IsOwner,
     string Version);
 
-public sealed record MemberPage(IReadOnlyList<MemberView> Items, string? NextCursor);
-
 /// <summary>
 /// A standing offer, as the administrator who might withdraw it sees it. No token, no envelope, nothing that
 /// could be used to accept — only what the offer is and who it is for (IA-REQ-015/029).
@@ -31,8 +30,6 @@ public sealed record InvitationSummaryView(
     DateTimeOffset CreatedAt,
     DateTimeOffset ExpiresAt,
     IReadOnlyList<Guid> RoleIds);
-
-public sealed record InvitationSummaryPage(IReadOnlyList<InvitationSummaryView> Items, string? NextCursor);
 
 public enum MembershipWriteStatus
 {
@@ -61,9 +58,11 @@ public sealed record MembershipWriteResult(MembershipWriteStatus Status, MemberV
 /// </summary>
 public interface IMembershipAdministrationStore
 {
-    Task<MemberPage> ListAsync(TenantId tenantId, int limit, string? cursor, CancellationToken cancellationToken);
+    /// <summary>One offset page of the tenant's members, in a stable order that ends in the membership's unique identifier.</summary>
+    Task<PaginatedList<MemberView>> ListAsync(TenantId tenantId, PaginationQuery pagination, CancellationToken cancellationToken);
 
-    Task<InvitationSummaryPage> ListInvitationsAsync(TenantId tenantId, int limit, string? cursor, CancellationToken cancellationToken);
+    /// <summary>One offset page of the tenant's invitations, in a stable order that ends in the invitation's unique identifier.</summary>
+    Task<PaginatedList<InvitationSummaryView>> ListInvitationsAsync(TenantId tenantId, PaginationQuery pagination, CancellationToken cancellationToken);
 
     Task<MemberView?> FindAsync(TenantId tenantId, Guid membershipId, CancellationToken cancellationToken);
 

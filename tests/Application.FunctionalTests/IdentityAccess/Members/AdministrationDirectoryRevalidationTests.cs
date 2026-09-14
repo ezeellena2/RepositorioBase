@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using CleanArchitecture.Application.Common.Models;
 using CleanArchitecture.Application.FunctionalTests.IdentityAccess.Organizations;
 using CleanArchitecture.Application.IdentityAccess.Authorization;
 using CleanArchitecture.Domain.IdentityAccess.Authorization;
@@ -40,32 +41,49 @@ public sealed class AdministrationDirectoryRevalidationTests : TestBase
     {
         using var organization = await OrganizationScenario.CreateAsync($"r6c-{directory}");
         var expected = await SeedDirectoryAsync(organization, directory);
-        expected.Length.ShouldBeGreaterThan(100);
+        expected.Length.ShouldBe(DirectorySize, "the smallest directory that spans two pages at the default page size");
         var path = $"/api/tenants/{organization.TenantId.Value}/{directory}";
+
         using var first = await organization.Owner.GetAsync(path);
         first.StatusCode.ShouldBe(HttpStatusCode.OK, await first.Content.ReadAsStringAsync());
         var firstPage = await IdentityHttpHarness.ReadJsonAsync(first);
         var firstIds = Ids(firstPage, key);
-        firstIds.Length.ShouldBe(100, "the existing default page size remains unchanged");
-        var cursor = firstPage.GetProperty("nextCursor").GetString();
-        cursor.ShouldNotBeNullOrWhiteSpace();
+        firstIds.Length.ShouldBe(25, "an omitted page is the first page at the default page size of 25");
+        PageMember(firstPage, "pageSize").GetInt32().ShouldBe(25);
+        PageMember(firstPage, "totalCount").GetInt32().ShouldBe(DirectorySize);
+        PageMember(firstPage, "hasNextPage").GetBoolean().ShouldBeTrue();
 
-        using var second = await organization.Owner.GetAsync($"{path}?cursor={Uri.EscapeDataString(cursor!)}");
-        TestContext.Out.WriteLine($"R6C {directory}: seeded={expected.Length}; first={(int)first.StatusCode}, items={firstIds.Length}, nextCursor present; continuation={(int)second.StatusCode}");
+        using var second = await organization.Owner.GetAsync($"{path}?pageNumber=2&pageSize=25");
+        TestContext.Out.WriteLine($"R6C {directory}: seeded={expected.Length}; first={(int)first.StatusCode}, items={firstIds.Length}; page 2={(int)second.StatusCode}");
         if (second.StatusCode == HttpStatusCode.InternalServerError)
-            await CaptureContinuationFailureAsync(organization, directory, cursor!);
+            await CaptureContinuationFailureAsync(organization, directory);
         second.StatusCode.ShouldBe(HttpStatusCode.OK, await second.Content.ReadAsStringAsync());
         var secondPage = await IdentityHttpHarness.ReadJsonAsync(second);
         var secondIds = Ids(secondPage, key);
+        secondIds.Length.ShouldBe(1, "the second page holds the last row");
+        PageMember(secondPage, "hasNextPage").GetBoolean().ShouldBeFalse();
         firstIds.Intersect(secondIds).ShouldBeEmpty("stable data must not repeat a record across page boundaries");
         firstIds.Concat(secondIds).ShouldBe(expected, ignoreOrder: true);
-        secondPage.GetProperty("nextCursor").ValueKind.ShouldBe(JsonValueKind.Null);
+
+        using var whole = await organization.Owner.GetAsync($"{path}?pageSize=100");
+        whole.StatusCode.ShouldBe(HttpStatusCode.OK, await whole.Content.ReadAsStringAsync());
+        firstIds.Concat(secondIds).ShouldBe(Ids(await IdentityHttpHarness.ReadJsonAsync(whole), key),
+            "consecutive pages keep the order of one larger page");
     }
+
+    /// <summary>The smallest directory that spans two pages at the default page size (D12).</summary>
+    private const int DirectorySize = 26;
 
     private static Guid[] Ids(JsonElement page, string key) =>
         page.GetProperty("items").EnumerateArray().Select(item => item.GetProperty(key).GetGuid()).ToArray();
 
-    private static async Task CaptureContinuationFailureAsync(OrganizationScenario organization, string directory, string cursor)
+    private static JsonElement PageMember(JsonElement page, string name)
+    {
+        page.TryGetProperty(name, out var value).ShouldBeTrue($"the page must carry {name}");
+        return value;
+    }
+
+    private static async Task CaptureContinuationFailureAsync(OrganizationScenario organization, string directory)
     {
         // The HTTP boundary correctly hides exception details. Read the same scoped store to identify the failed
         // query without adding a diagnostic endpoint or relaxing the expected HTTP assertion.
@@ -74,13 +92,13 @@ public sealed class AdministrationDirectoryRevalidationTests : TestBase
         {
             if (directory == "roles")
                 await scope.ServiceProvider.GetRequiredService<Application.IdentityAccess.Roles.IRoleAdministrationStore>()
-                    .ListAsync(organization.TenantId, 0, cursor, CancellationToken.None);
+                    .ListAsync(organization.TenantId, new PaginationQuery(2, 25), CancellationToken.None);
             else if (directory == "members")
                 await scope.ServiceProvider.GetRequiredService<Application.IdentityAccess.Members.IMembershipAdministrationStore>()
-                    .ListAsync(organization.TenantId, 0, cursor, CancellationToken.None);
+                    .ListAsync(organization.TenantId, new PaginationQuery(2, 25), CancellationToken.None);
             else
                 await scope.ServiceProvider.GetRequiredService<Application.IdentityAccess.Members.IMembershipAdministrationStore>()
-                    .ListInvitationsAsync(organization.TenantId, 0, cursor, CancellationToken.None);
+                    .ListInvitationsAsync(organization.TenantId, new PaginationQuery(2, 25), CancellationToken.None);
         }
         catch (InvalidOperationException exception)
         {
@@ -94,7 +112,14 @@ public sealed class AdministrationDirectoryRevalidationTests : TestBase
         var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var tenant = await context.Tenants.SingleAsync(candidate => candidate.Id == organization.TenantId);
         var ownerRole = await context.TenantRoles.SingleAsync(role => role.TenantId == tenant.Id && role.IsSystem);
-        for (var index = 0; index < 105; index++)
+        // The scenario already holds the owner's system role and membership, so they count toward the size.
+        var existing = directory switch
+        {
+            "roles" => await context.TenantRoles.CountAsync(role => role.TenantId == tenant.Id),
+            "members" => await context.TenantMemberships.CountAsync(member => member.TenantId == tenant.Id),
+            _ => await context.Invitations.CountAsync(invitation => invitation.TenantId == tenant.Id)
+        };
+        for (var index = 0; index < DirectorySize - existing; index++)
         {
             if (directory == "roles")
             {

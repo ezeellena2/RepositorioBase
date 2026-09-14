@@ -6,7 +6,7 @@ import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import { useIdentity } from '../context/IdentityProvider';
-import { ProblemMessage } from '../ProblemMessage';
+import { ProblemMessage } from '../../../components/ProblemMessage';
 import { useFragmentToken } from '../useFragmentToken';
 import { useSubmit } from '../useSubmit';
 import { useTranslation } from '../../../i18n';

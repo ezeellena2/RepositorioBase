@@ -1,9 +1,11 @@
+using CleanArchitecture.Application.Common.Models;
 using CleanArchitecture.Application.IdentityAccess.Members;
 using CleanArchitecture.Domain.IdentityAccess.Authorization;
 using CleanArchitecture.Domain.IdentityAccess.Invitations;
 using CleanArchitecture.Domain.IdentityAccess.Memberships;
 using CleanArchitecture.Domain.IdentityAccess.Tenants;
 using CleanArchitecture.Infrastructure.Data;
+using CleanArchitecture.Infrastructure.Data.Pagination;
 using Microsoft.EntityFrameworkCore;
 
 namespace CleanArchitecture.Infrastructure.IdentityAccess;
@@ -14,33 +16,26 @@ namespace CleanArchitecture.Infrastructure.IdentityAccess;
 /// </summary>
 public sealed class MembershipAdministrationStore(ApplicationDbContext context) : IMembershipAdministrationStore
 {
-    private const int MaximumLimit = 100;
-
-    public async Task<MemberPage> ListAsync(TenantId tenantId, int limit, string? cursor, CancellationToken cancellationToken)
+    public async Task<PaginatedList<MemberView>> ListAsync(TenantId tenantId, PaginationQuery pagination, CancellationToken cancellationToken)
     {
-        var size = Math.Clamp(limit <= 0 ? MaximumLimit : limit, 1, MaximumLimit);
-        var after = OpaqueCursor.Decode(cursor);
         var owner = await OwnerAsync(tenantId, cancellationToken);
 
-        var query = context.TenantMemberships.AsNoTracking().Where(membership => membership.TenantId == tenantId);
-        if (after is { } membershipId) query = query.Where(membership => membership.Id > MembershipId.From(membershipId));
-
-        var page = await Project(query.OrderBy(membership => membership.Id), tenantId).Take(size + 1).ToListAsync(cancellationToken);
-        var items = page.Take(size).ToArray();
-        return new MemberPage(
-            await ViewsAsync(tenantId, items, owner, cancellationToken),
-            page.Count > size ? OpaqueCursor.Encode(items[^1].MembershipId) : null);
+        // Ordered by the unique identifier before paging, so consecutive pages of unchanged members neither repeat
+        // nor skip one; the views are built for the rows of this page only.
+        var memberships = context.TenantMemberships.AsNoTracking()
+            .Where(membership => membership.TenantId == tenantId)
+            .OrderBy(membership => membership.Id);
+        var page = await Project(memberships, tenantId).ToPaginatedListAsync(pagination, cancellationToken);
+        return new PaginatedList<MemberView>(
+            await ViewsAsync(tenantId, page.Items, owner, cancellationToken), page.PageNumber, page.PageSize, page.TotalCount);
     }
 
-    public async Task<InvitationSummaryPage> ListInvitationsAsync(TenantId tenantId, int limit, string? cursor, CancellationToken cancellationToken)
+    public async Task<PaginatedList<InvitationSummaryView>> ListInvitationsAsync(TenantId tenantId, PaginationQuery pagination, CancellationToken cancellationToken)
     {
-        var size = Math.Clamp(limit <= 0 ? MaximumLimit : limit, 1, MaximumLimit);
-        var after = OpaqueCursor.Decode(cursor);
-
-        var query = context.Invitations.AsNoTracking().Where(invitation => invitation.TenantId == tenantId);
-        if (after is { } invitationId) query = query.Where(invitation => invitation.Id > InvitationId.From(invitationId));
-
-        var page = await query.OrderBy(invitation => invitation.Id).Take(size + 1)
+        // Ordered by the unique identifier before paging; the role lookup below runs for the offers on this page only.
+        var page = await context.Invitations.AsNoTracking()
+            .Where(invitation => invitation.TenantId == tenantId)
+            .OrderBy(invitation => invitation.Id)
             .Select(invitation => new
             {
                 InvitationId = invitation.Id.Value,
@@ -49,9 +44,9 @@ public sealed class MembershipAdministrationStore(ApplicationDbContext context) 
                 invitation.CreatedAt,
                 invitation.ExpiresAt
             })
-            .ToListAsync(cancellationToken);
+            .ToPaginatedListAsync(pagination, cancellationToken);
 
-        var items = page.Take(size).ToArray();
+        var items = page.Items;
         var ids = items.Select(item => InvitationId.From(item.InvitationId)).ToArray();
         var offered = (await context.InvitationRoles.AsNoTracking()
                 .Where(link => link.TenantId == tenantId && ids.Contains(link.InvitationId))
@@ -68,7 +63,7 @@ public sealed class MembershipAdministrationStore(ApplicationDbContext context) 
             item.ExpiresAt,
             offered[item.InvitationId].Order().ToArray())).ToArray();
 
-        return new InvitationSummaryPage(views, page.Count > size ? OpaqueCursor.Encode(items[^1].InvitationId) : null);
+        return new PaginatedList<InvitationSummaryView>(views, page.PageNumber, page.PageSize, page.TotalCount);
     }
 
     public async Task<MemberView?> FindAsync(TenantId tenantId, Guid membershipId, CancellationToken cancellationToken)
@@ -270,32 +265,4 @@ public sealed class MembershipAdministrationStore(ApplicationDbContext context) 
     private static string Render(uint version) => version.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
     private sealed record MemberRow(Guid MembershipId, Guid IdentityId, string? DisplayName, string? Email, string Status, uint Version);
-}
-
-/// <summary>An opaque continuation carrying a row identifier and nothing a caller could act on.</summary>
-internal static class OpaqueCursor
-{
-    internal static string Encode(Guid id) =>
-        Convert.ToBase64String(id.ToByteArray()).TrimEnd('=').Replace('+', '-').Replace('/', '_');
-
-    internal static Guid? Decode(string? cursor)
-    {
-        if (string.IsNullOrWhiteSpace(cursor)) return null;
-        try
-        {
-            var padded = cursor.Replace('-', '+').Replace('_', '/');
-            padded += new string('=', (4 - (padded.Length % 4)) % 4);
-            var bytes = Convert.FromBase64String(padded);
-            // An all-zero identifier is not a position either: the strongly-typed identifiers refuse it by
-            // throwing, and a probe with sixteen zero bytes is well-formed base64url, so decoding it as a
-            // value would turn a harmless guess into a sanitized 500.
-            var decoded = bytes.Length == 16 ? new Guid(bytes) : (Guid?)null;
-            return decoded == Guid.Empty ? null : decoded;
-        }
-        catch (FormatException)
-        {
-            // An unreadable cursor is not an error to explain; it is simply not a position in this list.
-            return null;
-        }
-    }
 }

@@ -51,9 +51,7 @@ internal static class PlatformInvitationEndpoints
             new RegisterPlatformInviteeCommand(request.Token, request.Password),
             context.RequestAborted);
 
-        return result.IsSuccess
-            ? Results.StatusCode(StatusCodes.Status202Accepted)
-            : problems.ToHttpResult(result.Error!);
+        return result.ToAcceptedHttpResult(context, problems);
     }
 
     /// <summary>Idempotent by contract: replaying a consumed confirmation answers with the same bodyless 204.</summary>
@@ -71,6 +69,6 @@ internal static class PlatformInvitationEndpoints
             new ConfirmPlatformInviteeCommand(request.ConfirmationToken),
             context.RequestAborted);
 
-        return result.IsSuccess ? Results.NoContent() : problems.ToHttpResult(result.Error!);
+        return result.ToHttpResult(context, problems);
     }
 }

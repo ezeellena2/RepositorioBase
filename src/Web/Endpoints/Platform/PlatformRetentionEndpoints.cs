@@ -61,7 +61,7 @@ internal static class PlatformRetentionEndpoints
     private static async Task<IResult> ReadPolicy(HttpContext context, ApiProblemDetailsMapper problems, ISender sender)
     {
         var result = await sender.Send(new GetRetentionPolicyQuery(), context.RequestAborted);
-        return result.IsSuccess ? Results.Ok(result.Value) : problems.ToHttpResult(result.Error!);
+        return result.ToHttpResult(context, problems, policy => Results.Ok(policy));
     }
 
     private static async Task<IResult> PlaceHold(
@@ -77,9 +77,8 @@ internal static class PlatformRetentionEndpoints
         var result = await sender.Send(
             new PlaceRetentionHoldCommand(request.SubjectIdentityId, request.ReasonCode ?? string.Empty, request.Reference ?? string.Empty),
             context.RequestAborted);
-        return result.IsSuccess
-            ? Results.Created($"/api/platform/retention/holds/{result.Value!.HoldId}", result.Value)
-            : problems.ToHttpResult(result.Error!);
+        return result.ToHttpResult(context, problems, hold =>
+            Results.Created($"/api/platform/retention/holds/{hold.HoldId}", hold));
     }
 
     private static async Task<IResult> ReleaseHold(
@@ -95,7 +94,7 @@ internal static class PlatformRetentionEndpoints
         // Bodyless and idempotent: an already-released hold and one that never existed answer alike, because
         // "does this hold exist" is not a question this route is for.
         var result = await sender.Send(new ReleaseRetentionHoldCommand(holdId), context.RequestAborted);
-        return result.IsSuccess ? Results.NoContent() : problems.ToHttpResult(result.Error!);
+        return result.ToHttpResult(context, problems);
     }
 }
 

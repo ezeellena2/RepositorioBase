@@ -15,6 +15,8 @@ import {
 import languages from './languages.json';
 import { appTheme, missingMuiLocaleMappings, muiLocaleByLanguage, themeFor } from '../theme';
 import { esES } from '@mui/material/locale';
+import { ThemeProvider } from '@mui/material/styles';
+import TablePagination from '@mui/material/TablePagination';
 import { NavMenu } from '../components/NavMenu';
 import { IdentityProvider } from '../features/identity/context/IdentityProvider';
 import { server } from '../test/server';
@@ -156,6 +158,18 @@ describe('Spanish language selection', () => {
       expect(theme.components.MuiButton).toEqual(appTheme.components.MuiButton);
     }
     expect(appTheme.components.MuiTablePagination).toBeUndefined();
+  });
+
+  it('gives the pagination control its Spanish next-page name from the MUI locale', () => {
+    const { getItemAriaLabel } = esES.components.MuiTablePagination.defaultProps;
+    const spanishTheme = themeFor('es');
+    render(
+      <ThemeProvider theme={spanishTheme}>
+        <TablePagination component="div" count={120} page={0} rowsPerPage={25} onPageChange={() => {}} />
+      </ThemeProvider>,
+    );
+
+    expect(screen.getByRole('button', { name: getItemAriaLabel('next') })).toBeEnabled();
   });
 
   it('maps every and only supported language to explicit MUI locale data', () => {

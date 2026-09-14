@@ -37,14 +37,73 @@ const renderPage = () => render(
   <MemoryRouter><IdentityProvider><PlatformIdentitiesPage /></IdentityProvider></MemoryRouter>,
 );
 
+/** One offset page, exactly as the API answers it. */
+const pageOf = (items, { pageNumber = 1, pageSize = 25, totalCount = items.length } = {}) => {
+  const totalPages = totalCount === 0 ? 0 : Math.ceil(totalCount / pageSize);
+  return {
+    items,
+    pageNumber,
+    pageSize,
+    totalCount,
+    totalPages,
+    hasPreviousPage: pageNumber > 1 && totalPages > 0,
+    hasNextPage: pageNumber < totalPages,
+  };
+};
+
 /** A directory handler that counts what it served, so "asked for nothing" is an assertion and not a hope. */
 const countedDirectory = (items = [identityRow()]) => {
   const reads = { count: 0 };
   const handler = http.get('/api/platform/identities', () => {
     reads.count += 1;
-    return HttpResponse.json({ items, nextCursor: null });
+    return HttpResponse.json(pageOf(items));
   });
   return [reads, handler];
+};
+
+/** The API's side of the directory: every account served a page at a time, with each query string it was asked with. */
+const identitiesServed = (all) => {
+  const searches = [];
+  server.use(antiforgery(), contextIs(platformContext()), http.get('/api/platform/identities', ({ request }) => {
+    const { search, searchParams } = new URL(request.url);
+    searches.push(search);
+    const pageNumber = Number(searchParams.get('pageNumber'));
+    const pageSize = Number(searchParams.get('pageSize'));
+    return HttpResponse.json(pageOf(
+      all.slice((pageNumber - 1) * pageSize, pageNumber * pageSize),
+      { pageNumber, pageSize, totalCount: all.length },
+    ));
+  }));
+  return searches;
+};
+
+const numberedIdentities = (count) => Array.from({ length: count }, (_, index) => identityRow({
+  identityId: `identity-${index + 1}`,
+  normalizedEmail: `account-${index + 1}@example.test`,
+}));
+
+/** A directory whose answer is chosen page by page, with each page number it was asked for. */
+const pagesServed = (answer) => {
+  const requested = [];
+  server.use(antiforgery(), contextIs(platformContext()), http.get('/api/platform/identities', ({ request }) => {
+    const pageNumber = Number(new URL(request.url).searchParams.get('pageNumber'));
+    requested.push(pageNumber);
+    return answer(pageNumber);
+  }));
+  return requested;
+};
+
+/**
+ * Every node the screen puts on the page while it is watched, read back by its text. A sentence drawn for one render
+ * and taken down by the next is gone before any assertion runs, so "never said" is checked here instead.
+ */
+const watchShownText = () => {
+  const shown = [];
+  const observer = new MutationObserver((records) => {
+    records.forEach((record) => record.addedNodes.forEach((node) => shown.push(node.textContent)));
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+  return { saw: (text) => shown.some((content) => content.includes(text)), stop: () => observer.disconnect() };
 };
 
 /**
@@ -145,7 +204,7 @@ describe('platform identities page', () => {
     server.use(antiforgery());
     server.use(http.get('/api/identity/context', () =>
       HttpResponse.json(platformContext(IDENTITY_PERMISSIONS, { requiresTwoFactor }))));
-    server.use(http.get('/api/platform/identities', () => HttpResponse.json({ items: [identityRow()], nextCursor: null })));
+    server.use(http.get('/api/platform/identities', () => HttpResponse.json(pageOf([identityRow()]))));
     server.use(http.post('/api/platform/mfa/step-up', () => {
       requiresTwoFactor = false;
       return new HttpResponse(null, { status: 204 });
@@ -195,10 +254,9 @@ describe('platform identities page', () => {
     // than as a call count — which would only be counting how often the shared client happens to be rebuilt.
     let stoppedElsewhere = false;
     server.use(antiforgery(), contextIs(platformContext()));
-    server.use(http.get('/api/platform/identities', () => HttpResponse.json({
-      items: [identityRow({ accountStatus: stoppedElsewhere ? 'AdministrativelySuspended' : 'Active' })],
-      nextCursor: null,
-    })));
+    server.use(http.get('/api/platform/identities', () => HttpResponse.json(pageOf(
+      [identityRow({ accountStatus: stoppedElsewhere ? 'AdministrativelySuspended' : 'Active' })],
+    ))));
     server.use(http.post('/api/platform/identities/:identityId/suspend', async ({ request }) => {
       suspensions.push(await request.json());
       return problem(401, 'recent_mfa_required');
@@ -375,53 +433,180 @@ describe('platform identities page', () => {
   });
 
   /**
-   * The server answers one bounded page and names where the next begins. The screen offers no search, so an
-   * account past the first page is reachable only through that cursor — and only if the screen sends it back.
+   * The server answers one bounded page and says how many accounts there are in all. The screen offers no search,
+   * so an account past the first page is reachable only through the page control — and only if the page asked for
+   * is the page the server is sent.
    */
-  it('reaches the next page with the cursor the server returned, and offers nothing when there is none', async () => {
-    const asked = [];
-    server.use(antiforgery(), contextIs(platformContext()), http.get('/api/platform/identities', ({ request }) => {
-      const cursor = new URL(request.url).searchParams.get('cursor');
-      asked.push(cursor);
-      return cursor === 'page-two'
-        ? HttpResponse.json({ items: [identityRow({ identityId: STOPPED_ID, normalizedEmail: 'later@example.test' })], nextCursor: null })
-        : HttpResponse.json({ items: [identityRow({ normalizedEmail: 'first@example.test' })], nextCursor: 'page-two' });
-    }));
-
+  it('reaches the 26th account with the next page and returns with the previous one', async () => {
+    const searches = identitiesServed(numberedIdentities(26));
     renderPage();
 
-    await userEvent.click(await screen.findByRole('button', { name: 'More accounts' }));
+    expect(await screen.findByText('1–25 of 26')).toBeInTheDocument();
+    expect(screen.getByText('account-1@example.test')).toBeInTheDocument();
 
-    expect(await screen.findByText('later@example.test')).toBeInTheDocument();
-    expect(asked).toEqual([null, 'page-two']);
-    expect(screen.queryByRole('button', { name: 'More accounts' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Go to next page' }));
+
+    expect(await screen.findByText('26–26 of 26')).toBeInTheDocument();
+    expect(screen.getByText('account-26@example.test')).toBeInTheDocument();
+    expect(screen.queryByText('account-1@example.test')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Go to previous page' }));
+
+    expect(await screen.findByText('1–25 of 26')).toBeInTheDocument();
+    expect(screen.getByText('account-1@example.test')).toBeInTheDocument();
+    expect(searches).toEqual(['?pageNumber=1&pageSize=25', '?pageNumber=2&pageSize=25', '?pageNumber=1&pageSize=25']);
   });
 
-  it('disables pagination until its in-flight read settles', async () => {
+  it('restarts at the first page when the rows per page change', async () => {
+    const searches = identitiesServed(numberedIdentities(60));
+    renderPage();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Go to next page' }));
+    expect(await screen.findByText('26–50 of 60')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('combobox', { name: /rows per page/i }));
+    await userEvent.click(screen.getByRole('option', { name: '50' }));
+
+    expect(await screen.findByText('1–50 of 60')).toBeInTheDocument();
+    expect(screen.getByText('account-50@example.test')).toBeInTheDocument();
+    expect(searches).toEqual(['?pageNumber=1&pageSize=25', '?pageNumber=2&pageSize=25', '?pageNumber=1&pageSize=50']);
+  });
+
+  it('disables both page buttons when every account fits on one page', async () => {
+    const searches = identitiesServed(numberedIdentities(3));
+    renderPage();
+
+    expect(await screen.findByText('1–3 of 3')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Go to next page' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Go to previous page' })).toBeDisabled();
+    expect(searches).toEqual(['?pageNumber=1&pageSize=25']);
+  });
+
+  it('keeps the empty state and draws no page control when no account is listed', async () => {
+    identitiesServed([]);
+    renderPage();
+
+    expect(await screen.findByText(/no accounts are listed/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Go to next page' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/rows per page/i)).not.toBeInTheDocument();
+  });
+
+  /** A page change holds what is on screen: the loaded rows and their range stay until the page asked for arrives. */
+  it('keeps the loaded page and its range on screen while the next page is on its way', async () => {
     let releaseNextPage;
-    let reads = 0;
     const nextPage = new Promise((resolve) => { releaseNextPage = resolve; });
-    server.use(antiforgery(), contextIs(platformContext()), http.get('/api/platform/identities', async ({ request }) => {
-      reads += 1;
-      const cursor = new URL(request.url).searchParams.get('cursor');
-      if (cursor === 'page-two') return nextPage;
-      return HttpResponse.json({ items: [identityRow()], nextCursor: 'page-two' });
+    const all = numberedIdentities(26);
+    const asked = [];
+    server.use(antiforgery(), contextIs(platformContext()), http.get('/api/platform/identities', ({ request }) => {
+      const pageNumber = Number(new URL(request.url).searchParams.get('pageNumber'));
+      asked.push(pageNumber);
+      return pageNumber === 2 ? nextPage : HttpResponse.json(pageOf(all.slice(0, 25), { totalCount: 26 }));
     }));
 
     renderPage();
-    const more = await screen.findByRole('button', { name: 'More accounts' });
-    await userEvent.click(more);
-    await waitFor(() => expect(reads).toBe(2));
+    await userEvent.click(await screen.findByRole('button', { name: 'Go to next page' }));
+    await waitFor(() => expect(asked).toEqual([1, 2]));
 
-    expect(more).toBeDisabled();
-    more.click();
-    expect(reads).toBe(2);
+    expect(screen.getByRole('progressbar', { name: 'Loading the directory…' })).toBeInTheDocument();
+    expect(screen.getByText('account-1@example.test')).toBeInTheDocument();
+    expect(screen.getByText('1–25 of 26')).toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
 
-    releaseNextPage(HttpResponse.json({
-      items: [identityRow({ identityId: STOPPED_ID, normalizedEmail: 'later@example.test' })],
-      nextCursor: null,
+    releaseNextPage(HttpResponse.json(pageOf(all.slice(25), { pageNumber: 2, totalCount: 26 })));
+
+    expect(await screen.findByText('account-26@example.test')).toBeInTheDocument();
+    expect(screen.getByText('26–26 of 26')).toBeInTheDocument();
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+  });
+
+  it('keeps the rows and the control on the loaded page when the next page cannot be reached', async () => {
+    const thirty = numberedIdentities(30);
+    const requested = pagesServed((pageNumber) => (pageNumber === 1
+      ? HttpResponse.json(pageOf(thirty.slice(0, 25), { totalCount: 30 }))
+      : HttpResponse.error()));
+    renderPage();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Go to next page' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('We could not reach the service.');
+    expect(screen.getByText('account-1@example.test')).toBeInTheDocument();
+    expect(screen.getByText('1–25 of 30')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(requested).toEqual([1, 2, 2]));
+  });
+
+  it('clears the rows and explains a refused page in place', async () => {
+    const thirty = numberedIdentities(30);
+    const requested = pagesServed((pageNumber) => (pageNumber === 1
+      ? HttpResponse.json(pageOf(thirty.slice(0, 25), { totalCount: 30 }))
+      : problem(403, 'permission_denied')));
+    renderPage();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Go to next page' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('You do not have permission to do that here.');
+    expect(screen.queryByText('account-1@example.test')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Go to next page' })).not.toBeInTheDocument();
+    expect(requested).toEqual([1, 2]);
+  });
+
+  it('moves to the real last page when the answered page is past the end, and never calls the directory empty', async () => {
+    const thirty = numberedIdentities(30);
+    // The first answer is the stale page an operator lands on after the last accounts on it went elsewhere.
+    const requested = pagesServed((pageNumber) => HttpResponse.json(pageNumber === 2
+      ? pageOf(thirty.slice(25), { pageNumber: 2, totalCount: 30 })
+      : pageOf([], { pageNumber: 3, totalCount: 30 })));
+    const text = watchShownText();
+    renderPage();
+
+    expect(await screen.findByText('26–30 of 30')).toBeInTheDocument();
+    text.stop();
+    expect(screen.getByText('account-30@example.test')).toBeInTheDocument();
+    expect(requested).toEqual([1, 2]);
+    expect(text.saw('No accounts are listed')).toBe(false);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('asks once and keeps the empty state when there is no page to correct', async () => {
+    const requested = pagesServed(() => HttpResponse.json(pageOf([])));
+    renderPage();
+
+    expect(await screen.findByText(/no accounts are listed/i)).toBeInTheDocument();
+    // Long enough for a correction to have been sent: the past-the-end test above sees its second request sooner.
+    await new Promise((resolve) => { setTimeout(resolve, 50); });
+    expect(requested).toEqual([1]);
+    expect(screen.getByText(/no accounts are listed/i)).toBeInTheDocument();
+  });
+
+  it('renders only the last page asked for when clicks outrun the network', async () => {
+    const hundred = numberedIdentities(100);
+    let releaseSecondPage;
+    const secondPageHeld = new Promise((resolve) => { releaseSecondPage = resolve; });
+    const answered = [];
+    server.use(antiforgery(), contextIs(platformContext()), http.get('/api/platform/identities', async ({ request }) => {
+      const { searchParams } = new URL(request.url);
+      const pageNumber = Number(searchParams.get('pageNumber'));
+      const pageSize = Number(searchParams.get('pageSize'));
+      if (pageNumber === 2) await secondPageHeld;
+      answered.push(`${pageNumber}/${pageSize}`);
+      return HttpResponse.json(pageOf(
+        hundred.slice((pageNumber - 1) * pageSize, pageNumber * pageSize),
+        { pageNumber, pageSize, totalCount: 100 },
+      ));
     }));
-    expect(await screen.findByText('later@example.test')).toBeInTheDocument();
+    renderPage();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Go to next page' }));
+    await userEvent.click(screen.getByRole('combobox', { name: /rows per page/i }));
+    await userEvent.click(screen.getByRole('option', { name: '50' }));
+    expect(await screen.findByText('1–50 of 100')).toBeInTheDocument();
+
+    releaseSecondPage();
+    await waitFor(() => expect(answered).toEqual(['1/25', '1/50', '2/25']));
+    await new Promise((resolve) => { setTimeout(resolve, 0); });
+    expect(screen.getByText('1–50 of 100')).toBeInTheDocument();
+    expect(screen.getByText('account-50@example.test')).toBeInTheDocument();
+    expect(screen.queryByText('26–50 of 100')).not.toBeInTheDocument();
   });
 
   /**
@@ -468,7 +653,7 @@ describe('platform identities page', () => {
     server.use(antiforgery(), contextIs(platformContext()));
     server.use(http.get('/api/platform/identities', async () => {
       await held;
-      return HttpResponse.json({ items: [], nextCursor: null });
+      return HttpResponse.json(pageOf([]));
     }));
 
     renderPage();
@@ -507,7 +692,7 @@ describe('platform identities page', () => {
       attempts += 1;
       return attempts === 1
         ? problem(500, 'internal_server_error', { traceId: 'trace-directory' })
-        : HttpResponse.json({ items: [identityRow()], nextCursor: null });
+        : HttpResponse.json(pageOf([identityRow()]));
     }));
 
     renderPage();
@@ -553,7 +738,7 @@ describe('platform identities page', () => {
     server.use(antiforgery(), contextIs(platformContext()));
     server.use(http.get('/api/platform/identities', ({ request }) => {
       urls.push(request.url);
-      return HttpResponse.json({ items: [identityRow()], nextCursor: null });
+      return HttpResponse.json(pageOf([identityRow()]));
     }));
     server.use(http.post('/api/platform/identities/:identityId/suspend', async ({ request }) => {
       urls.push(request.url);

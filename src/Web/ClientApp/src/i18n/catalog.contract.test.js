@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import languages from './languages.json';
 import validationErrorSchema from '../../../../Application/Common/Validation/validationErrorSchema.json';
-import { VALIDATION_CODE_SCHEMA } from '../features/identity/api/problemDetails';
+import { VALIDATION_CODE_SCHEMA } from '../api/problemDetails';
 import { assembleCatalogResources, normalizeLanguage } from './index';
 import { staticUnusedNamespaces } from './staticUnusedNamespaces';
 

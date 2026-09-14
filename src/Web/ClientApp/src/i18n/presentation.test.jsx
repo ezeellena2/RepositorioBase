@@ -22,7 +22,15 @@ const instant = '2026-09-08T23:15:00Z';
 const dateIn = (language) => new Intl.DateTimeFormat(language, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(instant));
 const role = (roleId, isSystem, name = 'Owner') => ({ roleId, name, isSystem, isRetired: false, permissions: ['members.read'], version: '1' });
 const roles = [role('system', true), role('custom', false), role('admin', true, 'Administrator')];
-const pageOf = (items) => ({ items, nextCursor: null });
+const pageOf = (items) => ({
+  items,
+  pageNumber: 1,
+  pageSize: 25,
+  totalCount: items.length,
+  totalPages: Math.ceil(items.length / 25),
+  hasPreviousPage: false,
+  hasNextPage: false,
+});
 const get = (path, body) => http.get(path, () => HttpResponse.json(body));
 const expectedEnglishEnumLabels = {
   tenantStatus: { PendingConfirmation: 'Pending confirmation' },
@@ -111,11 +119,6 @@ describe('Spanish system presentation', () => {
     expect(primary.nextElementSibling).toBe(secondary);
     expect(primary).toHaveClass('MuiTypography-body2');
     expect(secondary).toHaveClass('MuiTypography-caption');
-  });
-
-  it('uses infinitives for Platform load-more actions', () => {
-    expect(i18n.t('platform:organizations.more')).toBe('Mostrar más organizaciones');
-    expect(i18n.t('platform:identities.more')).toBe('Mostrar más cuentas');
   });
 
   it('shows all 29 readable permission names before their exact visible codes in the access page', async () => {

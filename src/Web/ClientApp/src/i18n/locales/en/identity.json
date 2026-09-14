@@ -122,8 +122,7 @@
       "noRoles": "no roles",
       "resend": "Resend to {{email}}",
       "withdrawConfirm": "Withdraw the invitation to {{email}}? Their link stops working.",
-      "withdraw": "Withdraw invitation to {{email}}",
-      "showMore": "Show more invitations"
+      "withdraw": "Withdraw invitation to {{email}}"
     }
   },
   "lifecycle": {
@@ -172,8 +171,7 @@
     "rolesRefused": "You cannot see this organization’s roles, so there are none to give here.",
     "noRolesToGive": "This organization has no roles to give yet.",
     "saveRoles": "Save roles",
-    "cancel": "Cancel",
-    "showMore": "Show more members"
+    "cancel": "Cancel"
   },
   "people": {
     "fullName": "Full name",
@@ -220,7 +218,6 @@
       "state": "State",
       "actions": "Actions"
     },
-    "showMore": "Show more roles",
     "new": "New role",
     "editing": "Editing {{name}}",
     "name": "Name",

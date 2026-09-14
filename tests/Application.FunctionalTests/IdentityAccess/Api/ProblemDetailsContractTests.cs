@@ -331,6 +331,114 @@ public sealed class ProblemDetailsContractTests : TestBase
         payload.TryGetProperty("success", out _).ShouldBeFalse();
     }
 
+    /// <summary>
+    /// Pins the success side of IA-REQ-038 before the endpoints move onto the shared Result mapping overloads: a list,
+    /// a create and a bodyless write each answer their own DTO or no body at all, never a universal envelope.
+    /// </summary>
+    [Test]
+    public async Task List_create_and_bodyless_successes_carry_no_universal_envelope()
+    {
+        using var scenario = await Organizations.OrganizationScenario.CreateAsync("no-envelope");
+        var roles = $"/api/tenants/{scenario.TenantId.Value}/roles";
+
+        var list = await scenario.Owner.GetAsync(roles);
+        list.StatusCode.ShouldBe(HttpStatusCode.OK, await list.Content.ReadAsStringAsync());
+        AssertNoUniversalEnvelope(await IdentityHttpHarness.ReadJsonAsync(list));
+
+        await scenario.Owner.ProveAsync(Application.IdentityAccess.Credentials.ProofActions.RoleChange);
+        var created = await scenario.Owner.SendAsync(HttpMethod.Post, roles, new
+        {
+            name = "Envelope auditors",
+            permissions = new[] { Application.IdentityAccess.Authorization.Permissions.MembersRead }
+        });
+        created.StatusCode.ShouldBe(HttpStatusCode.Created, await created.Content.ReadAsStringAsync());
+        var role = await IdentityHttpHarness.ReadJsonAsync(created);
+        AssertNoUniversalEnvelope(role);
+
+        await scenario.Owner.ProveAsync(Application.IdentityAccess.Credentials.ProofActions.RoleChange);
+        var retired = await scenario.Owner.SendAsync(
+            HttpMethod.Post,
+            $"{roles}/{role.GetProperty("roleId").GetGuid()}/retire",
+            new { version = role.GetProperty("version").GetString() });
+        retired.StatusCode.ShouldBe(HttpStatusCode.NoContent, await retired.Content.ReadAsStringAsync());
+        (await retired.Content.ReadAsStringAsync()).ShouldBeEmpty();
+    }
+
+    private static void AssertNoUniversalEnvelope(JsonElement payload)
+    {
+        payload.ValueKind.ShouldBe(JsonValueKind.Object);
+        foreach (var member in new[] { "success", "data", "error", "value" })
+        {
+            payload.TryGetProperty(member, out _).ShouldBeFalse(member);
+        }
+    }
+
+    private static readonly string[] OffsetPageMembers =
+        ["hasNextPage", "hasPreviousPage", "items", "pageNumber", "pageSize", "totalCount", "totalPages"];
+
+    /// <summary>
+    /// A list success is its endpoint's own offset page DTO (IA-REQ-038): exactly the seven page members, no retired
+    /// cursor, and nothing of a universal envelope — for a tenant list and for a Platform directory alike.
+    /// </summary>
+    [Test]
+    public async Task A_list_success_is_its_offset_page_dto_with_no_cursor_or_envelope_member()
+    {
+        using var scenario = await Organizations.OrganizationScenario.CreateAsync("page-body");
+        using var roles = await scenario.Owner.GetAsync($"/api/tenants/{scenario.TenantId.Value}/roles");
+        roles.StatusCode.ShouldBe(HttpStatusCode.OK, await roles.Content.ReadAsStringAsync());
+        AssertOffsetPageBody(await IdentityHttpHarness.ReadJsonAsync(roles), "roles");
+
+        await Platform.PlatformScenario.ActiveOwnerAsync();
+        TestApp.SetHttpAuthorizationGranted(true);
+        using var organizations = await FunctionalTestSetup.HttpClient.GetAsync("/api/platform/organizations");
+        organizations.StatusCode.ShouldBe(HttpStatusCode.OK, await organizations.Content.ReadAsStringAsync());
+        AssertOffsetPageBody(await IdentityHttpHarness.ReadJsonAsync(organizations), "organizations");
+    }
+
+    /// <summary>
+    /// Out-of-range Int32 page sizes are clamped over HTTP on every Platform directory, and are never refused as
+    /// <c>validation_failed</c> (PD-a, E1): the declared-but-unemitted code stays unreachable.
+    /// </summary>
+    [Test]
+    public async Task Out_of_range_platform_page_sizes_are_clamped_over_http_and_never_refused_as_validation()
+    {
+        await Platform.PlatformScenario.ActiveOwnerAsync();
+        TestApp.SetHttpAuthorizationGranted(true);
+
+        foreach (var path in new[] { "/api/platform/organizations", "/api/platform/identities", "/api/platform/admins", "/api/platform/audit" })
+        {
+            foreach (var (requested, effective) in new[] { (0, 1), (500, 100) })
+            {
+                using var response = await FunctionalTestSetup.HttpClient.GetAsync($"{path}?pageSize={requested}");
+                var body = await response.Content.ReadAsStringAsync();
+                response.StatusCode.ShouldBe(HttpStatusCode.OK, $"{path}?pageSize={requested} must be clamped, not refused: {body}");
+                var page = await IdentityHttpHarness.ReadJsonAsync(response);
+                page.TryGetProperty("pageSize", out var pageSize).ShouldBeTrue($"{path}?pageSize={requested} must report its effective page size");
+                pageSize.GetInt32().ShouldBe(effective, $"{path}?pageSize={requested}");
+            }
+        }
+    }
+
+    /// <summary>A refused list read goes through the one problem writer, whatever paging it asked for.</summary>
+    [Test]
+    public async Task A_refused_list_read_is_a_problem_document_from_the_shared_writer()
+    {
+        using var scenario = await Organizations.OrganizationScenario.CreateAsync("page-refusal");
+        var reader = await scenario.AddMemberAsync("members-reader", Application.IdentityAccess.Authorization.Permissions.MembersRead);
+
+        using var refused = await reader.Acting.GetAsync($"/api/tenants/{scenario.TenantId.Value}/roles?pageNumber=1&pageSize=25");
+
+        await IdentityHttpHarness.AssertProblemAsync(refused, HttpStatusCode.Forbidden, "permission_denied");
+    }
+
+    private static void AssertOffsetPageBody(JsonElement payload, string collection)
+    {
+        AssertNoUniversalEnvelope(payload);
+        payload.TryGetProperty("nextCursor", out _).ShouldBeFalse($"the {collection} page must not carry the retired cursor");
+        payload.EnumerateObject().Select(member => member.Name)
+            .ShouldBe(OffsetPageMembers, ignoreOrder: true, customMessage: $"the {collection} page carries exactly the offset page members");
+    }
+
     [Test]
     public void Validation_problem_uses_camel_case_fields_and_safe_structured_details()
     {

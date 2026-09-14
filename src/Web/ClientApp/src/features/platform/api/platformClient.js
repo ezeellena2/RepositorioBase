@@ -1,3 +1,5 @@
+import { sendPage } from '../../../api/pagination';
+
 /**
  * The Platform half of the API surface (IA-REQ-045).
  *
@@ -5,22 +7,12 @@
  * antiforgery request token, and one place that knows how to read a problem document. A second token holder would
  * be stale from the moment the first one signed in.
  *
- * Every directory declares `items` and `nextCursor` as its expected members. Those two names are on the identity
- * contract's forbidden list precisely because identity endpoints must not grow a pagination envelope; declaring
- * them here is what makes a Platform directory a distinct resource rather than that envelope leaking sideways.
+ * Every directory is one offset page, read through the shared page reader, which declares `items` and the page
+ * metadata as the expected members. `items` is on the identity contract's forbidden list precisely because identity
+ * endpoints must not grow a pagination envelope; declaring it here is what makes a Platform directory a distinct
+ * resource rather than that envelope leaking sideways. The page asked for is bounded before it is sent, and the
+ * server clamps it again (D21).
  */
-const DIRECTORY = ['items', 'nextCursor'];
-
-/** The bounds the API enforces. Sending something outside them would simply be clamped, so the client does not. */
-const MINIMUM_LIMIT = 1;
-const MAXIMUM_LIMIT = 100;
-
-const page = (path, { limit = 25, cursor } = {}) => {
-  const query = new URLSearchParams();
-  query.set('limit', String(Math.min(Math.max(limit, MINIMUM_LIMIT), MAXIMUM_LIMIT)));
-  if (cursor) query.set('cursor', cursor);
-  return `${path}?${query.toString()}`;
-};
 
 export function createPlatformClient(transport) {
   if (!transport) throw new Error('The Platform client shares the identity transport.');
@@ -59,22 +51,10 @@ export function createPlatformClient(transport) {
       expect: ['sharedKey', 'provisioningUri', 'recoveryCodes'],
     }),
 
-    listOrganizations: (options) => send(page('/api/platform/organizations', options), {
-      expect: DIRECTORY,
-      signal: options?.signal,
-    }),
-    listIdentities: (options) => send(page('/api/platform/identities', options), {
-      expect: DIRECTORY,
-      signal: options?.signal,
-    }),
-    listAdministrators: (options) => send(page('/api/platform/admins', options), {
-      expect: DIRECTORY,
-      signal: options?.signal,
-    }),
-    listAudit: (options) => send(page('/api/platform/audit', options), {
-      expect: DIRECTORY,
-      signal: options?.signal,
-    }),
+    listOrganizations: (page, options) => sendPage(send, '/api/platform/organizations', page, { signal: options?.signal }),
+    listIdentities: (page, options) => sendPage(send, '/api/platform/identities', page, { signal: options?.signal }),
+    listAdministrators: (page, options) => sendPage(send, '/api/platform/admins', page, { signal: options?.signal }),
+    listAudit: (page, options) => sendPage(send, '/api/platform/audit', page, { signal: options?.signal }),
 
     // Stopping and restarting one account. `expectedStatus` is the state the operator read in the directory, and
     // the server only lands the write if the account is still in it (IA-REQ-054): it is a precondition the client

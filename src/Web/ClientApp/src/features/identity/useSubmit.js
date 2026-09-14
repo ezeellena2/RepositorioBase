@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { toProblem } from './api/apiTransport';
+import { toProblem } from '../../api/apiTransport';
 
 /**
  * Runs one submission and keeps the transport's classified answer. Mutations are never replayed here: a timeout

@@ -12,7 +12,20 @@ const deferred = () => {
   return { promise, reject, resolve };
 };
 
-const page = (item) => ({ items: [item], nextCursor: null });
+const PAGE_SIZE = 25;
+const secondPage = { pageNumber: 2, pageSize: PAGE_SIZE };
+const widerFirstPage = { pageNumber: 1, pageSize: 50 };
+
+/** A loaded offset page with one row. The hook never interprets it: it only keeps it, replaces it or clears it. */
+const page = (item, pageNumber = 1) => ({
+  items: [item],
+  pageNumber,
+  pageSize: PAGE_SIZE,
+  totalCount: 26,
+  totalPages: 2,
+  hasPreviousPage: pageNumber > 1,
+  hasNextPage: pageNumber < 2,
+});
 
 describe('useRead', () => {
   it('does not start the deferred initial read after cleanup runs first', async () => {
@@ -36,11 +49,12 @@ describe('useRead', () => {
     await waitFor(() => expect(result.current.status).toBe('loaded'));
 
     let pending;
-    act(() => { pending = result.current.refresh('next'); });
+    act(() => { pending = result.current.refresh(secondPage); });
     await waitFor(() => expect(load).toHaveBeenCalledTimes(2));
+    expect(load).toHaveBeenNthCalledWith(2, { page: secondPage, signal: signals[1] });
 
     unmount();
-    manual.resolve(page('late'));
+    manual.resolve(page('late', 2));
     await act(async () => { await pending; });
 
     expect(signals[1]).toBeInstanceOf(AbortSignal);
@@ -54,7 +68,7 @@ describe('useRead', () => {
     const staleRefresh = result.current.refresh;
 
     unmount();
-    await act(async () => { await staleRefresh('after-unmount'); });
+    await act(async () => { await staleRefresh(secondPage); });
 
     expect(load).toHaveBeenCalledOnce();
   });
@@ -97,7 +111,7 @@ describe('useRead', () => {
     const staleRefresh = result.current.refresh;
 
     rerender({ enabled: false });
-    await act(async () => { await staleRefresh('after-disable'); });
+    await act(async () => { await staleRefresh(secondPage); });
 
     expect(load).toHaveBeenCalledOnce();
     expect(result.current.status).toBe('idle');
@@ -116,7 +130,7 @@ describe('useRead', () => {
       { initialProps: { load: oldLoad } },
     );
     await waitFor(() => expect(result.current.status).toBe('loaded'));
-    await act(async () => { await result.current.refresh(undefined); });
+    await act(async () => { await result.current.refresh(secondPage); });
     expect(result.current.status).toBe('errored');
     expect(result.current.data).toEqual(page('old'));
     const staleRefresh = result.current.refresh;
@@ -127,7 +141,7 @@ describe('useRead', () => {
     expect(result.current.problem).toBeNull();
     expect(result.current.data).toBeNull();
 
-    await act(async () => { await staleRefresh('old-loader'); });
+    await act(async () => { await staleRefresh(secondPage); });
     replacement.resolve(page('new'));
     await act(async () => { await replacement.promise; });
 
@@ -148,21 +162,24 @@ describe('useRead', () => {
 
     let olderRequest;
     let newerRequest;
-    act(() => { olderRequest = result.current.refresh('older'); });
+    act(() => { olderRequest = result.current.refresh(secondPage); });
     await waitFor(() => expect(load).toHaveBeenCalledTimes(2));
-    act(() => { newerRequest = result.current.refresh('newer'); });
+    act(() => { newerRequest = result.current.refresh(widerFirstPage); });
     await waitFor(() => expect(load).toHaveBeenCalledTimes(3));
+
+    expect(load.mock.calls.map(([request]) => request.page)).toEqual([undefined, secondPage, widerFirstPage]);
+    expect(load.mock.calls[1][0].signal.aborted).toBe(true);
 
     newer.resolve(page('newest'));
     await act(async () => { await newerRequest; });
     expect(result.current.data).toEqual(page('newest'));
 
-    older.resolve(page('stale'));
+    older.resolve(page('stale', 2));
     await act(async () => { await olderRequest; });
     expect(result.current.data).toEqual(page('newest'));
   });
 
-  it('keeps loaded data through a retryable failure and the retry that follows', async () => {
+  it('keeps loaded data through a retryable failure and retries the page that was asked for', async () => {
     const retry = deferred();
     const load = vi.fn(() => {
       if (load.mock.calls.length === 1) return Promise.resolve(page('current'));
@@ -174,23 +191,26 @@ describe('useRead', () => {
     const { result } = renderHook(() => useRead(load));
     await waitFor(() => expect(result.current.status).toBe('loaded'));
 
-    await act(async () => { await result.current.refresh(undefined); });
+    let outcome = 'pending';
+    await act(async () => { outcome = await result.current.refresh(secondPage); });
 
+    expect(outcome).toBeUndefined();
     expect(result.current.status).toBe('errored');
     expect(result.current.problem).toEqual({ code: 'internal_server_error', status: 500 });
     expect(result.current.data).toEqual(page('current'));
 
     let retryRequest;
-    act(() => { retryRequest = result.current.refresh(undefined); });
+    act(() => { retryRequest = result.current.refresh(secondPage); });
     await waitFor(() => expect(load).toHaveBeenCalledTimes(3));
+    expect(load.mock.calls[2][0]).toEqual({ page: secondPage, signal: expect.any(AbortSignal) });
     expect(result.current.status).toBe('loading');
     expect(result.current.problem).toBeNull();
     expect(result.current.data).toEqual(page('current'));
 
-    retry.resolve(page('fresh'));
+    retry.resolve(page('fresh', 2));
     await act(async () => { await retryRequest; });
     expect(result.current.status).toBe('loaded');
-    expect(result.current.data).toEqual(page('fresh'));
+    expect(result.current.data).toEqual(page('fresh', 2));
   });
 
   it('clears stale data when a later read is refused with a non-retryable problem', async () => {
@@ -200,25 +220,10 @@ describe('useRead', () => {
     const { result } = renderHook(() => useRead(load));
     await waitFor(() => expect(result.current.status).toBe('loaded'));
 
-    await act(async () => { await result.current.refresh(undefined); });
+    await act(async () => { await result.current.refresh(secondPage); });
 
     expect(result.current.status).toBe('refused');
     expect(result.current.problem).toEqual({ code: 'permission_denied', status: 403 });
     expect(result.current.data).toBeNull();
-  });
-
-  it('merges a successful cursor read with current data when requested', async () => {
-    const load = vi.fn(({ cursor }) => Promise.resolve(page(cursor ?? 'first')));
-    const { result } = renderHook(() => useRead(load));
-    await waitFor(() => expect(result.current.status).toBe('loaded'));
-
-    await act(async () => {
-      await result.current.refresh('second', (current, loaded) => ({
-        ...loaded,
-        items: [...current.items, ...loaded.items],
-      }));
-    });
-
-    expect(result.current.data.items).toEqual(['first', 'second']);
   });
 });

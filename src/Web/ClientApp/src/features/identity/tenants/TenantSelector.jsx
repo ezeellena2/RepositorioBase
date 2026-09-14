@@ -8,7 +8,7 @@ import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import { useTranslation } from '../../../i18n';
 import { useIdentity } from '../context/IdentityProvider';
-import { ProblemMessage } from '../ProblemMessage';
+import { ProblemMessage } from '../../../components/ProblemMessage';
 import { useSubmit } from '../useSubmit';
 
 /**

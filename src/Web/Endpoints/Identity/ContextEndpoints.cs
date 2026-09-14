@@ -37,7 +37,7 @@ internal static class ContextEndpoints
     private static async Task<IResult> Get(ISender sender, ApiProblemDetailsMapper problems, HttpContext context)
     {
         var result = await sender.Send(new GetIdentityContextQuery(), context.RequestAborted);
-        return result.IsSuccess ? Results.Ok(IdentityContextResponse.From(result.Value!)) : problems.ToHttpResult(result.Error!);
+        return result.ToHttpResult(context, problems, identity => Results.Ok(IdentityContextResponse.From(identity)));
     }
 
     private static async Task<IResult> SelectTenant(HttpContext context, IAntiforgery antiforgery, ApiProblemDetailsMapper problems, ISender sender, SelectTenantRequest request)
@@ -49,7 +49,7 @@ internal static class ContextEndpoints
             return problems.ToHttpResult(new CleanArchitecture.Application.Common.Models.ApplicationError("invalid_request", CleanArchitecture.Application.Common.Models.ApplicationErrorCategory.Validation));
         }
         var result = await sender.Send(new SelectTenantCommand(TenantId.From(request.TenantId)), context.RequestAborted);
-        return result.IsSuccess ? Results.Ok(IdentityContextResponse.From(result.Value!)) : problems.ToHttpResult(result.Error!);
+        return result.ToHttpResult(context, problems, identity => Results.Ok(IdentityContextResponse.From(identity)));
     }
 
     private sealed record SelectTenantRequest(Guid TenantId);

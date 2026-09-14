@@ -49,9 +49,8 @@ internal static class PasswordEndpoints
     private static async Task<IResult> Read(HttpContext context, ApiProblemDetailsMapper problems, ISender sender)
     {
         var result = await sender.Send(new GetOwnCredentialsQuery(), context.RequestAborted);
-        return result.IsSuccess
-            ? Results.Ok(new OwnCredentialsResponse(result.Value!.HasPassword, result.Value.PasswordUpdatedAt))
-            : problems.ToHttpResult(result.Error!);
+        return result.ToHttpResult(context, problems, credentials =>
+            Results.Ok(new OwnCredentialsResponse(credentials.HasPassword, credentials.PasswordUpdatedAt)));
     }
 
     private static async Task<IResult> Recover(HttpContext context, IAntiforgery antiforgery, ApiProblemDetailsMapper problems, ISender sender, RequestPasswordRecoveryCommand command)
@@ -61,7 +60,7 @@ internal static class PasswordEndpoints
         var result = await sender.Send(command, context.RequestAborted);
 
         // Neutral either way: the same status for an address with an account and one without.
-        return result.IsSuccess ? Results.StatusCode(StatusCodes.Status202Accepted) : problems.ToHttpResult(result.Error!);
+        return result.ToAcceptedHttpResult(context, problems);
     }
 
     private static async Task<IResult> Reset(HttpContext context, IAntiforgery antiforgery, ApiProblemDetailsMapper problems, ISender sender, ResetPasswordCommand command)
@@ -71,7 +70,7 @@ internal static class PasswordEndpoints
         var result = await sender.Send(command, context.RequestAborted);
 
         // No sign-in here, deliberately. Holding a mailed link is not the same as having signed in.
-        return result.IsSuccess ? Results.NoContent() : problems.ToHttpResult(result.Error!);
+        return result.ToHttpResult(context, problems);
     }
 
     private static async Task<IResult> Change(HttpContext context, IAntiforgery antiforgery, ApiProblemDetailsMapper problems, ISender sender, ChangePasswordCommand command)

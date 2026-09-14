@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { problem } from '../../test/identityServer';
+import languages from '../../i18n/languages.json';
 import enErrors from '../../i18n/locales/en/errors.json';
 import esErrors from '../../i18n/locales/es/errors.json';
-import problemCodes from './problemCodes.json';
+import problemCodes from '../../api/problemCodes.json';
 
 const CLIENT_CODES = [
   'client_failure',
@@ -12,6 +13,8 @@ const CLIENT_CODES = [
 ];
 const PRESENTATION_KEYS = new Set(['reference', 'retryAfter', 'unknown', 'validation']);
 const VOCABULARY = [...Object.keys(problemCodes), ...CLIENT_CODES].sort();
+const errorCatalogues = import.meta.glob('../../i18n/locales/*/errors.json', { eager: true, import: 'default' });
+const errorsFor = (language) => errorCatalogues[`../../i18n/locales/${language}/errors.json`];
 
 const messageKeys = (catalogue) => Object.keys(catalogue)
   .filter((key) => !PRESENTATION_KEYS.has(key))
@@ -30,10 +33,13 @@ describe('problem catalogue contract', () => {
     expect(CLIENT_CODES.filter((code) => code in problemCodes)).toEqual([]);
   });
 
-  it.each([
-    ['English', enErrors],
-    ['Spanish', esErrors],
-  ])('covers the complete API and client vocabulary in %s without orphaned message keys', (_language, errors) => {
+  it('reads every supported language, the source included, from the registry for the words gate', () => {
+    expect(languages.supported).toContain(languages.source);
+    expect(languages.supported.filter((language) => errorsFor(language) === undefined)).toEqual([]);
+  });
+
+  it.each(languages.supported)('covers the complete API and client vocabulary in %s without orphaned message keys', (language) => {
+    const errors = errorsFor(language);
     expect(messageKeys(errors)).toEqual(VOCABULARY);
     expect(VOCABULARY.every((code) => (
       typeof errors[code] === 'string' && errors[code].trim().length > 0

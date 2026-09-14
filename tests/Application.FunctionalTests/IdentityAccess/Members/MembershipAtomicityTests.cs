@@ -157,5 +157,5 @@ public sealed class MembershipAtomicityTests : TestBase
 
     private sealed record MemberRow(Guid MembershipId, Guid IdentityId, string DisplayName, string NormalizedEmail, string Status, Guid[] RoleIds, bool IsOwner, string Version);
 
-    private sealed record MemberPageRow(MemberRow[] Items, string? NextCursor);
+    private sealed record MemberPageRow(MemberRow[] Items);
 }

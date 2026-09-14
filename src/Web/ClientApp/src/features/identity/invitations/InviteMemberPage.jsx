@@ -18,14 +18,16 @@ import TableBody from '@mui/material/TableBody';
 import TableCell from '@mui/material/TableCell';
 import TableContainer from '@mui/material/TableContainer';
 import TableHead from '@mui/material/TableHead';
+import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { roleName, useFormat, useTranslation } from '../../../i18n';
-import { toProblem } from '../api/apiTransport';
+import { toProblem } from '../../../api/apiTransport';
+import { DEFAULT_PAGE, pageSizeOptions } from '../../../api/pagination';
 import { useIdentity } from '../context/IdentityProvider';
-import { claimedFieldNames, fieldErrorText, selectFieldErrors } from '../fieldErrors';
-import { ProblemMessage } from '../ProblemMessage';
+import { claimedFieldNames, fieldErrorText, selectFieldErrors } from '../../../components/problemFields';
+import { ProblemMessage } from '../../../components/ProblemMessage';
 import { useRead } from '../useRead';
 
 /** Required without the asterisk MUI would add, which would rename the field for everything that reads its label. */
@@ -49,7 +51,6 @@ const rowActions = { flexWrap: 'wrap', justifyContent: 'flex-end' };
 const start = { alignSelf: 'flex-start' };
 const pendingAction = {
   send: 'send',
-  more: 'more',
   resend: (invitationId) => `resend-${invitationId}`,
   withdraw: (invitationId) => `withdraw-${invitationId}`,
 };
@@ -71,10 +72,6 @@ const spinner = (busy) => (busy ? <CircularProgress size={16} color="inherit" />
 const statusColor = { Accepted: 'success', Cancelled: 'error', Expired: 'warning' };
 const invitationFieldNames = { email: 'email', roleIds: 'roleIds' };
 const invitationFields = [invitationFieldNames.email, invitationFieldNames.roleIds];
-const appendInvitations = (current, next) => ({
-  ...next,
-  items: [...current.items, ...next.items],
-});
 
 /**
  * Offering somebody a place in the organization, and everything that can still happen to that offer
@@ -110,17 +107,49 @@ export function InviteMemberPage() {
     invitationFields.filter((field) => !clearedServerFields.includes(field)),
   );
 
+  // Roles are offered by name, so the whole catalogue is read rather than its first page. A failed or endless walk
+  // fails the read as a whole, so no partial catalogue is ever offered (PD-2).
   const rolesRead = useRead(useCallback(async ({ signal }) => {
-    const page = await identity.client.listRoles(tenantId, null, { signal });
-    return page.items.filter((role) => !role.isRetired);
+    const catalogue = await identity.client.listRoleCatalogue(tenantId, { signal });
+    return catalogue.filter((role) => !role.isRetired);
   }, [identity.client, tenantId]), tenantId !== null);
+  // The page asked for travels through `refresh`, never through the loader, so turning a page holds the offers on
+  // screen instead of starting a new read from nothing.
   const invitationsRead = useRead(useCallback(
-    ({ cursor, signal }) => identity.client.listTenantInvitations(tenantId, cursor ?? null, { signal }),
+    ({ page, signal }) => identity.client.listTenantInvitations(tenantId, page ?? DEFAULT_PAGE, { signal }),
     [identity.client, tenantId],
   ), tenantId !== null);
+  const [requested, setRequested] = useState(DEFAULT_PAGE);
+  const go = (page) => {
+    setInvitationReadTarget('pagination');
+    setRequested(page);
+    void invitationsRead.refresh(page);
+  };
+  const retry = () => void invitationsRead.refresh(requested);
+  // A change is shown on the page it was made from: the loaded page is read again at its own size, or the first page
+  // when nothing has loaded yet. That read failing is a read problem, never the change failing (E11).
+  const reloadPage = () => {
+    const loaded = invitationsRead.data;
+    const page = loaded === null ? DEFAULT_PAGE : { pageNumber: loaded.pageNumber, pageSize: loaded.pageSize };
+    setRequested(page);
+    return invitationsRead.refresh(page);
+  };
+  // A page past the end is what a person lands on after the last offers on it went elsewhere. The real last page is
+  // asked for once per answer, and nothing is said about it: the page that arrives is the whole explanation (E4).
+  const pastTheEnd = invitationsRead.data !== null && invitationsRead.data.items.length === 0
+    && invitationsRead.data.totalPages > 0 && invitationsRead.data.pageNumber > invitationsRead.data.totalPages;
+  useEffect(() => {
+    if (invitationsRead.status !== 'loaded' || !pastTheEnd) return;
+    let cancelled = false;
+    // Asked for after this render rather than during it, as the first read is, so a newer answer cancels it.
+    void Promise.resolve().then(() => {
+      if (!cancelled) go({ pageNumber: invitationsRead.data.totalPages, pageSize: invitationsRead.data.pageSize });
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [invitationsRead.status, invitationsRead.data]);
   const roles = rolesRead.data;
   const invitations = invitationsRead.data?.items ?? null;
-  const nextCursor = invitationsRead.data?.nextCursor ?? null;
 
   useEffect(() => {
     if (actionTarget !== 'send') return;
@@ -137,7 +166,7 @@ export function InviteMemberPage() {
     try {
       const value = await act();
       setInvitationReadTarget('list');
-      await invitationsRead.refresh(undefined);
+      await reloadPage();
       return value;
     } catch (error) {
       setActionProblem(toProblem(error));
@@ -155,18 +184,6 @@ export function InviteMemberPage() {
       setSent(issued);
       setEmail('');
       setRoleIds([]);
-    }
-  };
-
-  // A continuation appends, so every offer the reader has seen stays on screen. Each page the server hands out
-  // is disjoint from the last, so an offer cannot be listed twice.
-  const showMore = async () => {
-    setPending('more');
-    setInvitationReadTarget('pagination');
-    try {
-      await invitationsRead.refresh(nextCursor, appendInvitations);
-    } finally {
-      setPending(null);
     }
   };
 
@@ -335,7 +352,7 @@ export function InviteMemberPage() {
           <ProblemMessage problem={invitationsRead.problem} />
         )}
         {invitationReadTarget === 'list' && invitationsRead.status === 'errored' && (
-          <Button type="button" variant="outlined" onClick={() => invitationsRead.refresh(undefined)} sx={start}>
+          <Button type="button" variant="outlined" onClick={retry} sx={start}>
             {t('common:actions.tryAgain')}
           </Button>
         )}
@@ -354,7 +371,7 @@ export function InviteMemberPage() {
           <Paper variant="outlined" sx={refusal}>
             <Typography component="p" variant="subtitle2">{t('identity:invitations.member.invitationsRefused')}</Typography>
           </Paper>
-        ) : invitations === null ? null : invitations.length === 0 ? (
+        ) : invitations === null || pastTheEnd ? null : invitations.length === 0 ? (
           <Paper variant="outlined" sx={empty}>
             <Typography variant="body2" color="text.secondary">{t('identity:invitations.member.noInvitations')}</Typography>
           </Paper>
@@ -450,17 +467,18 @@ export function InviteMemberPage() {
           </TableContainer>
         )}
 
-        {nextCursor !== null && (
-          <Button
-            type="button"
-            variant="outlined"
-            disabled={isBusy || invitationsRead.status === 'loading'}
-            startIcon={spinner(pending === 'more')}
-            onClick={showMore}
-            sx={start}
-          >
-            {t('identity:invitations.member.showMore')}
-          </Button>
+        {/* The control shows the page that was loaded, never the one still on its way, and its words come from the
+            MUI locale the theme composes for the active language. A failed page change is answered beside it. */}
+        {invitations !== null && !pastTheEnd && invitationsRead.data.totalCount > 0 && (
+          <TablePagination
+            component="div"
+            count={invitationsRead.data.totalCount}
+            page={invitationsRead.data.pageNumber - 1}
+            rowsPerPage={invitationsRead.data.pageSize}
+            rowsPerPageOptions={pageSizeOptions}
+            onPageChange={(_, index) => go({ pageNumber: index + 1, pageSize: invitationsRead.data.pageSize })}
+            onRowsPerPageChange={(event) => go({ pageNumber: 1, pageSize: Number(event.target.value) })}
+          />
         )}
         {invitationReadTarget === 'pagination' && invitationsRead.problem && (
           <ProblemMessage problem={invitationsRead.problem} />
@@ -469,7 +487,7 @@ export function InviteMemberPage() {
           <Button
             type="button"
             variant="outlined"
-            onClick={() => invitationsRead.refresh(nextCursor, appendInvitations)}
+            onClick={retry}
             sx={start}
           >
             {t('common:actions.tryAgain')}

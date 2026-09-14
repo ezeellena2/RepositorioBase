@@ -27,11 +27,58 @@ const member = (overrides = {}) => ({
   ...overrides,
 });
 
+/** One offset page, exactly as the API answers it. */
+const pageOf = (items, { pageNumber = 1, pageSize = 25, totalCount = items.length } = {}) => {
+  const totalPages = totalCount === 0 ? 0 : Math.ceil(totalCount / pageSize);
+  return {
+    items,
+    pageNumber,
+    pageSize,
+    totalCount,
+    totalPages,
+    hasPreviousPage: pageNumber > 1 && totalPages > 0,
+    hasNextPage: pageNumber < totalPages,
+  };
+};
+
 const membersAre = (items) =>
-  http.get(`/api/tenants/${TENANT}/members`, () => HttpResponse.json({ items, nextCursor: null }));
+  http.get(`/api/tenants/${TENANT}/members`, () => HttpResponse.json(pageOf(items)));
 
 const rolesAre = (items) =>
-  http.get(`/api/tenants/${TENANT}/roles`, () => HttpResponse.json({ items, nextCursor: null }));
+  http.get(`/api/tenants/${TENANT}/roles`, () => HttpResponse.json(pageOf(items)));
+
+/** The API's side of the roster: every member served a page at a time, with each query string it was asked with. */
+const membersServed = (all) => {
+  const searches = [];
+  server.use(http.get(`/api/tenants/${TENANT}/members`, ({ request }) => {
+    const { search, searchParams } = new URL(request.url);
+    searches.push(search);
+    const pageNumber = Number(searchParams.get('pageNumber'));
+    const pageSize = Number(searchParams.get('pageSize'));
+    return HttpResponse.json(pageOf(
+      all.slice((pageNumber - 1) * pageSize, pageNumber * pageSize),
+      { pageNumber, pageSize, totalCount: all.length },
+    ));
+  }));
+  return searches;
+};
+
+/**
+ * Roles served at most 25 to a page, whatever page size was asked for, as a server with a smaller cap would. Each
+ * page number asked for is recorded, so a picker that stops after one page is caught.
+ */
+const rolesServedTwentyFiveAtATime = (all) => {
+  const pageNumbers = [];
+  server.use(http.get(`/api/tenants/${TENANT}/roles`, ({ request }) => {
+    const pageNumber = Number(new URL(request.url).searchParams.get('pageNumber'));
+    pageNumbers.push(pageNumber);
+    return HttpResponse.json(pageOf(
+      all.slice((pageNumber - 1) * 25, pageNumber * 25),
+      { pageNumber, pageSize: 25, totalCount: all.length },
+    ));
+  }));
+  return pageNumbers;
+};
 
 const role = (overrides = {}) => ({
   roleId: 'role-1',
@@ -42,6 +89,18 @@ const role = (overrides = {}) => ({
   version: '1',
   ...overrides,
 });
+
+const numberedRoles = (count) => Array.from({ length: count }, (_, index) => role({
+  roleId: `role-${index + 1}`,
+  name: `Role ${index + 1}`,
+}));
+
+const numberedMembers = (count) => Array.from({ length: count }, (_, index) => member({
+  membershipId: `membership-${index + 1}`,
+  identityId: `identity-${index + 1}`,
+  displayName: `Member ${index + 1}`,
+  normalizedEmail: `member${index + 1}@example.test`,
+}));
 
 const proofAccepted = (spent) => http.post('/api/identity/credentials/reauthenticate', async ({ request }) => {
   spent.push(await request.json());
@@ -190,7 +249,7 @@ describe('members page', () => {
         attempts += 1;
         return attempts === 1
           ? problem(500, 'internal_server_error', { traceId: 'trace-members' })
-          : HttpResponse.json({ items: [member()], nextCursor: null });
+          : HttpResponse.json(pageOf([member()]));
       }),
       rolesAre([role()]),
     );
@@ -212,7 +271,7 @@ describe('members page', () => {
       )),
       http.get(`/api/tenants/${TENANT}/roles`, async () => {
         await catalog.promise;
-        return HttpResponse.json({ items: [role()], nextCursor: null });
+        return HttpResponse.json(pageOf([role()]));
       }),
     );
     renderPage();
@@ -236,7 +295,7 @@ describe('members page', () => {
           return problem(500, 'internal_server_error', { traceId: 'trace-member-catalog' });
         }
         await retry.promise;
-        return HttpResponse.json({ items: [role()], nextCursor: null });
+        return HttpResponse.json(pageOf([role()]));
       }),
     );
     renderPage();
@@ -253,6 +312,51 @@ describe('members page', () => {
 
     expect(rosterStayedVisible).toBeInTheDocument();
     expect(pageStatusDuringRetry).toBeNull();
+  });
+
+  it('reaches the 26th member by page number', async () => {
+    server.use(rolesAre([role()]));
+    const searches = membersServed(numberedMembers(26));
+    renderPage();
+
+    expect(await screen.findByText('1–25 of 26')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Suspend Member 25' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Go to next page' }));
+
+    expect(await screen.findByText('26–26 of 26')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Suspend Member 26' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Suspend Member 1' })).toBeNull();
+    expect(searches).toEqual(['?pageNumber=1&pageSize=25', '?pageNumber=2&pageSize=25']);
+  });
+
+  /**
+   * The editor hands somebody roles by name, so it has to know every role the organization has, not the first
+   * page of them. Pages are read until the server says there is no next one, and not a request more.
+   */
+  it('offers every role in the editor when the organization has more roles than one page carries', async () => {
+    server.use(membersAre([member()]));
+    const rolePages = rolesServedTwentyFiveAtATime(numberedRoles(30));
+    renderPage();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Edit roles of Ana' }));
+    const editor = screen.getByRole('group', { name: 'Roles for Ana' });
+
+    expect(await within(editor).findByLabelText('Role 30')).toBeInTheDocument();
+    expect(within(editor).getAllByRole('checkbox')).toHaveLength(30);
+    expect(rolePages).toEqual([1, 2]);
+  });
+
+  it('reads the roles with one request when they fit on one page', async () => {
+    server.use(membersAre([member()]));
+    const rolePages = rolesServedTwentyFiveAtATime(numberedRoles(3));
+    renderPage();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Edit roles of Ana' }));
+    const editor = screen.getByRole('group', { name: 'Roles for Ana' });
+
+    expect(await within(editor).findByLabelText('Role 3')).toBeInTheDocument();
+    expect(within(editor).getAllByRole('checkbox')).toHaveLength(3);
+    expect(rolePages).toEqual([1]);
   });
 
   it('confirms before giving the organization away, and spends its own proof', async () => {

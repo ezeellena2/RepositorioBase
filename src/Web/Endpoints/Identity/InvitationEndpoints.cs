@@ -126,7 +126,7 @@ internal static class InvitationEndpoints
         if (tenantId == Guid.Empty) return problems.ToHttpResult(IdentityAccessErrors.InvalidInvitation());
 
         var result = await send();
-        return result.IsSuccess ? Results.NoContent() : problems.ToHttpResult(result.Error!);
+        return result.ToHttpResult(context, problems);
     }
 
     /// <summary>
@@ -144,7 +144,7 @@ internal static class InvitationEndpoints
         if (antiforgeryFailure is not null) return antiforgeryFailure;
 
         var result = await sender.Send(new RegisterInvitedUserCommand(request.Token, request.Password), context.RequestAborted);
-        return result.IsSuccess ? Results.StatusCode(StatusCodes.Status202Accepted) : problems.ToHttpResult(result.Error!);
+        return result.ToAcceptedHttpResult(context, problems);
     }
 
     /// <summary>Idempotent by contract: a replay by the accepting identity answers with the same membership.</summary>

@@ -15,16 +15,18 @@ import TableBody from '@mui/material/TableBody';
 import TableCell from '@mui/material/TableCell';
 import TableContainer from '@mui/material/TableContainer';
 import TableHead from '@mui/material/TableHead';
+import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import visuallyHidden from '@mui/utils/visuallyHidden';
 import { roleName, useTranslation } from '../../../i18n';
-import { toProblem } from '../api/apiTransport';
+import { toProblem } from '../../../api/apiTransport';
+import { DEFAULT_PAGE, pageSizeOptions } from '../../../api/pagination';
 import { useIdentity } from '../context/IdentityProvider';
-import { claimedFieldNames, fieldErrorText, selectFieldErrors } from '../fieldErrors';
+import { claimedFieldNames, fieldErrorText, selectFieldErrors } from '../../../components/problemFields';
 import { PermissionLabel } from '../PermissionLabel';
-import { ProblemMessage } from '../ProblemMessage';
+import { ProblemMessage } from '../../../components/ProblemMessage';
 import { useIdentityProof } from '../useIdentityProof';
 import { useRead } from '../useRead';
 
@@ -93,12 +95,8 @@ const ROW_HEIGHT = 6 + 40 + 6 + 1;
 const EMPTY_DRAFT = { roleId: null, name: '', permissions: [], version: null };
 const roleFieldName = 'name';
 const roleListReadTarget = 'list';
+const rolePageReadTarget = 'pagination';
 const roleFields = [roleFieldName];
-const appendRoles = (current, loaded) => ({
-  ...loaded,
-  catalog: current.catalog,
-  items: [...current.items, ...loaded.items],
-});
 
 /**
  * Custom roles inside the organization the session is operating in (IA-REQ-053).
@@ -131,17 +129,54 @@ export function RolesPage() {
   const [readTarget, setReadTarget] = useState(roleListReadTarget);
   const [clearedServerFields, setClearedServerFields] = useState([]);
   const [isBusy, setIsBusy] = useState(false);
-  const load = useCallback(async ({ cursor, signal }) => {
-    const [listed, entries] = await Promise.all([
-      identity.client.listRoles(tenantId, cursor, { signal }),
-      identity.client.listPermissionCatalog(tenantId, { signal }),
-    ]);
-    return { ...listed, catalog: entries };
-  }, [identity.client, tenantId]);
+  // The page asked for travels through `refresh`, never through the loader. A loader that depended on the page
+  // would be a new read on every page change, which drops the rows and flashes the wait instead of holding them.
+  const load = useCallback(
+    ({ page, signal }) => identity.client.listRoles(tenantId, page ?? DEFAULT_PAGE, { signal }),
+    [identity.client, tenantId],
+  );
   const read = useRead(load, tenantId !== null);
+  // What may be granted does not change with the page, so the catalogue is read once per organization rather than
+  // once per page, and a failure of either read is asked for again on its own (AD14).
+  const loadCatalog = useCallback(
+    ({ signal }) => identity.client.listPermissionCatalog(tenantId, { signal }),
+    [identity.client, tenantId],
+  );
+  const catalogRead = useRead(loadCatalog, tenantId !== null);
+  const [requested, setRequested] = useState(DEFAULT_PAGE);
+  const go = (page) => {
+    setReadTarget(rolePageReadTarget);
+    setRequested(page);
+    void read.refresh(page);
+  };
+  const retry = () => void read.refresh(requested);
+  // A change is shown on the page it was made from: the loaded page is read again at its own size, or the first page
+  // when nothing has loaded yet. That read failing is a read problem, never the change failing (E11).
+  const reloadPage = () => {
+    const page = read.data === null ? DEFAULT_PAGE : { pageNumber: read.data.pageNumber, pageSize: read.data.pageSize };
+    setRequested(page);
+    return read.refresh(page);
+  };
+  // A page past the end is what a person lands on after the last roles on it went elsewhere. The real last page is
+  // asked for once per answer, and nothing is said about it: the page that arrives is the whole explanation (E4).
+  const pastTheEnd = read.data !== null && read.data.items.length === 0
+    && read.data.totalPages > 0 && read.data.pageNumber > read.data.totalPages;
+  useEffect(() => {
+    if (read.status !== 'loaded' || !pastTheEnd) return;
+    let cancelled = false;
+    // Asked for after this render rather than during it, as the first read is, so a newer answer cancels it.
+    void Promise.resolve().then(() => {
+      if (!cancelled) go({ pageNumber: read.data.totalPages, pageSize: read.data.pageSize });
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [read.status, read.data]);
   const roles = read.data?.items ?? null;
-  const nextCursor = read.data?.nextCursor ?? null;
-  const catalog = read.data?.catalog;
+  // A resumed change searches from the page on screen, across as many pages as that page said there were (D11).
+  const loadedPageNumber = read.data?.pageNumber ?? null;
+  const loadedTotalPages = read.data?.totalPages ?? 0;
+  const loadedPageSize = read.data?.pageSize ?? DEFAULT_PAGE.pageSize;
+  const catalog = catalogRead.data;
   const editorProblem = actionTarget === 'role-editor' ? actionProblem : null;
   const fieldErrors = selectFieldErrors(
     editorProblem,
@@ -166,7 +201,7 @@ export function RolesPage() {
       setPassword('');
       setDraft(EMPTY_DRAFT);
       setReadTarget(roleListReadTarget);
-      await read.refresh(undefined);
+      await Promise.all([reloadPage(), catalogRead.refresh()]);
     } catch (error) {
       setActionProblem(toProblem(error));
     } finally {
@@ -209,14 +244,16 @@ export function RolesPage() {
           return;
         }
 
-        // The role may have been selected on a later page before leaving for the provider.
+        // The role may have been selected on another page before leaving for the provider, and a fresh return loads
+        // one page. Every other page is searched at its size until the role turns up. The page count is the one the
+        // loaded page was answered with, so the search always ends; a page that cannot be read ends it as a problem.
         let role = roles.find((candidate) => candidate.roleId === pending.roleId);
-        let cursor = nextCursor;
-        while (role === undefined && cursor !== null) {
-          const page = await identity.client.listRoles(tenantId, cursor);
-          if (cancelled) return;
-          role = page.items.find((candidate) => candidate.roleId === pending.roleId);
-          cursor = page.nextCursor ?? null;
+        for (let next = 1; role === undefined && next <= loadedTotalPages; next += 1) {
+          if (next !== loadedPageNumber) {
+            const page = await identity.client.listRoles(tenantId, { pageNumber: next, pageSize: loadedPageSize });
+            if (cancelled) return;
+            role = page.items.find((candidate) => candidate.roleId === pending.roleId);
+          }
         }
         if (cancelled || proof.resumable(RolesPath) !== waiting) return;
         proof.forget();
@@ -234,19 +271,7 @@ export function RolesPage() {
     });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [waiting, roles, nextCursor, proof.isReady, tenantId]);
-
-  // A continuation appends rather than replaces: what the reader has already seen stays on screen, and every
-  // page the server hands out is disjoint from the last, so nothing can appear twice.
-  const showMore = async () => {
-    setIsBusy(true);
-    try {
-      setReadTarget('pagination');
-      await read.refresh(nextCursor, appendRoles);
-    } finally {
-      setIsBusy(false);
-    }
-  };
+  }, [waiting, roles, loadedPageNumber, loadedTotalPages, proof.isReady, tenantId]);
 
   const toggle = (code) => setDraft((current) => ({
     ...current,
@@ -330,8 +355,23 @@ export function RolesPage() {
   // The editor is always drawn, so a refusal aimed at it always reports. A retirement is drawn in the role's own
   // row, which exists only while that role is on a page that has been read — and a resumed retirement comes back
   // to page one. What no row can carry is said for the screen rather than lost.
+  // A role is drawn only once both reads have arrived: without the catalogue the screen could not say what may be
+  // granted, so the roles wait with it. The wait holds the layout until then and gives way to a problem the moment
+  // either read has one, so an initial wait and a terminal error are never drawn together.
+  // A page past the end is not an empty organization, so nothing is drawn for it while the last page is asked for.
+  const listedRoles = catalog === null || pastTheEnd ? null : roles;
+  const listProblem = (readTarget === roleListReadTarget ? read.problem : null) ?? catalogRead.problem;
+  const awaitingReads = (read.status === 'loading' && read.data === null)
+    || (catalogRead.status === 'loading' && catalogRead.data === null);
+  // "Try again" repeats only what failed: the page that was asked for, the catalogue, or both.
+  const retryList = () => {
+    setReadTarget(roleListReadTarget);
+    if (read.status === 'errored') retry();
+    if (catalogRead.status === 'errored') void catalogRead.refresh();
+  };
+
   const claimedByRegion = actionTarget === 'role-editor'
-    || (roles ?? []).some((role) => actionTarget === `retire:${role.roleId}` && !role.isSystem && !role.isRetired);
+    || (listedRoles ?? []).some((role) => actionTarget === `retire:${role.roleId}` && !role.isSystem && !role.isRetired);
   const unclaimedProblem = claimedByRegion ? null : actionProblem;
 
   if (tenantId === null) {
@@ -391,23 +431,23 @@ export function RolesPage() {
           only content is three skeletons announces nothing when it changes. */}
       <ProblemMessage problem={unclaimedProblem} autoFocus />
 
-      {readTarget === roleListReadTarget && <ProblemMessage problem={read.problem} />}
-      {readTarget === roleListReadTarget && read.status === 'errored' && (
+      <ProblemMessage problem={listProblem} />
+      {((readTarget === roleListReadTarget && read.status === 'errored') || catalogRead.status === 'errored') && (
         <Button
           type="button"
           variant="outlined"
-          onClick={() => { setReadTarget(roleListReadTarget); read.refresh(undefined); }}
+          onClick={retryList}
           sx={start}
         >
           {t('common:actions.tryAgain')}
         </Button>
       )}
-      {read.status === 'loading' && read.data === null ? (
+      {awaitingReads && listProblem === null ? (
         <Stack spacing={1} role="status">
           <Typography variant="body2" color="text.secondary">{t('roles.loading')}</Typography>
           {[0, 1, 2].map((placeholder) => <Skeleton key={placeholder} variant="rounded" height={ROW_HEIGHT} />)}
         </Stack>
-      ) : roles === null ? null : roles.length === 0 ? (
+      ) : listedRoles === null ? null : listedRoles.length === 0 ? (
         <Paper variant="outlined" sx={empty}>
           <Typography variant="body2" color="text.secondary">
             {t('roles.empty')}
@@ -429,18 +469,27 @@ export function RolesPage() {
         </TableContainer>
       )}
 
-      {(nextCursor !== null || (readTarget === 'pagination' && read.problem)) && (
+      {/* The control shows the page that was loaded, never the one still on its way, and its words come from the
+          MUI locale the theme composes for the active language. A failed page change is answered beside it. */}
+      {listedRoles !== null && read.data.totalCount > 0 && (
+        <TablePagination
+          component="div"
+          count={read.data.totalCount}
+          page={read.data.pageNumber - 1}
+          rowsPerPage={read.data.pageSize}
+          rowsPerPageOptions={pageSizeOptions}
+          onPageChange={(_, index) => go({ pageNumber: index + 1, pageSize: read.data.pageSize })}
+          onRowsPerPageChange={(event) => go({ pageNumber: 1, pageSize: Number(event.target.value) })}
+        />
+      )}
+      {readTarget === rolePageReadTarget && read.problem && (
         <Stack spacing={1} sx={start}>
-          {readTarget === 'pagination' && <ProblemMessage problem={read.problem} />}
-          {readTarget === 'pagination' && read.status === 'errored' ? (
-            <Button type="button" variant="outlined" disabled={isBusy} onClick={showMore} sx={start}>
+          <ProblemMessage problem={read.problem} />
+          {read.status === 'errored' && (
+            <Button type="button" variant="outlined" disabled={isBusy} onClick={retry} sx={start}>
               {t('common:actions.tryAgain')}
             </Button>
-          ) : nextCursor !== null ? (
-            <Button type="button" variant="outlined" disabled={isBusy} onClick={showMore} sx={start}>
-              {t('roles.showMore')}
-            </Button>
-          ) : null}
+          )}
         </Stack>
       )}
 
@@ -485,8 +534,8 @@ export function RolesPage() {
             {/* The wait holds two checkbox rows so the group does not arrive by pushing the submit down, and the
                 sentence waits for the server to have actually said it. A catalogue still in flight and a
                 catalogue that came back empty are different facts and must not read alike. */}
-            {catalog === undefined ? (
-              read.status === 'loading' && read.data === null ? (
+            {catalog === null ? (
+              catalogRead.status === 'loading' ? (
                 <Stack spacing={1} sx={catalogWait}>
                   {[0, 1].map((placeholder) => <Skeleton key={placeholder} variant="rounded" height={44} />)}
                 </Stack>

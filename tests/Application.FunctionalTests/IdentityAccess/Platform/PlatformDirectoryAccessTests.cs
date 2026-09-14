@@ -1,3 +1,4 @@
+using CleanArchitecture.Application.Common.Models;
 using CleanArchitecture.Application.FunctionalTests.Infrastructure;
 using CleanArchitecture.Application.IdentityAccess.Platform.Organizations;
 using CleanArchitecture.Application.IdentityAccess.Platform.Queries;
@@ -89,7 +90,7 @@ public sealed class PlatformDirectoryAccessTests : TestBase
         owner.PlatformId.Value.ShouldNotBe(Guid.Empty);
     }
 
-    private static PlatformDirectoryQuery Page => new(25, null);
+    private static PaginationQuery Page => new(1, 25);
 
     /// <summary>
     /// Moves the whole enrollment into the past, which is the only thing waiting does. Every timestamp shifts by

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { isRetryable, toProblem } from './api/apiTransport';
+import { isRetryable, toProblem } from '../../api/apiTransport';
 
 /**
  * Owns one cancellable read lifecycle without interpreting the loaded data.
@@ -19,7 +19,10 @@ export function useRead(load, enabled = true) {
     current?.controller.abort();
   }, []);
 
-  const refresh = useCallback(async (cursor, merge) => {
+  // A refresh reads the page it is given, and the answer replaces what was loaded: offset pages never append. The
+  // loaded data stays through `loading` and a retryable failure, so a retry asks for the same page again over the
+  // rows already on screen (E8), and a newer refresh aborts the one still in flight (E10).
+  const refresh = useCallback(async (page) => {
     if (lifecycleAuthority.current !== lifecycle || !lifecycle.enabled) return;
 
     invalidate();
@@ -40,16 +43,14 @@ export function useRead(load, enabled = true) {
       status: 'loading',
     }));
     try {
-      const loaded = await lifecycle.load({ cursor, signal: controller.signal });
+      const loaded = await lifecycle.load({ page, signal: controller.signal });
       if (!isCurrent()) return;
-      setRead((current) => ({
+      setRead({
         lifecycle,
-        data: typeof merge === 'function' && current.lifecycle === lifecycle && current.data !== null
-          ? merge(current.data, loaded)
-          : loaded,
+        data: loaded,
         problem: null,
         status: 'loaded',
-      }));
+      });
     } catch (failure) {
       if (!isCurrent()) return;
       const problem = toProblem(failure);

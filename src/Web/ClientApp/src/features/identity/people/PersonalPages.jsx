@@ -13,17 +13,16 @@ import Skeleton from '@mui/material/Skeleton';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
-import { toProblem } from '../api/apiTransport';
+import { toProblem } from '../../../api/apiTransport';
 import { useIdentity } from '../context/IdentityProvider';
 import {
   claimedFieldNames,
   clearFieldError,
   fieldErrorText,
-  personalRegistrationFields,
   selectFieldErrors,
-  validatePersonalRegistration,
-} from '../fieldErrors';
-import { ProblemMessage } from '../ProblemMessage';
+} from '../../../components/problemFields';
+import { personalRegistrationFields, validatePersonalRegistration } from '../fieldErrors';
+import { ProblemMessage } from '../../../components/ProblemMessage';
 import { useSubmit } from '../useSubmit';
 import { Trans, useTranslation } from '../../../i18n';
 

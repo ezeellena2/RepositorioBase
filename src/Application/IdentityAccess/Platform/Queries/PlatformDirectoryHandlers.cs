@@ -27,33 +27,33 @@ internal static class PlatformDirectoryGate
 /// question the pipeline cannot ask, which they all ask the same way.
 /// </summary>
 public sealed class ListPlatformOrganizationsQueryHandler(IPlatformOperationalProjectionReader reader, IPlatformMfaSessionProof proof)
-    : IRequestHandler<ListPlatformOrganizationsQuery, Result<PlatformDirectoryPage<PlatformOrganizationProjection>>>
+    : IRequestHandler<ListPlatformOrganizationsQuery, Result<PaginatedList<PlatformOrganizationProjection>>>
 {
-    public async Task<Result<PlatformDirectoryPage<PlatformOrganizationProjection>>> Handle(ListPlatformOrganizationsQuery request, CancellationToken cancellationToken) =>
-        await PlatformDirectoryGate.RefusalAsync<PlatformDirectoryPage<PlatformOrganizationProjection>>(proof, cancellationToken)
-        ?? Result<PlatformDirectoryPage<PlatformOrganizationProjection>>.Success(await reader.ReadOrganizationsAsync(request.Query, cancellationToken));
+    public async Task<Result<PaginatedList<PlatformOrganizationProjection>>> Handle(ListPlatformOrganizationsQuery request, CancellationToken cancellationToken) =>
+        await PlatformDirectoryGate.RefusalAsync<PaginatedList<PlatformOrganizationProjection>>(proof, cancellationToken)
+        ?? Result<PaginatedList<PlatformOrganizationProjection>>.Success(await reader.ReadOrganizationsAsync(request.Query, cancellationToken));
 }
 
 public sealed class ListPlatformIdentitiesQueryHandler(IPlatformOperationalProjectionReader reader, IPlatformMfaSessionProof proof)
-    : IRequestHandler<ListPlatformIdentitiesQuery, Result<PlatformDirectoryPage<PlatformIdentityProjection>>>
+    : IRequestHandler<ListPlatformIdentitiesQuery, Result<PaginatedList<PlatformIdentityProjection>>>
 {
-    public async Task<Result<PlatformDirectoryPage<PlatformIdentityProjection>>> Handle(ListPlatformIdentitiesQuery request, CancellationToken cancellationToken) =>
-        await PlatformDirectoryGate.RefusalAsync<PlatformDirectoryPage<PlatformIdentityProjection>>(proof, cancellationToken)
-        ?? Result<PlatformDirectoryPage<PlatformIdentityProjection>>.Success(await reader.ReadIdentitiesAsync(request.Query, cancellationToken));
+    public async Task<Result<PaginatedList<PlatformIdentityProjection>>> Handle(ListPlatformIdentitiesQuery request, CancellationToken cancellationToken) =>
+        await PlatformDirectoryGate.RefusalAsync<PaginatedList<PlatformIdentityProjection>>(proof, cancellationToken)
+        ?? Result<PaginatedList<PlatformIdentityProjection>>.Success(await reader.ReadIdentitiesAsync(request.Query, cancellationToken));
 }
 
 public sealed class ListPlatformAdministratorsQueryHandler(IPlatformOperationalProjectionReader reader, IPlatformMfaSessionProof proof)
-    : IRequestHandler<ListPlatformAdministratorsQuery, Result<PlatformDirectoryPage<PlatformAdministratorProjection>>>
+    : IRequestHandler<ListPlatformAdministratorsQuery, Result<PaginatedList<PlatformAdministratorProjection>>>
 {
-    public async Task<Result<PlatformDirectoryPage<PlatformAdministratorProjection>>> Handle(ListPlatformAdministratorsQuery request, CancellationToken cancellationToken) =>
-        await PlatformDirectoryGate.RefusalAsync<PlatformDirectoryPage<PlatformAdministratorProjection>>(proof, cancellationToken)
-        ?? Result<PlatformDirectoryPage<PlatformAdministratorProjection>>.Success(await reader.ReadAdministratorsAsync(request.Query, cancellationToken));
+    public async Task<Result<PaginatedList<PlatformAdministratorProjection>>> Handle(ListPlatformAdministratorsQuery request, CancellationToken cancellationToken) =>
+        await PlatformDirectoryGate.RefusalAsync<PaginatedList<PlatformAdministratorProjection>>(proof, cancellationToken)
+        ?? Result<PaginatedList<PlatformAdministratorProjection>>.Success(await reader.ReadAdministratorsAsync(request.Query, cancellationToken));
 }
 
 public sealed class ListPlatformAuditQueryHandler(IPlatformOperationalProjectionReader reader, IPlatformMfaSessionProof proof)
-    : IRequestHandler<ListPlatformAuditQuery, Result<PlatformDirectoryPage<PlatformAuditEventProjection>>>
+    : IRequestHandler<ListPlatformAuditQuery, Result<PaginatedList<PlatformAuditEventProjection>>>
 {
-    public async Task<Result<PlatformDirectoryPage<PlatformAuditEventProjection>>> Handle(ListPlatformAuditQuery request, CancellationToken cancellationToken) =>
-        await PlatformDirectoryGate.RefusalAsync<PlatformDirectoryPage<PlatformAuditEventProjection>>(proof, cancellationToken)
-        ?? Result<PlatformDirectoryPage<PlatformAuditEventProjection>>.Success(await reader.ReadAuditAsync(request.Query, cancellationToken));
+    public async Task<Result<PaginatedList<PlatformAuditEventProjection>>> Handle(ListPlatformAuditQuery request, CancellationToken cancellationToken) =>
+        await PlatformDirectoryGate.RefusalAsync<PaginatedList<PlatformAuditEventProjection>>(proof, cancellationToken)
+        ?? Result<PaginatedList<PlatformAuditEventProjection>>.Success(await reader.ReadAuditAsync(request.Query, cancellationToken));
 }

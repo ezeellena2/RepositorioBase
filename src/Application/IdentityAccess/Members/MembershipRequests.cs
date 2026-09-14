@@ -14,10 +14,10 @@ namespace CleanArchitecture.Application.IdentityAccess.Members;
 /// </para>
 /// </summary>
 [Authorize(Permissions.MembersRead, true)]
-public sealed record ListMembersQuery(TenantId TenantId, int Limit, string? Cursor) : IRequest<Result<MemberPage>>;
+public sealed record ListMembersQuery(TenantId TenantId, PaginationQuery Pagination) : IRequest<Result<PaginatedList<MemberView>>>;
 
 [Authorize(Permissions.MembersRead, true)]
-public sealed record ListTenantInvitationsQuery(TenantId TenantId, int Limit, string? Cursor) : IRequest<Result<InvitationSummaryPage>>;
+public sealed record ListTenantInvitationsQuery(TenantId TenantId, PaginationQuery Pagination) : IRequest<Result<PaginatedList<InvitationSummaryView>>>;
 
 /// <summary>
 /// Handing somebody a role is handing them everything in it, so this is where the grant ceiling applies to the

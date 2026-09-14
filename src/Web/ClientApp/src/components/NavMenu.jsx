@@ -49,7 +49,7 @@ import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import visuallyHidden from '@mui/utils/visuallyHidden';
 import { useIdentity } from '../features/identity/context/IdentityProvider';
-import { ProblemMessage } from '../features/identity/ProblemMessage';
+import { ProblemMessage } from './ProblemMessage';
 import { useSubmit } from '../features/identity/useSubmit';
 import {
   isPseudoLanguageOverrideActive,

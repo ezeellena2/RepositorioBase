@@ -18,8 +18,7 @@
       "actions": "Actions"
     },
     "reactivate": "Reactivate {{slug}}",
-    "suspend": "Suspend {{slug}}",
-    "more": "More organizations"
+    "suspend": "Suspend {{slug}}"
   },
   "suspension": {
     "confirmationLabel": "Confirm suspension",
@@ -81,8 +80,7 @@
       "actions": "Actions"
     },
     "suspend": "Suspend {{email}}",
-    "reactivate": "Reactivate {{email}}",
-    "more": "More accounts"
+    "reactivate": "Reactivate {{email}}"
   },
   "invitations": {
     "register": {

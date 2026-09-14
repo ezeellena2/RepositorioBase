@@ -1,7 +1,7 @@
 import { http, HttpResponse } from 'msw';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { antiforgery, problem } from '../../../test/identityServer';
-import { server } from '../../../test/server';
+import { antiforgery, problem } from '../test/identityServer';
+import { server } from '../test/server';
 import * as apiTransport from './apiTransport';
 
 const { ApiProblem, createApiTransport } = apiTransport;

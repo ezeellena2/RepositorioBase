@@ -488,7 +488,7 @@ public sealed class OpenApiContractTests : TestBase
         }
 
         using var catalogueDocument = JsonDocument.Parse(
-            File.ReadAllText(RepositoryFile("src/Web/ClientApp/src/features/identity/problemCodes.json")));
+            File.ReadAllText(RepositoryFile("src/Web/ClientApp/src/api/problemCodes.json")));
         catalogueDocument.RootElement.ValueKind.ShouldBe(JsonValueKind.Object);
         var properties = catalogueDocument.RootElement.EnumerateObject().ToArray();
         var catalogueCodes = properties.Select(property => property.Name).ToArray();
@@ -564,8 +564,13 @@ public sealed class OpenApiContractTests : TestBase
         await AssertEmittedCodeIsDeclaredAsync("/api/identity/confirm-email", "post", problem);
     }
 
+    /// <summary>
+    /// A paging value that is not an Int32 — not a number at all, or one past <see cref="int.MaxValue"/> — cannot be
+    /// clamped, so binding refuses it as the route's declared <c>invalid_request</c> (E3). It is an expected refusal,
+    /// so it writes no <c>Error</c> record (E12).
+    /// </summary>
     [Test]
-    public async Task Every_numeric_limit_binding_refusal_is_emitted_only_as_declared()
+    public async Task Every_page_parameter_binding_refusal_is_emitted_only_as_declared()
     {
         await TestApp.RunAsDefaultUserAsync();
         var tenantId = Guid.NewGuid();
@@ -579,16 +584,25 @@ public sealed class OpenApiContractTests : TestBase
             ["/api/platform/admins"] = "/api/platform/admins",
             ["/api/platform/audit"] = "/api/platform/audit"
         };
+        var unbindable = new[] { "pageNumber=not-a-number", "pageSize=not-a-number", "pageNumber=2147483648", "pageSize=2147483648" };
+        TestApp.ResetCapturedLogs();
 
         foreach (var (requestRoute, openApiRoute) in routes)
         {
-            using var response = await FunctionalTestSetup.HttpClient.GetAsync($"{requestRoute}?limit=not-a-number");
-            var problem = await IdentityHttpHarness.AssertProblemAsync(
-                response,
-                HttpStatusCode.BadRequest,
-                "invalid_request");
-            await AssertEmittedCodeIsDeclaredAsync(openApiRoute, "get", problem);
+            foreach (var query in unbindable)
+            {
+                using var response = await FunctionalTestSetup.HttpClient.GetAsync($"{requestRoute}?{query}");
+                var problem = await IdentityHttpHarness.AssertProblemAsync(
+                    response,
+                    HttpStatusCode.BadRequest,
+                    "invalid_request");
+                await AssertEmittedCodeIsDeclaredAsync(openApiRoute, "get", problem);
+            }
         }
+
+        TestApp.CapturedLogs.ShouldNotContain(
+            entry => entry.StartsWith("[Error] ", StringComparison.Ordinal),
+            "a paging binding refusal is an expected outcome, not an operational fault");
     }
 
     [Test]

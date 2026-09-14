@@ -1,4 +1,5 @@
 using System.Text.Json;
+using CleanArchitecture.Application.Common.Models;
 using CleanArchitecture.Application.FunctionalTests.IdentityAccess.Organizations;
 using CleanArchitecture.Application.FunctionalTests.Infrastructure;
 using CleanArchitecture.Application.IdentityAccess.Authorization;
@@ -69,7 +70,7 @@ public sealed class PlatformIdentityLifecycleTests : TestBase
         audited.Metadata["outcome"].ShouldBe("administratively_suspended");
         audited.Metadata["reason"].ShouldBe(nameof(IdentitySuspensionReason.SecurityIncident));
 
-        var directory = await TestApp.SendAsync(new ListPlatformIdentitiesQuery(new PlatformDirectoryQuery(25, null)));
+        var directory = await TestApp.SendAsync(new ListPlatformIdentitiesQuery(new PaginationQuery(1, 25)));
         directory.IsSuccess.ShouldBeTrue();
         System.Text.Json.JsonSerializer.Serialize(directory.Value)
             .ShouldNotContain(nameof(IdentitySuspensionReason.SecurityIncident), Case.Insensitive);

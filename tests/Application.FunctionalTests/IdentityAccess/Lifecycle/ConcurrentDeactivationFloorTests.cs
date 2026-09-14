@@ -1,4 +1,5 @@
 using System.Net;
+using CleanArchitecture.Application.Common.Models;
 using CleanArchitecture.Application.FunctionalTests.IdentityAccess.Organizations;
 using CleanArchitecture.Application.FunctionalTests.Infrastructure;
 using CleanArchitecture.Application.IdentityAccess.Authorization;
@@ -131,7 +132,7 @@ public sealed class ConcurrentDeactivationFloorTests : TestBase
     /// <summary>The real store, with one seam: the floor read the leaving identity makes about itself.</summary>
     private sealed class PausedRoleStore(IRoleAdministrationStore inner, FloorReadPause pause) : IRoleAdministrationStore
     {
-        public Task<RolePage> ListAsync(TenantId tenantId, int limit, string? cursor, CancellationToken ct) => inner.ListAsync(tenantId, limit, cursor, ct);
+        public Task<PaginatedList<RoleView>> ListAsync(TenantId tenantId, PaginationQuery pagination, CancellationToken ct) => inner.ListAsync(tenantId, pagination, ct);
         public Task<RoleView?> FindAsync(TenantId tenantId, Guid roleId, CancellationToken ct) => inner.FindAsync(tenantId, roleId, ct);
         public Task<IReadOnlyList<string>> GrantableCodesAsync(TenantId tenantId, Guid actorId, CancellationToken ct) => inner.GrantableCodesAsync(tenantId, actorId, ct);
         public Task<IReadOnlyList<string>?> HeldCodesAsync(TenantId tenantId, Guid roleId, CancellationToken ct) => inner.HeldCodesAsync(tenantId, roleId, ct);

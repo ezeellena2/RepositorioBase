@@ -1,4 +1,5 @@
 using System.Reflection;
+using CleanArchitecture.Application.Common.Models;
 using CleanArchitecture.Application.Common.Security;
 using CleanArchitecture.Application.IdentityAccess.Authorization;
 using MediatR;
@@ -38,7 +39,6 @@ public sealed class PlatformApplicationShapeTests
     [TestCase("Queries.ListPlatformIdentitiesQuery")]
     [TestCase("Queries.ListPlatformAdministratorsQuery")]
     [TestCase("Queries.ListPlatformAuditQuery")]
-    [TestCase("Queries.PlatformDirectoryQuery")]
     [TestCase("Queries.PlatformAdministratorProjection")]
     [TestCase("IPlatformOperationalProjectionReader")]
     public void The_platform_type_exists(string name) => Require(name);
@@ -125,13 +125,13 @@ public sealed class PlatformApplicationShapeTests
                     name.Contains("recipient", StringComparison.OrdinalIgnoreCase));
     }
 
-    /// <summary>Bounded directories only: a caller may ask for a page, never for everything (IA-REQ-045).</summary>
+    /// <summary>Bounded directories only: a caller may ask for one offset page, never for everything (IA-REQ-045).</summary>
     [Test]
-    public void A_directory_query_carries_only_a_bounded_limit_and_an_opaque_cursor()
+    public void A_directory_query_carries_only_a_bounded_offset_page()
     {
-        Require("Queries.PlatformDirectoryQuery").GetProperties().Select(property => property.Name)
+        typeof(PaginationQuery).GetProperties().Select(property => property.Name)
             .Order(StringComparer.Ordinal)
-            .ShouldBe(["Cursor", "Limit"]);
+            .ShouldBe(["Default", "PageNumber", "PageSize", "Skip"]);
 
         foreach (var name in new[]
                  {
@@ -139,7 +139,9 @@ public sealed class PlatformApplicationShapeTests
                      "Queries.ListPlatformAdministratorsQuery", "Queries.ListPlatformAuditQuery"
                  })
         {
-            Require(name).GetProperties().Select(property => property.Name).ShouldBe(["Query"], $"{name} takes only a page request.");
+            var property = Require(name).GetProperties().ShouldHaveSingleItem($"{name} takes only a page request.");
+            property.Name.ShouldBe("Query", $"{name} keeps its page request named Query.");
+            property.PropertyType.ShouldBe(typeof(PaginationQuery), $"{name} takes an offset page request.");
         }
     }
 

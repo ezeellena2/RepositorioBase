@@ -1,4 +1,5 @@
 using System.Text.Json;
+using CleanArchitecture.Application.Common.Models;
 using CleanArchitecture.Application.FunctionalTests.Infrastructure;
 using CleanArchitecture.Application.IdentityAccess.Platform.Queries;
 using CleanArchitecture.Domain.IdentityAccess.Tenants;
@@ -9,8 +10,8 @@ namespace CleanArchitecture.Application.FunctionalTests.IdentityAccess.Platform;
 
 /// <summary>
 /// The directory contract (IA-REQ-045): four distinct <c>/api/platform/*</c> resources, each bounded, each with
-/// its own typed <c>items</c>/<c>nextCursor</c> — and no change to the identity endpoints, which are required not
-/// to have a pagination envelope at all.
+/// its own typed offset page — and no change to the identity endpoints, which are required not to have a
+/// pagination envelope at all.
 /// </summary>
 public sealed class PlatformDirectoryContractTests : TestBase
 {
@@ -27,7 +28,7 @@ public sealed class PlatformDirectoryContractTests : TestBase
         var parameters = get.GetProperty("parameters").EnumerateArray()
             .Select(parameter => parameter.GetProperty("name").GetString())
             .ToArray();
-        parameters.ShouldBe(["limit", "cursor"], ignoreOrder: true, customMessage: $"{path} takes a page, not a filter.");
+        parameters.ShouldBe(["pageNumber", "pageSize"], ignoreOrder: true, customMessage: $"{path} takes a page, not a filter.");
     }
 
     /// <summary>
@@ -38,7 +39,7 @@ public sealed class PlatformDirectoryContractTests : TestBase
     [TestCase("/api/platform/identities", "PlatformIdentityDirectoryResponse")]
     [TestCase("/api/platform/admins", "PlatformAdministratorDirectoryResponse")]
     [TestCase("/api/platform/audit", "PlatformAuditDirectoryResponse")]
-    public async Task Each_directory_returns_its_own_typed_items_and_next_cursor(string path, string schema)
+    public async Task Each_directory_returns_its_own_typed_offset_page(string path, string schema)
     {
         var paths = await PathsAsync();
 
@@ -67,63 +68,30 @@ public sealed class PlatformDirectoryContractTests : TestBase
                     var name = parameter.GetProperty("name").GetString();
                     name.ShouldNotBe("limit", $"{path.Name} must not become a paged resource.");
                     name.ShouldNotBe("cursor", $"{path.Name} must not become a paged resource.");
+                    name.ShouldNotBe("pageNumber", $"{path.Name} must not become a paged resource.");
+                    name.ShouldNotBe("pageSize", $"{path.Name} must not become a paged resource.");
                 }
             }
         }
     }
 
     /// <summary>
-    /// A caller may ask for a page and never for everything. The limit is clamped rather than refused, because a
-    /// limit outside the range is a client bug and not a security event — what matters is that it is bounded.
+    /// A caller may ask for a page and never for everything. The page size is clamped rather than refused, because
+    /// a size outside the range is a client bug and not a security event — what matters is that it is bounded.
     /// </summary>
     [Test]
-    public async Task A_limit_beyond_the_bounds_is_clamped_rather_than_honoured()
+    public async Task A_page_size_beyond_the_bounds_is_clamped_rather_than_honoured()
     {
         await PlatformScenario.ActiveOwnerAsync();
         await OrganizationsAsync(4);
 
-        var huge = (await TestApp.SendAsync(new ListPlatformOrganizationsQuery(new PlatformDirectoryQuery(10_000, null)))).Value!;
-        var zero = (await TestApp.SendAsync(new ListPlatformOrganizationsQuery(new PlatformDirectoryQuery(0, null)))).Value!;
+        var huge = (await TestApp.SendAsync(new ListPlatformOrganizationsQuery(new PaginationQuery(1, 10_000)))).Value!;
+        var zero = (await TestApp.SendAsync(new ListPlatformOrganizationsQuery(new PaginationQuery(1, 0)))).Value!;
 
-        huge.Items.Count.ShouldBe(4, "there are only four; the limit is bounded, not obeyed.");
-        zero.Items.Count.ShouldBe(1, "a limit below the minimum still returns a page.");
-    }
-
-    /// <summary>
-    /// The cursor walks the whole set exactly once and stops. That is what makes it a cursor rather than an
-    /// offset: nothing is repeated and nothing is skipped.
-    /// </summary>
-    [Test]
-    public async Task The_cursor_walks_every_row_once_and_then_stops()
-    {
-        await PlatformScenario.ActiveOwnerAsync();
-        await OrganizationsAsync(5);
-
-        var seen = new List<Guid>();
-        string? cursor = null;
-        do
-        {
-            var page = (await TestApp.SendAsync(new ListPlatformOrganizationsQuery(new PlatformDirectoryQuery(2, cursor)))).Value!;
-            page.Items.Count.ShouldBeLessThanOrEqualTo(2);
-            seen.AddRange(page.Items.Select(item => item.TenantId));
-            cursor = page.NextCursor;
-        }
-        while (cursor is not null);
-
-        seen.Count.ShouldBe(5);
-        seen.Distinct().Count().ShouldBe(5, "no row is returned twice.");
-    }
-
-    /// <summary>A cursor the server did not issue starts from the beginning rather than becoming a probe.</summary>
-    [Test]
-    public async Task A_cursor_the_server_never_issued_is_not_a_way_to_ask_for_something_else()
-    {
-        await PlatformScenario.ActiveOwnerAsync();
-        await OrganizationsAsync(3);
-
-        var forged = (await TestApp.SendAsync(new ListPlatformOrganizationsQuery(new PlatformDirectoryQuery(25, "not-a-cursor")))).Value!;
-
-        forged.Items.Count.ShouldBe(3);
+        huge.Items.Count.ShouldBe(4, "there are only four; the page size is bounded, not obeyed.");
+        huge.PageSize.ShouldBe(PaginationQuery.MaxPageSize);
+        zero.Items.Count.ShouldBe(1, "a page size below the minimum still returns a page of one row.");
+        zero.PageSize.ShouldBe(1);
     }
 
     /// <summary>
@@ -136,13 +104,75 @@ public sealed class PlatformDirectoryContractTests : TestBase
     {
         await PlatformScenario.ActiveOwnerAsync();
 
-        var first = (await TestApp.SendAsync(new ListPlatformAuditQuery(new PlatformDirectoryQuery(2, null)))).Value!;
+        var first = (await TestApp.SendAsync(new ListPlatformAuditQuery(new PaginationQuery(1, 2)))).Value!;
         first.Items.Count.ShouldBe(2);
         first.Items[0].OccurredAtUtc.ShouldBeGreaterThanOrEqualTo(first.Items[1].OccurredAtUtc);
 
-        var second = (await TestApp.SendAsync(new ListPlatformAuditQuery(new PlatformDirectoryQuery(2, first.NextCursor)))).Value!;
-        second.Items[0].OccurredAtUtc.ShouldBeLessThanOrEqualTo(first.Items[^1].OccurredAtUtc);
-        second.Items.Select(item => item.EventId).ShouldNotContain(first.Items[0].EventId);
+        var second = (await TestApp.SendAsync(new ListPlatformAuditQuery(new PaginationQuery(2, 2)))).Value!;
+        second.Items.ShouldNotBeEmpty("the owner's ceremony leaves more than one page of audit history at size 2.");
+        var oldestOnFirstPage = first.Items[^1].OccurredAtUtc;
+        second.Items.ShouldAllBe(item => item.OccurredAtUtc <= oldestOnFirstPage);
+        second.Items.Select(item => item.EventId).Intersect(first.Items.Select(item => item.EventId))
+            .ShouldBeEmpty("consecutive pages do not overlap.");
+    }
+
+    private static readonly string[] ListPaths =
+    [
+        "/api/platform/organizations", "/api/platform/identities", "/api/platform/admins", "/api/platform/audit",
+        "/api/tenants/{tenantId}/roles", "/api/tenants/{tenantId}/members", "/api/tenants/{tenantId}/invitations",
+    ];
+
+    [Test]
+    public async Task Every_list_route_declares_offset_parameters_and_its_binding_refusal()
+    {
+        var paths = await PathsAsync();
+        foreach (var path in ListPaths)
+        {
+            var get = paths.GetProperty(path).GetProperty("get");
+            var names = get.GetProperty("parameters").EnumerateArray().Select(p => p.GetProperty("name").GetString()).ToArray();
+            names.ShouldContain("pageNumber", path);
+            names.ShouldContain("pageSize", path);
+            names.ShouldNotContain("limit", path);
+            names.ShouldNotContain("cursor", path);
+            get.GetProperty("responses").GetProperty("400").GetProperty("x-problem-codes").EnumerateArray()
+                .Select(code => code.GetString()).ShouldContain("invalid_request", path);
+        }
+    }
+
+    [Test]
+    public async Task Out_of_range_pages_are_clamped_answered_and_never_logged_as_errors()
+    {
+        await PlatformScenario.ActiveOwnerAsync();
+        await OrganizationsAsync(3);
+        TestApp.ResetCapturedLogs();
+
+        var huge = await TestApp.SendAsync(new ListPlatformOrganizationsQuery(new PaginationQuery(int.MaxValue, int.MaxValue)));
+        var zero = await TestApp.SendAsync(new ListPlatformOrganizationsQuery(new PaginationQuery(0, 0)));
+
+        huge.IsSuccess.ShouldBeTrue();
+        huge.Value!.PageNumber.ShouldBe(PaginationQuery.MaxPageNumber);
+        huge.Value.PageSize.ShouldBe(PaginationQuery.MaxPageSize);
+        huge.Value.Items.ShouldBeEmpty();
+        zero.Value!.PageNumber.ShouldBe(1);
+        zero.Value.PageSize.ShouldBe(1);
+        zero.Value.Items.Count.ShouldBe(1, "a zero page size returns one row.");
+        TestApp.CapturedLogs.ShouldNotContain(entry => entry.StartsWith("[Error] CleanArchitecture.", StringComparison.Ordinal));
+    }
+
+    [Test]
+    public async Task A_page_past_the_end_is_an_empty_page_with_the_real_totals_not_a_refusal()
+    {
+        await PlatformScenario.ActiveOwnerAsync();
+        await OrganizationsAsync(3);
+
+        var result = await TestApp.SendAsync(new ListPlatformOrganizationsQuery(new PaginationQuery(5, 2)));
+
+        result.IsSuccess.ShouldBeTrue("a page past the end is not a missing resource (E4)");
+        result.Value!.Items.ShouldBeEmpty();
+        result.Value.PageNumber.ShouldBe(5);
+        result.Value.TotalCount.ShouldBeGreaterThanOrEqualTo(3);
+        result.Value.TotalPages.ShouldBe((int)Math.Ceiling(result.Value.TotalCount / 2d));
+        result.Value.HasNextPage.ShouldBeFalse();
     }
 
     private static async Task OrganizationsAsync(int count)

@@ -1,3 +1,6 @@
+using CleanArchitecture.Application.Common.Models;
+using CleanArchitecture.Application.IdentityAccess.Platform.Queries;
+
 namespace CleanArchitecture.Web.PlatformEndpoints.Contracts;
 
 /// <summary>
@@ -46,17 +49,46 @@ public sealed record PlatformAuditEventResponse(
     string? ReasonCode);
 
 /// <summary>
-/// One page of each directory. They are four types rather than one generic envelope because IA-REQ-045 makes each
-/// directory its own typed resource, and because a shared envelope is exactly the pagination wrapper the identity
-/// endpoints are required not to have.
+/// One offset page of each directory: its items with <c>pageNumber</c>, <c>pageSize</c>, <c>totalCount</c>,
+/// <c>totalPages</c>, <c>hasPreviousPage</c> and <c>hasNextPage</c>. They are four types rather than one generic
+/// envelope because IA-REQ-045 makes each directory its own typed resource, and because a shared envelope is exactly
+/// the pagination wrapper the identity endpoints are required not to have.
 /// </summary>
-public sealed record PlatformOrganizationDirectoryResponse(IReadOnlyList<PlatformOrganizationResponse> Items, string? NextCursor);
+public sealed record PlatformOrganizationDirectoryResponse(
+    IReadOnlyList<PlatformOrganizationResponse> Items, int PageNumber, int PageSize, int TotalCount, int TotalPages, bool HasPreviousPage, bool HasNextPage)
+{
+    public static PlatformOrganizationDirectoryResponse From(
+        PaginatedList<PlatformOrganizationProjection> page, Func<PlatformOrganizationProjection, PlatformOrganizationResponse> describe) =>
+        new(page.Items.Select(describe).ToArray(), page.PageNumber, page.PageSize, page.TotalCount,
+            page.TotalPages, page.HasPreviousPage, page.HasNextPage);
+}
 
-public sealed record PlatformIdentityDirectoryResponse(IReadOnlyList<PlatformIdentityResponse> Items, string? NextCursor);
+public sealed record PlatformIdentityDirectoryResponse(
+    IReadOnlyList<PlatformIdentityResponse> Items, int PageNumber, int PageSize, int TotalCount, int TotalPages, bool HasPreviousPage, bool HasNextPage)
+{
+    public static PlatformIdentityDirectoryResponse From(
+        PaginatedList<PlatformIdentityProjection> page, Func<PlatformIdentityProjection, PlatformIdentityResponse> describe) =>
+        new(page.Items.Select(describe).ToArray(), page.PageNumber, page.PageSize, page.TotalCount,
+            page.TotalPages, page.HasPreviousPage, page.HasNextPage);
+}
 
-public sealed record PlatformAdministratorDirectoryResponse(IReadOnlyList<PlatformAdministratorResponse> Items, string? NextCursor);
+public sealed record PlatformAdministratorDirectoryResponse(
+    IReadOnlyList<PlatformAdministratorResponse> Items, int PageNumber, int PageSize, int TotalCount, int TotalPages, bool HasPreviousPage, bool HasNextPage)
+{
+    public static PlatformAdministratorDirectoryResponse From(
+        PaginatedList<PlatformAdministratorProjection> page, Func<PlatformAdministratorProjection, PlatformAdministratorResponse> describe) =>
+        new(page.Items.Select(describe).ToArray(), page.PageNumber, page.PageSize, page.TotalCount,
+            page.TotalPages, page.HasPreviousPage, page.HasNextPage);
+}
 
-public sealed record PlatformAuditDirectoryResponse(IReadOnlyList<PlatformAuditEventResponse> Items, string? NextCursor);
+public sealed record PlatformAuditDirectoryResponse(
+    IReadOnlyList<PlatformAuditEventResponse> Items, int PageNumber, int PageSize, int TotalCount, int TotalPages, bool HasPreviousPage, bool HasNextPage)
+{
+    public static PlatformAuditDirectoryResponse From(
+        PaginatedList<PlatformAuditEventProjection> page, Func<PlatformAuditEventProjection, PlatformAuditEventResponse> describe) =>
+        new(page.Items.Select(describe).ToArray(), page.PageNumber, page.PageSize, page.TotalCount,
+            page.TotalPages, page.HasPreviousPage, page.HasNextPage);
+}
 
 /// <summary>
 /// Suspending needs the reason it is being suspended for; reactivating needs nothing, and deliberately takes the

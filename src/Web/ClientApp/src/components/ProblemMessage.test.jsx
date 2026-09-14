@@ -1,8 +1,8 @@
 /* eslint-disable i18next/no-literal-string -- API contract fixture codes are not UI copy. */
 import { act, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { i18n } from '../../i18n';
-import { PROBLEM_MEDIA_TYPE, readProblem } from './api/problemDetails';
+import { i18n } from '../i18n';
+import { PROBLEM_MEDIA_TYPE, readProblem } from '../api/problemDetails';
 import { ProblemMessage } from './ProblemMessage';
 
 afterEach(async () => {

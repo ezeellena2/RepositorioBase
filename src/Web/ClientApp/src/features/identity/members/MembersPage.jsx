@@ -13,12 +13,14 @@ import ListItem from '@mui/material/ListItem';
 import Paper from '@mui/material/Paper';
 import Skeleton from '@mui/material/Skeleton';
 import Stack from '@mui/material/Stack';
+import TablePagination from '@mui/material/TablePagination';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { roleName, useTranslation } from '../../../i18n';
-import { toProblem } from '../api/apiTransport';
+import { toProblem } from '../../../api/apiTransport';
+import { DEFAULT_PAGE, pageSizeOptions } from '../../../api/pagination';
 import { useIdentity } from '../context/IdentityProvider';
-import { ProblemMessage } from '../ProblemMessage';
+import { ProblemMessage } from '../../../components/ProblemMessage';
 import { useIdentityProof } from '../useIdentityProof';
 import { useRead } from '../useRead';
 
@@ -84,11 +86,8 @@ const statusColor = { Active: 'success', Suspended: 'warning', Revoked: 'error' 
 const memberStatus = { active: 'Active', suspended: 'Suspended', revoked: 'Revoked' };
 const memberStatusAction = { suspend: 'suspend', reactivate: 'reactivate', revoke: 'revoke' };
 const rosterReadTarget = 'roster';
+const rosterPageReadTarget = 'pagination';
 const memberRoleInputId = (membershipId, roleId) => `role-${membershipId}-${roleId}`;
-const appendMembers = (current, loaded) => ({
-  ...loaded,
-  items: [...current.items, ...loaded.items],
-});
 
 /**
  * The people in the organization the session is operating in, and what may be done to them (IA-REQ-053).
@@ -121,22 +120,57 @@ export function MembersPage() {
   const [isBusy, setIsBusy] = useState(false);
   const [editing, setEditing] = useState(null);
 
+  // The page asked for travels through `refresh`, never through the loader, so turning a page holds the roster on
+  // screen instead of starting a new read from nothing.
   const roster = useRead(
     useCallback(
-      ({ cursor, signal }) => identity.client.listMembers(tenantId, cursor, { signal }),
+      ({ page, signal }) => identity.client.listMembers(tenantId, page ?? DEFAULT_PAGE, { signal }),
       [identity.client, tenantId],
     ),
     tenantId !== null,
   );
+  // The editor offers every role by name, so it reads the whole catalogue rather than its first page. A failed or
+  // endless walk fails the read as a whole, so no partial catalogue is ever offered (PD-2).
   const catalog = useRead(
     useCallback(async ({ signal }) => {
-      const page = await identity.client.listRoles(tenantId, null, { signal });
-      return page.items.filter((role) => !role.isRetired);
+      const catalogue = await identity.client.listRoleCatalogue(tenantId, { signal });
+      return catalogue.filter((role) => !role.isRetired);
     }, [identity.client, tenantId]),
     tenantId !== null,
   );
+  const [requested, setRequested] = useState(DEFAULT_PAGE);
+  const go = (page) => {
+    setReadTarget(rosterPageReadTarget);
+    setRequested(page);
+    void roster.refresh(page);
+  };
+  const retry = () => void roster.refresh(requested);
+  // A change is shown on the page it was made from: the loaded page is read again at its own size, or the first page
+  // when nothing has loaded yet. That read failing is a read problem, never the change failing (E11).
+  const reloadPage = () => {
+    const page = roster.data === null ? DEFAULT_PAGE : { pageNumber: roster.data.pageNumber, pageSize: roster.data.pageSize };
+    setRequested(page);
+    return roster.refresh(page);
+  };
+  // A page past the end is what a person lands on after the last members on it went elsewhere. The real last page is
+  // asked for once per answer, and nothing is said about it: the page that arrives is the whole explanation (E4).
+  const pastTheEnd = roster.data !== null && roster.data.items.length === 0
+    && roster.data.totalPages > 0 && roster.data.pageNumber > roster.data.totalPages;
+  useEffect(() => {
+    if (roster.status !== 'loaded' || !pastTheEnd) return;
+    let cancelled = false;
+    // Asked for after this render rather than during it, as the first read is, so a newer answer cancels it.
+    void Promise.resolve().then(() => {
+      if (!cancelled) go({ pageNumber: roster.data.totalPages, pageSize: roster.data.pageSize });
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roster.status, roster.data]);
   const members = roster.data?.items ?? null;
-  const nextCursor = roster.data?.nextCursor ?? null;
+  // A resumed change searches from the page on screen, across as many pages as that page said there were (D11).
+  const loadedPageNumber = roster.data?.pageNumber ?? null;
+  const loadedTotalPages = roster.data?.totalPages ?? 0;
+  const loadedPageSize = roster.data?.pageSize ?? DEFAULT_PAGE.pageSize;
   const roles = catalog.data;
 
   const run = async (target, action, act, intent = null) => {
@@ -150,7 +184,7 @@ export function MembersPage() {
       setPassword('');
       setEditing(null);
       setReadTarget(rosterReadTarget);
-      await Promise.all([roster.refresh(undefined), catalog.refresh(undefined)]);
+      await Promise.all([reloadPage(), catalog.refresh(undefined)]);
     } catch (error) {
       setActionProblem(toProblem(error));
     } finally {
@@ -188,14 +222,16 @@ export function MembersPage() {
       setActionTarget(target);
       setActionProblem(null);
       try {
-        // A fresh return loads only page one. Follow its current cursors before deciding the member is gone.
+        // A fresh return loads one page. Every other page is searched at its size before deciding the member is gone.
+        // The page count is the one the loaded page was answered with, so the search always ends; a page that cannot
+        // be read ends it as a problem.
         let member = members.find((candidate) => candidate.membershipId === waiting.target);
-        let cursor = nextCursor;
-        while (member === undefined && cursor !== null) {
-          const page = await identity.client.listMembers(tenantId, cursor);
-          if (cancelled) return;
-          member = page.items.find((candidate) => candidate.membershipId === waiting.target);
-          cursor = page.nextCursor ?? null;
+        for (let next = 1; member === undefined && next <= loadedTotalPages; next += 1) {
+          if (next !== loadedPageNumber) {
+            const page = await identity.client.listMembers(tenantId, { pageNumber: next, pageSize: loadedPageSize });
+            if (cancelled) return;
+            member = page.items.find((candidate) => candidate.membershipId === waiting.target);
+          }
         }
         if (cancelled || proof.resumable(MembersPath) !== waiting) return;
         proof.forget();
@@ -214,20 +250,7 @@ export function MembersPage() {
     });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [waiting, members, nextCursor, proof.isReady, tenantId]);
-
-  // A continuation appends. Every page the server hands out is disjoint from the last, so what the reader has
-  // already seen stays on screen and nothing appears twice. A write reloads from the first page deliberately:
-  // once somebody's roles or status changed, positions further down the list are no longer the ones read.
-  const showMore = async () => {
-    setIsBusy(true);
-    try {
-      setReadTarget('pagination');
-      await roster.refresh(nextCursor, appendMembers);
-    } finally {
-      setIsBusy(false);
-    }
-  };
+  }, [waiting, members, loadedPageNumber, loadedTotalPages, proof.isReady, tenantId]);
 
   const toggleRole = (roleId) => setEditing((current) => ({
     ...current,
@@ -314,7 +337,7 @@ export function MembersPage() {
           type="button"
           variant="outlined"
           sx={selfStart}
-          onClick={() => { setReadTarget(rosterReadTarget); roster.refresh(undefined); }}
+          onClick={() => { setReadTarget(rosterReadTarget); retry(); }}
         >
           {t('common:actions.tryAgain')}
         </Button>
@@ -323,7 +346,7 @@ export function MembersPage() {
         <Stack spacing={1} role="status" aria-label={t('identity:members.loading')}>
           {[0, 1, 2].map((placeholder) => <Skeleton key={placeholder} variant="rounded" height={ROW_HEIGHT} />)}
         </Stack>
-      ) : members === null ? null : members.length === 0 ? (
+      ) : members === null || pastTheEnd ? null : members.length === 0 ? (
         <Paper variant="outlined" sx={empty}>
           {/* The standard asks an empty state to offer the action that creates the first item, and this screen has
               one at /members/invite. Its label is a string this screen has never rendered, so it is reported
@@ -512,18 +535,27 @@ export function MembersPage() {
         </Paper>
       )}
 
-      {(nextCursor !== null || (readTarget === 'pagination' && roster.problem)) && (
+      {/* The control shows the page that was loaded, never the one still on its way, and its words come from the
+          MUI locale the theme composes for the active language. A failed page change is answered beside it. */}
+      {members !== null && !pastTheEnd && roster.data.totalCount > 0 && (
+        <TablePagination
+          component="div"
+          count={roster.data.totalCount}
+          page={roster.data.pageNumber - 1}
+          rowsPerPage={roster.data.pageSize}
+          rowsPerPageOptions={pageSizeOptions}
+          onPageChange={(_, index) => go({ pageNumber: index + 1, pageSize: roster.data.pageSize })}
+          onRowsPerPageChange={(event) => go({ pageNumber: 1, pageSize: Number(event.target.value) })}
+        />
+      )}
+      {readTarget === rosterPageReadTarget && roster.problem && (
         <Stack spacing={1} sx={selfStart}>
-          {readTarget === 'pagination' && <ProblemMessage problem={roster.problem} />}
-          {readTarget === 'pagination' && roster.status === 'errored' ? (
-            <Button type="button" variant="outlined" disabled={isBusy} onClick={showMore} sx={selfStart}>
+          <ProblemMessage problem={roster.problem} />
+          {roster.status === 'errored' && (
+            <Button type="button" variant="outlined" disabled={isBusy} onClick={retry} sx={selfStart}>
               {t('common:actions.tryAgain')}
             </Button>
-          ) : nextCursor !== null ? (
-            <Button type="button" variant="outlined" disabled={isBusy} onClick={showMore} sx={selfStart}>
-              {t('identity:members.showMore')}
-            </Button>
-          ) : null}
+          )}
         </Stack>
       )}
     </Stack>
