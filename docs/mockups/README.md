@@ -38,8 +38,10 @@ El flujo que se está evaluando antes de llevarlo al producto. Las decisiones y 
 - **Crear cuenta** (`/crear-cuenta`) pregunta primero *¿Personal o Empresa?*, después Google o email.
   Con email llega un código de 6 dígitos a DEMO › Correos; recién con el código verificado se dice si
   la dirección ya tenía cuenta. Una cuenta nueva elige contraseña; una existente pone la suya; una
-  que entra sólo con Google sigue con Google. El último paso pide nombre completo, nombre visible y
-  DNI, o razón social y CUIT.
+  que entra sólo con Google sigue con Google. El último paso pide primero el DNI y después nombre
+  completo y nombre visible, o primero el CUIT y después la razón social.
+- El CUIT o el DNI van primero porque en el producto van a completar el resto desde el padrón de AFIP.
+  La maqueta todavía no consulta el padrón: los campos se completan a mano.
 - El código vence a los 10 minutos, admite 5 intentos y se puede reenviar cada 30 segundos.
 - `/login` y `/registro` redirigen a las rutas nuevas.
 

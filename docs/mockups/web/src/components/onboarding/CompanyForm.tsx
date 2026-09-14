@@ -12,9 +12,12 @@ interface Errors {
 }
 
 /**
- * Razón social y CUIT: crea una empresa con la identidad en sesión como titular.
+ * CUIT y razón social: crea una empresa con la identidad en sesión como titular.
  * El prefijo del CUIT sólo informa si es de una persona humana o jurídica; las dos
  * son una empresa.
+ *
+ * El CUIT va primero porque en el producto va a completar la razón social desde el
+ * padrón de AFIP (ARCA). La maqueta todavía no consulta nada: se completa a mano.
  */
 export function CompanyForm({ submitLabel, onCreated }: { submitLabel: string; onCreated: (me: Me) => void }) {
   const [name, setName] = useState("");
@@ -59,21 +62,11 @@ export function CompanyForm({ submitLabel, onCreated }: { submitLabel: string; o
     <form className="form" onSubmit={submit} noValidate>
       {formError && <Alert variant="error">{formError}</Alert>}
       <Field
-        label="Razón social"
-        name="name"
-        autoComplete="organization"
-        autoFocus
-        placeholder="Cooperativa Del Valle"
-        value={name}
-        onChange={(event) => setName(event.target.value)}
-        error={errors.name}
-        disabled={saving}
-      />
-      <Field
         label="CUIT"
         name="cuit"
         inputMode="numeric"
         autoComplete="off"
+        autoFocus
         placeholder="30-71234567-1"
         value={cuit}
         onChange={(event) => setCuit(event.target.value)}
@@ -81,6 +74,17 @@ export function CompanyForm({ submitLabel, onCreated }: { submitLabel: string; o
         hint={parsed ? (parsed.kind === "persona" ? "CUIT de una persona humana." : "CUIT de una persona jurídica.") : undefined}
         hintMuted
         error={errors.cuit}
+        disabled={saving}
+      />
+      <p className="sim-note">Todavía no: en el producto, el CUIT va a completar la razón social desde el padrón de AFIP.</p>
+      <Field
+        label="Razón social"
+        name="name"
+        autoComplete="organization"
+        placeholder="Cooperativa Del Valle"
+        value={name}
+        onChange={(event) => setName(event.target.value)}
+        error={errors.name}
         disabled={saving}
       />
       <Button type="submit" loading={saving}>

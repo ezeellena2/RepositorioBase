@@ -26,6 +26,10 @@ y de empresa, que la SPEC pide explícita, no aparece en el camino de Google.
    contraseña.
 5. **Quien tiene sesión y ningún contexto** ve «Terminá de configurar tu cuenta»: la elección de tipo y los datos,
    sin volver a autenticarse. Cubre al que entró con Google por primera vez y al que abandonó en la mitad.
+6. **El CUIT o el DNI se piden primero, siempre.** Es el dato del que se van a derivar los demás: cada vez que se
+   pida uno, se va a consultar el padrón de AFIP (ARCA) para completar los campos que correspondan. Aplica al
+   último paso de crear cuenta y a las altas desde adentro (nueva empresa, agregar cuenta personal). **Todavía no
+   se implementa** — ver [Pendiente: padrón de AFIP](#pendiente-padrón-de-afip).
 
 ## Recorrido
 
@@ -42,7 +46,7 @@ Crear cuenta ► ¿Personal o Empresa?
                    ├─ ya existe ──► su contraseña ──► datos
                    └─ solo Google ► Continuar con Google ──► datos
 
-Datos: Personal = nombre completo, nombre visible, DNI · Empresa = razón social, CUIT
+Datos: Personal = DNI, nombre completo, nombre visible · Empresa = CUIT, razón social
 ```
 
 Pasos visibles: **Tipo · Acceso · Verificación · Datos**.
@@ -67,6 +71,26 @@ panel DEMO, la pantalla de Google es una simulación rotulada, y cada caso lími
 `/login` y `/registro` redirigen a `/entrar` y `/crear-cuenta`.
 
 Fuera de alcance: recuperar la contraseña, vincular Google desde la cuenta, y cualquier cambio en `src/`.
+
+## Pendiente: padrón de AFIP
+
+Decidido, no implementado. Cuando se escriba un CUIT o un DNI, se consulta el padrón de AFIP (ARCA) y se completan
+los campos que el padrón conoce: la razón social para un CUIT, el nombre completo para un DNI. El nombre visible
+sigue siendo elección de la persona.
+
+Lo que hay que resolver antes de construirlo:
+
+- **Datos personales reales.** Consultar un padrón con un DNI es tratar datos personales reales, y la SPEC mantiene
+  `Personal` sobre datos sintéticos hasta que un responsable apruebe finalidad y alcance (IA-REQ-056). La consulta
+  queda bloqueada por esa aprobación.
+- **Qué pasa cuando el padrón no responde o no encuentra el número.** El alta no puede depender de un servicio
+  externo: los campos se completan a mano y la consulta es una ayuda, no un requisito.
+- **Si lo que trae el padrón se puede editar** o queda fijo, y qué se guarda como fuente del dato.
+- **Enumeración.** Una pantalla pública que devuelve un nombre a partir de un DNI permite averiguar a quién
+  pertenece un documento. La consulta va detrás de una sesión o de la dirección ya probada, con presupuesto de
+  intentos, y nunca en un paso anónimo.
+- **Credenciales y servicio.** Qué servicio del padrón se usa, con qué certificado, y dónde se configura por
+  despliegue, fuera del repositorio.
 
 ## Impacto previsto en el producto (no se implementa acá)
 
