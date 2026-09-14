@@ -32,7 +32,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) {
         setMe(null);
-        navigate("/login?motivo=sesion", { replace: true });
+        navigate("/entrar?motivo=sesion", { replace: true });
         return;
       }
       if (error instanceof NetworkError) setNetworkError(true);
@@ -53,7 +53,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       } catch (error) {
         if (error instanceof ApiError && error.status === 401) {
           setMe(null);
-          navigate("/login?motivo=sesion", { replace: true });
+          navigate("/entrar?motivo=sesion", { replace: true });
           return;
         }
         if (error instanceof NetworkError) setNetworkError(true);
@@ -69,7 +69,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       await api.logout();
     } finally {
       setMe(null);
-      navigate("/login", { replace: true });
+      navigate("/entrar", { replace: true });
     }
   }, [navigate]);
 

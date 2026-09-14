@@ -1,4 +1,4 @@
-import { createSession, db, membershipsOf, seed, type Session } from "./store.js";
+import { createSession, db, membershipsOf, pushMail, seed, type EmailChallenge, type Session } from "./store.js";
 
 // Escenarios de demostración. Cada uno reinicia los datos en memoria y deja el
 // mockup en un punto de partida concreto de alguno de los recorridos.
@@ -27,30 +27,107 @@ interface ScenarioDef extends Scenario {
 
 const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
 
+/** Un código ya mandado a nueva@ejemplo.com, con el correo esperando en la bandeja. */
+function seedChallenge(challenge: Pick<EmailChallenge, "id" | "code" | "expiresAt" | "attempts">): void {
+  db.challenges.push({
+    ...challenge,
+    email: "nueva@ejemplo.com",
+    type: "empresa",
+    spentAt: null,
+    resendAvailableAt: minutesAgo(1),
+    verifiedAt: null,
+    createdAt: minutesAgo(12),
+  });
+  pushMail({
+    to: "nueva@ejemplo.com",
+    subject: "Tu código para crear la cuenta",
+    body: `Tu código es ${challenge.code}. Vence en 10 minutos. Si no pediste crear una cuenta, ignorá este correo.`,
+    link: null,
+    kind: "codigo",
+  });
+}
+
 const DEFS: ScenarioDef[] = [
   // --- Recorrido A ---------------------------------------------------------
   {
-    id: "a-registro",
+    id: "a-crear-cuenta",
     journey: "A",
-    name: "Registro de organización",
-    description: "Formulario vacío, sin sesión. Probá CUIT inválido, CUIT ya registrado y alta correcta.",
-    start: "/registro",
-    hint: "El CUIT 30-71234567-1 ya existe: sirve para ver el conflicto.",
+    name: "Crear cuenta desde cero",
+    description: "Sin sesión. Elegí personal o empresa, un email nuevo, el código, la contraseña y los datos.",
+    start: "/crear-cuenta",
+    hint: "El código llega a Correos en este panel. El CUIT 30-71234567-1 ya existe y el DNI 30.111.222 también.",
   },
   {
-    id: "a-confirmacion",
+    id: "a-email-existente",
     journey: "A",
-    name: "Confirmación de correo pendiente",
-    description: "Identidad registrada sin confirmar, con el correo esperando en la bandeja simulada.",
-    start: "/login",
-    hint: "Abrí la bandeja en el panel de demostración y seguí el enlace de nuevo@sur.com.",
+    name: "Crear cuenta con un email que ya tiene cuenta",
+    description: "El código se manda igual; recién después de verificarlo se dice que la cuenta existe.",
+    start: "/crear-cuenta",
+    hint: "Elegí Empresa y usá juan@acme.com: después del código pide su contraseña (1234) y agrega la empresa.",
+  },
+  {
+    id: "a-email-google",
+    journey: "A",
+    name: "Crear cuenta con el email de una cuenta de Google",
+    description: "ana@gmail.com entra sólo con Google y ya tiene cuenta personal.",
+    start: "/crear-cuenta",
+    hint: "Usá ana@gmail.com: después del código ofrece seguir con Google. Si elegiste Personal, avisa que ya la tiene.",
+  },
+  {
+    id: "a-codigo-intentos",
+    journey: "A",
+    name: "Código con un solo intento",
+    description: "Ya se usaron cuatro de los cinco intentos del código mandado a nueva@ejemplo.com.",
+    start: "/crear-cuenta/codigo?tipo=empresa&reto=reto-intentos",
+    hint: "Escribí un código incorrecto: se cierra y hay que pedir otro. El correcto es 246810.",
+    setup() {
+      seedChallenge({ id: "reto-intentos", code: "246810", expiresAt: new Date(Date.now() + 8 * 60_000).toISOString(), attempts: 4 });
+      return {};
+    },
+  },
+  {
+    id: "a-codigo-vencido",
+    journey: "A",
+    name: "Código vencido",
+    description: "El código mandado a nueva@ejemplo.com venció hace un minuto.",
+    start: "/crear-cuenta/codigo?tipo=empresa&reto=reto-vencido",
+    hint: "Verificar dice que venció; «Reenviar código» manda uno nuevo a Correos.",
+    setup() {
+      seedChallenge({ id: "reto-vencido", code: "135790", expiresAt: minutesAgo(1), attempts: 0 });
+      return {};
+    },
+  },
+  {
+    id: "a-google-nueva",
+    journey: "A",
+    name: "Entrar con Google por primera vez",
+    description: "Una cuenta de Google que el sistema no conoce entra y queda sin contexto.",
+    start: "/entrar",
+    hint: "Continuar con Google y elegí Nadia Romero: aparece «Terminá de configurar tu cuenta».",
+  },
+  {
+    id: "a-google-conflicto",
+    journey: "A",
+    name: "Google con el email de una cuenta con contraseña",
+    description: "juan@acme.com tiene contraseña y ningún Google vinculado: un email igual no vincula.",
+    start: "/entrar",
+    hint: "Continuar con Google y elegí Juan Pérez.",
+  },
+  {
+    id: "a-dni-duplicado",
+    journey: "A",
+    name: "Cuenta personal con un DNI ya registrado",
+    description: "Sofía Aguirre tiene sesión y ningún contexto; carga una cuenta personal.",
+    start: "/crear-cuenta/datos?tipo=persona",
+    hint: "Usá el DNI 30.111.222: ya está registrado y la respuesta no dice de quién.",
+    setup: () => ({ userId: "u-sofia", activeOrgId: null }),
   },
   {
     id: "a-login-bloqueado",
     journey: "A",
     name: "Ingreso bloqueado (429)",
     description: "Intentos fallidos ya consumidos para juan@acme.com.",
-    start: "/login",
+    start: "/entrar",
     hint: "Un intento más devuelve 429 con el tiempo de espera.",
     setup() {
       db.attempts.push({ email: "juan@acme.com", failures: 3, blockedUntil: new Date(Date.now() + 30_000).toISOString() });
@@ -69,10 +146,10 @@ const DEFS: ScenarioDef[] = [
   {
     id: "a-sin-organizacion",
     journey: "A",
-    name: "Identidad sin organizaciones",
-    description: "Sofía Aguirre ingresó pero no pertenece a ninguna organización.",
+    name: "Identidad sin contexto",
+    description: "Sofía Aguirre ingresó y no tiene cuenta personal ni pertenece a ninguna empresa.",
     start: "/app",
-    hint: "Estado vacío explicativo con la acción para crear una organización.",
+    hint: "En vez de un estado vacío aparece «Terminá de configurar tu cuenta».",
     setup: () => ({ userId: "u-sofia", activeOrgId: null }),
   },
   {
@@ -274,7 +351,7 @@ const DEFS: ScenarioDef[] = [
     journey: "D",
     name: "Ingreso de una cuenta detenida",
     description: "Tomás Vega tiene la cuenta suspendida por Platform.",
-    start: "/login",
+    start: "/entrar",
     hint: "Ingresá como tomas@sur.com con 1234: la respuesta no dice en qué estado quedó la cuenta.",
   },
   {

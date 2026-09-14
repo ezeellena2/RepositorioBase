@@ -43,7 +43,9 @@ export function AppShell() {
   if (!me) return null;
 
   const toggleLabel = navOpen ? "Colapsar el menú" : "Desplegar el menú";
-  const hasOrg = Boolean(me.activeOrg);
+  // Integrantes e invitaciones son de una empresa: una cuenta personal no tiene a quién invitar.
+  const hasOrg = me.activeOrg?.type === "empresa";
+  const hasPersonal = me.orgs.some((org) => org.type === "persona");
 
   return (
     <div className="app">
@@ -95,6 +97,11 @@ export function AppShell() {
               >
                 Crear organización
               </NavLink>
+              {!hasPersonal && (
+                <NavLink to="/app/personal/nueva" className={({ isActive }) => `navitem${isActive ? " is-active" : ""}`}>
+                  Agregar cuenta personal
+                </NavLink>
+              )}
             </nav>
 
             {hasOrg && !can("members.invite") && (

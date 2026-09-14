@@ -8,7 +8,7 @@ type Tab = "escenarios" | "correos" | "estados";
 const HINT_KEY = "mockup-demo-hint";
 
 const JOURNEY_LABEL: Record<Scenario["journey"], string> = {
-  A: "A · Registro, confirmación y sesión",
+  A: "A · Entrar, crear cuenta y sesión",
   B: "B · Contexto, permisos y organizaciones",
   C: "C · Invitación y aceptación",
   D: "D · Platform",
@@ -17,6 +17,7 @@ const JOURNEY_LABEL: Record<Scenario["journey"], string> = {
 const MAIL_LABEL: Record<Mail["kind"], string> = {
   registro: "Registro",
   confirmacion: "Confirmación",
+  codigo: "Código",
   invitacion: "Invitación",
   "invitacion-platform": "Invitación Platform",
   aviso: "Aviso",
@@ -94,7 +95,7 @@ export function DemoPanel() {
     try {
       await api.resetDemo();
       setHint("Datos del mockup reiniciados. La sesión quedó cerrada.");
-      window.location.assign("/login");
+      window.location.assign("/entrar");
     } finally {
       setBusy(false);
     }

@@ -127,6 +127,18 @@ export function OrgSwitcher() {
             >
               Crear otra organización
             </button>
+            {!me.orgs.some((org) => org.type === "persona") && (
+              <button
+                type="button"
+                className="btn btn--text"
+                onClick={() => {
+                  setOpen(false);
+                  navigate("/app/personal/nueva");
+                }}
+              >
+                Agregar cuenta personal
+              </button>
+            )}
             <p className="orgswitch__note">Cambiar de organización no cambia tu identidad ni tu sesión.</p>
           </div>
         </div>

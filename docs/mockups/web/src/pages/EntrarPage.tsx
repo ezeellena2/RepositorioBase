@@ -1,16 +1,19 @@
 import { useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Alert, AuthLayout, Button, Card, Field } from "../components";
+import { Alert, AuthLayout, Button, Card, Field, GoogleButton, OrDivider } from "../components";
 import { api, ApiError, NetworkError } from "../lib/api";
-
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+import { EMAIL_PATTERN } from "../lib/signup";
 
 interface FieldErrors {
   email?: string;
   password?: string;
 }
 
-export function LoginPage() {
+/**
+ * Entrar. No pregunta el tipo de cuenta: una persona es una sola cuenta, y si
+ * tiene cuenta personal y empresas elige con cuál operar ya adentro.
+ */
+export function EntrarPage() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const next = params.get("next");
@@ -46,12 +49,15 @@ export function LoginPage() {
     setSubmitting(true);
     try {
       await api.login({ email: email.trim(), password });
+      // /app decide el resto: sin contexto manda a terminar de configurar, con varios pregunta cuál.
       navigate(next ?? "/app", { replace: true });
     } catch (error) {
       if (error instanceof ApiError && error.status === 429) {
         setFormError(error.message);
       } else if (error instanceof ApiError && error.code === "unconfirmed") {
         setUnconfirmed(true);
+        setFormError(error.message);
+      } else if (error instanceof ApiError && error.status === 403) {
         setFormError(error.message);
       } else if (error instanceof ApiError && error.status === 401) {
         setFormError("El correo o la contraseña no son correctos.");
@@ -70,38 +76,41 @@ export function LoginPage() {
   return (
     <AuthLayout>
       <Card
-        title="Iniciá sesión"
+        title="Entrar"
+        subtitle="Con tu cuenta de Google o con tu email."
         footer={
           <>
-            ¿No tenés cuenta? <Link to="/registro">Registrate</Link>
+            ¿No tenés cuenta? <Link to="/crear-cuenta">Creá una</Link>
           </>
         }
       >
-        <form className="form" onSubmit={handleSubmit} noValidate>
-          {expired && (
-            <Alert variant="info">
-              Tu sesión venció o fue revocada. Ingresá de nuevo para seguir donde estabas.
-            </Alert>
-          )}
-          {formError && <Alert variant="error">{formError}</Alert>}
-          {unconfirmed && (
-            <Alert variant="info">
-              Buscá el correo de confirmación en la bandeja simulada del panel de demostración y seguí el enlace.
-            </Alert>
-          )}
+        {expired && (
+          <Alert variant="info">Tu sesión venció o fue revocada. Ingresá de nuevo para seguir donde estabas.</Alert>
+        )}
+        {formError && <Alert variant="error">{formError}</Alert>}
+        {unconfirmed && (
+          <Alert variant="info">
+            Buscá el correo de confirmación en la bandeja simulada del panel de demostración y seguí el enlace.
+          </Alert>
+        )}
 
+        <GoogleButton
+          onClick={() => navigate(`/google?intent=entrar${next ? `&next=${encodeURIComponent(next)}` : ""}`)}
+          disabled={submitting}
+        />
+        <OrDivider />
+
+        <form className="form" onSubmit={handleSubmit} noValidate>
           <Field
             label="Email"
             type="email"
             name="email"
             autoComplete="username"
-            autoFocus
             value={email}
             onChange={(event) => setEmail(event.target.value)}
             error={errors.email}
             disabled={submitting}
           />
-
           <Field
             ref={passwordRef}
             label="Contraseña"
@@ -124,7 +133,6 @@ export function LoginPage() {
               </Button>
             }
           />
-
           <Button type="submit" loading={submitting}>
             Entrar
           </Button>

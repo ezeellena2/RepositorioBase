@@ -18,7 +18,10 @@ export interface OrgSummary {
 }
 
 export interface ActiveOrg extends OrgSummary {
-  cuit: string;
+  /** Sólo en una empresa. */
+  cuit: string | null;
+  /** Sólo en una cuenta personal, y enmascarado: nunca llega el número entero. */
+  document: string | null;
   suspendedReason: string | null;
   permissions: Permission[];
   version: number;
@@ -45,7 +48,7 @@ export interface PendingInvitation {
 }
 
 export interface Me {
-  user: { id: string; name: string; email: string; confirmed: boolean };
+  user: { id: string; name: string; email: string; confirmed: boolean; hasPassword: boolean };
   activeOrg: ActiveOrg | null;
   orgs: OrgSummary[];
   pendingInvitations: PendingInvitation[];
@@ -197,8 +200,28 @@ export interface Mail {
   subject: string;
   body: string;
   link: string | null;
-  kind: "registro" | "confirmacion" | "invitacion" | "invitacion-platform" | "aviso";
+  kind: "registro" | "confirmacion" | "codigo" | "invitacion" | "invitacion-platform" | "aviso";
   sentAt: string;
+}
+
+/** Qué cuenta hay detrás de un email. El servidor lo dice sólo después de verificar el código. */
+export type AccountBehind = "new" | "password" | "google";
+
+export interface SignupChallenge {
+  id: string;
+  email: string;
+  type: OrgType;
+  expiresAt: string;
+  resendAvailableAt: string;
+  verified: boolean;
+  account: AccountBehind | null;
+}
+
+export interface GoogleAccount {
+  name: string;
+  email: string;
+  /** Lo que va a pasar al elegirla: entra, choca con una cuenta con contraseña, o se crea. */
+  status: "linked" | "conflict" | "new";
 }
 
 export interface Scenario {
@@ -267,12 +290,21 @@ export const api = {
   health: () => request<Health>("GET", "/api/health"),
 
   // Recorrido A
-  register: (input: { cuit: string; name: string; email: string; password: string }) =>
-    request<void>("POST", "/api/auth/register", input),
   confirm: (token: string) => request<void>("POST", "/api/auth/confirm", { token }),
   login: (input: { email: string; password: string }) => request<void>("POST", "/api/auth/login", input),
   logout: () => request<void>("POST", "/api/auth/logout"),
   me: () => request<Me>("GET", "/api/me"),
+  signupStart: (input: { email: string; type: OrgType }) => request<SignupChallenge>("POST", "/api/signup", input),
+  signup: (id: string) => request<SignupChallenge>("GET", `/api/signup/${encodeURIComponent(id)}`),
+  signupResend: (id: string) => request<SignupChallenge>("POST", `/api/signup/${encodeURIComponent(id)}/resend`),
+  signupVerify: (id: string, code: string) =>
+    request<SignupChallenge>("POST", `/api/signup/${encodeURIComponent(id)}/verify`, { code }),
+  signupPassword: (id: string, password: string) =>
+    request<void>("POST", `/api/signup/${encodeURIComponent(id)}/password`, { password }),
+  googleSignIn: (input: { email: string; name: string }) =>
+    request<{ created: boolean }>("POST", "/api/auth/google", input),
+  createPersonal: (input: { fullName: string; displayName: string; dni: string }) =>
+    request<Me>("POST", "/api/me/personal", input),
 
   // Recorrido B
   selectOrg: (orgId: string) => request<Me>("PUT", "/api/me/org", { orgId }),
@@ -335,6 +367,7 @@ export const api = {
     request<{ id: string; start: string; hint: string; name: string }>("POST", "/api/dev/scenario", { id }),
   resetDemo: () => request<void>("POST", "/api/dev/reset"),
   mails: () => request<{ mails: Mail[] }>("GET", "/api/dev/mails"),
+  googleAccounts: () => request<{ accounts: GoogleAccount[] }>("GET", "/api/dev/google-accounts"),
   failNext: (mode: "network" | "conflict" | "notfound" | null) =>
     request<{ failNext: string | null }>("POST", "/api/dev/fail-next", { mode }),
   revokeSession: () => request<void>("POST", "/api/dev/revoke-session"),

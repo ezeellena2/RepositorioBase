@@ -1,32 +1,25 @@
-import { Link, useNavigate } from "react-router-dom";
-import { Alert, Badge, Button, PageHeader, StateBlock } from "../../components";
+import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
+import { Alert, Badge, Button, PageHeader } from "../../components";
+import type { OrgType } from "../../lib/api";
 import { PERMISSION_LABEL, STATUS_LABEL, TYPE_LABEL } from "../../lib/format";
 import { useSession } from "../../lib/session";
 
 export function HomePage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { me, switchOrg, switching } = useSession();
   if (!me) return null;
 
-  // Sin membresías: estado vacío explicativo con la salida.
-  if (me.orgs.length === 0) {
-    return (
-      <StateBlock
-        kind="empty"
-        title="Todavía no pertenecés a ninguna organización"
-        description="Podés crear la tuya o esperar a que te inviten. Si te invitaron, abrí el enlace del correo: la membresía se activa al aceptar."
-        action={<Button onClick={() => navigate("/app/organizaciones/nueva")}>Crear una organización</Button>}
-      />
-    );
-  }
+  // Sin cuenta personal ni empresa no hay nada que mostrar acá: falta elegir qué crear.
+  if (me.orgs.length === 0) return <Navigate to="/configurar" replace />;
 
-  // Varias organizaciones y ninguna elegida: selector inicial.
+  // Varios contextos y ninguno elegido: selector inicial.
   if (!me.activeOrg) {
     return (
       <>
         <PageHeader
-          title="¿Con qué organización querés operar?"
-          description="Elegís el contexto de trabajo. Seguís siendo la misma persona autenticada."
+          title="¿Con qué cuenta querés operar?"
+          description="Elegís el contexto de trabajo: tu cuenta personal o una empresa. Seguís siendo la misma persona autenticada."
         />
         <ul className="orgpick">
           {me.orgs.map((org) => (
@@ -47,6 +40,7 @@ export function HomePage() {
   }
 
   const org = me.activeOrg;
+  const created = (location.state as { created?: OrgType } | null)?.created;
   const canInvite = org.permissions.includes("members.invite");
   const others = me.orgs.filter((o) => o.id !== org.id);
 
@@ -54,8 +48,16 @@ export function HomePage() {
     <>
       <PageHeader
         title={`Hola, ${me.user.name.split(" ")[0]}`}
-        description={`Estás operando con ${org.name} como ${org.roleLabel}.`}
+        description={
+          org.type === "persona" ? "Estás en tu cuenta personal." : `Estás operando con ${org.name} como ${org.roleLabel}.`
+        }
       />
+
+      {created && (
+        <Alert variant="success">
+          {created === "persona" ? "Tu cuenta personal está lista." : `${org.name} está lista y quedaste como Titular.`}
+        </Alert>
+      )}
 
       {org.status === "suspended" && (
         <Alert variant="error">
@@ -64,48 +66,63 @@ export function HomePage() {
         </Alert>
       )}
 
-      <section className="panel">
-        <h2 className="panel__title">Qué podés hacer en este contexto</h2>
-        <ul className="permlist">
-          {org.permissions.map((permission) => (
-            <li key={permission} className="permlist__item">
-              <span className="permlist__mark" aria-hidden="true">
-                ✓
-              </span>
-              {PERMISSION_LABEL[permission]}
-            </li>
-          ))}
-        </ul>
-        <div className="panel__actions">
-          {canInvite ? (
-            <Button
-              className="btn--inline"
-              onClick={() => navigate("/app/invitaciones")}
-              disabled={org.status === "suspended"}
-            >
-              Invitar integrante
+      {org.type === "persona" ? (
+        <section className="panel">
+          <h2 className="panel__title">Tu cuenta personal</h2>
+          <p className="panel__text">
+            {org.name} · DNI {org.document}. El documento no se edita desde acá: corregirlo es un proceso verificado.
+          </p>
+          <p className="panel__text">Una cuenta personal no tiene integrantes. Para trabajar con otras personas, creá una empresa.</p>
+          <div className="panel__actions">
+            <Button className="btn--inline" variant="ghost" onClick={() => navigate("/app/organizaciones/nueva")}>
+              Crear una empresa
             </Button>
-          ) : (
-            <p className="panel__denied">
-              Invitar integrantes no está disponible: en {org.name} tu rol es {org.roleLabel}. La acción no aparece en el
-              menú y tampoco se puede forzar por URL.
-            </p>
-          )}
-        </div>
-      </section>
+          </div>
+        </section>
+      ) : (
+        <section className="panel">
+          <h2 className="panel__title">Qué podés hacer en este contexto</h2>
+          <ul className="permlist">
+            {org.permissions.map((permission) => (
+              <li key={permission} className="permlist__item">
+                <span className="permlist__mark" aria-hidden="true">
+                  ✓
+                </span>
+                {PERMISSION_LABEL[permission]}
+              </li>
+            ))}
+          </ul>
+          <div className="panel__actions">
+            {canInvite ? (
+              <Button
+                className="btn--inline"
+                onClick={() => navigate("/app/invitaciones")}
+                disabled={org.status === "suspended"}
+              >
+                Invitar integrante
+              </Button>
+            ) : (
+              <p className="panel__denied">
+                Invitar integrantes no está disponible: en {org.name} tu rol es {org.roleLabel}. La acción no aparece en el
+                menú y tampoco se puede forzar por URL.
+              </p>
+            )}
+          </div>
+        </section>
+      )}
 
       {others.length > 0 && (
         <section className="panel">
-          <h2 className="panel__title">Aislamiento entre organizaciones</h2>
+          <h2 className="panel__title">Aislamiento entre contextos</h2>
           <p className="panel__text">
-            Tus permisos se recalculan por organización. Cambiá de contexto desde el selector del menú lateral y mirá cómo
-            cambian el rol, los permisos y las secciones disponibles.
+            Tus permisos se recalculan por contexto. Cambiá desde el selector del menú lateral y mirá cómo cambian el rol,
+            los permisos y las secciones disponibles.
           </p>
           <ul className="minilist">
             {others.map((other) => (
               <li key={other.id} className="minilist__item">
                 <span>
-                  {other.name} — {other.roleLabel}
+                  {other.name} — {TYPE_LABEL[other.type]} · {other.roleLabel}
                 </span>
                 <button type="button" className="btn btn--text" onClick={() => void switchOrg(other.id)} disabled={switching}>
                   Operar con esta

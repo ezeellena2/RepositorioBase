@@ -1012,6 +1012,261 @@
   background: #97361f;
 }
 
+/* --- entrar y crear cuenta ----------------------------------------------- */
+
+.stepper {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  max-width: 424px;
+  margin: 0 0 16px;
+  padding: 0;
+  list-style: none;
+}
+
+.stepper__step {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.stepper__bar {
+  height: 4px;
+  background: var(--line);
+  border-radius: 2px;
+}
+
+.stepper__step.is-done .stepper__bar,
+.stepper__step.is-current .stepper__bar {
+  background: var(--primary);
+}
+
+.stepper__step.is-current {
+  color: var(--primary);
+}
+
+.choice {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 16px;
+  font: inherit;
+  color: var(--ink);
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+  cursor: pointer;
+  transition: border-color var(--transition), background-color var(--transition), box-shadow var(--transition);
+}
+
+.choice:hover {
+  background: #f7f9fa;
+  border-color: #c9d3d9;
+}
+
+.choice:focus-visible {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: var(--focus);
+}
+
+.choice__icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
+  color: var(--primary);
+  background: var(--primary-soft);
+  border-radius: 10px;
+}
+
+.choice__lines {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.choice__title {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.choice__detail {
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
+.choice__chevron {
+  flex: 0 0 16px;
+  color: var(--muted);
+}
+
+.or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.or::before,
+.or::after {
+  content: "";
+  flex: 1;
+  border-top: 1px solid var(--line);
+}
+
+.btn--google .btn__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+}
+
+.card__body > .btn--google {
+  margin-top: 0;
+}
+
+.card__body > .btn + .btn {
+  margin-top: -6px;
+}
+
+.typechip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.field--code .field__input {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 22px;
+  letter-spacing: 0.4em;
+  text-align: center;
+}
+
+.gsim .sim-banner {
+  width: 100%;
+  max-width: 424px;
+}
+
+.gsim__card {
+  width: 100%;
+  max-width: 424px;
+  padding: 32px 28px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+}
+
+.gsim__logo {
+  display: flex;
+  justify-content: center;
+}
+
+.gsim__title {
+  margin-top: 12px;
+  font-size: 22px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.gsim__sub {
+  margin-top: 4px;
+  font-size: 14px;
+  color: var(--ink-2);
+  text-align: center;
+}
+
+.gsim__list {
+  display: flex;
+  flex-direction: column;
+  margin: 20px 0 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--line);
+}
+
+.gsim__account {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 4px;
+  font: inherit;
+  text-align: left;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+}
+
+.gsim__account:hover:not(:disabled) {
+  background: #f7f9fa;
+}
+
+.gsim__account:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+
+.gsim__avatar {
+  display: grid;
+  place-items: center;
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--primary);
+  background: var(--primary-soft);
+  border-radius: 50%;
+}
+
+.gsim__lines {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.gsim__name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.gsim__email {
+  font-size: 13px;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+.gsim__status {
+  font-size: 12px;
+  color: var(--muted);
+  text-align: right;
+}
+
+.gsim__other {
+  margin-top: 16px;
+}
+
+.gsim__foot {
+  margin-top: 16px;
+  font-size: 14px;
+  text-align: center;
+}
+
 /* --- móvil --------------------------------------------------------------- */
 
 @media (max-width: 760px) {

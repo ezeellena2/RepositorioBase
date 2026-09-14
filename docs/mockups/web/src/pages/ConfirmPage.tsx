@@ -55,7 +55,7 @@ export function ConfirmPage() {
     return (
       <AuthLayout>
         <Card title="Listo" subtitle="Tu correo quedó confirmado. El siguiente paso es ingresar.">
-          <Button onClick={() => navigate("/login")}>Ingresar</Button>
+          <Button onClick={() => navigate("/entrar")}>Ingresar</Button>
         </Card>
       </AuthLayout>
     );
@@ -66,10 +66,10 @@ export function ConfirmPage() {
       <AuthLayout>
         <Card
           title="El enlace venció"
-          subtitle="Los enlaces de confirmación duran 24 horas. Pedí uno nuevo registrándote otra vez con el mismo correo."
+          subtitle="Los enlaces de confirmación duran 24 horas. Volvé a abrir la invitación para pedir uno nuevo."
         >
-          <Button variant="ghost" onClick={() => navigate("/registro")}>
-            Ir al registro
+          <Button variant="ghost" onClick={() => navigate("/entrar")}>
+            Ir a entrar
           </Button>
         </Card>
       </AuthLayout>
@@ -81,10 +81,10 @@ export function ConfirmPage() {
       <AuthLayout>
         <Card
           title="Este enlace no sirve"
-          subtitle="Puede haber vencido o ya haberse usado. Si todavía no confirmaste, registrate de nuevo con el mismo correo."
+          subtitle="Puede haber vencido o ya haberse usado. Si todavía no confirmaste, volvé a abrir la invitación."
         >
-          <Button variant="ghost" onClick={() => navigate("/registro")}>
-            Ir al registro
+          <Button variant="ghost" onClick={() => navigate("/entrar")}>
+            Ir a entrar
           </Button>
         </Card>
       </AuthLayout>
@@ -106,7 +106,7 @@ export function ConfirmPage() {
   return (
     <AuthLayout>
       <Card title="Falta el enlace" subtitle="Abrí esta página desde el enlace que te mandamos por correo.">
-        <Button variant="ghost" onClick={() => navigate("/login")}>
+        <Button variant="ghost" onClick={() => navigate("/entrar")}>
           Volver
         </Button>
       </Card>

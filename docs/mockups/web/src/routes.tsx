@@ -1,20 +1,26 @@
 import { useEffect, useState } from "react";
-import { createBrowserRouter, Outlet, RouterProvider } from "react-router-dom";
+import { createBrowserRouter, Navigate, Outlet, RouterProvider, useLocation } from "react-router-dom";
 import { Alert, Button, Card, Field } from "./components";
 import { DemoPanel } from "./components/demo/DemoPanel";
 import { AppShell } from "./components/shell/AppShell";
 import { api } from "./lib/api";
 import { SessionProvider } from "./lib/session";
 import { ConfirmPage } from "./pages/ConfirmPage";
+import { EntrarPage } from "./pages/EntrarPage";
+import { GooglePage } from "./pages/GooglePage";
 import { InvitationPage } from "./pages/InvitationPage";
-import { LoginPage } from "./pages/LoginPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
-import { RegisterPage } from "./pages/RegisterPage";
-import { RegisterSentPage } from "./pages/RegisterSentPage";
 import { HomePage } from "./pages/app/HomePage";
 import { InvitationsPage } from "./pages/app/InvitationsPage";
 import { MembersPage } from "./pages/app/MembersPage";
 import { NewOrgPage } from "./pages/app/NewOrgPage";
+import { NewPersonalPage } from "./pages/app/NewPersonalPage";
+import { AccesoPage } from "./pages/signup/AccesoPage";
+import { ClavePage } from "./pages/signup/ClavePage";
+import { CodigoPage } from "./pages/signup/CodigoPage";
+import { ConfigurarPage } from "./pages/signup/ConfigurarPage";
+import { DatosPage } from "./pages/signup/DatosPage";
+import { TipoPage } from "./pages/signup/TipoPage";
 import { PlatformAdminsPage } from "./pages/platform/PlatformAdminsPage";
 import { PlatformAuditPage } from "./pages/platform/PlatformAuditPage";
 import { PlatformHomePage } from "./pages/platform/PlatformHomePage";
@@ -45,7 +51,7 @@ function SistemaVisual() {
           subtitle="Cada componente base en cada uno de sus estados."
           footer={
             <>
-              ¿Ya tenés cuenta? <a href="/login">Iniciá sesión</a>
+              ¿Ya tenés cuenta? <a href="/entrar">Iniciá sesión</a>
             </>
           }
         >
@@ -79,6 +85,17 @@ function SistemaVisual() {
   );
 }
 
+/** Las direcciones viejas siguen andando: llevan a la nueva conservando la consulta (?next, ?motivo). */
+function LegacyRedirect({ to }: { to: string }) {
+  const { search } = useLocation();
+  return <Navigate to={`${to}${search}`} replace />;
+}
+
+// Cada ruta con sesión lleva su propia key en SessionProvider. Sin ella React
+// reutiliza la instancia de la ruta anterior, que ocupa el mismo lugar del árbol, y
+// la pantalla nueva arranca con el contexto viejo: /app creía que la identidad
+// recién configurada seguía sin contexto y la devolvía a /configurar.
+
 /** El panel de demostración acompaña a todas las pantallas, fuera del producto. */
 function RootLayout() {
   return (
@@ -94,9 +111,31 @@ const router = createBrowserRouter([
     element: <RootLayout />,
     children: [
       { path: "/", element: <SistemaVisual /> },
-      { path: "/login", element: <LoginPage /> },
-      { path: "/registro", element: <RegisterPage /> },
-      { path: "/registro/enviado", element: <RegisterSentPage /> },
+      // Entrar y crear cuenta. El tipo se pregunta sólo al crear; entrar va directo.
+      { path: "/entrar", element: <EntrarPage /> },
+      { path: "/crear-cuenta", element: <TipoPage /> },
+      { path: "/crear-cuenta/acceso", element: <AccesoPage /> },
+      { path: "/crear-cuenta/codigo", element: <CodigoPage /> },
+      { path: "/crear-cuenta/clave", element: <ClavePage /> },
+      {
+        path: "/crear-cuenta/datos",
+        element: (
+          <SessionProvider key="datos">
+            <DatosPage />
+          </SessionProvider>
+        ),
+      },
+      {
+        path: "/configurar",
+        element: (
+          <SessionProvider key="configurar">
+            <ConfigurarPage />
+          </SessionProvider>
+        ),
+      },
+      { path: "/google", element: <GooglePage /> },
+      { path: "/login", element: <LegacyRedirect to="/entrar" /> },
+      { path: "/registro", element: <LegacyRedirect to="/crear-cuenta" /> },
       { path: "/confirmar", element: <ConfirmPage /> },
       { path: "/invitacion", element: <InvitationPage /> },
 
@@ -104,7 +143,7 @@ const router = createBrowserRouter([
       {
         path: "/app",
         element: (
-          <SessionProvider>
+          <SessionProvider key="app">
             <AppShell />
           </SessionProvider>
         ),
@@ -113,6 +152,7 @@ const router = createBrowserRouter([
           { path: "miembros", element: <MembersPage /> },
           { path: "invitaciones", element: <InvitationsPage /> },
           { path: "organizaciones/nueva", element: <NewOrgPage /> },
+          { path: "personal/nueva", element: <NewPersonalPage /> },
         ],
       },
 
@@ -121,7 +161,7 @@ const router = createBrowserRouter([
       {
         path: "/platform/mfa",
         element: (
-          <SessionProvider>
+          <SessionProvider key="platform-mfa">
             <PlatformMfaPage />
           </SessionProvider>
         ),
@@ -129,7 +169,7 @@ const router = createBrowserRouter([
       {
         path: "/platform",
         element: (
-          <SessionProvider>
+          <SessionProvider key="platform">
             <PlatformShell />
           </SessionProvider>
         ),

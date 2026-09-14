@@ -20,16 +20,16 @@ export function ContextBar() {
       </div>
 
       <div className="ctxbar__block">
-        <p className="ctxbar__label">Organización activa</p>
-        <p className="ctxbar__value">{org ? org.name : "Ninguna"}</p>
+        <p className="ctxbar__label">Contexto activo</p>
+        <p className="ctxbar__value">{org ? org.name : "Ninguno"}</p>
         <p className="ctxbar__sub">
           {org ? (
             <>
-              {TYPE_LABEL[org.type]} · CUIT {org.cuit} ·{" "}
+              {TYPE_LABEL[org.type]} · {org.cuit ? `CUIT ${org.cuit}` : `DNI ${org.document}`} ·{" "}
               <Badge tone={org.status === "suspended" ? "danger" : "ok"}>{STATUS_LABEL[org.status]}</Badge>
             </>
           ) : (
-            "Elegí una organización para operar"
+            "Elegí con qué contexto operar"
           )}
         </p>
       </div>
@@ -38,9 +38,11 @@ export function ContextBar() {
         <p className="ctxbar__label">Rol y permisos</p>
         <p className="ctxbar__value">{org ? org.roleLabel : "—"}</p>
         <p className="ctxbar__sub">
-          {org && org.permissions.length > 0
-            ? org.permissions.map((permission) => PERMISSION_LABEL[permission]).join(" · ")
-            : "Sin permisos en este contexto"}
+          {org?.type === "persona"
+            ? "Cuenta personal: no tiene integrantes"
+            : org && org.permissions.length > 0
+              ? org.permissions.map((permission) => PERMISSION_LABEL[permission]).join(" · ")
+              : "Sin permisos en este contexto"}
         </p>
       </div>
 

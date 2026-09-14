@@ -15,18 +15,34 @@ import {
 import { isAcceptedReference } from "./retention.js";
 import { applyScenario, findScenario, resetAll, scenarios } from "./scenarios.js";
 import {
+  CODE_RESEND_MS,
+  CODE_TTL_MS,
+  evaluateCode,
+  generateCode,
+  maskDni,
+  MIN_PASSWORD,
+  normalizeDni,
+  remainingAttempts,
+  resendWaitSeconds,
+} from "./signup.js";
+import {
   activeHolds,
   audit,
   createSession,
   db,
   defaultOrgFor,
   effectiveStatus,
+  findChallenge,
   findHold,
   findInvitationByToken,
   findOrgByCuit,
+  findOrgByDni,
   findSession,
   findUserByEmail,
+  findUserByGoogleSubject,
   findUserById,
+  googleSubjectFor,
+  personalContextOf,
   LOGIN_BLOCK_MS,
   MAX_LOGIN_FAILURES,
   membershipIn,
@@ -48,8 +64,10 @@ import {
   TOKEN_TTL_MS,
   WEB_ORIGIN,
   type AccountStatus,
+  type EmailChallenge,
   type Invitation,
   type Org,
+  type OrgType,
   type RetentionHold,
   type Session,
   type User,
@@ -131,12 +149,14 @@ function activeOrgDto(org: Org, role: OrgRole) {
     id: org.id,
     name: org.name,
     type: org.type,
-    cuit: format(org.cuit),
+    cuit: org.cuit ? format(org.cuit) : null,
+    document: org.dni ? maskDni(org.dni) : null,
     status: org.status,
     suspendedReason: org.suspendedReason,
     role,
     roleLabel: ROLE_LABEL[role],
-    permissions: permissionsOf(role),
+    // Una cuenta personal no tiene integrantes: el rol de titular no se traduce en permisos sobre nadie.
+    permissions: org.type === "persona" ? [] : permissionsOf(role),
     version: org.version,
   };
 }
@@ -159,7 +179,7 @@ function meDto(user: User, session: Session) {
   const platform = platformOf(user.id);
 
   return {
-    user: { id: user.id, name: user.name, email: user.email, confirmed: user.confirmed },
+    user: { id: user.id, name: user.name, email: user.email, confirmed: user.confirmed, hasPassword: user.password !== null },
     activeOrg: activeOrg && activeMembership ? activeOrgDto(activeOrg, activeMembership.role) : null,
     orgs,
     pendingInvitations: pendingInvitationsFor(user.email),
@@ -198,77 +218,9 @@ app.get("/api/health", (_req, res) => {
   res.json({ ok: true });
 });
 
-// --- registro / confirmación / sesión (Recorrido A) ------------------------
-
-app.post("/api/auth/register", (req, res) => {
-  const body = (req.body ?? {}) as Record<string, unknown>;
-  const cuitInput = String(body.cuit ?? "");
-  const name = String(body.name ?? "").trim();
-  const email = String(body.email ?? "").trim().toLowerCase();
-  const password = String(body.password ?? "");
-
-  const cuit = normalize(cuitInput);
-  const type = cuit ? kind(cuit) : null;
-  if (!cuit || !type || !isValid(cuit)) {
-    fail(res, 400, "invalid_cuit", "El CUIT no es válido.");
-    return;
-  }
-  if (!name || !email || !password) {
-    fail(res, 400, "missing_fields", "Completá nombre, correo y contraseña.");
-    return;
-  }
-  if (password.length < 4) {
-    fail(res, 400, "weak_password", "La contraseña tiene que tener al menos 4 caracteres.");
-    return;
-  }
-  if (findOrgByCuit(cuit)) {
-    fail(res, 409, "cuit_taken", "Ese CUIT ya está registrado.");
-    return;
-  }
-
-  const existing = findUserByEmail(email);
-  if (existing) {
-    // Respuesta neutral: no revelamos que la identidad existe.
-    pushMail({
-      to: existing.email,
-      subject: "Ya tenés cuenta, ingresá",
-      body: `Hola, ${existing.name}. Alguien intentó registrarse con este correo. Si fuiste vos, ingresá con tu contraseña.`,
-      link: `${WEB_ORIGIN}/login`,
-      kind: "registro",
-    });
-    res.status(202).end();
-    return;
-  }
-
-  const user: User = {
-    id: newId(),
-    email,
-    password,
-    name,
-    confirmed: false,
-    accountStatus: "pending_confirmation",
-    statusBeforeSuspension: null,
-    purgedAt: null,
-    lastSeenAt: null,
-    mfa: { enrolled: false, secret: null, recoveryCodesSaved: false, verifiedAt: null },
-    createdAt: now(),
-  };
-  const org: Org = {
-    id: newId(),
-    type,
-    name,
-    cuit,
-    status: "active",
-    suspendedReason: null,
-    version: 1,
-    createdAt: now(),
-  };
-  db.users.push(user);
-  db.orgs.push(org);
-  db.memberships.push({ userId: user.id, orgId: org.id, role: "owner" });
-  sendConfirmationMail(user);
-  res.status(202).end();
-});
+// --- confirmación por enlace y sesión (Recorrido A) ------------------------
+// Crear cuenta ya no confirma por enlace: prueba la dirección con un código antes
+// de crear nada. El enlace queda para las invitaciones.
 
 function sendConfirmationMail(user: User): void {
   const token = newToken();
@@ -328,44 +280,68 @@ function attemptsFor(email: string) {
   return record;
 }
 
-app.post("/api/auth/login", (req, res) => {
-  const body = (req.body ?? {}) as Record<string, unknown>;
-  const email = String(body.email ?? "").trim().toLowerCase();
-  const password = String(body.password ?? "");
+/**
+ * Una contraseña contra una cuenta, con el mismo bloqueo por intentos en «Entrar»
+ * y en el paso de contraseña de quien creó cuenta con un email que ya tenía una.
+ * Responde el rechazo y devuelve null, o devuelve la identidad lista para sesión.
+ *
+ * `addressProved` es un código ya verificado para esa dirección: alcanza para dar
+ * por confirmado el correo de una cuenta que había quedado pendiente, pero nunca
+ * reemplaza a la contraseña.
+ */
+function authenticate(res: Response, email: string, password: string, addressProved = false): User | null {
   const record = attemptsFor(email);
 
   if (record.blockedUntil && new Date(record.blockedUntil).getTime() > Date.now()) {
     const retryAfter = Math.ceil((new Date(record.blockedUntil).getTime() - Date.now()) / 1000);
     fail(res, 429, "too_many_attempts", `Demasiados intentos. Probá de nuevo en ${retryAfter} segundos.`, { retryAfter });
-    return;
+    return null;
   }
 
   const user = findUserByEmail(email);
-  if (!user || user.password !== password) {
+  // Una cuenta que entra sólo con Google no tiene contraseña que coincida con nada.
+  if (!user || user.password === null || user.password !== password) {
     record.failures += 1;
     if (record.failures >= MAX_LOGIN_FAILURES) {
       record.blockedUntil = new Date(Date.now() + LOGIN_BLOCK_MS).toISOString();
       record.failures = 0;
     }
     fail(res, 401, "invalid_credentials", "El correo o la contraseña no coinciden.");
-    return;
+    return null;
+  }
+  if (!user.confirmed && addressProved && user.accountStatus === "pending_confirmation") {
+    user.confirmed = true;
+    user.accountStatus = "active";
   }
   if (!user.confirmed) {
     fail(res, 403, "unconfirmed", "Todavía no confirmaste tu correo. Buscá el mensaje de confirmación.");
-    return;
+    return null;
   }
   // Única condición de "cuenta activa": no se arma en cada llamada a partir del
   // correo confirmado y el bloqueo por intentos. La respuesta no dice en cuál de
   // los estados detenidos está: eso es información sobre la persona.
   if (!canSignIn(user.accountStatus)) {
     fail(res, 403, "account_unavailable", "Esta cuenta no está disponible. Escribinos si creés que es un error.");
-    return;
+    return null;
   }
 
   record.failures = 0;
   record.blockedUntil = null;
+  return user;
+}
+
+function openSession(res: Response, user: User): Session {
   const session = createSession(user.id, defaultOrgFor(user.id));
   res.cookie(SESSION_COOKIE, session.id, { httpOnly: true, sameSite: "lax", path: "/" });
+  return session;
+}
+
+app.post("/api/auth/login", (req, res) => {
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const email = String(body.email ?? "").trim().toLowerCase();
+  const user = authenticate(res, email, String(body.password ?? ""));
+  if (!user) return;
+  openSession(res, user);
   res.status(204).end();
 });
 
@@ -377,6 +353,272 @@ app.post("/api/auth/logout", (req, res) => {
   }
   res.clearCookie(SESSION_COOKIE, { path: "/" });
   res.status(204).end();
+});
+
+// --- crear cuenta con código por correo (Recorrido A) ----------------------
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const isOrgType = (value: unknown): value is OrgType => value === "persona" || value === "empresa";
+const isoIn = (ms: number) => new Date(Date.now() + ms).toISOString();
+
+/** Qué cuenta hay detrás de una dirección. Se dice sólo después de que un código la probó. */
+function accountBehind(email: string): "new" | "password" | "google" {
+  const user = findUserByEmail(email);
+  if (!user) return "new";
+  return user.password === null ? "google" : "password";
+}
+
+function challengeDto(challenge: EmailChallenge) {
+  return {
+    id: challenge.id,
+    email: challenge.email,
+    type: challenge.type,
+    expiresAt: challenge.expiresAt,
+    resendAvailableAt: challenge.resendAvailableAt,
+    verified: Boolean(challenge.verifiedAt),
+    account: challenge.verifiedAt ? accountBehind(challenge.email) : null,
+  };
+}
+
+function sendCode(challenge: EmailChallenge): void {
+  pushMail({
+    to: challenge.email,
+    subject: "Tu código para crear la cuenta",
+    body: `Tu código es ${challenge.code}. Vence en 10 minutos. Si no pediste crear una cuenta, ignorá este correo.`,
+    link: null,
+    kind: "codigo",
+  });
+}
+
+function challengeFrom(req: Request, res: Response): EmailChallenge | null {
+  const challenge = findChallenge(param(req, "id"));
+  if (!challenge) {
+    fail(res, 404, "challenge_not_found", "Este código ya no sirve. Empezá de nuevo.");
+    return null;
+  }
+  return challenge;
+}
+
+/**
+ * Empieza el alta: manda el código. La respuesta es la misma exista o no una
+ * cuenta con ese email, y el correo es lo único que llega a la dirección.
+ */
+app.post("/api/signup", (req, res) => {
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const email = String(body.email ?? "").trim().toLowerCase();
+  if (!EMAIL_PATTERN.test(email)) {
+    fail(res, 400, "invalid_email", "Ingresá un correo válido.");
+    return;
+  }
+  if (!isOrgType(body.type)) {
+    fail(res, 400, "invalid_type", "Elegí si la cuenta es personal o de empresa.");
+    return;
+  }
+  const challenge: EmailChallenge = {
+    id: newToken(),
+    email,
+    type: body.type,
+    code: generateCode(),
+    expiresAt: isoIn(CODE_TTL_MS),
+    attempts: 0,
+    spentAt: null,
+    resendAvailableAt: isoIn(CODE_RESEND_MS),
+    verifiedAt: null,
+    createdAt: now(),
+  };
+  db.challenges.push(challenge);
+  sendCode(challenge);
+  res.status(201).json(challengeDto(challenge));
+});
+
+app.get("/api/signup/:id", (req, res) => {
+  const challenge = challengeFrom(req, res);
+  if (challenge) res.json(challengeDto(challenge));
+});
+
+app.post("/api/signup/:id/resend", (req, res) => {
+  const challenge = challengeFrom(req, res);
+  if (!challenge) return;
+  if (challenge.spentAt) {
+    fail(res, 409, "challenge_closed", "Este código ya se usó. Si no terminaste, empezá de nuevo.");
+    return;
+  }
+  const wait = resendWaitSeconds(challenge.resendAvailableAt, Date.now());
+  if (wait > 0) {
+    fail(res, 429, "resend_too_soon", `Esperá ${wait} segundos para pedir otro código.`, { retryAfter: wait });
+    return;
+  }
+  // Un código nuevo invalida el anterior y devuelve los intentos: es otro desafío para la misma dirección.
+  challenge.code = generateCode();
+  challenge.attempts = 0;
+  challenge.verifiedAt = null;
+  challenge.expiresAt = isoIn(CODE_TTL_MS);
+  challenge.resendAvailableAt = isoIn(CODE_RESEND_MS);
+  sendCode(challenge);
+  res.json(challengeDto(challenge));
+});
+
+app.post("/api/signup/:id/verify", (req, res) => {
+  const challenge = challengeFrom(req, res);
+  if (!challenge) return;
+  // Idempotente: volver atrás y verificar otra vez no gasta un intento.
+  if (challenge.verifiedAt && !challenge.spentAt) {
+    res.json(challengeDto(challenge));
+    return;
+  }
+
+  const outcome = evaluateCode(challenge, String((req.body ?? {}).code ?? ""), Date.now());
+  if (outcome === "closed") {
+    fail(res, 409, "challenge_closed", "Este código ya se usó. Si no terminaste, empezá de nuevo.");
+    return;
+  }
+  if (outcome === "locked") {
+    fail(res, 429, "code_locked", "Superaste los intentos con este código. Pedí uno nuevo.");
+    return;
+  }
+  if (outcome === "expired") {
+    fail(res, 400, "code_expired", "El código venció. Pedí uno nuevo.");
+    return;
+  }
+  if (outcome === "wrong") {
+    challenge.attempts += 1;
+    const left = remainingAttempts(challenge.attempts);
+    if (left === 0) {
+      fail(res, 429, "code_locked", "Superaste los intentos con este código. Pedí uno nuevo.");
+      return;
+    }
+    fail(res, 400, "code_invalid", `El código no es correcto. ${left === 1 ? "Te queda 1 intento." : `Te quedan ${left} intentos.`}`, {
+      remaining: left,
+    });
+    return;
+  }
+
+  challenge.verifiedAt = now();
+  audit(challenge.email, "identity.signup.verified", challenge.email, "Dirección probada con código", "ok");
+  res.json(challengeDto(challenge));
+});
+
+/**
+ * El paso de la contraseña. Con un email nuevo crea la cuenta; con uno que ya
+ * tenía cuenta pide la suya y abre sesión. En los dos casos lo que se complete
+ * después se agrega a esa identidad.
+ */
+app.post("/api/signup/:id/password", (req, res) => {
+  const challenge = challengeFrom(req, res);
+  if (!challenge) return;
+  if (challenge.spentAt) {
+    fail(res, 409, "challenge_closed", "Este código ya se usó. Si no terminaste, empezá de nuevo.");
+    return;
+  }
+  if (!challenge.verifiedAt) {
+    fail(res, 409, "code_required", "Primero verificá el código que te mandamos.");
+    return;
+  }
+  if (new Date(challenge.expiresAt).getTime() <= Date.now()) {
+    fail(res, 400, "code_expired", "Pasó demasiado tiempo desde el código. Pedí uno nuevo.");
+    return;
+  }
+
+  const password = String((req.body ?? {}).password ?? "");
+  const existing = findUserByEmail(challenge.email);
+  if (existing) {
+    if (existing.password === null) {
+      fail(res, 409, "google_account", "Tu cuenta entra con Google. Seguí con Google para continuar.");
+      return;
+    }
+    const user = authenticate(res, challenge.email, password, true);
+    if (!user) return;
+    challenge.spentAt = now();
+    openSession(res, user);
+    audit(user.email, "identity.signup.existing", user.email, "Código y contraseña de una cuenta existente", "ok");
+    res.status(204).end();
+    return;
+  }
+
+  if (password.length < MIN_PASSWORD) {
+    fail(res, 400, "weak_password", `La contraseña tiene que tener al menos ${MIN_PASSWORD} caracteres.`);
+    return;
+  }
+  const user: User = {
+    id: newId(),
+    email: challenge.email,
+    password,
+    googleSubject: null,
+    name: challenge.email.split("@")[0],
+    // El código ya probó la dirección: no hay confirmación pendiente que mandar.
+    confirmed: true,
+    accountStatus: "active",
+    statusBeforeSuspension: null,
+    purgedAt: null,
+    lastSeenAt: null,
+    mfa: { enrolled: false, secret: null, recoveryCodesSaved: false, verifiedAt: null },
+    createdAt: now(),
+  };
+  db.users.push(user);
+  challenge.spentAt = now();
+  openSession(res, user);
+  audit(user.email, "identity.signup.created", user.email, "Cuenta creada con código y contraseña", "ok");
+  res.status(204).end();
+});
+
+// --- Google simulado (Recorrido A) -----------------------------------------
+
+/**
+ * La vuelta de Google, simulada. En el producto la decide el servidor con el
+ * token firmado; acá la pantalla falsa manda la cuenta elegida. Lo que se respeta
+ * es la regla: sólo la cuenta de Google vinculada entra, y un email igual no
+ * alcanza para vincular.
+ */
+app.post("/api/auth/google", (req, res) => {
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const email = String(body.email ?? "").trim().toLowerCase();
+  const name = String(body.name ?? "").trim();
+  if (!EMAIL_PATTERN.test(email)) {
+    fail(res, 400, "invalid_email", "Ingresá un correo válido.");
+    return;
+  }
+
+  const linked = findUserByGoogleSubject(googleSubjectFor(email));
+  if (linked) {
+    if (!canSignIn(linked.accountStatus)) {
+      fail(res, 403, "account_unavailable", "Esta cuenta no está disponible. Escribinos si creés que es un error.");
+      return;
+    }
+    openSession(res, linked);
+    audit(email, "identity.google.login", email, "Ingreso con Google", "ok");
+    res.json({ created: false });
+    return;
+  }
+
+  if (findUserByEmail(email)) {
+    audit(email, "identity.google.login", email, "Email de una cuenta sin Google vinculado", "denegado");
+    fail(
+      res,
+      409,
+      "external_login_conflict",
+      "Ese email ya tiene una cuenta con contraseña. Entrá con tu contraseña: Google no se vincula solo por tener el mismo email.",
+    );
+    return;
+  }
+
+  const user: User = {
+    id: newId(),
+    email,
+    password: null,
+    googleSubject: googleSubjectFor(email),
+    name: name || email.split("@")[0],
+    confirmed: true,
+    accountStatus: "active",
+    statusBeforeSuspension: null,
+    purgedAt: null,
+    lastSeenAt: null,
+    mfa: { enrolled: false, secret: null, recoveryCodesSaved: false, verifiedAt: null },
+    createdAt: now(),
+  };
+  db.users.push(user);
+  openSession(res, user);
+  audit(email, "identity.google.created", email, "Cuenta creada con Google, sin contexto", "ok");
+  res.status(201).json({ created: true });
 });
 
 // --- identidad y contexto (Recorrido B) ------------------------------------
@@ -418,11 +660,14 @@ app.post("/api/orgs", requireSession, (req, res) => {
     return;
   }
 
+  // El prefijo del CUIT dice si es de una persona humana o jurídica, pero las dos
+  // son una empresa: la cuenta personal es otra cosa y se identifica por DNI.
   const org: Org = {
     id: newId(),
-    type,
+    type: "empresa",
     name,
     cuit,
+    dni: null,
     status: "active",
     suspendedReason: null,
     version: 1,
@@ -432,6 +677,53 @@ app.post("/api/orgs", requireSession, (req, res) => {
   db.memberships.push({ userId: user.id, orgId: org.id, role: "owner" });
   session.activeOrgId = org.id;
   audit(user.email, "org.create", org.name, "Alta de organización desde el producto", "ok");
+  res.status(201).json(meDto(user, session));
+});
+
+/** La cuenta personal de la identidad en sesión. A lo sumo una. */
+app.post("/api/me/personal", requireSession, (req, res) => {
+  const { user, session } = req as AuthedRequest;
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const fullName = String(body.fullName ?? "").trim();
+  const displayName = String(body.displayName ?? "").trim();
+  if (!fullName || !displayName) {
+    fail(res, 400, "missing_fields", "Completá tu nombre completo y el nombre visible.");
+    return;
+  }
+  const dni = normalizeDni(String(body.dni ?? ""));
+  if (!dni) {
+    fail(res, 400, "invalid_dni", "El DNI tiene que tener 7 u 8 dígitos.");
+    return;
+  }
+  // Una sola respuesta para los dos motivos: decir cuál fue contaría si ese DNI es
+  // de otra persona.
+  if (personalContextOf(user.id) || findOrgByDni(dni)) {
+    audit(user.email, "personal.create", user.email, "Cuenta personal rechazada", "denegado");
+    fail(
+      res,
+      409,
+      "personal_registration_conflict",
+      "No pudimos crear la cuenta personal con esos datos. Si ya tenés una, la encontrás en tu selector.",
+    );
+    return;
+  }
+
+  const org: Org = {
+    id: newId(),
+    type: "persona",
+    name: fullName,
+    cuit: null,
+    dni,
+    status: "active",
+    suspendedReason: null,
+    version: 1,
+    createdAt: now(),
+  };
+  db.orgs.push(org);
+  db.memberships.push({ userId: user.id, orgId: org.id, role: "owner" });
+  user.name = displayName;
+  session.activeOrgId = org.id;
+  audit(user.email, "personal.create", fullName, "Alta de cuenta personal", "ok");
   res.status(201).json(meDto(user, session));
 });
 
@@ -491,6 +783,10 @@ app.post("/api/orgs/:orgId/invitations", requireSession, (req, res) => {
   }
   if (ctx.org.status === "suspended") {
     fail(res, 409, "org_suspended", "La organización está suspendida: no se pueden emitir invitaciones.");
+    return;
+  }
+  if (ctx.org.type === "persona") {
+    fail(res, 409, "personal_context", "Una cuenta personal no tiene integrantes.");
     return;
   }
 
@@ -623,6 +919,7 @@ app.post("/api/invitations/:token/register", (req, res) => {
     id: newId(),
     email: invitation.email,
     password,
+    googleSubject: null,
     name,
     confirmed: false,
     accountStatus: "pending_confirmation",
@@ -1316,6 +1613,27 @@ app.post("/api/dev/reset", (_req, res) => {
 
 app.get("/api/dev/mails", (_req, res) => {
   res.json({ mails: db.mails });
+});
+
+/**
+ * Las cuentas que ofrece la pantalla de Google simulada, con lo que va a pasar
+ * al elegir cada una. El estado se calcula en cada lectura: después de entrar
+ * por primera vez, una cuenta nueva pasa a vinculada.
+ */
+app.get("/api/dev/google-accounts", (_req, res) => {
+  const accounts = [
+    { name: "Ana Martínez", email: "ana@gmail.com" },
+    { name: "Juan Pérez", email: "juan@acme.com" },
+    { name: "Nadia Romero", email: "nadia.romero@gmail.com" },
+  ].map((account) => ({
+    ...account,
+    status: findUserByGoogleSubject(googleSubjectFor(account.email))
+      ? "linked"
+      : findUserByEmail(account.email)
+        ? "conflict"
+        : "new",
+  }));
+  res.json({ accounts });
 });
 
 app.post("/api/dev/fail-next", (req, res) => {

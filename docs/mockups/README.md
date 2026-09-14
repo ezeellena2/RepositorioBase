@@ -19,20 +19,47 @@ hacia la API. Los datos viven en memoria y se pierden al reiniciar el proceso.
 El botón **DEMO**, abajo a la derecha de cualquier pantalla, abre un panel que no forma parte del
 producto. Tiene tres solapas:
 
-- **Escenarios**: 32 puntos de partida agrupados por recorrido. Cargar uno reinicia los datos en
+- **Escenarios**: puntos de partida agrupados por recorrido. Cargar uno reinicia los datos en
   memoria, deja la sesión en el estado que corresponde y navega a la pantalla inicial.
-- **Correos**: bandeja simulada con los mensajes de registro, confirmación e invitación. Cada uno
-  tiene su enlace utilizable dentro de la maqueta.
+- **Correos**: bandeja simulada con los códigos para crear cuenta y los mensajes de confirmación e
+  invitación. Los que traen enlace se abren dentro de la maqueta.
 - **Estados**: arma fallas para el próximo pedido (error de red, conflicto 409, no encontrado 404),
   revoca la sesión, vence el step-up de MFA y reinicia los datos del mockup.
 
 Platform se abre desde acá a propósito: no se enlaza desde el menú del cliente.
 
+## Entrar y crear cuenta
+
+El flujo que se está evaluando antes de llevarlo al producto. Las decisiones y sus porqués están en
+[el documento de diseño](../superpowers/specs/2026-09-14-entrar-crear-cuenta-design.md).
+
+- **Entrar** (`/entrar`) no pregunta el tipo de cuenta: Google, o email y contraseña. Quien entra sin
+  ningún contexto ve «Terminá de configurar tu cuenta» (`/configurar`).
+- **Crear cuenta** (`/crear-cuenta`) pregunta primero *¿Personal o Empresa?*, después Google o email.
+  Con email llega un código de 6 dígitos a DEMO › Correos; recién con el código verificado se dice si
+  la dirección ya tenía cuenta. Una cuenta nueva elige contraseña; una existente pone la suya; una
+  que entra sólo con Google sigue con Google. El último paso pide nombre completo, nombre visible y
+  DNI, o razón social y CUIT.
+- El código vence a los 10 minutos, admite 5 intentos y se puede reenviar cada 30 segundos.
+- `/login` y `/registro` redirigen a las rutas nuevas.
+
+La pantalla de Google es una simulación rotulada. Ofrece tres cuentas y dice qué pasa con cada una:
+
+| Cuenta de Google | Qué pasa |
+| --- | --- |
+| `ana@gmail.com` | Vinculada: entra. Ya tiene cuenta personal |
+| `juan@acme.com` | El email tiene cuenta con contraseña y ningún Google vinculado: no entra |
+| `nadia.romero@gmail.com` | Nueva: se crea la cuenta, sin contexto |
+
+«Usar otra cuenta» acepta cualquier email. No están en la maqueta: recuperar la contraseña y
+vincular Google desde adentro de la cuenta.
+
 ## Recorridos
 
-- **A — Registro, confirmación y sesión**: alta de organización con validación de CUIT, resultado
-  neutral, confirmación por enlace, ingreso con error de credenciales y bloqueo 429, sesión vencida,
-  y entrada según cantidad de membresías.
+- **A — Entrar, crear cuenta y sesión**: crear cuenta personal o de empresa con Google o con código
+  por correo, email que ya tiene cuenta, cuenta que entra sólo con Google, código incorrecto, agotado
+  y vencido, Google con el email de una cuenta con contraseña, DNI ya registrado, ingreso con error
+  de credenciales y bloqueo 429, sesión vencida, y entrada según cantidad de contextos.
 - **B — Contexto, permisos y organizaciones**: shell con menú lateral colapsable, selector de
   organización, barra de contexto, aislamiento de permisos entre organizaciones, alta de una segunda
   organización y organización suspendida.
@@ -51,14 +78,15 @@ Platform se abre desde acá a propósito: no se enlaza desde el menú del client
 
 ## Identidades de ejemplo
 
-Contraseña `1234` en todas.
+Contraseña `1234` en todas, menos `ana@gmail.com`, que entra sólo con Google.
 
 | Correo | Para qué sirve |
 | --- | --- |
 | `juan@acme.com` | Dos organizaciones: Titular en Acme S.A. (puede invitar) e Integrante en Distribuidora Sur SRL (no puede) |
 | `maria@acme.com` | Una sola organización, permisos limitados |
 | `bruno@sur.com` | Titular de varias, una de ellas suspendida |
-| `sofia@sinorg.com` | Identidad sin organizaciones |
+| `sofia@sinorg.com` | Identidad sin contexto: ni cuenta personal ni empresa |
+| `ana@gmail.com` | Sólo Google, con cuenta personal (DNI 30.111.222, ya registrado) |
 | `nuevo@sur.com` | Registrada sin confirmar el correo |
 | `paula@nueva.com` | Invitada con cuenta sin confirmar |
 | `carla@plataforma.com` | Titular de Platform con MFA simulada completa |

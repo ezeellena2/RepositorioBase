@@ -1,6 +1,6 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import type { CuitKind } from "./cuit.js";
 import type { OrgRole } from "./permissions.js";
+import type { CodeState } from "./signup.js";
 
 // Todo el estado del mockup vive acá, en memoria. Se pierde al reiniciar el
 // proceso y se puede reiniciar desde el panel de demostración.
@@ -38,7 +38,10 @@ export const SUSPENSION_REASONS: SuspensionReason[] = [
 export interface User {
   id: string;
   email: string;
-  password: string;
+  /** Null cuando la cuenta entra sólo con Google: nadie eligió una contraseña, así que no se inventa. */
+  password: string | null;
+  /** La cuenta de Google vinculada. Un email igual no alcanza para vincular: tiene que ser esta. */
+  googleSubject: string | null;
   name: string;
   confirmed: boolean;
   accountStatus: AccountStatus;
@@ -53,11 +56,21 @@ export interface User {
 
 export type OrgStatus = "active" | "suspended";
 
+/**
+ * Los dos contextos que puede tener una identidad. "persona" es la cuenta
+ * personal, identificada por DNI y a lo sumo una por identidad; "empresa" es una
+ * organización con CUIT, sea de una persona humana o jurídica.
+ */
+export type OrgType = "persona" | "empresa";
+
 export interface Org {
   id: string;
-  type: CuitKind;
+  type: OrgType;
   name: string;
-  cuit: string; // 11 dígitos normalizados
+  /** 11 dígitos normalizados. Sólo en una empresa. */
+  cuit: string | null;
+  /** 7 u 8 dígitos. Sólo en una cuenta personal; nunca sale entero hacia la pantalla. */
+  dni: string | null;
   status: OrgStatus;
   suspendedReason: string | null;
   /** Se incrementa en cada mutación: sirve para simular conflicto de concurrencia. */
@@ -103,7 +116,7 @@ export interface Session {
   stepUpAt: string | null;
 }
 
-export type MailKind = "registro" | "confirmacion" | "invitacion" | "invitacion-platform" | "aviso";
+export type MailKind = "registro" | "confirmacion" | "codigo" | "invitacion" | "invitacion-platform" | "aviso";
 
 export interface Mail {
   id: string;
@@ -120,6 +133,20 @@ export interface ConfirmToken {
   userId: string;
   expiresAt: string;
   usedAt: string | null;
+}
+
+/**
+ * Un código mandado a una dirección para crear cuenta. Se crea igual exista o no
+ * una cuenta con ese email; qué cuenta hay detrás se dice recién cuando el código
+ * prueba que la dirección es de quien lo escribe.
+ */
+export interface EmailChallenge extends CodeState {
+  id: string;
+  email: string;
+  type: OrgType;
+  resendAvailableAt: string;
+  verifiedAt: string | null;
+  createdAt: string;
 }
 
 export interface AuditEntry {
@@ -187,6 +214,7 @@ export interface Db {
   sessions: Session[];
   mails: Mail[];
   confirmTokens: ConfirmToken[];
+  challenges: EmailChallenge[];
   audit: AuditEntry[];
   attempts: LoginAttempts[];
   failNext: FailMode | null;
@@ -205,6 +233,7 @@ export const db: Db = {
   sessions: [],
   mails: [],
   confirmTokens: [],
+  challenges: [],
   audit: [],
   attempts: [],
   failNext: null,
@@ -293,6 +322,7 @@ function user(id: string, email: string, name: string, options: Partial<User> = 
     id,
     email,
     password: "1234",
+    googleSubject: null,
     name,
     confirmed,
     // El estado de cuenta y la confirmación del correo dicen lo mismo mientras
@@ -307,9 +337,12 @@ function user(id: string, email: string, name: string, options: Partial<User> = 
   };
 }
 
-function org(id: string, name: string, cuit: string, type: CuitKind, options: Partial<Org> = {}): Org {
-  return { id, type, name, cuit, status: "active", suspendedReason: null, version: 1, createdAt: now(), ...options };
+function org(id: string, name: string, cuit: string | null, type: OrgType, options: Partial<Org> = {}): Org {
+  return { id, type, name, cuit, dni: null, status: "active", suspendedReason: null, version: 1, createdAt: now(), ...options };
 }
+
+/** La identidad de Google simulada: el "sub" de verdad es opaco, acá alcanza con derivarlo del email. */
+export const googleSubjectFor = (email: string) => `google:${email.trim().toLowerCase()}`;
 
 export function seed(): void {
   db.users.length = 0;
@@ -320,6 +353,7 @@ export function seed(): void {
   db.sessions.length = 0;
   db.mails.length = 0;
   db.confirmTokens.length = 0;
+  db.challenges.length = 0;
   db.audit.length = 0;
   db.attempts.length = 0;
   db.failNext = null;
@@ -338,6 +372,9 @@ export function seed(): void {
     user("u-carla", "carla@plataforma.com", "Carla Ruiz", { mfa: fullMfa(1) }),
     user("u-diego", "diego@plataforma.com", "Diego Sosa", { mfa: fullMfa(240) }),
     user("u-elena", "elena@plataforma.com", "Elena Vidal"),
+    // Entra sólo con Google: sirve para ver qué pasa cuando alguien crea cuenta
+    // con el email de una cuenta que no tiene contraseña.
+    user("u-ana", "ana@gmail.com", "Ana", { password: null, googleSubject: googleSubjectFor("ana@gmail.com") }),
     // Material del ciclo de vida de cuentas: cada una entra en una transición distinta.
     user("u-lucia", "lucia@acme.com", "Lucía Ferrer", { lastSeenAt: minutesAgo(90) }),
     user("u-tomas", "tomas@sur.com", "Tomás Vega", {
@@ -382,6 +419,8 @@ export function seed(): void {
       version: 3,
     }),
     org("org-cuyo", "Cuyo Textil SRL", "30701122336", "empresa"),
+    // El DNI 30111222 ya está registrado: alimenta el conflicto al crear una cuenta personal.
+    org("org-ana", "Ana Martínez", null, "persona", { dni: "30111222" }),
   );
 
   // --- membresías ----------------------------------------------------------
@@ -397,6 +436,7 @@ export function seed(): void {
     { userId: "u-lucia", orgId: "org-acme", role: "member" },
     { userId: "u-tomas", orgId: "org-sur", role: "member" },
     { userId: "u-vera", orgId: "org-cuyo", role: "member" },
+    { userId: "u-ana", orgId: "org-ana", role: "owner" },
   );
   // org-valle y org-pampa quedan sin membresías: alimentan el caso
   // "organización sin miembros visibles" del directorio de Platform.
@@ -574,6 +614,13 @@ export function seed(): void {
 export const findUserByEmail = (email: string) => db.users.find((u) => u.email === email.trim().toLowerCase());
 export const findUserById = (id: string) => db.users.find((u) => u.id === id);
 export const findOrgByCuit = (cuit: string) => db.orgs.find((o) => o.cuit === cuit);
+export const findOrgByDni = (dni: string) => db.orgs.find((o) => o.dni === dni);
+export const findUserByGoogleSubject = (subject: string) => db.users.find((u) => u.googleSubject === subject);
+export const findChallenge = (id: string) => db.challenges.find((c) => c.id === id);
+export const personalContextOf = (userId: string) =>
+  membershipsOf(userId)
+    .map((m) => orgById(m.orgId))
+    .find((o) => o?.type === "persona");
 export const orgById = (id: string | null) => (id ? db.orgs.find((o) => o.id === id) : undefined);
 export const membershipsOf = (userId: string) => db.memberships.filter((m) => m.userId === userId);
 export const membersOf = (orgId: string) => db.memberships.filter((m) => m.orgId === orgId);
