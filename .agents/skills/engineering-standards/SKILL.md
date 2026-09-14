@@ -4,7 +4,7 @@ description: "Trigger: feature implementation, bug fixes, refactoring, architect
 license: Apache-2.0
 metadata:
   author: repository-maintainers
-  version: "1.1"
+  version: "1.2"
 ---
 
 ## Activation Contract
@@ -24,6 +24,7 @@ Apply this priority order:
 
 - Respect approved SPECs, accepted ADRs, and verified conventions. This local skill overrides incompatible generic global advice.
 - Keep Gentle AI as routing and review authority; this skill neither forces SDD nor enables receipt-driven development.
+- Treat RepositorioBase as a reusable base product. Before adding feature-local infrastructure, apply the [base-product capability gate](references/engineering-rules.md#base-product-capability-gate), then reuse or extend the established owner when the concern is cross-project.
 - Product-facing system text delivered through the SPA, email, or bot ships with a key in every supported language; new API error codes, enum values, permissions, and statuses ship with their catalog entries. Documentation, logs, and developer diagnostics stay invariant under the linked contract. Follow [localization-standards](../localization-standards/SKILL.md).
 - Read [engineering rules](references/engineering-rules.md) before substantive work. Preserve layer duties, `Result<T>` / `ApplicationError`, and explicit errors and effects.
 - Diagnose with Clean Code, Clean Architecture, DDD, CQRS, and SOLID. Apply KISS, YAGNI, and Rule of Three against speculative abstractions.
@@ -40,10 +41,11 @@ Apply this priority order:
 
 ## Execution Steps
 
-1. Read relevant contracts, architecture, and nearby code; identify affected layers, invariants, consumers, and test facilities.
-2. Follow the reference's solution-selection order. Justify new boundaries, DDD models, CQRS separation, or patterns by the problem solved.
-3. Implement or inspect the requested scope. Keep related rules together and dependencies aligned with real boundaries.
-4. Run applicable checks; include proportional simplification in the existing review alongside security, transaction scope, concurrency, maintainability, and accessible UI states where relevant.
+1. Apply the reference's base-product capability gate and classify each concern as domain-specific or cross-project.
+2. Read relevant contracts, architecture, and nearby code; identify affected layers, invariants, consumers, and test facilities.
+3. Follow the reference's solution-selection order. Justify new boundaries, DDD models, CQRS separation, or patterns by the problem solved.
+4. Implement or inspect the requested scope. Keep related rules together and dependencies aligned with real boundaries.
+5. Run applicable checks; include proportional simplification in the existing review alongside security, transaction scope, concurrency, maintainability, and accessible UI states where relevant.
 
 ## Output Contract
 
@@ -51,4 +53,4 @@ Report the outcome, material rationale or findings, verification evidence, and r
 
 ## References
 
-- [Engineering rules](references/engineering-rules.md) — layer duties, diagnostics, safety, testing, and skill combinations.
+- [Engineering rules](references/engineering-rules.md) — base-product gate, layer duties, diagnostics, safety, testing, and skill combinations.

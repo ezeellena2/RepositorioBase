@@ -13,6 +13,23 @@ Apply these rules only to the affected behavior and layers. Preserve approved SP
 
 Use DDD to express the established domain language, boundaries, and invariants. Do not invent aggregates or wrap every primitive. Preserve the repository's CQRS separation: commands change state and queries read without business side effects. Add separate models, stores, buses, or event sourcing only for a demonstrated need consistent with the existing architecture.
 
+## Base-product capability gate
+
+RepositorioBase is a reusable technical base, so implementation starts by deciding where each concern belongs. Cross-project mechanics should gain leverage and locality from one established module and interface; business rules that are meaningful only inside one domain should remain there.
+
+Before implementing a feature, check each applicable item against current repository evidence:
+
+- [ ] Classify the behavior as a domain-specific rule or a cross-project technical capability. Do not move domain meaning into `Common` merely because another feature may exist later.
+- [ ] Search approved SPECs and ADRs, local standards, current shared modules, nearby implementations, and contract-test facilities before designing a feature-local mechanism.
+- [ ] For a pageable collection screen, use the current canonical pagination request, response, control, and per-page read-state contract. Do not add pagination to a form, detail screen, or collection that does not need it.
+- [ ] Route every human-readable and accessibility string through the established localization mechanism, including every supported language and explicit locale or recipient culture where required. Keep invariant protocol data untranslated.
+- [ ] Keep HTTP successes as endpoint-specific DTOs or bodyless statuses. Do not introduce a universal `{ success, data, error }` envelope or expose internal `Result` types.
+- [ ] Follow the error-handling standard for every failure path: use the shared mapping and transport, declare and test endpoint errors, and complete the required catalogue and localized-message coverage.
+- [ ] Reuse the existing frontend transport, components, and loading, empty, refused, errored, stale-data, and mutation-state patterns. Follow the frontend standard; do not create a feature-local alternative, wrapper layer, or parallel design system.
+- [ ] If the required shared capability is missing, place it at the narrowest existing seam that owns the shared semantics and prove it through that interface. If the implementation remains local, record why its semantics are feature-specific and why sharing would be speculative or incorrect.
+
+A feature is not complete when it introduces a second way to solve an established cross-project concern without explicit evidence that the existing contract cannot serve it. This gate does not itself authorize a new abstraction or override KISS, YAGNI, Rule of Three, approved contracts, or the specialist standards.
+
 ## Choose a sufficient solution
 
 Before writing code:

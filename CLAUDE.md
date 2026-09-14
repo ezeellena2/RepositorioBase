@@ -3,6 +3,20 @@
 Project instructions for this repository. `AGENTS.md` holds the full agent protocol; this file is the short
 version Claude Code loads on every session.
 
+## Base product premise: reusable, not feature-local
+
+RepositorioBase is a technical base for delivering repeatable services to multiple companies, not a collection of
+isolated example features. Before creating feature-local infrastructure, apply the base-product capability gate in
+[engineering-standards](.agents/skills/engineering-standards/SKILL.md): inspect approved contracts, standards and
+shared modules, then reuse or extend the established owner when the concern is cross-project. Domain-specific rules
+stay in their owning domain; new shared abstractions still require demonstrated shared semantics.
+
+Pageable collection screens use the current canonical pagination contract; forms and detail screens do not gain
+pagination by default. Human-readable text follows localization, failures follow the shared error contract, and the
+frontend reuses the established transport, components and operational states. HTTP successes remain endpoint-specific
+DTOs or bodyless statuses—never a universal success envelope. Gentle AI, Engram, SDD, approved SPECs and ADRs, and the
+local engineering, frontend, localization and error-handling standards remain authoritative.
+
 ## Frontend: standard Material UI, composed well
 
 Anything that renders under `src/Web/ClientApp/src` — a screen, the shell, navigation, a form, a table, a
