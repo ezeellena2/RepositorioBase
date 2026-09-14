@@ -1,4 +1,4 @@
-import type { OrgRole, OrgStatus, OrgType, Permission } from "./api";
+import type { AccountStatus, OrgRole, OrgStatus, OrgType, Permission, PlatformPermission, SuspensionReason } from "./api";
 
 export const TYPE_LABEL: Record<OrgType, string> = {
   persona: "Personal",
@@ -21,6 +21,37 @@ export const PERMISSION_LABEL: Record<Permission, string> = {
   "members.invite": "Invitar integrantes",
   "members.manage": "Gestionar integrantes",
   "org.manage": "Administrar la organización",
+};
+
+export const PLATFORM_PERMISSION_LABEL: Record<PlatformPermission, string> = {
+  "platform.identities.read": "Ver identidades",
+  "platform.identities.manage": "Detener y reactivar cuentas",
+  "platform.retention.read": "Ver la política de retención",
+  "platform.retention.manage": "Poner y levantar retenciones",
+};
+
+export const ACCOUNT_STATUS_LABEL: Record<AccountStatus, string> = {
+  pending_confirmation: "Sin confirmar",
+  active: "Activa",
+  self_deactivated: "Baja propia",
+  administratively_suspended: "Detenida por Platform",
+  closed: "Cerrada",
+};
+
+/** Qué dice cada estado sobre lo que la cuenta puede hacer. */
+export const ACCOUNT_STATUS_HELP: Record<AccountStatus, string> = {
+  pending_confirmation: "Se registró y todavía no confirmó el correo.",
+  active: "Único estado que puede ingresar.",
+  self_deactivated: "La persona dio de baja su propia cuenta. Vuelve por sus medios.",
+  administratively_suspended: "La detuvo una administración de Platform. Sus sesiones se terminaron.",
+  closed: "Borrado ejecutado. Es terminal: no hay vuelta.",
+};
+
+export const SUSPENSION_REASON_LABEL: Record<SuspensionReason, string> = {
+  PolicyViolation: "Incumplimiento de las condiciones",
+  SecurityIncident: "Incidente de seguridad",
+  BillingHold: "Retención por facturación",
+  OperatorRequest: "Pedido de la administración",
 };
 
 export const INVITATION_STATUS_LABEL: Record<string, string> = {

@@ -22,6 +22,7 @@ import { PlatformIdentitiesPage } from "./pages/platform/PlatformIdentitiesPage"
 import { PlatformInvitationPage } from "./pages/platform/PlatformInvitationPage";
 import { PlatformMfaPage } from "./pages/platform/PlatformMfaPage";
 import { PlatformOrgsPage } from "./pages/platform/PlatformOrgsPage";
+import { PlatformRetentionPage } from "./pages/platform/PlatformRetentionPage";
 import { PlatformShell } from "./pages/platform/PlatformShell";
 
 // Página de verificación del sistema visual. Se borra cuando existan las pantallas reales.
@@ -136,6 +137,7 @@ const router = createBrowserRouter([
           { index: true, element: <PlatformHomePage /> },
           { path: "organizaciones", element: <PlatformOrgsPage /> },
           { path: "identidades", element: <PlatformIdentitiesPage /> },
+          { path: "retencion", element: <PlatformRetentionPage /> },
           { path: "administradores", element: <PlatformAdminsPage /> },
           { path: "auditoria", element: <PlatformAuditPage /> },
         ],

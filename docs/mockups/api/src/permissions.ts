@@ -38,3 +38,42 @@ export function assignableRoles(role: OrgRole): OrgRole[] {
   if (role === "admin") return ["member"];
   return [];
 }
+
+// --- Platform --------------------------------------------------------------
+// El acceso a Platform también se reparte por permisos, y leer no implica poder
+// cambiar. Un rol que sólo lee es una combinación real: la pantalla tiene que
+// mostrarla sin ofrecer botones cuya única respuesta posible es un rechazo.
+
+export type PlatformRole = "owner" | "admin";
+
+export type PlatformPermission =
+  | "platform.identities.read"
+  | "platform.identities.manage"
+  | "platform.retention.read"
+  | "platform.retention.manage";
+
+const PLATFORM_BY_ROLE: Record<PlatformRole, PlatformPermission[]> = {
+  owner: [
+    "platform.identities.read",
+    "platform.identities.manage",
+    "platform.retention.read",
+    "platform.retention.manage",
+  ],
+  // Administradora: mira los dos directorios nuevos y no cambia ninguno.
+  admin: ["platform.identities.read", "platform.retention.read"],
+};
+
+export const PLATFORM_PERMISSION_LABEL: Record<PlatformPermission, string> = {
+  "platform.identities.read": "Ver identidades",
+  "platform.identities.manage": "Detener y reactivar cuentas",
+  "platform.retention.read": "Ver la política de retención",
+  "platform.retention.manage": "Poner y levantar retenciones",
+};
+
+export function platformPermissionsOf(role: PlatformRole): PlatformPermission[] {
+  return [...PLATFORM_BY_ROLE[role]];
+}
+
+export function canPlatform(role: PlatformRole, permission: PlatformPermission): boolean {
+  return PLATFORM_BY_ROLE[role].includes(permission);
+}

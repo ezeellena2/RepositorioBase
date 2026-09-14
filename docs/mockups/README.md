@@ -19,7 +19,7 @@ hacia la API. Los datos viven en memoria y se pierden al reiniciar el proceso.
 El botón **DEMO**, abajo a la derecha de cualquier pantalla, abre un panel que no forma parte del
 producto. Tiene tres solapas:
 
-- **Escenarios**: 24 puntos de partida agrupados por recorrido. Cargar uno reinicia los datos en
+- **Escenarios**: 32 puntos de partida agrupados por recorrido. Cargar uno reinicia los datos en
   memoria, deja la sesión en el estado que corresponde y navega a la pantalla inicial.
 - **Correos**: bandeja simulada con los mensajes de registro, confirmación e invitación. Cada uno
   tiene su enlace utilizable dentro de la maqueta.
@@ -41,6 +41,13 @@ Platform se abre desde acá a propósito: no se enlaza desde el menú del client
 - **D — Platform**: contexto operativo separado, invitación bootstrap con recuperación neutral,
   secuencia de MFA simulada, directorios con paginación por cursor, y operaciones administrativas
   con confirmación y step-up.
+- **D — Ciclo de vida de cuentas**: estados de cuenta, detención con razón de un conjunto cerrado,
+  levantamiento de la suspensión hacia el estado anterior (con reconocimiento cuando la baja fue
+  propia), precondición de estado con conflicto 409, protección del último titular, e ingreso
+  bloqueado de una cuenta detenida.
+- **D — Retención**: política del despliegue, despliegue sin política, retenciones legales con
+  recibo de una sola vez, levantamiento idempotente y confirmación, y separación entre leer y
+  gestionar.
 
 ## Identidades de ejemplo
 
@@ -57,7 +64,34 @@ Contraseña `1234` en todas.
 | `carla@plataforma.com` | Titular de Platform con MFA simulada completa |
 | `diego@plataforma.com` | Administradora de Platform sin step-up reciente |
 | `elena@plataforma.com` | Invitación bootstrap de Platform vencida |
+| `lucia@acme.com` | Cuenta activa cualquiera: sirve para detenerla y ver el efecto |
+| `tomas@sur.com` | Cuenta detenida por Platform: reactivarla la devuelve a activa |
+| `vera@cuyo.com` | Se dio de baja sola y después la detuvieron: reactivarla pide reconocerlo |
+| `hugo@valle.com` | Baja propia, con una retención legal en pie |
+| `cerrada@ejemplo.com` | Cuenta cerrada: estado terminal, sin transiciones ni retenciones |
 
 En la simulación de MFA el código válido es `123456`.
+
+## Permisos de Platform
+
+Leer y cambiar son permisos separados, y la pantalla no ofrece lo que el servidor rechazaría:
+
+| Rol | Permisos |
+| --- | --- |
+| Titular (`carla@plataforma.com`) | Ver identidades, detener y reactivar cuentas, ver la política de retención, poner y levantar retenciones |
+| Administradora (`diego@plataforma.com`) | Ver identidades y ver la política de retención |
+
+Detener una cuenta, reactivarla, poner una retención y levantarla piden además un step-up de MFA
+vigente. La revalidación nunca completa la operación que interrumpió: hay que volver a pedirla.
+
+## Lo que Platform no puede hacer con una cuenta
+
+- No hay borrado a pedido: el borrado lo ejecuta el mantenimiento según la política, sin ruta ni
+  permiso detrás. Lo que se puede es leer las reglas y detener un borrado con una retención legal.
+- La razón de una detención pertenece a un conjunto cerrado, queda solamente en auditoría y no se
+  devuelve en ninguna respuesta.
+- Una cuenta cerrada es terminal: no hay transición de vuelta.
+- Reactivar no devuelve las sesiones que la detención terminó.
+- Nada lista las retenciones: el identificador se muestra una sola vez, al ponerla.
 
 El sistema visual está en `web/src/styles/` y los componentes base en `web/src/components/`.

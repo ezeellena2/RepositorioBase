@@ -33,3 +33,30 @@ Content-Type: application/json
 
 ### Salir
 POST http://localhost:3001/api/auth/logout
+
+### Directorio de identidades (Platform)
+GET http://localhost:3001/api/platform/identities
+
+### Detener una cuenta (precondición: el estado leído en el directorio)
+POST http://localhost:3001/api/platform/identities/u-lucia/suspend
+Content-Type: application/json
+
+{ "reason": "PolicyViolation", "expectedStatus": "active" }
+
+### Levantar la suspensión (sobre una baja propia hay que reconocerlo)
+POST http://localhost:3001/api/platform/identities/u-vera/reactivate
+Content-Type: application/json
+
+{ "expectedStatus": "administratively_suspended", "acknowledgeSelfDeactivation": true }
+
+### Política de retención
+GET http://localhost:3001/api/platform/retention/policy
+
+### Poner una retención legal
+POST http://localhost:3001/api/platform/retention/holds
+Content-Type: application/json
+
+{ "subjectIdentityId": "u-lucia", "reasonCode": "LITIGATION", "reference": "CASO-2026-021" }
+
+### Levantarla (idempotente: responde igual exista o no)
+DELETE http://localhost:3001/api/platform/retention/holds/PEGAR_HOLD_ID

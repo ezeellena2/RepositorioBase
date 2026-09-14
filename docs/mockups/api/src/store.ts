@@ -13,12 +13,40 @@ export interface Mfa {
   verifiedAt: string | null;
 }
 
+/**
+ * Los estados que puede tener una cuenta. Es un conjunto cerrado: "active" es el
+ * único que puede ingresar, "closed" es terminal y no tiene vuelta, y cada uno de
+ * los otros dice quién lo produjo y cómo se sale.
+ */
+export type AccountStatus =
+  | "pending_confirmation"
+  | "active"
+  | "self_deactivated"
+  | "administratively_suspended"
+  | "closed";
+
+/** Razones de suspensión operativa. Conjunto cerrado: queda en auditoría, nunca en la cuenta. */
+export type SuspensionReason = "PolicyViolation" | "SecurityIncident" | "BillingHold" | "OperatorRequest";
+
+export const SUSPENSION_REASONS: SuspensionReason[] = [
+  "PolicyViolation",
+  "SecurityIncident",
+  "BillingHold",
+  "OperatorRequest",
+];
+
 export interface User {
   id: string;
   email: string;
   password: string;
   name: string;
   confirmed: boolean;
+  accountStatus: AccountStatus;
+  /** Dónde estaba la cuenta cuando la suspensión la interrumpió. Null si nunca se suspendió. */
+  statusBeforeSuspension: AccountStatus | null;
+  /** Borrado ya ejecutado: una retención sobre una lápida sería retroactiva. */
+  purgedAt: string | null;
+  lastSeenAt: string | null;
   mfa: Mfa;
   createdAt: string;
 }
@@ -104,6 +132,43 @@ export interface AuditEntry {
   result: "ok" | "denegado";
 }
 
+/** Una regla de la política de retención, tal como se lee. */
+export interface RetentionCategoryRule {
+  category: string;
+  retentionPeriod: string;
+  trigger: string;
+  action: string;
+  evidenceRequired: boolean;
+}
+
+/**
+ * La política de retención configurada en el despliegue. Puede no existir: un
+ * despliegue sin política es uno que no va a borrar nada, y eso se dice.
+ */
+export interface RetentionPolicyDoc {
+  policyId: string;
+  version: string;
+  owner: string;
+  approvedOn: string;
+  source: string;
+  categories: RetentionCategoryRule[];
+}
+
+/**
+ * Una retención legal. Detiene el borrado de una identidad y no hace nada más:
+ * no cambia el estado de la cuenta, ni sus sesiones, ni sus permisos.
+ */
+export interface RetentionHold {
+  id: string;
+  subjectUserId: string;
+  reasonCode: string;
+  reference: string;
+  placedAt: string;
+  placedByEmail: string;
+  releasedAt: string | null;
+  version: number;
+}
+
 export interface LoginAttempts {
   email: string;
   failures: number;
@@ -125,6 +190,10 @@ export interface Db {
   audit: AuditEntry[];
   attempts: LoginAttempts[];
   failNext: FailMode | null;
+  /** Null = despliegue sin política configurada. */
+  retentionPolicy: RetentionPolicyDoc | null;
+  retentionHolds: RetentionHold[];
+  personalDataMode: string;
 }
 
 export const db: Db = {
@@ -139,6 +208,9 @@ export const db: Db = {
   audit: [],
   attempts: [],
   failNext: null,
+  retentionPolicy: null,
+  retentionHolds: [],
+  personalDataMode: "Restricted",
 };
 
 export const WEB_ORIGIN = "http://localhost:5173";
@@ -159,6 +231,48 @@ export const SIMULATED_RECOVERY_CODES = [
   "MK9C-16UF",
 ];
 
+/**
+ * La política que trae el mockup. Es la misma forma que lee la pantalla real:
+ * quién la aprobó, de dónde sale, y qué se hace con cada categoría de datos.
+ */
+export const DEFAULT_RETENTION_POLICY = (): RetentionPolicyDoc => ({
+  policyId: "retencion-identidad-2026",
+  version: "3",
+  owner: "Comité de Privacidad",
+  approvedOn: "2026-02-10",
+  source: "docs/decisions/retencion.md",
+  categories: [
+    {
+      category: "AuditEvents",
+      retentionPeriod: "P5Y",
+      trigger: "OccurredAt",
+      action: "Anonymize",
+      evidenceRequired: true,
+    },
+    {
+      category: "SessionRecords",
+      retentionPeriod: "P90D",
+      trigger: "EndedAt",
+      action: "Erase",
+      evidenceRequired: false,
+    },
+    {
+      category: "IdentityDocuments",
+      retentionPeriod: "P7Y",
+      trigger: "AccountClosed",
+      action: "Erase",
+      evidenceRequired: true,
+    },
+    {
+      category: "InvitationRecords",
+      retentionPeriod: "P1Y",
+      trigger: "ExpiredAt",
+      action: "Erase",
+      evidenceRequired: false,
+    },
+  ],
+});
+
 export const now = () => new Date().toISOString();
 export const newId = () => randomUUID();
 export const newToken = () => randomBytes(24).toString("base64url");
@@ -174,7 +288,23 @@ const fullMfa = (verifiedMinutesAgo: number): Mfa => ({
 });
 
 function user(id: string, email: string, name: string, options: Partial<User> = {}): User {
-  return { id, email, password: "1234", name, confirmed: true, mfa: noMfa(), createdAt: now(), ...options };
+  const confirmed = options.confirmed ?? true;
+  return {
+    id,
+    email,
+    password: "1234",
+    name,
+    confirmed,
+    // El estado de cuenta y la confirmación del correo dicen lo mismo mientras
+    // nadie los separe: una cuenta sin confirmar está pendiente, no activa.
+    accountStatus: confirmed ? "active" : "pending_confirmation",
+    statusBeforeSuspension: null,
+    purgedAt: null,
+    lastSeenAt: null,
+    mfa: noMfa(),
+    createdAt: now(),
+    ...options,
+  };
 }
 
 function org(id: string, name: string, cuit: string, type: CuitKind, options: Partial<Org> = {}): Org {
@@ -193,6 +323,9 @@ export function seed(): void {
   db.audit.length = 0;
   db.attempts.length = 0;
   db.failNext = null;
+  db.retentionHolds.length = 0;
+  db.retentionPolicy = DEFAULT_RETENTION_POLICY();
+  db.personalDataMode = "Restricted";
 
   // --- identidades ---------------------------------------------------------
   db.users.push(
@@ -205,6 +338,29 @@ export function seed(): void {
     user("u-carla", "carla@plataforma.com", "Carla Ruiz", { mfa: fullMfa(1) }),
     user("u-diego", "diego@plataforma.com", "Diego Sosa", { mfa: fullMfa(240) }),
     user("u-elena", "elena@plataforma.com", "Elena Vidal"),
+    // Material del ciclo de vida de cuentas: cada una entra en una transición distinta.
+    user("u-lucia", "lucia@acme.com", "Lucía Ferrer", { lastSeenAt: minutesAgo(90) }),
+    user("u-tomas", "tomas@sur.com", "Tomás Vega", {
+      accountStatus: "administratively_suspended",
+      statusBeforeSuspension: "active",
+      lastSeenAt: minutesAgo(60 * 24 * 6),
+    }),
+    // Se dio de baja sola y después la suspendieron: levantar la suspensión la
+    // devuelve a donde ella la dejó, no a activa.
+    user("u-vera", "vera@cuyo.com", "Vera Costa", {
+      accountStatus: "administratively_suspended",
+      statusBeforeSuspension: "self_deactivated",
+      lastSeenAt: minutesAgo(60 * 24 * 20),
+    }),
+    user("u-hugo", "hugo@valle.com", "Hugo Peña", {
+      accountStatus: "self_deactivated",
+      lastSeenAt: minutesAgo(60 * 24 * 45),
+    }),
+    // Lápida: borrado ya ejecutado. No admite transiciones ni retenciones.
+    user("u-cerrada", "cerrada@ejemplo.com", "Cuenta cerrada", {
+      accountStatus: "closed",
+      purgedAt: minutesAgo(60 * 24 * 120),
+    }),
   );
 
   // --- organizaciones ------------------------------------------------------
@@ -238,6 +394,9 @@ export function seed(): void {
     { userId: "u-bruno", orgId: "org-norte", role: "owner" },
     { userId: "u-bruno", orgId: "org-litoral", role: "owner" },
     { userId: "u-bruno", orgId: "org-cuyo", role: "admin" },
+    { userId: "u-lucia", orgId: "org-acme", role: "member" },
+    { userId: "u-tomas", orgId: "org-sur", role: "member" },
+    { userId: "u-vera", orgId: "org-cuyo", role: "member" },
   );
   // org-valle y org-pampa quedan sin membresías: alimentan el caso
   // "organización sin miembros visibles" del directorio de Platform.
@@ -391,6 +550,20 @@ export function seed(): void {
     kind: "invitacion-platform",
   });
 
+  // --- retención ------------------------------------------------------------
+  // Una retención en pie: alcanza para que el contador de la política no sea cero
+  // y para que un segundo pedido con la misma razón choque.
+  db.retentionHolds.push({
+    id: "hold-litigio",
+    subjectUserId: "u-hugo",
+    reasonCode: "LITIGATION",
+    reference: "CASO-2026-014",
+    placedAt: minutesAgo(60 * 24 * 12),
+    placedByEmail: "carla@plataforma.com",
+    releasedAt: null,
+    version: 1,
+  });
+
   audit("carla@plataforma.com", "platform.admin.invite", "elena@plataforma.com", "Invitación bootstrap emitida", "ok");
   audit("carla@plataforma.com", "org.suspend", "Norte Servicios SRL", "Falta de documentación impositiva.", "ok");
   audit("diego@plataforma.com", "platform.login", "diego@plataforma.com", "Ingreso con MFA simulada", "ok");
@@ -409,6 +582,11 @@ export const membershipIn = (userId: string, orgId: string) =>
 export const findSession = (id: string) => db.sessions.find((s) => s.id === id && !s.revoked);
 export const platformOf = (userId: string) => db.platform.find((p) => p.userId === userId);
 export const findInvitationByToken = (token: string) => db.invitations.find((i) => i.token === token);
+export const activeHolds = () => db.retentionHolds.filter((h) => h.releasedAt === null);
+export const findHold = (id: string) => db.retentionHolds.find((h) => h.id === id);
+/** Una identidad no puede tener dos retenciones en pie por la misma razón. */
+export const standingHold = (subjectUserId: string, reasonCode: string) =>
+  db.retentionHolds.find((h) => h.subjectUserId === subjectUserId && h.reasonCode === reasonCode && h.releasedAt === null);
 
 export function pushMail(mail: Omit<Mail, "sentAt" | "id">): void {
   db.mails.unshift({ ...mail, id: newId(), sentAt: now() });
@@ -438,7 +616,19 @@ export function stepUpFresh(session: Session): boolean {
 export function createSession(userId: string, activeOrgId: string | null, stepUpAt: string | null = null): Session {
   const session: Session = { id: newToken(), userId, activeOrgId, createdAt: now(), revoked: false, stepUpAt };
   db.sessions.push(session);
+  const owner = findUserById(userId);
+  if (owner) owner.lastSeenAt = session.createdAt;
   return session;
+}
+
+/**
+ * Detener una cuenta termina todas sus sesiones. Reactivarla no las devuelve: si
+ * volvieran, una suspensión sería algo que se puede esperar sentado.
+ */
+export function revokeSessionsOf(userId: string): number {
+  const affected = db.sessions.filter((s) => s.userId === userId && !s.revoked);
+  for (const session of affected) session.revoked = true;
+  return affected.length;
 }
 
 /** Al ingresar: si hay una sola membresía se entra directo a ese contexto. */

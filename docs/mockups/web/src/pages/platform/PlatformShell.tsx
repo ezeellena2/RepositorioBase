@@ -1,13 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
 import { NavLink, Navigate, Outlet, useNavigate, useOutletContext } from "react-router-dom";
 import { Badge, Button, StateBlock } from "../../components";
-import { api, ApiError, type PlatformMe } from "../../lib/api";
+import { api, ApiError, type PlatformMe, type PlatformPermission } from "../../lib/api";
 import { initials } from "../../lib/format";
 import { useSession } from "../../lib/session";
 
 export interface PlatformOutlet {
   platform: PlatformMe;
   reloadPlatform: () => void;
+  /**
+   * Para quien opera, no como control: la API vuelve a autorizar cada llamada.
+   * Sirve para no ofrecer un botón cuya única respuesta posible es un rechazo.
+   */
+  can: (permission: PlatformPermission) => boolean;
 }
 
 export function usePlatform(): PlatformOutlet {
@@ -47,7 +52,10 @@ export function PlatformShell() {
     if (!loading && me) void load();
   }, [loading, me, load]);
 
-  if (loading || status === "loading") {
+  // Sólo la primera lectura ocupa la pantalla. Una revalidación vuelve a leer el
+  // acceso sin desmontar lo que está debajo: si lo desmontara, cada step-up se
+  // llevaría puesto el aviso que explica qué pasó con la operación interrumpida.
+  if (loading || (status === "loading" && !platform)) {
     return (
       <div className="plat">
         <main className="plat__main">
@@ -110,6 +118,9 @@ export function PlatformShell() {
           <NavLink to="/platform/identidades" className={({ isActive }) => `platnav${isActive ? " is-active" : ""}`}>
             Identidades
           </NavLink>
+          <NavLink to="/platform/retencion" className={({ isActive }) => `platnav${isActive ? " is-active" : ""}`}>
+            Retención
+          </NavLink>
           <NavLink to="/platform/administradores" className={({ isActive }) => `platnav${isActive ? " is-active" : ""}`}>
             Administradores
           </NavLink>
@@ -132,7 +143,13 @@ export function PlatformShell() {
       </header>
 
       <main className="plat__main">
-        <Outlet context={{ platform, reloadPlatform: load }} />
+        <Outlet
+          context={{
+            platform,
+            reloadPlatform: load,
+            can: (permission: PlatformPermission) => platform.permissions.includes(permission),
+          }}
+        />
       </main>
     </div>
   );

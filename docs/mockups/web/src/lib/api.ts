@@ -24,6 +24,12 @@ export interface ActiveOrg extends OrgSummary {
   version: number;
 }
 
+export type PlatformPermission =
+  | "platform.identities.read"
+  | "platform.identities.manage"
+  | "platform.retention.read"
+  | "platform.retention.manage";
+
 export interface PlatformState {
   role: "owner" | "admin";
   activated: boolean;
@@ -94,13 +100,68 @@ export interface PlatformOrgRow {
   version: number;
 }
 
+/** Estados de una cuenta. Conjunto cerrado: sólo "active" puede ingresar. */
+export type AccountStatus =
+  | "pending_confirmation"
+  | "active"
+  | "self_deactivated"
+  | "administratively_suspended"
+  | "closed";
+
+/** Razones aceptadas para detener una cuenta. Quedan en auditoría, no en la cuenta. */
+export type SuspensionReason = "PolicyViolation" | "SecurityIncident" | "BillingHold" | "OperatorRequest";
+
+export const SUSPENSION_REASONS: SuspensionReason[] = [
+  "PolicyViolation",
+  "SecurityIncident",
+  "BillingHold",
+  "OperatorRequest",
+];
+
 export interface PlatformIdentityRow {
   id: string;
   name: string;
   email: string;
+  accountStatus: AccountStatus;
   confirmed: boolean;
+  mfaEnrolled: boolean;
   orgsCount: number;
+  lastSeenAt: string | null;
   createdAt: string;
+}
+
+export interface RetentionCategory {
+  category: string;
+  retentionPeriod: string;
+  trigger: string;
+  action: string;
+  evidenceRequired: boolean;
+}
+
+/**
+ * La política tal como se lee. Un despliegue sin política contesta con todos los
+ * campos en null y sin categorías: eso es "acá no se va a borrar nada", que no es
+ * lo mismo que una tabla vacía.
+ */
+export interface RetentionPolicy {
+  policyId: string | null;
+  version: string | null;
+  owner: string | null;
+  approvedOn: string | null;
+  source: string | null;
+  personalDataMode: string;
+  activeHoldCount: number;
+  categories: RetentionCategory[];
+}
+
+export interface RetentionHold {
+  holdId: string;
+  subjectIdentityId: string;
+  reasonCode: string;
+  reference: string;
+  placedAt: string;
+  placedByEmail: string;
+  version: number;
 }
 
 export interface PlatformAdminRow {
@@ -125,6 +186,7 @@ export interface AuditRow {
 export interface PlatformMe {
   role: "owner" | "admin";
   activated: boolean;
+  permissions: PlatformPermission[];
   mfa: { enrolled: boolean; recoveryCodesSaved: boolean; verifiedAt: string | null };
   stepUpFresh: boolean;
 }
@@ -248,6 +310,19 @@ export const api = {
     request<PlatformOrgRow>("POST", `/api/platform/orgs/${orgId}/suspend`, input),
   reactivateOrg: (orgId: string, input: { version: number }) =>
     request<PlatformOrgRow>("POST", `/api/platform/orgs/${orgId}/reactivate`, input),
+  // El estado esperado viaja con el pedido: es el que se leyó en el directorio, y
+  // el cambio sólo se aplica si la cuenta sigue ahí.
+  suspendIdentity: (userId: string, input: { reason: SuspensionReason; expectedStatus: AccountStatus }) =>
+    request<void>("POST", `/api/platform/identities/${userId}/suspend`, input),
+  reactivateIdentity: (
+    userId: string,
+    input: { expectedStatus: AccountStatus; acknowledgeSelfDeactivation: boolean },
+  ) => request<void>("POST", `/api/platform/identities/${userId}/reactivate`, input),
+  retentionPolicy: () => request<RetentionPolicy>("GET", "/api/platform/retention/policy"),
+  placeRetentionHold: (input: { subjectIdentityId: string; reasonCode: string; reference: string }) =>
+    request<RetentionHold>("POST", "/api/platform/retention/holds", input),
+  releaseRetentionHold: (holdId: string) =>
+    request<void>("DELETE", `/api/platform/retention/holds/${holdId}`),
   invitePlatformAdmin: (email: string) => request<unknown>("POST", "/api/platform/admins", { email }),
   revokePlatformAdmin: (userId: string) => request<void>("DELETE", `/api/platform/admins/${userId}`),
   bootstrapRecover: () => request<{ message: string }>("POST", "/api/platform/bootstrap/recover"),

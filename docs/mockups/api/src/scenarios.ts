@@ -252,6 +252,83 @@ const DEFS: ScenarioDef[] = [
     },
   },
   {
+    id: "d-ciclo-cuentas",
+    journey: "D",
+    name: "Ciclo de vida de cuentas",
+    description: "Carla Ruiz sobre el directorio de identidades, con step-up vigente.",
+    start: "/platform/identidades",
+    hint: "Cada estado ofrece sólo la transición que el servidor aceptaría: cerrada no ofrece ninguna.",
+    setup: () => ({ userId: "u-carla", activeOrgId: null, stepUpMinutesAgo: 1 }),
+  },
+  {
+    id: "d-baja-propia",
+    journey: "D",
+    name: "Reactivar sobre una baja propia",
+    description: "Vera Costa se dio de baja sola y después la suspendieron.",
+    start: "/platform/identidades",
+    hint: "Levantar la suspensión la devuelve a la baja que eligió ella: hay que reconocerlo antes de confirmar.",
+    setup: () => ({ userId: "u-carla", activeOrgId: null, stepUpMinutesAgo: 1 }),
+  },
+  {
+    id: "d-cuenta-detenida",
+    journey: "D",
+    name: "Ingreso de una cuenta detenida",
+    description: "Tomás Vega tiene la cuenta suspendida por Platform.",
+    start: "/login",
+    hint: "Ingresá como tomas@sur.com con 1234: la respuesta no dice en qué estado quedó la cuenta.",
+  },
+  {
+    id: "d-identidad-conflicto",
+    journey: "D",
+    name: "Conflicto sobre una cuenta (409)",
+    description: "Otra persona movió la cuenta mientras esta pantalla la mostraba.",
+    start: "/platform/identidades",
+    hint: "La precondición del cambio ya no se cumple: el directorio se recarga y hay que volver a mirar.",
+    setup() {
+      db.failNext = "conflict";
+      return { userId: "u-carla", activeOrgId: null, stepUpMinutesAgo: 1 };
+    },
+  },
+  {
+    id: "d-cambio-sin-stepup",
+    journey: "D",
+    name: "Cambio de cuenta sin step-up",
+    description: "Carla Ruiz tiene los permisos y la última verificación vencida.",
+    start: "/platform/identidades",
+    hint: "Leer el directorio se puede; detener una cuenta pide revalidar, y la revalidación no completa el cambio.",
+    setup: () => ({ userId: "u-carla", activeOrgId: null, stepUpMinutesAgo: 240 }),
+  },
+  {
+    id: "d-retencion",
+    journey: "D",
+    name: "Retención: política y retenciones legales",
+    description: "Carla Ruiz lee la política y puede poner o levantar una retención.",
+    start: "/platform/retencion",
+    hint: "No hay control de borrado y no lo va a haber: se lee la política y se detiene un borrado.",
+    setup: () => ({ userId: "u-carla", activeOrgId: null, stepUpMinutesAgo: 1 }),
+  },
+  {
+    id: "d-retencion-solo-lectura",
+    journey: "D",
+    name: "Retención sin permiso de gestión",
+    description: "Diego Sosa lee la política y no puede tocar ninguna retención.",
+    start: "/platform/retencion",
+    hint: "Leer y gestionar son permisos separados: la pantalla no ofrece lo que el servidor rechazaría.",
+    setup: () => ({ userId: "u-diego", activeOrgId: null, stepUpMinutesAgo: 1 }),
+  },
+  {
+    id: "d-retencion-sin-politica",
+    journey: "D",
+    name: "Despliegue sin política de retención",
+    description: "No hay política configurada, así que no se va a borrar nada.",
+    start: "/platform/retencion",
+    hint: "Una tabla vacía diría «no hay categorías»; la pantalla dice lo que es cierto.",
+    setup() {
+      db.retentionPolicy = null;
+      return { userId: "u-carla", activeOrgId: null, stepUpMinutesAgo: 1 };
+    },
+  },
+  {
     id: "d-ultimo-owner",
     journey: "D",
     name: "Protección del último titular",

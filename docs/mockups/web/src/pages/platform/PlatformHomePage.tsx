@@ -30,6 +30,10 @@ export function PlatformHomePage() {
             </Badge>
           </li>
           <li className="minilist__item">
+            <span>Permisos</span>
+            <Badge tone="neutral">{platform.permissions.length}</Badge>
+          </li>
+          <li className="minilist__item">
             <span>Step-up reciente</span>
             <Badge tone={platform.stepUpFresh ? "ok" : "warn"}>{platform.stepUpFresh ? "Vigente" : "Vencido"}</Badge>
           </li>
@@ -48,6 +52,12 @@ export function PlatformHomePage() {
           <li className="minilist__item">
             <span>Identidades</span>
             <Link className="btn btn--text" to="/platform/identidades">
+              Abrir
+            </Link>
+          </li>
+          <li className="minilist__item">
+            <span>Retención</span>
+            <Link className="btn btn--text" to="/platform/retencion">
               Abrir
             </Link>
           </li>
@@ -71,6 +81,7 @@ export function PlatformHomePage() {
         <ul className="limits">
           <li>No hay suplantación de personas usuarias: para operar como alguien hay que ser esa identidad.</li>
           <li>No hay borrado destructivo: las organizaciones se suspenden y se reactivan, no se eliminan.</li>
+          <li>No se puede pedir un borrado: se lee la política de retención y se lo detiene con una retención legal.</li>
           <li>No se puede elegir arbitrariamente un tenant ni operar dentro de una organización por bypass.</li>
           <li>No se exponen CUIT, secretos, tokens, credenciales ni datos privados de negocio.</li>
           <li>Las acciones de Platform no aparecen en el menú del cliente, ni las del cliente acá.</li>
