@@ -267,6 +267,18 @@ public sealed class RegistrationTests : TestBase
         submission.CompletedAt.ShouldNotBeNull();
         submission.Outcome.ShouldBe(RegistrationSubmissionOutcome.RegistrationConflict);
         (await TestApp.CountAsync<Tenant>()).ShouldBe(1);
+
+        // The recorded conflict is all the refusal keeps: the organization holding the CUIT stays exactly as seeded.
+        var holder = (await TestApp.ListAsync<Tenant>()).Single();
+        holder.Id.ShouldBe(tenant.Id);
+        holder.OwnerMembershipId.ShouldBeNull();
+        (await TestApp.ListAsync<OrganizationProfile>()).Single().TenantId.ShouldBe(tenant.Id);
+        (await TestApp.CountAsync<TenantMembership>()).ShouldBe(0);
+        (await TestApp.CountAsync<Role>()).ShouldBe(0);
+        (await TestApp.CountAsync<MembershipRole>()).ShouldBe(0);
+        (await TestApp.CountAsync<AuditEvent>()).ShouldBe(0);
+        (await TestApp.CountAsync<OutboxMessage>()).ShouldBe(0);
+        (await TestApp.CountAsync<OutboxSecret>()).ShouldBe(0);
     }
 
     [Test]

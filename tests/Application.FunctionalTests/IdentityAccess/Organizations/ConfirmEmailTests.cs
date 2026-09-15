@@ -164,6 +164,27 @@ public sealed class ConfirmEmailTests : TestBase
         await AssertNothingWasCreatedAsync();
     }
 
+    /// <summary>
+    /// An envelope a signed-in registration issued before immediate activation is still honored: spending it while it
+    /// is live activates the rows it waited on and names their owner, as it always did (IA-REQ-005).
+    /// </summary>
+    [Test]
+    public async Task A_pre_change_signed_in_registration_with_a_live_envelope_still_confirms_and_names_the_owner()
+    {
+        await RegisterAsSignedInCallerAsync();
+
+        var result = await TestApp.SendAsync(new ConfirmEmailCommand(TestApp.GetRegistrationRawToken()));
+
+        result.IsSuccess.ShouldBeTrue();
+        var tenant = (await TestApp.ListAsync<Tenant>()).Single();
+        var membership = (await TestApp.ListAsync<TenantMembership>()).Single();
+        tenant.Status.ShouldBe(TenantStatus.Active);
+        membership.Status.ShouldBe(MembershipStatus.Active);
+        membership.IdentityId.ShouldBe((await TestApp.ListAsync<ApplicationUser>()).Single().Id);
+        tenant.OwnerMembershipId.ShouldBe(membership.Id, "the responsible membership owns the organization it waited on");
+        (await TestApp.ListAsync<OutboxSecret>()).Single().Status.ShouldBe(OutboxSecretStatus.Consumed);
+    }
+
     [Test]
     public async Task Expired_pre_upgrade_organization_confirmation_keeps_the_organization_conflict_contract()
     {
@@ -232,17 +253,15 @@ public sealed class ConfirmEmailTests : TestBase
     }
 
     /// <summary>
-    /// The authenticated branch, the only one that still mails a confirmation for a tenant and a membership that
-    /// already exist and wait. A case about that lifecycle has to be born from the handler that owns it, because
-    /// rows written by hand would let the assertion keep passing after the handler stopped producing them.
+    /// Legacy rows: the tenant and responsible membership a signed-in registration made before immediate activation,
+    /// still waiting on the confirmation it mailed. They are seeded as that branch left them, so the cases about them
+    /// keep their premise once registration activates immediately (IA-REQ-005).
     /// </summary>
     private static async Task RegisterAsSignedInCallerAsync()
     {
         var email = $"confirm-{Guid.NewGuid():N}@example.test";
         var identityId = await TestApp.RunAsUserAsync(email, "Testing1234!", []);
-        TestApp.SetValidatedOptionalSession(identityId, email);
-        var result = await TestApp.SendAsync(new RegisterOrganizationCommand(email, "Testing1234!", "Confirmation Org", "30-12345678-1"));
-        result.IsSuccess.ShouldBeTrue();
+        await TestApp.SeedPreChangeSignedInRegistrationAsync(identityId, "Confirmation Org", "30-12345678-1");
     }
 
     /// <summary>

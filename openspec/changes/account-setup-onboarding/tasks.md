@@ -106,12 +106,12 @@ Commit only when V1–V5 pass. A failed or unrun check is reported, not committe
 
 These are approval tests (strict-tdd.md, "Approval Testing"): they pass before and after the change.
 
-- [ ] 2.1 SAFETY NET: run the focused command and record the passing count.
-- [ ] 2.2 APPROVAL `tests/Application.FunctionalTests/Infrastructure/TestApp.cs`: SeedPreChangeSignedInRegistrationAsync beside SetConfirmationLifecycleAsync seeds a PendingConfirmation tenant, profile, responsible membership with the Owner role, the pending_confirmation audit, and the confirmation envelope with a live secret for GetRegistrationRawToken(), through the domain factories and the application's hasher and secret writer.
-- [ ] 2.3 APPROVAL `tests/Application.FunctionalTests/IdentityAccess/Organizations/ConfirmEmailTests.cs`: RegisterAsSignedInCallerAsync (:234-246) uses the seeder and its doc names legacy rows; the tests at :167-200 keep their assertions and stay green.
-- [ ] 2.4 APPROVAL same file → `A_pre_change_signed_in_registration_with_a_live_envelope_still_confirms_and_names_the_owner` (success; Active tenant and membership; owner named).
-- [ ] 2.5 APPROVAL `tests/Application.FunctionalTests/IdentityAccess/Organizations/RegistrationTests.cs` test at :249-270: the conflicting submission leaves only the seeded tenant and profile, with no membership, role, role assignment, ownership, audit record, outbox message or secret.
-- [ ] 2.6 VERIFY V1, V2, V3, V4, V5; commit `test(identity): seed pre-change signed-in registrations directly`; push.
+- [x] 2.1 SAFETY NET: run the focused command and record the passing count.
+- [x] 2.2 APPROVAL `tests/Application.FunctionalTests/Infrastructure/TestApp.cs`: SeedPreChangeSignedInRegistrationAsync beside SetConfirmationLifecycleAsync seeds a PendingConfirmation tenant, profile, responsible membership with the Owner role, the pending_confirmation audit, and the confirmation envelope with a live secret for GetRegistrationRawToken(), through the domain factories and the application's hasher and secret writer.
+- [x] 2.3 APPROVAL `tests/Application.FunctionalTests/IdentityAccess/Organizations/ConfirmEmailTests.cs`: RegisterAsSignedInCallerAsync (:234-246) uses the seeder and its doc names legacy rows; the tests at :167-200 keep their assertions and stay green.
+- [x] 2.4 APPROVAL same file → `A_pre_change_signed_in_registration_with_a_live_envelope_still_confirms_and_names_the_owner` (success; Active tenant and membership; owner named).
+- [x] 2.5 APPROVAL `tests/Application.FunctionalTests/IdentityAccess/Organizations/RegistrationTests.cs` test at :249-270: the conflicting submission leaves only the seeded tenant and profile, with no membership, role, role assignment, ownership, audit record, outbox message or secret.
+- [x] 2.6 VERIFY V1, V2, V3, V4, V5; commit `test(identity): seed pre-change signed-in registrations directly`; push. Verified; commit pending orchestrator gate.
 
 ## Phase 3: Slice 2a-i — Immediate activation, `204`, `Registered` replay
 

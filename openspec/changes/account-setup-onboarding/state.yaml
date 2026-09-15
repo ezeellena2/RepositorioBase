@@ -36,22 +36,31 @@ gates:
     PASS on 2026-09-15. Writer verification V1 (Vitest 634/634, ESLint 0, build 0), V2, V4 (31/31 journeys) and V5;
     147 changed lines outside the change folder; review assess medium; parent spot check 24/24; fresh-context contract
     validation PASS; tasks and apply-progress hybrid bytes equal.
+  apply_slice_2a_0: >-
+    PASS on 2026-09-15. Writer verification focused 35/35, V1 (Vitest 634/634, ESLint 0, build 0), V2, V3
+    (Application.FunctionalTests 755/755), V4 (31/31 journeys) and V5; 86 changed lines, test files only; review assess
+    medium; parent spot check 35/35; fresh-context contract validation PASS; hybrid bytes equal.
 decisions:
   delivery_cut: >-
     The user answered "Corte: 16 cortes" on 2026-09-15. Apply the 16 slices in tasks.md order, one verified commit per
     slice; use the planned fallback cut when a slice measures above 400 changed lines, and stop to ask for a size
     exception if a part still exceeds 400. The planning package is committed first in its own docs(openspec) commit,
     and only that documentation commit carries an approved size exception.
+  slice_2a_i_cut: >-
+    Slice 2a-i uses its planned fallback cut from the start (2a-i-a = tasks 3.1-3.2, then 2a-i-b = tasks 3.3-3.18),
+    because its upper estimate is 510 lines and the two parts touch the same files, so they cannot be separated after
+    the fact.
 apply_followups:
   - Journeys (V4) and the Aspire-bearing .NET projects need Docker Desktop running.
   - Slice 3a's fallback cut keeps 3a-i and 3a-ii tests in one file (SetupRequiredTests.cs); if the cut is used, keep each commit's staged tests coherent without interactive staging.
-  - From slice 2a-0 on, apply-progress uses the full strict-tdd.md TDD Cycle Evidence columns.
+  - Apply-progress uses the full strict-tdd.md TDD Cycle Evidence columns and names the V3 filter.
 archive_followups:
   - The identity-access baseline Purpose and Current boundaries paragraphs still say account setup is absent; archive updates them.
 deliveries:
   - 'Planning package: commit 2fbf313a "docs(openspec): plan account-setup-onboarding", pushed to origin/main on 2026-09-15.'
-  - 'Slice 1: commit "feat(identity): ask for the CUIT or DNI first" on 2026-09-15.'
+  - 'Slice 1: commit 5fac8928 "feat(identity): ask for the CUIT or DNI first", pushed to origin/main on 2026-09-15.'
+  - 'Slice 2a-0: commit "test(identity): seed pre-change signed-in registrations directly" on 2026-09-15.'
 tasks_progress:
-  completed: [1]
-  pending: [2a-0, 2a-i, 2a-ii, 2b, 3a, 3b, 4, 5a-i, 5a-ii, 5b, 6a-i, 6a-ii, 6b, 7a, 7b]
+  completed: [1, 2a-0]
+  pending: [2a-i, 2a-ii, 2b, 3a, 3b, 4, 5a-i, 5a-ii, 5b, 6a-i, 6a-ii, 6b, 7a, 7b]
 last_updated: 2026-09-15

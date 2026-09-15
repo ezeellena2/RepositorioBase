@@ -1,8 +1,14 @@
+using System.Text.Json;
 using CleanArchitecture.Domain.Constants;
 using CleanArchitecture.Infrastructure.Data;
 using CleanArchitecture.Infrastructure.Identity;
 using CleanArchitecture.Domain.IdentityAccess.Tenants;
+using CleanArchitecture.Application.IdentityAccess.Organizations.RegisterOrganization;
 using CleanArchitecture.Application.IdentityAccess.Sessions;
+using CleanArchitecture.Domain.IdentityAccess.Auditing;
+using CleanArchitecture.Domain.IdentityAccess.Authorization;
+using CleanArchitecture.Domain.IdentityAccess.Memberships;
+using CleanArchitecture.Domain.IdentityAccess.Organizations;
 using CleanArchitecture.Domain.IdentityAccess.Outbox;
 using MediatR;
 using Microsoft.AspNetCore.Identity;
@@ -522,6 +528,43 @@ public static class TestApp
         var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
         return await context.Set<TEntity>().AsNoTracking().ToListAsync();
+    }
+
+    /// <summary>
+    /// The rows a signed-in organization registration left before immediate activation (IA-REQ-005): a
+    /// <c>PendingConfirmation</c> tenant with its profile, its responsible membership holding the Owner role, the
+    /// <c>pending_confirmation</c> audit record, and an <c>identity.confirmation.requested</c> envelope whose live
+    /// secret opens with <see cref="GetRegistrationRawToken"/>. They are built from the factories, token hasher and
+    /// secret writer that branch used, so the tests about them do not depend on the branch itself.
+    /// </summary>
+    public static async Task SeedPreChangeSignedInRegistrationAsync(Guid identityId, string legalName, string cuit)
+    {
+        using var scope = FunctionalTestSetup.ScopeFactory.CreateScope();
+        var services = scope.ServiceProvider;
+        var context = services.GetRequiredService<ApplicationDbContext>();
+        var now = services.GetRequiredService<TimeProvider>().GetUtcNow();
+        var normalizedCuit = NormalizedCuit.From(cuit);
+        var tenant = Tenant.CreateOrganization(TenantSlug.From($"org-{normalizedCuit.Value}"));
+        var membership = TenantMembership.CreateResponsible(tenant, identityId);
+        var owner = Role.CreateSystem(tenant, "Owner");
+        var envelope = OutboxMessage.Create(
+            "identity.confirmation.requested",
+            JsonSerializer.Serialize(new { IdentityId = identityId, TenantId = tenant.Id.Value, MembershipId = membership.Id.Value }),
+            now);
+        var rawToken = GetRegistrationRawToken();
+        var secret = OutboxSecret.Create(
+            envelope.Id,
+            services.GetRequiredService<ITokenHasher>().Hash(rawToken),
+            services.GetRequiredService<IOutboxSecretWriter>().Encrypt(rawToken),
+            now.AddHours(24));
+        var audit = AuditEvent.Create(tenant.Id, identityId, "organization.registration.requested", $"registration-{Guid.NewGuid():N}", new Dictionary<string, string>
+        {
+            ["code"] = "organization.registration.requested",
+            ["outcome"] = "pending_confirmation"
+        });
+
+        context.AddRange(tenant, OrganizationProfile.Create(tenant, legalName, normalizedCuit), membership, owner, MembershipRole.Create(tenant, membership, owner), envelope, secret, audit);
+        await context.SaveChangesAsync();
     }
 
     public static async Task SetConfirmationLifecycleAsync(TenantStatus tenantStatus, string membershipStatus)
