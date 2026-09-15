@@ -31,7 +31,7 @@ Deviations: none from design §H and §I. Tests also assert Tab order (spec "fir
 
 ## Slice 2a-0 — Pre-change fixtures, no behavior change
 
-Tasks 2.1–2.6 [x]; commit pending orchestrator gate. Safety net (2.1): focused command 34/34 before any edit. Approval tests, so no RED: 2.4 and 2.5 passed with HEAD's handler-built fixture (35/35), then 2.2–2.3 swapped in seeded rows and all stayed green (35/35).
+Tasks 2.1–2.6 [x]; committed as a3762b69. Safety net (2.1): focused command 34/34 before any edit. Approval tests, so no RED: 2.4 and 2.5 passed with HEAD's handler-built fixture (35/35), then 2.2–2.3 swapped in seeded rows and all stayed green (35/35).
 
 | Task | Test File | Layer | Safety Net | RED / APPROVAL | GREEN | TRIANGULATE | REFACTOR |
 |---|---|---|---|---|---|---|---|
@@ -46,10 +46,33 @@ Tasks 2.1–2.6 [x]; commit pending orchestrator gate. Safety net (2.1): focused
 | Runtime harness | N/A: fixtures only; V4 31/31 guards regressions |
 | Rollback boundary | Revert the three test files; alone before 2a-i, afterwards only with 2a-i; no product, API or data effect |
 
-Verification: V1 vitest 46 files, 634/634; eslint exit 0; vite build exit 0. V2 exit 0, no unused keys. V3 Application.FunctionalTests exit 0, 755/755. V4 exit 0, 31/31. V5: under `tests/` only the three declared files, plus `tasks.md` and the orchestrator's `state.yaml`; nothing untracked.
+Verification: V1 vitest 46 files, 634/634; eslint exit 0; vite build exit 0. V2 exit 0, no unused keys. V3 Application.FunctionalTests (IndependentDevelopmentReview excluded) exit 0, 755/755. V4 exit 0, 31/31. V5: under `tests/` only the three declared files, plus `tasks.md` and the orchestrator's `state.yaml`; nothing untracked.
 
 Changed files (Modified), under `tests/Application.FunctionalTests/`: `Infrastructure/TestApp.cs`, `IdentityAccess/Organizations/ConfirmEmailTests.cs`, `IdentityAccess/Organizations/RegistrationTests.cs`. Bookkeeping: `tasks.md`, `apply-progress.md`.
 
 Changed lines: 86 (80 additions, 6 deletions; change folder excluded; no new files).
 
 Deviations: none from design or tasks. The Owner role carries no catalog grants, as the pre-change handler wrote here (Respawn empties the catalog); no `RegistrationSubmission` is seeded, and confirmation never reads one.
+
+## Slice 2a-i-a — Typed registration outcome (tasks 3.1–3.2)
+
+Tasks 3.1–3.2 [x]; commit pending orchestrator gate. Behavior-preserving refactor, so no RED: the unedited suites are the approval tests.
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|---|---|---|---|---|---|---|---|
+| 3.1 | Focused filter, unit suite | Functional, Unit | 136/136; 246/246 | ➖ Approval | 136/136; 246/246 | ➖ One value | ✅ `Result<T>` outcome; `ToHttpResult<T>` → `202` |
+| 3.2 | Same | Same | Same | ➖ | `202` unchanged | ➖ | ➖ None needed |
+
+| Work unit evidence | Result |
+|---|---|
+| Focused test | `RegistrationTests`, `OpenApiContractTests`, `SessionTests` filter exit 0, 136/136; Application.UnitTests exit 0, 246/246; before and after |
+| Runtime harness | V4 exit 0, 31/31, signed-in registration journey included |
+| Rollback boundary | Revert the three production files; `202` stays; no API, OpenAPI or data effect |
+
+Verification: `v1.json` sha256 771336733d745cf3022d3765ff49feeff35e00590c21da010fc48c736be99c7c before and after `dotnet build src/Web/Web.csproj`, byte-identical. V1 vitest exit 1, 632/634, two `findBy*` waits in load-sensitive `ExternalProofResume.test.jsx`; alone exit 0, 11/11; eslint and vite build exit 0. V2 exit 0, no unused keys. V3 (IndependentDevelopmentReview excluded) exit 0: Application.UnitTests 246/246, Infrastructure.IntegrationTests 372/372, Application.FunctionalTests 755/755. V4 exit 0, 31/31. V5: only the three production files, `tasks.md`, `apply-progress.md` and the orchestrator's `state.yaml`; nothing under `tests/`.
+
+Changed files (Modified): `RegisterOrganization.cs`, `RegisterOrganizationHandler.cs`, `src/Web/Endpoints/Identity.cs`. Bookkeeping: `tasks.md`, `apply-progress.md`.
+
+Changed lines: 33 (20 additions, 13 deletions; change folder excluded).
+
+Deviations: none. Every outcome maps to `202` (`_ =>`) until `Registered` exists (3.15).

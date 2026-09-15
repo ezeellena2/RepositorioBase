@@ -28,7 +28,7 @@ public sealed class RegisterOrganizationCommandHandler(
     IOutboxSecretWriter secretWriter,
     IRegistrationInitialRoleProvisioner initialRoles,
     IRequestLanguage requestLanguage,
-    TimeProvider timeProvider) : IRequestHandler<RegisterOrganizationCommand, Result>
+    TimeProvider timeProvider) : IRequestHandler<RegisterOrganizationCommand, Result<OrganizationRegistrationOutcome>>
 {
     /// <summary>Carries the intent's confirmation token to the address that must prove it owns itself.</summary>
     public const string IntentConfirmationMessageType = "identity.registration.confirmation.requested";
@@ -45,10 +45,10 @@ public sealed class RegisterOrganizationCommandHandler(
     /// <summary>Named only by its identifier: the payload is stored in the clear and holds no address or CUIT.</summary>
     public sealed record IntentEnvelope(Guid IntentId);
 
-    public async Task<Result> Handle(RegisterOrganizationCommand request, CancellationToken cancellationToken)
+    public async Task<Result<OrganizationRegistrationOutcome>> Handle(RegisterOrganizationCommand request, CancellationToken cancellationToken)
     {
-        if (session.IsInvalid || session.IdentityId.HasValue != (session.Email is not null)) return Result.Failure(IdentityAccessErrors.InvalidSession());
-        if (!TryNormalize(request, out var intent)) return Result.Failure(IdentityAccessErrors.InvalidRegistration());
+        if (session.IsInvalid || session.IdentityId.HasValue != (session.Email is not null)) return Result<OrganizationRegistrationOutcome>.Failure(IdentityAccessErrors.InvalidSession());
+        if (!TryNormalize(request, out var intent)) return Result<OrganizationRegistrationOutcome>.Failure(IdentityAccessErrors.InvalidRegistration());
 
         // Password policy depends on the submitted password alone, so it is decided here — before any address is
         // looked up. Validating it only for a free address made a weak password answer invalid_registration for an
@@ -59,7 +59,7 @@ public sealed class RegisterOrganizationCommandHandler(
 
             if (!password.IsValid)
             {
-                return Result.Failure(IdentityAccessErrors.PasswordPolicyFailed(password.PasswordErrorsFor("password")));
+                return Result<OrganizationRegistrationOutcome>.Failure(IdentityAccessErrors.PasswordPolicyFailed(password.PasswordErrorsFor("password")));
             }
         }
 
@@ -171,7 +171,7 @@ public sealed class RegisterOrganizationCommandHandler(
         await context.SaveChangesAsync(cancellationToken);
     }
 
-    private async Task<Result> CompleteSubmissionAsync(RegistrationSubmission submission, RegistrationSubmissionOutcome outcome, CancellationToken cancellationToken)
+    private async Task<Result<OrganizationRegistrationOutcome>> CompleteSubmissionAsync(RegistrationSubmission submission, RegistrationSubmissionOutcome outcome, CancellationToken cancellationToken)
     {
         context.RegistrationSubmissions.Attach(submission);
         submission.Complete(outcome, timeProvider.GetUtcNow());
@@ -179,14 +179,14 @@ public sealed class RegisterOrganizationCommandHandler(
         return ResultFor(outcome);
     }
 
-    private static Result Replay(RegistrationSubmission submission) => submission.Outcome is { } outcome
+    private static Result<OrganizationRegistrationOutcome> Replay(RegistrationSubmission submission) => submission.Outcome is { } outcome
         ? ResultFor(outcome)
-        : Result.Failure(IdentityAccessErrors.RegistrationConflict());
+        : Result<OrganizationRegistrationOutcome>.Failure(IdentityAccessErrors.RegistrationConflict());
 
-    private static Result ResultFor(RegistrationSubmissionOutcome outcome) => outcome switch
+    private static Result<OrganizationRegistrationOutcome> ResultFor(RegistrationSubmissionOutcome outcome) => outcome switch
     {
-        RegistrationSubmissionOutcome.Accepted => Result.Success(),
-        RegistrationSubmissionOutcome.RegistrationConflict => Result.Failure(IdentityAccessErrors.RegistrationConflict()),
+        RegistrationSubmissionOutcome.Accepted => Result<OrganizationRegistrationOutcome>.Success(OrganizationRegistrationOutcome.Accepted),
+        RegistrationSubmissionOutcome.RegistrationConflict => Result<OrganizationRegistrationOutcome>.Failure(IdentityAccessErrors.RegistrationConflict()),
         _ => throw new ArgumentOutOfRangeException(nameof(outcome), outcome, "Unsupported registration outcome.")
     };
 

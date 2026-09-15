@@ -61,7 +61,7 @@ public sealed class Identity : IEndpointGroup
         var antiForgeryFailure = await ValidateAntiforgery(context, antiforgery, problems);
         if (antiForgeryFailure is not null) return antiForgeryFailure;
         var result = await sender.Send(command, context.RequestAborted);
-        return result.ToAcceptedHttpResult(context, problems);
+        return result.ToHttpResult(context, problems, _ => Results.StatusCode(StatusCodes.Status202Accepted));
     }
 
     private static async Task<IResult> Confirm(HttpContext context, IAntiforgery antiforgery, ISender sender, ApiProblemDetailsMapper problems, ConfirmEmailCommand command)

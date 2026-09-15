@@ -40,6 +40,12 @@ gates:
     PASS on 2026-09-15. Writer verification focused 35/35, V1 (Vitest 634/634, ESLint 0, build 0), V2, V3
     (Application.FunctionalTests 755/755), V4 (31/31 journeys) and V5; 86 changed lines, test files only; review assess
     medium; parent spot check 35/35; fresh-context contract validation PASS; hybrid bytes equal.
+  apply_slice_2a_i_a: >-
+    PASS on 2026-09-15. Behavior-preserving refactor under a safety net (functional 136/136, unit 246/246, v1.json
+    sha256 unchanged); V2, V3 (Application.UnitTests 246/246, Infrastructure.IntegrationTests 372/372,
+    Application.FunctionalTests 755/755), V4 (31/31 journeys) and V5 passed. The writer's full Vitest run failed 2 tests
+    in the known load-sensitive ExternalProofResume.test.jsx (11/11 alone); the parent re-ran the full suite with
+    634/634. 33 changed lines; review assess medium; fresh-context contract validation PASS; hybrid bytes equal.
 decisions:
   delivery_cut: >-
     The user answered "Corte: 16 cortes" on 2026-09-15. Apply the 16 slices in tasks.md order, one verified commit per
@@ -53,14 +59,15 @@ decisions:
 apply_followups:
   - Journeys (V4) and the Aspire-bearing .NET projects need Docker Desktop running.
   - Slice 3a's fallback cut keeps 3a-i and 3a-ii tests in one file (SetupRequiredTests.cs); if the cut is used, keep each commit's staged tests coherent without interactive staging.
-  - Apply-progress uses the full strict-tdd.md TDD Cycle Evidence columns and names the V3 filter.
+  - Apply-progress uses the full strict-tdd.md TDD Cycle Evidence columns, names the V3 filter, and names any known-baseline test that failed.
 archive_followups:
   - The identity-access baseline Purpose and Current boundaries paragraphs still say account setup is absent; archive updates them.
 deliveries:
   - 'Planning package: commit 2fbf313a "docs(openspec): plan account-setup-onboarding", pushed to origin/main on 2026-09-15.'
   - 'Slice 1: commit 5fac8928 "feat(identity): ask for the CUIT or DNI first", pushed to origin/main on 2026-09-15.'
-  - 'Slice 2a-0: commit "test(identity): seed pre-change signed-in registrations directly" on 2026-09-15.'
+  - 'Slice 2a-0: commit a3762b69 "test(identity): seed pre-change signed-in registrations directly", pushed to origin/main on 2026-09-15.'
+  - 'Slice 2a-i-a: commit "refactor(identity): type the organization registration outcome" on 2026-09-15.'
 tasks_progress:
-  completed: [1, 2a-0]
-  pending: [2a-i, 2a-ii, 2b, 3a, 3b, 4, 5a-i, 5a-ii, 5b, 6a-i, 6a-ii, 6b, 7a, 7b]
+  completed: [1, 2a-0, 2a-i-a]
+  pending: [2a-i-b, 2a-ii, 2b, 3a, 3b, 4, 5a-i, 5a-ii, 5b, 6a-i, 6a-ii, 6b, 7a, 7b]
 last_updated: 2026-09-15

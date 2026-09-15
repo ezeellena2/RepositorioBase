@@ -8,7 +8,14 @@ public sealed record RegisterOrganizationCommand(
     string Email,
     string Password,
     string LegalName,
-    string Cuit) : IRequest<Result>, IPublicRequest, ISensitiveRequest;
+    string Cuit) : IRequest<Result<OrganizationRegistrationOutcome>>, IPublicRequest, ISensitiveRequest;
+
+/// <summary>What a successful registration did; its answer follows this outcome, never whether a session was present.</summary>
+public enum OrganizationRegistrationOutcome
+{
+    /// <summary>The submission is recorded, and what happens next depends on the email it sent.</summary>
+    Accepted
+}
 
 public interface IRegistrationIdempotencyStore
 {

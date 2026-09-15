@@ -94,7 +94,7 @@ Commit only when V1–V5 pass. A failed or unrun check is reported, not committe
 - [x] 1.6 RED `src/Web/ClientApp/src/features/identity/people/PersonalPages.test.jsx` → "reads the Company choice CUIT first in en and es" (the Personal choice is unchanged).
 - [x] 1.7 GREEN `src/Web/ClientApp/src/i18n/locales/en/identity.json` and `src/Web/ClientApp/src/i18n/locales/es/identity.json` :21 per design §I.
 - [x] 1.8 REFACTOR: diff review; no id, name, label, type, autoComplete, required, disabled expression or helper text changed.
-- [x] 1.9 VERIFY V1, V2, V4, V5; commit `feat(identity): ask for the CUIT or DNI first`; push. Verified; commit pending orchestrator gate.
+- [x] 1.9 VERIFY V1, V2, V4, V5; commit `feat(identity): ask for the CUIT or DNI first`; push. Verified; committed as 5fac8928.
 
 ## Phase 2: Slice 2a-0 — Pre-change fixtures, no behavior change
 
@@ -111,7 +111,7 @@ These are approval tests (strict-tdd.md, "Approval Testing"): they pass before a
 - [x] 2.3 APPROVAL `tests/Application.FunctionalTests/IdentityAccess/Organizations/ConfirmEmailTests.cs`: RegisterAsSignedInCallerAsync (:234-246) uses the seeder and its doc names legacy rows; the tests at :167-200 keep their assertions and stay green.
 - [x] 2.4 APPROVAL same file → `A_pre_change_signed_in_registration_with_a_live_envelope_still_confirms_and_names_the_owner` (success; Active tenant and membership; owner named).
 - [x] 2.5 APPROVAL `tests/Application.FunctionalTests/IdentityAccess/Organizations/RegistrationTests.cs` test at :249-270: the conflicting submission leaves only the seeded tenant and profile, with no membership, role, role assignment, ownership, audit record, outbox message or secret.
-- [x] 2.6 VERIFY V1, V2, V3, V4, V5; commit `test(identity): seed pre-change signed-in registrations directly`; push. Verified; commit pending orchestrator gate.
+- [x] 2.6 VERIFY V1, V2, V3, V4, V5; commit `test(identity): seed pre-change signed-in registrations directly`; push. Verified; committed as a3762b69.
 
 ## Phase 3: Slice 2a-i — Immediate activation, `204`, `Registered` replay
 
@@ -128,8 +128,8 @@ These are approval tests (strict-tdd.md, "Approval Testing"): they pass before a
 - Rollback: only after 3, 5 and 6, as a forward commit that keeps `Registered` with a replay arm answering `409 registration_conflict` and writing nothing; after archive, also revert the identity-access deltas (design §O).
 - Declared test edits: `tests/Application.FunctionalTests/IdentityAccess/Organizations/RegistrationTests.cs`, `tests/Application.FunctionalTests/IdentityAccess/Organizations/SignedInRegistrationHttpTests.cs` (new), `tests/Application.FunctionalTests/IdentityAccess/Sessions/SessionTests.cs`, `tests/Application.FunctionalTests/IdentityAccess/Api/OpenApiContractTests.cs`, `tests/Web.AcceptanceTests/Features/IdentityAccess.feature`, `tests/Web.AcceptanceTests/StepDefinitions/IdentityAccessStepDefinitions.cs`. V3: all four (2a-i-a: all but Domain.UnitTests).
 
-- [ ] 3.1 REFACTOR (prep) `src/Application/IdentityAccess/Organizations/RegisterOrganization/RegisterOrganization.cs` returns `Result<OrganizationRegistrationOutcome>` (Accepted only); `src/Application/IdentityAccess/Organizations/RegisterOrganization/RegisterOrganizationHandler.cs` types follow; `src/Web/Endpoints/Identity.cs` maps it to 202 through ToHttpResult.
-- [ ] 3.2 Run the focused command and Application.UnitTests: the unchanged 202 behavior stays green (boundary of 2a-i-a).
+- [x] 3.1 REFACTOR (prep) `src/Application/IdentityAccess/Organizations/RegisterOrganization/RegisterOrganization.cs` returns `Result<OrganizationRegistrationOutcome>` (Accepted only); `src/Application/IdentityAccess/Organizations/RegisterOrganization/RegisterOrganizationHandler.cs` types follow; `src/Web/Endpoints/Identity.cs` maps it to 202 through ToHttpResult.
+- [x] 3.2 Run the focused command and Application.UnitTests: the unchanged 202 behavior stays green (boundary of 2a-i-a). Part 2a-i-a verified; commit pending orchestrator gate.
 - [ ] 3.3 RED `tests/Application.FunctionalTests/IdentityAccess/Organizations/RegistrationTests.cs` → `Signed_in_registration_creates_an_active_owned_graph_without_a_confirmation`. Expects an Active tenant and membership, an owner, the Owner role, audit outcome registered, submission Registered, and no outbox message or secret.
 - [ ] 3.4 RED same file: AssertSinglePendingConfirmationGraphAsync (:480-496) becomes AssertSingleActiveOwnedGraphAsync for the test at :146-168 ("A signed-in registration cannot commit").
 - [ ] 3.5 RED same file → `An_immediate_organization_matches_a_confirmed_one` (tenant type and status, membership status, ownership, initial roles).
