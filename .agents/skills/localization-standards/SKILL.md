@@ -10,7 +10,8 @@ metadata:
 ## Activation Contract
 
 Load for any change that adds or changes human-readable SPA, email, or bot text, or adds an API error code,
-enum value, permission, or status. Read the reference before editing.
+enum value, permission, or status. Read the canonical OpenSpec localization specification and the reference before
+editing.
 
 ## Hard Rules
 
@@ -51,5 +52,6 @@ any translation awaiting native review.
 
 ## References
 
+- [Canonical localization specification](../../../openspec/specs/localization/spec.md) — normative current behavior.
 - [Localization rules](references/localization-rules.md) — layouts, key conventions, examples, server culture,
   checklists, and gates.

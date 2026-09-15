@@ -4,7 +4,7 @@
 
 Seven list routes page by offset instead of cursor: they take `pageNumber`/`pageSize` and answer an endpoint-specific
 offset page DTO. This spec covers defaults and clamping, response metadata, ordering, the past-the-end page, retirement
-of the cursor types, and the identity-access document amendment (Task 8A).
+of the cursor types, and migration provenance for the retired identity-access documentation.
 
 | Routes | Collection |
 | --- | --- |
@@ -13,8 +13,8 @@ of the cursor types, and the identity-access document amendment (Task 8A).
 
 - Permissions, MFA gates and item allowlists (IA-REQ-044) are unchanged.
 - Non-goals:
-  - `docs/features/whatsapp-bot/SPEC.md:295,304` and `SCREENS.md:53` (PD-b). Follow-up: align them with this standard before that feature is implemented.
-  - Historical documents and mockups.
+  - Unimplemented WhatsApp feature surfaces; any future change must adopt this baseline rather than create a parallel paging contract.
+  - Historical change records and mockups.
 
 ## Requirements
 
@@ -173,113 +173,12 @@ Sources: plan Tasks 6 and 12, D01, D14, D24, PD-3.
 - WHEN `src` and `tests` are searched case-insensitively for `nextCursor`, `cursor`, `PlatformDirectoryQuery`, `PlatformDirectoryPage`, `OpaqueCursor`, `BoundedLimit`, `MaximumLimit` and `MinimumLimit`, excluding `node_modules`, the generated OpenAPI document, `package-lock.json` and `*.scss`
 - THEN no match refers to cursor pagination
 
-## Identity-access document amendment (Task 8A)
+## Migration provenance
 
-The identity-access SPEC and its evidence move to the offset contract in the same change.
-
-- The amendment carries a dated note: 2026-09-13, authorized by the repository owner's confirmation of PD-4 for `offset-pagination-standard`.
-- `SPEC.md:3` ("Proposed for approval") stays unchanged.
-- Line numbers refer to baseline `2716aa6`.
-
-### Requirement: Section 4 states the offset contract
-
-Sources: Task 8A, D15, D16, D17, D18, PD-4.
-
-IA-REQ-038 (`:201`) MUST gain an indented sub-paragraph that states:
-
-- A paginated directory answers an endpoint-specific offset page DTO `{ items, pageNumber, pageSize, totalCount, totalPages, hasPreviousPage, hasNextPage }`. It is a declared success DTO, not an envelope.
-- `pageNumber` (≥ 1) and `pageSize` (1–100, default 25) are clamped, never refused.
-- A non-integer or beyond-Int32 value is the route's `400 invalid_request`.
-- A page past the end is `200` with empty `items`.
-
-IA-REQ-038's sentence that React adds no pagination envelope to identity endpoints MUST remain.
-
-IA-REQ-045 (`:239`, D16) MUST replace the bounded `limit`, the opaque `cursor` and `{ items, nextCursor }` with
-`pageNumber`/`pageSize` and the offset page metadata. It MUST keep its sentence that `/api/identity/*` gets no pagination
-envelope. The new text MUST NOT use cursor wording.
-
-#### Scenario: IA-REQ-045 describes offset directories
-
-- GIVEN the amended SPEC
-- WHEN IA-REQ-045 is read
-- THEN it names `pageNumber`, `pageSize` and the seven page members, and still rules out a pagination envelope on `/api/identity/*`
-- AND it contains no `limit`, `cursor` or `nextCursor`
-
-#### Scenario: IA-REQ-038 carries the paging rules
-
-- GIVEN the amended SPEC
-- WHEN the IA-REQ-038 sub-paragraph is read
-- THEN it states: default 25, range 1–100, clamping, `400 invalid_request` for a non-integer or beyond-Int32 value, and `200` with empty `items` past the end
-- AND IA-REQ-038's sentence that identity endpoints have no pagination envelope remains
-
-### Requirement: Route rows carry the offset shape
-
-Sources: Task 8A, D09, D17, D18, PD-1, PD-4.
-
-| Location | Required content |
-| --- | --- |
-| `:306`, `:307` | `with pageNumber/pageSize`; typed `{ items: …[], pageNumber, pageSize, totalCount, totalPages, hasPreviousPage, hasNextPage }`; the permission and the `401 recent_mfa_required` clause stay |
-| `:308` | `with pageNumber/pageSize`; the untyped administrator DTO carries the offset metadata; no clause added |
-| `:309` | `with pageNumber/pageSize`; typed offset page; no clause added |
-| `:464`–`:465` | "a bounded `pageNumber` and `pageSize`"; "and the offset page metadata" |
-| `:1033` | the roles list with `pageNumber` (≥ 1) / `pageSize` (1–100) and the offset metadata; the detail route's `404` clause stays; no default clause |
-| `:1037` | the members and invitations lists likewise; no `404` clause (the list `404` is at `:1028`) and no default clause |
-| `:1065` | text kept as C5 history, followed by a dated 2026-09-13 note that section 4's offset contract supersedes it |
-
-#### Scenario: Rows and scenario name offset paging
-
-- GIVEN the amended SPEC
-- WHEN rows `:306`–`:309`, `:1033` and `:1037` and the scenario at `:464`–`:465` are read
-- THEN each names `pageNumber`/`pageSize` and the offset page metadata
-- AND none names `limit`, `cursor` or `nextCursor`
-
-#### Scenario: C5 history is kept with a dated note
-
-- GIVEN the amended SPEC
-- WHEN the C5 "Amends." record is read
-- THEN its `limit`/`cursor` sentence is unchanged
-- AND a dated 2026-09-13 note points to the offset contract in IA-REQ-038 and IA-REQ-045
-
-### Requirement: Evidence and ADR follow the amendment
-
-Sources: Task 8A, D07, D17, D18, PD-4.
-
-`TRACEABILITY.md` MUST change as follows:
-
-- `:86` cites the renamed binding-refusal test instead of the nullable-limit test. The renamed test drives non-integer and beyond-Int32 `pageNumber` and `pageSize` values on all seven routes.
-- `:92` replaces its cursor, cursor-envelope and nullable-limit wording, and corrects two stale citations: the never-committed `usePlatformRead.test.jsx`, and the removed `More accounts` control.
-- `:99` replaces "bounded/cursor DTOs" and "limits, cursors".
-- A dated 2026-09-13 evidence paragraph records the offset migration and its proving tests, without the searched wording.
-- `:18` and `:158` stay unchanged.
-
-ADR-004 decision 17 (`:36`) MUST name typed bounded offset page responses instead of bounded/cursor ones. The ADR status
-stays Proposed.
-
-The reviewed-exclusion search:
-
-```text
-rg -n -i 'cursor|nullable-limit|numeric_limit|limits, cursors|bounded limit|with `limit`|limit`? ?\(1' docs/features/identity-access
-```
-
-#### Scenario: Only reviewed exclusions remain
-
-- GIVEN the amendment is complete
-- WHEN the reviewed-exclusion search runs
-- THEN the only matches are the sessions-list negative statement (`SPEC.md:695` at baseline), `TASKS.md:936` and `:940`, and the C5 history with its dated note
-
-#### Scenario: The migrated binding test is the cited proof
-
-- GIVEN the amended `TRACEABILITY.md`
-- WHEN row `:86` is read
-- THEN it cites the renamed test and the seven paging-parameter routes
-- AND it no longer names `Every_numeric_limit_binding_refusal_is_emitted_only_as_declared`
-
-#### Scenario: ADR decision 17 names offset pages
-
-- GIVEN ADR-004
-- WHEN decision 17 is read
-- THEN it describes typed bounded offset page responses and contains no `cursor`
-- AND the ADR status is still Proposed
+The 2026-09-13 offset migration also updated the legacy identity-access documentation that existed at the time.
+Those parallel documents were intentionally retired during the OpenSpec consolidation. The requirements and
+scenarios above are now the normative pagination baseline; `src/` and `tests/` contain the implementation and
+executable evidence, and ADR-004 remains the architectural decision record for the identity-access foundation.
 
 ## Project rules (`rules.specs`)
 

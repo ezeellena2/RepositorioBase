@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Stop hook: server-delivered text must be localized in the RECIPIENT's language,
 # passed explicitly - never the ambient culture of a worker.
-# Source of the rule: docs/features/localization/PLAN.md, points 4 and 5.
+# Sources: openspec/specs/localization/spec.md and
+# .agents/skills/localization-standards/references/localization-rules.md.
 # exit 0 = stay quiet.  exit 2 = block, stderr goes back to the agent.
 set -uo pipefail
 
@@ -31,7 +32,7 @@ added=$(awk '/^\+\+\+ b\// { file = substr($2, 3); next }
 ambient=$(grep -E 'CultureInfo\.(CurrentUICulture|CurrentCulture)|DateTime\.Now' <<<"$added" | sort -u || true)
 if [[ -n "$ambient" ]]; then
   {
-    echo "Ambient culture in server-delivered text (localization PLAN.md, point 4):"
+    echo "Ambient culture in server-delivered text (canonical localization specification):"
     echo "$ambient"
     echo
     echo "A worker's ambient culture is the server's, not the recipient's. Resolve the"
@@ -55,7 +56,7 @@ stamp="$(git rev-parse --git-dir)/recipient-culture.last"
 prompt=$(cat <<'PROMPT'
 You verify one contract on a diff. Nothing else.
 
-THE RULE, from docs/features/localization/PLAN.md:
+THE RULE, from openspec/specs/localization/spec.md and the repository localization standard:
   Point 4: text delivered by the server - any document or notification - is localized
   in the backend, in the RECIPIENT's language, passed explicitly. Never the ambient
   culture of a worker.
@@ -111,7 +112,7 @@ echo "$fingerprint" > "$stamp"
 [[ "$report" == OK* ]] && exit 0
 
 {
-  echo "Recipient-culture check failed (localization PLAN.md):"
+  echo "Recipient-culture check failed (canonical localization specification):"
   echo "$report"
 } >&2
 exit 2

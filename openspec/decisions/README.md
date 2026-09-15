@@ -2,7 +2,16 @@
 
 This directory contains Architecture Decision Records (ADRs) for the Clean Architecture Solution Template.
 
-An ADR captures a significant architectural decision: the context that led to it, the decision itself, the rationale behind it, and its consequences. Use [ADR-000-template.md](ADR-000-template.md) when adding a new record.
+An ADR captures a significant cross-project architectural decision: its context, decision, rationale, and
+consequences. Significant decisions are identified and accepted during the design of an active OpenSpec change.
+Retaining or promoting them here during archive is a repository-owned, manual SDD obligation enforced by local
+instructions and tests today; Gentle AI and OpenSpec do not perform that promotion automatically. Feature-local
+decisions remain in the archived design.
+
+An accepted ADR is immutable. If the architecture changes, add a new ADR and mark the old record as superseded rather
+than rewriting history. Use [ADR-000-template.md](ADR-000-template.md) when adding a record. Current behavior belongs
+in [`openspec/specs/`](../specs/), active work in [`openspec/changes/`](../changes/), and implementation evidence in
+`src/` and `tests/`.
 
 | ADR | Title | Date | Status |
 |---|---|---|---|

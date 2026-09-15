@@ -41,6 +41,16 @@ RepositorioBase is a reusable technical base for delivering services to multiple
 
 This premise does not override Gentle AI, Engram, SDD, approved SPECs or ADRs, or any repository skill. Those remain the authority for routing, lifecycle, implementation detail, and verification.
 
+## Repository Knowledge Model
+
+- `openspec/specs/` is the current behavioral baseline, including the canonical [identity-access](openspec/specs/identity-access/spec.md), [localization](openspec/specs/localization/spec.md), and [offset-pagination](openspec/specs/api-offset-pagination/spec.md) specifications.
+- `openspec/decisions/` contains durable cross-project ADRs.
+- `openspec/changes/<change>/` is the only active large-feature package, and `openspec/changes/archive/` is immutable audit history.
+- `src/` is the implementation and `tests/` is its executable evidence. `docs/mockups/` is non-normative visual reference material.
+- Never create parallel feature truth under `docs/features/` or new implementation plans under `docs/superpowers/`.
+
+Large features follow proposal -> delta specs + design -> tasks -> apply -> verify -> archive. Archive merges approved behavior into `openspec/specs/` and preserves the complete change package under `openspec/changes/archive/`. Retaining or promoting an accepted cross-project decision into `openspec/decisions/` is a repository-owned, manual SDD design/archive obligation enforced by these instructions and tests today; Gentle AI and OpenSpec do not perform that promotion automatically. Once accepted, an ADR is immutable and can only be superseded by a new ADR. Feature-local design decisions remain with the archived change.
+
 ## Rules
 
 - Never add "Co-Authored-By" or AI attribution to commits. Use conventional commits only.

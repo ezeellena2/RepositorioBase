@@ -3,6 +3,8 @@
 Ship one semantic contract across the SPA, APIs, background delivery, tests, and CI: system text is selected by
 stable key and explicit language; user content and technical data remain untouched.
 
+The canonical normative baseline is the [OpenSpec localization specification](../../../../openspec/specs/localization/spec.md).
+
 ## Language model
 
 | Term | Meaning |
@@ -235,7 +237,7 @@ invariant English.
       from in-progress to supported.
 - [ ] Update all six current EF model language constraints and generate/apply the matching migration; registry
       promotion is not migration-free.
-- [ ] Run catalog, problem-code, backend-resource, email-delivery, registry, MUI, journey, static-unused, lint,
-      build, full .NET, and `git diff --check` gates from
-      `docs/features/localization/ADDING-A-LANGUAGE.md`.
+- [ ] Run the catalog, problem-code, backend-resource, email-delivery, registry, MUI, journey, static-unused, lint,
+      build, full .NET, and `git diff --check` gates declared by the active OpenSpec change and repository
+      verification instructions.
 - [ ] Keep `en-XA` out of this workflow, and plan persisted-data handling before any post-deployment demotion.

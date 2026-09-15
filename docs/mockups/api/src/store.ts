@@ -269,7 +269,7 @@ export const DEFAULT_RETENTION_POLICY = (): RetentionPolicyDoc => ({
   version: "3",
   owner: "Comité de Privacidad",
   approvedOn: "2026-02-10",
-  source: "docs/decisions/retencion.md",
+  source: "visual-prototype",
   categories: [
     {
       category: "AuditEvents",

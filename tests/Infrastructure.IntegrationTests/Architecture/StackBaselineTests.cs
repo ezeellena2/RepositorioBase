@@ -1,6 +1,7 @@
 using CleanArchitecture.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using System.Diagnostics;
 using System.Text.Json;
 using System.Xml.Linq;
 
@@ -218,6 +219,86 @@ public sealed class StackBaselineTests
     }
 
     [Test]
+    public void Template_packages_canonical_openspec_knowledge_without_change_history()
+    {
+        using var template = JsonDocument.Parse(File.ReadAllText(GetRepositoryPath(".template.config/template.json")));
+        var projectSlug = template.RootElement.GetProperty("symbols").GetProperty("projectSlug");
+        var exclusions = template.RootElement.GetProperty("sources")[0].GetProperty("exclude")
+            .EnumerateArray().Select(element => element.GetString()).ToList();
+
+        projectSlug.GetProperty("type").GetString().ShouldBe("generated");
+        projectSlug.GetProperty("generator").GetString().ShouldBe("casing");
+        projectSlug.GetProperty("parameters").GetProperty("source").GetString().ShouldBe("name");
+        projectSlug.GetProperty("parameters").GetProperty("toLower").GetBoolean().ShouldBeTrue();
+        projectSlug.GetProperty("replaces").GetString().ShouldBe("repositoriobase");
+        exclusions.ShouldContain("openspec/changes/**/*");
+        exclusions.ShouldContain(".vs/**/*");
+        exclusions.ShouldNotContain("openspec/specs/**/*");
+        exclusions.ShouldNotContain("openspec/decisions/**/*");
+
+        var packageDefinition = File.ReadAllText(GetRepositoryPath("CleanArchitecture.nuspec"));
+        packageDefinition.ShouldContain(@".\openspec\changes\**");
+        packageDefinition.ShouldNotContain(@".\openspec\specs\**");
+        packageDefinition.ShouldNotContain(@".\openspec\decisions\**");
+
+        File.Exists(GetRepositoryPath("openspec/specs/api-offset-pagination/spec.md")).ShouldBeTrue();
+        File.Exists(GetRepositoryPath("openspec/specs/identity-access/spec.md")).ShouldBeTrue();
+        File.Exists(GetRepositoryPath("openspec/specs/localization/spec.md")).ShouldBeTrue();
+        File.Exists(GetRepositoryPath("openspec/decisions/README.md")).ShouldBeTrue();
+    }
+
+    [Test]
+    public async Task Template_instantiation_substitutes_project_identity_and_keeps_only_canonical_knowledge()
+    {
+        var repository = GetRepositoryPath(".");
+        var sandbox = Path.Combine(Path.GetTempPath(), $"ca-template-{Guid.NewGuid():N}");
+        var hive = Path.Combine(sandbox, "hive");
+        var output = Path.Combine(sandbox, "Acme.Platform");
+        var cliHome = Path.Combine(sandbox, "dotnet-home");
+
+        Directory.CreateDirectory(sandbox);
+
+        try
+        {
+            await RunDotNetAsync(repository, cliHome,
+                "new", "install", repository, "--force", "--debug:custom-hive", hive);
+            await RunDotNetAsync(repository, cliHome,
+                "new", "ca-sln", "--name", "Acme.Platform", "--output", output,
+                "--client-framework", "None", "--database", "postgresql", "--debug:custom-hive", hive);
+
+            File.ReadAllText(Path.Combine(output, "openspec", "config.yaml"))
+                .ShouldContain("project: acme.platform");
+
+            foreach (var requiredPath in new[]
+            {
+                "AGENTS.md",
+                "CLAUDE.md",
+                ".agents/skills/engineering-standards/SKILL.md",
+                "openspec/specs/api-offset-pagination/spec.md",
+                "openspec/specs/identity-access/spec.md",
+                "openspec/specs/localization/spec.md",
+                "openspec/decisions/README.md",
+                "openspec/decisions/ADR-004-Adopt-Multitenant-Identity-Access.md",
+                "docs/mockups/PROMPT-shell.md"
+            })
+            {
+                File.Exists(Path.Combine(output, requiredPath)).ShouldBeTrue(requiredPath);
+            }
+
+            Directory.Exists(Path.Combine(output, "openspec", "changes")).ShouldBeFalse();
+            Directory.Exists(Path.Combine(output, ".vs")).ShouldBeFalse();
+            foreach (var retiredDocumentationRoot in new[] { "features", "decisions", "superpowers", "diagrams" })
+            {
+                Directory.Exists(Path.Combine(output, "docs", retiredDocumentationRoot)).ShouldBeFalse();
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(sandbox)) Directory.Delete(sandbox, recursive: true);
+        }
+    }
+
+    [Test]
     public void Template_supports_only_postgresql_and_includes_the_baseline_migration()
     {
         using var template = JsonDocument.Parse(File.ReadAllText(GetRepositoryPath(".template.config/template.json")));
@@ -292,12 +373,13 @@ public sealed class StackBaselineTests
         credentials.ShouldNotContain("CLEANARCHITECTURE_ACCEPTANCE_TEST_");
         credentials.ShouldNotContain("Environment.GetEnvironmentVariable");
 
-        var adr = File.ReadAllText(GetRepositoryPath("docs/decisions/ADR-004-Adopt-Multitenant-Identity-Access.md"));
+        var adr = File.ReadAllText(GetRepositoryPath("openspec/decisions/ADR-004-Adopt-Multitenant-Identity-Access.md"));
         adr.ShouldContain("Before Tasks 1 and 2");
 
-        var plan = File.ReadAllText(GetRepositoryPath("docs/superpowers/plans/2026-08-31-identity-access-foundation.md"));
-        plan.ShouldContain("IA-002 and IA-003 are already `Complete`");
-        plan.ShouldNotContain("move IA-002 from `Blocked` to `Ready`");
+        foreach (var retiredDocumentationRoot in new[] { "features", "decisions", "superpowers", "diagrams" })
+        {
+            Directory.Exists(GetRepositoryPath($"docs/{retiredDocumentationRoot}")).ShouldBeFalse();
+        }
     }
 
     [Test]
@@ -314,6 +396,32 @@ public sealed class StackBaselineTests
 
     private static string GetRepositoryPath(string relativePath) =>
         Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", relativePath));
+
+    private static async Task RunDotNetAsync(string workingDirectory, string cliHome, params string[] arguments)
+    {
+        var startInfo = new ProcessStartInfo("dotnet")
+        {
+            WorkingDirectory = workingDirectory,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false
+        };
+        foreach (var argument in arguments) startInfo.ArgumentList.Add(argument);
+        startInfo.Environment["DOTNET_CLI_HOME"] = cliHome;
+        startInfo.Environment["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1";
+        startInfo.Environment["DOTNET_NOLOGO"] = "1";
+        startInfo.Environment["DOTNET_SKIP_FIRST_TIME_EXPERIENCE"] = "1";
+
+        using var process = Process.Start(startInfo) ??
+            throw new InvalidOperationException("Unable to start the dotnet template command.");
+        var standardOutput = process.StandardOutput.ReadToEndAsync();
+        var standardError = process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync();
+
+        var output = await standardOutput;
+        var error = await standardError;
+        process.ExitCode.ShouldBe(0, $"dotnet {string.Join(' ', arguments)}{Environment.NewLine}{output}{Environment.NewLine}{error}");
+    }
 
     private static string SectionBetween(string source, string startMarker, string endMarker)
     {

@@ -9,7 +9,7 @@ strict_tdd: true
 context: |
   Stack: .NET 10 (SDK 10.0.400) Clean Architecture: Domain, Application (MediatR, FluentValidation, EF Core), Infrastructure (PostgreSQL/Npgsql, ASP.NET Core Identity, MailKit, outbox), Web (Minimal API endpoint groups, OpenAPI), OutboxWorker, Aspire 13.5.3 AppHost.
   SPA: src/Web/ClientApp is React 19 + Vite 8 + Material UI 9 (src/theme.jsx is the only visual policy layer) + i18next (en source, es supported); NSwag client generated from src/Web/wwwroot/openapi/v1.json.
-  Authorities: docs/features/identity-access/SPEC.md, docs/features/localization/SPEC.md and PLAN.md, ADRs under docs/decisions/; approved SPECs and accepted ADRs outrank convenience.
+  Authorities: openspec/specs/ is the current behavioral baseline, including identity-access, localization, and api-offset-pagination; openspec/decisions/ contains durable cross-project ADRs; openspec/changes/<change>/ governs an approved active transition; src/ and tests/ are implementation and executable evidence. Retired legacy documents are not authority.
   Errors: expected failures are Result/Result<T> carrying one ApplicationError (stable code and category); unexpected failures stay exceptions; one RFC 9457 Problem Details writer.
   Standards: .agents/skills/{engineering,frontend-design,localization,error-handling}-standards plus root CLAUDE.md and AGENTS.md.
   Testing: Strict TDD; Vitest + Testing Library + MSW; NUnit 4 + Shouldly (+ Moq, Respawn, Aspire.Hosting.Testing); Reqnroll + Playwright journeys.
@@ -77,7 +77,7 @@ testing:
 rules:
   proposal:
     - Include a rollback plan for risky changes.
-    - Name the approved SPEC rows, accepted ADRs and docs/features documents the change touches; approved SPECs and accepted ADRs outrank convenience.
+    - Name the current specifications under openspec/specs/, accepted ADRs under openspec/decisions/, and active-change artifacts the change touches; approved specifications and accepted ADRs outrank convenience.
     - State whether the change is visual, functional or error-handling work, because CLAUDE.md grants each a different edit scope over *.test.jsx files, page objects under tests/, AppRoutes.jsx and features/*/api/.
   specs:
     - Use Given/When/Then for scenarios.
@@ -87,7 +87,8 @@ rules:
     - Neutral public flows never distinguish account or token state; input-only field errors on them require the error-handling three-part test and a parity test.
   design:
     - Include sequence diagrams for complex flows.
-    - Document architecture decisions with rationale while preserving layer duties and the Result/ApplicationError conventions.
+    - Identify significant cross-project decisions for manual repository-owned retention or promotion in openspec/decisions/ when accepted; keep feature-local decisions in the change design. Gentle AI and OpenSpec do not promote ADRs automatically.
+    - Preserve layer duties and the Result/ApplicationError conventions.
     - HTTP never serializes Result envelopes; successes are endpoint-specific DTOs or bodyless statuses, failures are RFC 9457 Problem Details.
     - Rendered SPA work follows frontend-design-standards (standard Material UI imported directly, sx for layout only, src/theme.jsx as the only visual policy layer).
   tasks:
@@ -111,3 +112,7 @@ rules:
     known_baselines: see testing.known_baselines
   archive:
     - Warn before merging destructive deltas.
+    - Merge verified delta behavior into openspec/specs/.
+    - Manually retain or promote accepted significant cross-project decisions in openspec/decisions/ as a repository-owned archive obligation enforced by local instructions and tests; Gentle AI and OpenSpec do not perform this automatically. Accepted ADRs are immutable and are superseded only by a new ADR.
+    - Preserve the complete change package under openspec/changes/archive/ as immutable audit history.
+    - Never create parallel feature truth or implementation plans under retired legacy documentation roots.

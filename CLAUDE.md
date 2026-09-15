@@ -3,6 +3,21 @@
 Project instructions for this repository. `AGENTS.md` holds the full agent protocol; this file is the short
 version Claude Code loads on every session.
 
+## Repository authority and large-feature lifecycle
+
+`openspec/specs/` is the current behavioral baseline. `openspec/decisions/` holds durable cross-project ADRs.
+`openspec/changes/<change>/` is the only active large-feature package, and `openspec/changes/archive/` is immutable
+audit history. `src/` and `tests/` are the implementation and executable evidence. `docs/mockups/` may provide
+non-normative visual prototypes; never create parallel feature truth under `docs/features/` or new plans under
+`docs/superpowers/`.
+
+A large feature moves through proposal, delta specs and design, tasks, apply, verify, and archive. Archive merges
+approved behavior into `openspec/specs/` and preserves the full change history. Retaining or promoting an accepted
+cross-project decision into `openspec/decisions/` is a repository-owned, manual SDD design/archive obligation enforced
+by these instructions and tests today; Gentle AI and OpenSpec do not perform that promotion automatically. During an
+active transition, its approved artifacts govern that transition, but planned behavior is not the baseline until
+applied and verified.
+
 ## Base product premise: reusable, not feature-local
 
 RepositorioBase is a technical base for delivering repeatable services to multiple companies, not a collection of
@@ -64,8 +79,9 @@ not a copy change; a copy change is a change of its own, made in every supported
 
 ## Localization: every language, every change
 
-Follow [.agents/skills/localization-standards/SKILL.md](.agents/skills/localization-standards/SKILL.md) and the
-[localization delivery plan](docs/features/localization/PLAN.md). The API returns invariant codes and the client
+Follow the canonical [localization specification](openspec/specs/localization/spec.md),
+[.agents/skills/localization-standards/SKILL.md](.agents/skills/localization-standards/SKILL.md), and its
+[localization rules](.agents/skills/localization-standards/references/localization-rules.md). The API returns invariant codes and the client
 translates them; server-delivered text uses the recipient's explicitly resolved culture. English (`en`) is the
 source language, and every supported language must be complete before merge. JSX gets human-readable text from
 `t()` in `src/i18n` and formats dates and numbers through `useFormat()`. Invariant technical data stays English.
@@ -74,9 +90,10 @@ Until extraction is complete, every new or changed human-readable string uses th
 ## Backend and architecture
 
 Feature work, bug fixes, refactoring, architecture, code review and tests follow
-[.agents/skills/engineering-standards/SKILL.md](.agents/skills/engineering-standards/SKILL.md). The identity and
-access domain is specified in [docs/features/identity-access/SPEC.md](docs/features/identity-access/SPEC.md);
-approved SPECs and accepted ADRs outrank convenience.
+[.agents/skills/engineering-standards/SKILL.md](.agents/skills/engineering-standards/SKILL.md). Current specifications,
+including the canonical [identity-access baseline](openspec/specs/identity-access/spec.md), accepted ADRs under
+`openspec/decisions/`, approved active-change artifacts, and verified code and tests outrank convenience. Do not infer
+current behavior from retired legacy documents.
 ## Error handling: one contract, end to end
 
 Anything that creates, maps, shows, logs or tests a failure — a command or validator, a value-object rule, an
@@ -120,8 +137,7 @@ under `tests/` beyond those the change declares.
 ## Running the app locally
 
 `dotnet run --project src/AppHost`. Mailed links are written to the folder in
-`dotnet user-secrets --project src/AppHost list` instead of being sent. Details in
-[docs/features/identity-access/RUNNING-LOCALLY.md](docs/features/identity-access/RUNNING-LOCALLY.md).
+`dotnet user-secrets --project src/AppHost list` instead of being sent.
 
 Note: the Postgres container is `ContainerLifetime.Persistent` but has no data volume, so recreating the
 container empties the database. On a fresh database EF logs one `Error` for the

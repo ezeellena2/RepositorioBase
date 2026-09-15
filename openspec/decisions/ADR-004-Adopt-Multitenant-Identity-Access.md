@@ -13,7 +13,7 @@ into decisions 20, 21, 23 and 24 and their SPEC entries before any of those acce
 
 Before Tasks 1 and 2, the generated template paired Angular/React/API-only clients with default ASP.NET Core Identity endpoints, general roles/claims, a minimal React client, open CORS, Development database recreation, and a fixed administrator account. Tasks 1 and 2 now make PostgreSQL the only database provider, apply `BaselinePostgreSql` with `MigrateAsync`, and remove destructive initialization and default credential seeding. The remaining reference sign-in still uses the default Identity endpoints, general roles/claims, and minimal React client that this decision replaces incrementally.
 
-The target starter needs global identity, multitenant organizations, memberships, contextual authorization, invitations, revocable sessions, audit, and reliable external effects. The functional standard comes from the external `CleanArchitecture` reference repository at `docs/standards/identity-access`.
+The target starter needs global identity, multitenant organizations, memberships, contextual authorization, invitations, revocable sessions, audit, and reliable external effects. The original functional standard came from an external `CleanArchitecture` reference repository. Current behavior is evidenced by `src/` and `tests/` until the identity-access baseline is consolidated under `openspec/specs/`.
 
 ## Decision
 
@@ -44,8 +44,8 @@ decision register, written so that Tasks 18–28 can be implemented without anot
 are **proposed**. Writing them here does not accept them, and no dependent task is `Ready` until the human
 decision recorded in the acceptance gate names them.
 
-Each decision states what it changes for a person using the product, and which of the three separate gates in
-[SPEC §2.5](../features/identity-access/SPEC.md#25-continuation-scope-and-its-three-separate-gates) it belongs to.
+Each decision states what it changes for a person using the product, and which of the three separate gates in the
+pre-migration identity-access contract it belongs to.
 A decision that is declined or amended blocks only the tasks that consume it.
 
 18. **(Accepted 2026-09-06.)** Require proof of the identity a reservation will belong to before creating any exclusive durable
@@ -204,7 +204,7 @@ A decision that is declined or amended blocks only the tasks that consume it.
 
 This ADR and its associated specification must move to `Accepted` through an explicit human decision before implementing tasks that replace the current sign-in flow.
 
-Decisions 18–24 and [SPEC §14](../features/identity-access/SPEC.md#14-task-17-decision-package-proposed-not-approved)
+Decisions 18–24 and the pre-migration identity-access decision package
 carry their own gate, and it is a separate one. They are the Task 17 decision package. A decision recorded against
 them must name the date, the decisions accepted as written, the decisions amended and how, and the decisions
 declined; an entry that is declined or amended blocks only the tasks listed as its consumers. Approving them
@@ -217,8 +217,8 @@ its external record (IA-REQ-055), the per-environment key and certificate owners
 ### Decision record — 2026-09-06
 
 **Accepted: decision 18 (C1) only.** Proposed IA-REQ-048 and the amended wordings of IA-REQ-003, IA-REQ-004 and
-IA-REQ-005 in [SPEC §14.1](../features/identity-access/SPEC.md#141-c1--registration-reservation-no-exclusive-durable-claim-before-proved-control-of-the-address)
-are accepted as written and now live in [SPEC §4](../features/identity-access/SPEC.md#4-normative-requirements); §14.1
+IA-REQ-005 in the pre-migration identity-access contract §14.1
+are accepted as written; §14.1
 is kept as the decision record that produced them. Task 18 was the only task this decision made `Ready`, and it was
 implemented and verified the same day. Task 17 is **not** complete and decisions 19–24 are **not** accepted; nothing
 else in §14 or §15 is approved by this record.
@@ -258,8 +258,8 @@ entry that carries it.
 ### Decision record — 2026-09-06 (second): C3 and C7
 
 **Accepted: decisions 20 (C3) and 24 (C7), as reconciled in commit `fba1d23`, for implementation and verification
-against synthetic data only.** IA-REQ-050, IA-REQ-056, IA-REQ-057 and IA-REQ-058 become normative and now live in
-[SPEC §4](../features/identity-access/SPEC.md#4-normative-requirements); SPEC §14.3 and §14.7 are kept as the records
+against synthetic data only.** IA-REQ-050, IA-REQ-056, IA-REQ-057 and IA-REQ-058 become normative; the
+pre-migration identity-access contract §14.3 and §14.7 are the records
 that produced them. This acceptance enables **Task 19**, and once Task 19 is verified, **Task 20**. It authorizes no
 task after 20.
 
@@ -281,8 +281,8 @@ remained proposed at the time of this record; C2 and C4 were accepted later the 
 ### Decision record — 2026-09-06 (third): C2 and C4
 
 **Accepted: decisions 19 (C2) and 21 (C4), as the SPEC and this ADR now state them, for implementation and
-verification against synthetic data only.** IA-REQ-049, IA-REQ-051 and IA-REQ-052 become normative and now live in
-[SPEC §4](../features/identity-access/SPEC.md#4-normative-requirements); SPEC §14.2 and §14.4 are kept as the records
+verification against synthetic data only.** IA-REQ-049, IA-REQ-051 and IA-REQ-052 become normative; the
+pre-migration identity-access contract §14.2 and §14.4 are the records
 that produced them. This acceptance enables **Tasks 21, 22 and 23**, each to be completed and verified before the
 next begins. It authorizes no task after 23.
 
@@ -305,9 +305,8 @@ proposed, and C6 still carries amendments A3 and A4. **Task 17 remains partially
 five entries of seven are decided.
 
 **Carried out, 2026-09-06.** Tasks 21, 22 and 23 are delivered under this acceptance, each verified before the next
-began; the evidence is in [TASKS.md](../features/identity-access/TASKS.md). Three places where C4's written form
-could not be built as written are corrected in
-[SPEC §14.4](../features/identity-access/SPEC.md#144-c4--recent-identity-proof-password-recovery-and-provider-linking-with-a-two-part-callback-carve-out)
+began; the retained evidence is the implementation and tests in `src/` and `tests/`. Three places where C4's written
+form could not be built as written were corrected in the pre-migration identity-access contract §14.4
 rather than left to drift: the handoff cookie is this application's own sealed one instead of the framework's
 external-scheme cookie, because no external sign-in ever happens; the callback's outcome vocabulary is the four
 slugs the built flows can produce; and two concurrent unlinks are serialized by the per-identity advisory lock
@@ -318,8 +317,8 @@ was accepted. The live-provider caveat above still stands in full: nothing in th
 ### Decision record — 2026-09-06 (fourth): C5, with four amendments
 
 **Accepted: decision 22 (C5), as SPEC §14.5 now states it, for implementation and verification against synthetic
-data only, subject to amendments D1–D4 below.** IA-REQ-053 becomes normative and now lives in
-[SPEC §4](../features/identity-access/SPEC.md#4-normative-requirements); §14.5 is kept as the record that produced
+data only, subject to amendments D1–D4 below.** IA-REQ-053 becomes normative; the pre-migration identity-access
+contract §14.5 is the record that produced
 it. This acceptance enables **Tasks 24 and 25**, each to be completed and verified before the next. It authorizes
 no task after 25.
 
@@ -370,7 +369,7 @@ remain open.
 
 **Accepted: decision 23 (C6), as SPEC §14.6 states it with amendments A3 and A4 folded in, for implementation and
 verification against synthetic data only, subject to the withdrawal below.** IA-REQ-054 and IA-REQ-055 become
-normative and move to [SPEC §4](../features/identity-access/SPEC.md#4-normative-requirements); §14.6 is kept as the
+normative; the pre-migration identity-access contract §14.6 is the
 record that produced them. This acceptance enables **Tasks 26 and 27**, and the production gate in Task 28. It
 authorizes no task after 28.
 

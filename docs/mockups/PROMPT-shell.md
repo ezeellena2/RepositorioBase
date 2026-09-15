@@ -55,7 +55,6 @@ API en `:3001`, web en `:5173`. Hay un recorrido guiado con Playwright en `demo.
 | `docs/mockups/web/src/components/ui.jsx` | el kit actual: `AuthLayout`, `Card`, `Field`, `Button`, `Alert`, `Spinner` |
 | `docs/mockups/web/src/pages/App.jsx` | la pantalla post-login actual — **es la que vas a reemplazar** |
 | `docs/mockups/api/src/server.js` | la API de ejemplo y su seed |
-| `docs/features/whatsapp-bot/SCREENS.md` | **el inventario normativo de 14 pantallas** — de acá sale la navegación |
 
 Restricciones duras: **CSS plano**. Sin Tailwind, sin librerías de componentes, sin
 CSS-in-JS, sin librerías de iconos. Los iconos son SVG inline escritos a mano, `viewBox="0 0 20 20"`,

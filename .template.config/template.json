@@ -225,6 +225,15 @@
         "value": "https://cleanarchitecture.jasontaylor.dev"
       }
     },
+    "projectSlug": {
+      "type": "generated",
+      "generator": "casing",
+      "parameters": {
+        "source": "name",
+        "toLower": true
+      },
+      "replaces": "repositoriobase"
+    },
     "ClientFramework": {
       "type": "parameter",
       "datatype": "choice",
@@ -280,7 +289,9 @@
         ".claude/settings.local.json",
         ".git",
         ".git/**/*",
+        ".vs/**/*",
         "artifacts/**/*",
+        "openspec/changes/**/*",
         "templates/**/*",
         "**/*.filelist",
         "**/*.user",
