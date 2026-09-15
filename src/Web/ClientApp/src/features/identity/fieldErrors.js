@@ -47,8 +47,8 @@ const validateDocument = (errors, documentNumber) => {
   return errors;
 };
 
-export const organizationRegistrationFields = ['legalName', 'cuit', 'email', 'password'];
-export const personalRegistrationFields = ['fullName', 'displayName', 'documentNumber', 'email', 'password'];
+export const organizationRegistrationFields = ['cuit', 'legalName', 'email', 'password'];
+export const personalRegistrationFields = ['documentNumber', 'fullName', 'displayName', 'email', 'password'];
 
 export function validateOrganizationRegistration(form, includeCredentials = true) {
   let errors = {};

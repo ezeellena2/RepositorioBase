@@ -1,8 +1,9 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
+import { i18n } from '../../../i18n';
 import { IdentityProvider } from '../context/IdentityProvider';
 import { PersonalProfilePage, PersonalRegisterPage } from './PersonalPages';
 import { ChooseContextPage } from '../register/ChooseContextPage';
@@ -41,6 +42,19 @@ describe('personal pages', () => {
 
     expect(screen.getByRole('link', { name: /a personal account/i })).toHaveAttribute('href', '/personal/register');
     expect(screen.getByRole('link', { name: /an organization/i })).toHaveAttribute('href', '/organizations/register');
+  });
+
+  it('reads the Company choice CUIT first in en and es', async () => {
+    server.use(antiforgery(), contextIs(null));
+    renderPage(<ChooseContextPage />);
+
+    expect(screen.getByRole('link', { name: /an organization/i })).toHaveTextContent('For a company. You will be asked for its CUIT and legal name.');
+    expect(screen.getByRole('link', { name: /a personal account/i })).toHaveTextContent('For yourself. You will be asked for your name and your DNI.');
+
+    await act(() => i18n.changeLanguage('es'));
+
+    expect(screen.getByRole('link', { name: /una organización/i })).toHaveTextContent('Para una empresa. Se le solicitarán el CUIT y la razón social.');
+    expect(screen.getByRole('link', { name: /una cuenta personal/i })).toHaveTextContent('Para usted. Se le solicitarán su nombre y su DNI.');
   });
 
   it('sends the signup and then says the same neutral thing it would say for a taken address', async () => {
@@ -83,13 +97,21 @@ describe('personal pages', () => {
 
     const fullName = screen.getByLabelText('Full name');
     expect(submissions).toHaveLength(0);
-    expect(fullName).toHaveFocus();
+    expect(screen.getByLabelText('DNI')).toHaveFocus();
     expect(fullName).toHaveAttribute('aria-invalid', 'true');
     expect(fullName).toHaveAccessibleDescription('A full name is required.');
     expect(screen.getByLabelText('Display name')).toHaveAccessibleDescription('A display name is required.');
     expect(screen.getByLabelText('DNI')).toHaveAccessibleDescription('A document number is required.');
     expect(screen.getByLabelText('Email')).toHaveAccessibleDescription('Enter an email address.');
     expect(screen.getByLabelText('Password')).toHaveAccessibleDescription('A password is required.');
+    await userEvent.tab();
+    expect(fullName).toHaveFocus();
+    await userEvent.tab();
+    expect(screen.getByLabelText('Display name')).toHaveFocus();
+    await userEvent.tab();
+    expect(screen.getByLabelText('Email')).toHaveFocus();
+    await userEvent.tab();
+    expect(screen.getByLabelText('Password')).toHaveFocus();
   });
 
   it('binds exact signup errors, keeps an unclaimed summary, focuses, and clears one edited field', async () => {
@@ -119,7 +141,7 @@ describe('personal pages', () => {
     const documentNumber = screen.getByLabelText('DNI');
     const email = screen.getByLabelText('Email');
     const passwordField = screen.getByLabelText('Password');
-    await waitFor(() => expect(fullName).toHaveFocus());
+    await waitFor(() => expect(documentNumber).toHaveFocus());
     expect(fullName).toHaveAttribute('aria-invalid', 'true');
     expect(fullName).toHaveAccessibleDescription('A full name is required.');
     expect(displayName).toHaveAccessibleDescription('A display name is required.');
@@ -359,7 +381,7 @@ describe('personal pages', () => {
     await userEvent.click(screen.getByRole('button', { name: /add my personal account/i }));
 
     const fullName = screen.getByLabelText('Full name');
-    await waitFor(() => expect(fullName).toHaveFocus());
+    await waitFor(() => expect(screen.getByLabelText('DNI')).toHaveFocus());
     expect(fullName).toHaveAccessibleDescription('A full name is required.');
     expect(screen.getByLabelText('Display name')).toHaveAccessibleDescription('A display name is required.');
     expect(screen.getByLabelText('DNI')).toHaveAccessibleDescription('An Argentine DNI may contain only digits, dots, hyphens, and whitespace.');
@@ -368,6 +390,10 @@ describe('personal pages', () => {
     expect(alert).not.toHaveTextContent('Full name: A full name is required.');
     expect(alert).not.toHaveTextContent('Display name: A display name is required.');
     expect(alert).not.toHaveTextContent('DNI: An Argentine DNI may contain only digits, dots, hyphens, and whitespace.');
+    await userEvent.tab();
+    expect(fullName).toHaveFocus();
+    await userEvent.tab();
+    expect(screen.getByLabelText('Display name')).toHaveFocus();
 
     await userEvent.type(screen.getByLabelText('Display name'), 'x');
     expect(screen.getByLabelText('Display name')).not.toHaveAttribute('aria-invalid', 'true');

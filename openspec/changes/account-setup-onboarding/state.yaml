@@ -16,7 +16,7 @@ artifacts:
   specs: true
   design: true
   tasks: true
-  apply_progress: false
+  apply_progress: true
   verify_report: false
   archive_report: false
 gates:
@@ -32,6 +32,10 @@ gates:
   tasks: >-
     PASS on 2026-09-15 (hybrid bytes equal, 46253; 16 slices, 139 tasks, 69 RED; the four forecast guard lines are
     present; the sdd-tasks 530-word budget is exceeded, as allowed).
+  apply_slice_1: >-
+    PASS on 2026-09-15. Writer verification V1 (Vitest 634/634, ESLint 0, build 0), V2, V4 (31/31 journeys) and V5;
+    147 changed lines outside the change folder; review assess medium; parent spot check 24/24; fresh-context contract
+    validation PASS; tasks and apply-progress hybrid bytes equal.
 decisions:
   delivery_cut: >-
     The user answered "Corte: 16 cortes" on 2026-09-15. Apply the 16 slices in tasks.md order, one verified commit per
@@ -41,10 +45,13 @@ decisions:
 apply_followups:
   - Journeys (V4) and the Aspire-bearing .NET projects need Docker Desktop running.
   - Slice 3a's fallback cut keeps 3a-i and 3a-ii tests in one file (SetupRequiredTests.cs); if the cut is used, keep each commit's staged tests coherent without interactive staging.
-  - strict_tdd true; previous apply-progress none; runtime-bearing apply and verify use gentle-ai sdd-attempt acquire and settle.
+  - From slice 2a-0 on, apply-progress uses the full strict-tdd.md TDD Cycle Evidence columns.
 archive_followups:
   - The identity-access baseline Purpose and Current boundaries paragraphs still say account setup is absent; archive updates them.
+deliveries:
+  - 'Planning package: commit 2fbf313a "docs(openspec): plan account-setup-onboarding", pushed to origin/main on 2026-09-15.'
+  - 'Slice 1: commit "feat(identity): ask for the CUIT or DNI first" on 2026-09-15.'
 tasks_progress:
-  completed: []
-  pending: [1, 2a-0, 2a-i, 2a-ii, 2b, 3a, 3b, 4, 5a-i, 5a-ii, 5b, 6a-i, 6a-ii, 6b, 7a, 7b]
+  completed: [1]
+  pending: [2a-0, 2a-i, 2a-ii, 2b, 3a, 3b, 4, 5a-i, 5a-ii, 5b, 6a-i, 6a-ii, 6b, 7a, 7b]
 last_updated: 2026-09-15

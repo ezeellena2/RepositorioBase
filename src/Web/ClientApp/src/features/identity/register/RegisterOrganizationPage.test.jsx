@@ -42,6 +42,27 @@ describe('organization registration', () => {
     expect(screen.queryByLabelText('Password')).not.toBeInTheDocument();
   });
 
+  it('focuses the CUIT first', async () => {
+    const submissions = [];
+    server.use(antiforgery(), contextIs(null));
+    server.use(http.post('/api/identity/organizations/register', async ({ request }) => {
+      submissions.push(await request.json());
+      return new HttpResponse(null, { status: 202 });
+    }));
+
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: 'Register' }));
+
+    expect(submissions).toHaveLength(0);
+    expect(screen.getByLabelText('CUIT')).toHaveFocus();
+    await userEvent.tab();
+    expect(screen.getByLabelText('Legal name')).toHaveFocus();
+    await userEvent.tab();
+    expect(screen.getByLabelText('Email')).toHaveFocus();
+    await userEvent.tab();
+    expect(screen.getByLabelText('Password')).toHaveFocus();
+  });
+
   it('blocks client-invalid input with exact field errors and focuses the first field', async () => {
     const submissions = [];
     server.use(antiforgery(), contextIs(null));
@@ -55,7 +76,7 @@ describe('organization registration', () => {
 
     const legalName = screen.getByLabelText('Legal name');
     expect(submissions).toHaveLength(0);
-    expect(legalName).toHaveFocus();
+    expect(screen.getByLabelText('CUIT')).toHaveFocus();
     expect(legalName).toHaveAttribute('aria-invalid', 'true');
     expect(legalName).toHaveAccessibleDescription('A legal name is required.');
     expect(screen.getByLabelText('CUIT')).toHaveAccessibleDescription('A CUIT is required.');
@@ -84,7 +105,7 @@ describe('organization registration', () => {
     const cuit = screen.getByLabelText('CUIT');
     const email = screen.getByLabelText('Email');
     const passwordField = screen.getByLabelText('Password');
-    await waitFor(() => expect(legalName).toHaveFocus());
+    await waitFor(() => expect(cuit).toHaveFocus());
     expect(legalName).toHaveAttribute('aria-invalid', 'true');
     expect(legalName).toHaveAccessibleDescription('A legal name is required.');
     expect(cuit).toHaveAccessibleDescription("That CUIT's check digit does not match. Check the number.");
@@ -186,7 +207,10 @@ describe('organization registration', () => {
     server.use(antiforgery(), contextIs(signedInContext()));
     server.use(http.post('/api/identity/organizations/register', () => problem(400, 'validation_failed', {
       status: 400,
-      errors: { cuit: [{ code: 'cuit_check_digit', params: {} }] },
+      errors: {
+        legalName: [{ code: 'required', params: {} }],
+        cuit: [{ code: 'cuit_check_digit', params: {} }],
+      },
     })));
 
     renderPage();
@@ -200,8 +224,11 @@ describe('organization registration', () => {
     await waitFor(() => expect(cuit).toHaveFocus());
     expect(cuit).toHaveAttribute('aria-invalid', 'true');
     expect(cuit).toHaveAccessibleDescription("That CUIT's check digit does not match. Check the number.");
+    expect(screen.getByLabelText('Legal name')).toHaveAccessibleDescription('A legal name is required.');
     expect(screen.getByRole('alert')).not.toHaveTextContent("CUIT: That CUIT's check digit does not match. Check the number.");
     expect(screen.queryByLabelText('Email')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Password')).not.toBeInTheDocument();
+    await userEvent.tab();
+    expect(screen.getByLabelText('Legal name')).toHaveFocus();
   });
 });

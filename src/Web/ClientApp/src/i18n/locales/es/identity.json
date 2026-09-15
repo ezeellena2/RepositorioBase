@@ -18,7 +18,7 @@
       },
       "organization": {
         "title": "Una organización",
-        "detail": "Para una empresa. Se le solicitarán la razón social y el CUIT."
+        "detail": "Para una empresa. Se le solicitarán el CUIT y la razón social."
       },
       "alreadyHaveAccount": "¿Ya tiene una cuenta? <signIn>Inicie sesión</signIn>."
     },

@@ -86,15 +86,15 @@ Commit only when V1–V5 pass. A failed or unrun check is reported, not committe
 - Rollback: only after 4, 5a-i, 5a-ii, 5b, 7a and 7b; restores the old order and copy.
 - Declared test edits: `RegisterOrganizationPage.test.jsx`, `PersonalPages.test.jsx`; none under `tests/`. V3: none.
 
-- [ ] 1.1 RED `src/Web/ClientApp/src/features/identity/register/RegisterOrganizationPage.test.jsx` → "focuses the CUIT first": an empty anonymous submit tabs CUIT, Legal name, Email, Password, focuses CUIT and sends nothing.
-- [ ] 1.2 RED same file, tests at :45-64, :66-104 and :185-206 expect CUIT focus; a signed-in validation_failed naming legalName and cuit focuses CUIT.
-- [ ] 1.3 GREEN `src/Web/ClientApp/src/features/identity/fieldErrors.js` :50 and `src/Web/ClientApp/src/features/identity/register/RegisterOrganizationPage.jsx` (:32; register-cuit before register-legal-name) per design §H.
-- [ ] 1.4 RED `src/Web/ClientApp/src/features/identity/people/PersonalPages.test.jsx`, tests at :73-93, :95-140 and :342-374 expect DNI focus and the document field first.
-- [ ] 1.5 GREEN `src/Web/ClientApp/src/features/identity/fieldErrors.js` :51 and `src/Web/ClientApp/src/features/identity/people/PersonalPages.jsx` (:79-83, :352-356; personal-document and add-personal-document first).
-- [ ] 1.6 RED `src/Web/ClientApp/src/features/identity/people/PersonalPages.test.jsx` → "reads the Company choice CUIT first in en and es" (the Personal choice is unchanged).
-- [ ] 1.7 GREEN `src/Web/ClientApp/src/i18n/locales/en/identity.json` and `src/Web/ClientApp/src/i18n/locales/es/identity.json` :21 per design §I.
-- [ ] 1.8 REFACTOR: diff review; no id, name, label, type, autoComplete, required, disabled expression or helper text changed.
-- [ ] 1.9 VERIFY V1, V2, V4, V5; commit `feat(identity): ask for the CUIT or DNI first`; push.
+- [x] 1.1 RED `src/Web/ClientApp/src/features/identity/register/RegisterOrganizationPage.test.jsx` → "focuses the CUIT first": an empty anonymous submit tabs CUIT, Legal name, Email, Password, focuses CUIT and sends nothing.
+- [x] 1.2 RED same file, tests at :45-64, :66-104 and :185-206 expect CUIT focus; a signed-in validation_failed naming legalName and cuit focuses CUIT.
+- [x] 1.3 GREEN `src/Web/ClientApp/src/features/identity/fieldErrors.js` :50 and `src/Web/ClientApp/src/features/identity/register/RegisterOrganizationPage.jsx` (:32; register-cuit before register-legal-name) per design §H.
+- [x] 1.4 RED `src/Web/ClientApp/src/features/identity/people/PersonalPages.test.jsx`, tests at :73-93, :95-140 and :342-374 expect DNI focus and the document field first.
+- [x] 1.5 GREEN `src/Web/ClientApp/src/features/identity/fieldErrors.js` :51 and `src/Web/ClientApp/src/features/identity/people/PersonalPages.jsx` (:79-83, :352-356; personal-document and add-personal-document first).
+- [x] 1.6 RED `src/Web/ClientApp/src/features/identity/people/PersonalPages.test.jsx` → "reads the Company choice CUIT first in en and es" (the Personal choice is unchanged).
+- [x] 1.7 GREEN `src/Web/ClientApp/src/i18n/locales/en/identity.json` and `src/Web/ClientApp/src/i18n/locales/es/identity.json` :21 per design §I.
+- [x] 1.8 REFACTOR: diff review; no id, name, label, type, autoComplete, required, disabled expression or helper text changed.
+- [x] 1.9 VERIFY V1, V2, V4, V5; commit `feat(identity): ask for the CUIT or DNI first`; push. Verified; commit pending orchestrator gate.
 
 ## Phase 2: Slice 2a-0 — Pre-change fixtures, no behavior change
 

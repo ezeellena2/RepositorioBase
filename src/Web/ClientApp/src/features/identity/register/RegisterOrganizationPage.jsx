@@ -29,7 +29,7 @@ const fieldIds = {
   email: 'register-email',
   password: 'register-password',
 };
-const signedInRegistrationFields = ['legalName', 'cuit'];
+const signedInRegistrationFields = ['cuit', 'legalName'];
 const signInPath = `/login?returnUrl=${encodeURIComponent('/organizations/register')}`;
 
 const focusFirstField = (errors, fields) => {
@@ -127,17 +127,6 @@ export function RegisterOrganizationPage() {
               the fields are asked for in those two groups rather than as one run of four. */}
           <Stack spacing={2}>
             <TextField
-              id="register-legal-name"
-              label={t('register.organization.legalName')}
-              required
-              fullWidth
-              slotProps={requiredField}
-              value={form.legalName}
-              onChange={update(fields.legalName)}
-              error={Boolean(fieldErrors.legalName)}
-              helperText={fieldErrorText(fieldErrors, fields.legalName, t) || undefined}
-            />
-            <TextField
               id="register-cuit"
               label={t('register.organization.cuit')}
               required
@@ -147,6 +136,17 @@ export function RegisterOrganizationPage() {
               onChange={update(fields.cuit)}
               error={Boolean(fieldErrors.cuit)}
               helperText={fieldErrorText(fieldErrors, fields.cuit, t) || undefined}
+            />
+            <TextField
+              id="register-legal-name"
+              label={t('register.organization.legalName')}
+              required
+              fullWidth
+              slotProps={requiredField}
+              value={form.legalName}
+              onChange={update(fields.legalName)}
+              error={Boolean(fieldErrors.legalName)}
+              helperText={fieldErrorText(fieldErrors, fields.legalName, t) || undefined}
             />
           </Stack>
           {!signedIn && (

@@ -77,9 +77,9 @@ const personalFieldNames = {
   password: 'password',
 };
 const addPersonalContextFields = [
+  personalFieldNames.documentNumber,
   personalFieldNames.fullName,
   personalFieldNames.displayName,
-  personalFieldNames.documentNumber,
 ];
 const personalProfileFields = [personalFieldNames.fullName, personalFieldNames.displayName];
 
@@ -157,6 +157,17 @@ export function PersonalRegisterPage() {
               the organization signup asks for the company and then for the person who will sign in for it. */}
           <Stack spacing={2}>
             <TextField
+              id="personal-document"
+              label={DocumentType}
+              required
+              fullWidth
+              slotProps={numericDocumentField}
+              value={form.documentNumber}
+              onChange={update(personalFieldNames.documentNumber)}
+              error={Boolean(fieldErrors.documentNumber)}
+              helperText={fieldErrorText(fieldErrors, personalFieldNames.documentNumber, t) || undefined}
+            />
+            <TextField
               id="personal-full-name"
               label={t('identity:people.fullName')}
               required
@@ -177,17 +188,6 @@ export function PersonalRegisterPage() {
               onChange={update(personalFieldNames.displayName)}
               error={Boolean(fieldErrors.displayName)}
               helperText={fieldErrorText(fieldErrors, personalFieldNames.displayName, t) || undefined}
-            />
-            <TextField
-              id="personal-document"
-              label={DocumentType}
-              required
-              fullWidth
-              slotProps={numericDocumentField}
-              value={form.documentNumber}
-              onChange={update(personalFieldNames.documentNumber)}
-              error={Boolean(fieldErrors.documentNumber)}
-              helperText={fieldErrorText(fieldErrors, personalFieldNames.documentNumber, t) || undefined}
             />
           </Stack>
           <Stack spacing={2}>
@@ -350,9 +350,9 @@ function AddPersonalContext({ client, notice, onAdded }) {
   useEffect(() => {
     const next = selectFieldErrors(problem, addPersonalContextFields);
     for (const [field, id] of [
+      ['documentNumber', 'add-personal-document'],
       ['fullName', 'add-personal-full-name'],
       ['displayName', 'add-personal-display-name'],
-      ['documentNumber', 'add-personal-document'],
     ]) {
       if (next[field]) {
         document.getElementById(id)?.focus();
@@ -385,6 +385,17 @@ function AddPersonalContext({ client, notice, onAdded }) {
         {notice}
         <ProblemMessage problem={problem} claimedFields={claimedFieldNames(problem, addPersonalContextFields)} />
         <TextField
+          id="add-personal-document"
+          label={DocumentType}
+          required
+          fullWidth
+          slotProps={numericDocumentField}
+          value={form.documentNumber}
+          onChange={update(personalFieldNames.documentNumber)}
+          error={Boolean(fieldErrors.documentNumber)}
+          helperText={fieldErrorText(fieldErrors, personalFieldNames.documentNumber, t) || undefined}
+        />
+        <TextField
           id="add-personal-full-name"
           label={t('identity:people.fullName')}
           required
@@ -405,17 +416,6 @@ function AddPersonalContext({ client, notice, onAdded }) {
           onChange={update(personalFieldNames.displayName)}
           error={Boolean(fieldErrors.displayName)}
           helperText={fieldErrorText(fieldErrors, personalFieldNames.displayName, t) || undefined}
-        />
-        <TextField
-          id="add-personal-document"
-          label={DocumentType}
-          required
-          fullWidth
-          slotProps={numericDocumentField}
-          value={form.documentNumber}
-          onChange={update(personalFieldNames.documentNumber)}
-          error={Boolean(fieldErrors.documentNumber)}
-          helperText={fieldErrorText(fieldErrors, personalFieldNames.documentNumber, t) || undefined}
         />
         <Button type="submit" variant="contained" disabled={isBusy} sx={startOfRow}>
           {t('identity:people.context.submit')}
