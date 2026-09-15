@@ -1,0 +1,50 @@
+change: account-setup-onboarding
+project: repositoriobase
+phase: apply
+artifact_store: hybrid
+session_preflight:
+  pace: auto
+  artifacts: hybrid
+  delivery_strategy: ask-on-risk
+  chain_strategy: stacked-to-main
+preproposal_revision: 3
+artifacts:
+  explore: engram-only
+  research: not_selected
+  preproposal: true
+  proposal: true
+  specs: true
+  design: true
+  tasks: true
+  apply_progress: false
+  verify_report: false
+  archive_report: false
+gates:
+  propose: pass on 2026-09-15 (hybrid bytes equal, 5130)
+  spec: >-
+    pass on 2026-09-15 (20 requirements, 75 scenarios; the sdd-spec 650-word budget is exceeded because MODIFIED
+    blocks reproduce whole baseline requirements and every population needs coverage). Amended on 2026-09-15 with the
+    design's W4 wording for the scenario "A signed-in caller submits a claimed CUIT"; hybrid bytes equal, 47651.
+  design: >-
+    PASS on 2026-09-15 after the single permitted corrective re-run (hybrid bytes equal, 45579). History: first
+    validation PASS with six warnings, first corrective pass, re-validation FAIL on CRITICAL C1 (journeys not run on
+    every slice), corrective re-run, final validation PASS. Follow-ups W-A, W-B and S-a to S-e were applied by sdd-tasks.
+  tasks: >-
+    PASS on 2026-09-15 (hybrid bytes equal, 46253; 16 slices, 139 tasks, 69 RED; the four forecast guard lines are
+    present; the sdd-tasks 530-word budget is exceeded, as allowed).
+decisions:
+  delivery_cut: >-
+    The user answered "Corte: 16 cortes" on 2026-09-15. Apply the 16 slices in tasks.md order, one verified commit per
+    slice; use the planned fallback cut when a slice measures above 400 changed lines, and stop to ask for a size
+    exception if a part still exceeds 400. The planning package is committed first in its own docs(openspec) commit,
+    and only that documentation commit carries an approved size exception.
+apply_followups:
+  - Journeys (V4) and the Aspire-bearing .NET projects need Docker Desktop running.
+  - Slice 3a's fallback cut keeps 3a-i and 3a-ii tests in one file (SetupRequiredTests.cs); if the cut is used, keep each commit's staged tests coherent without interactive staging.
+  - strict_tdd true; previous apply-progress none; runtime-bearing apply and verify use gentle-ai sdd-attempt acquire and settle.
+archive_followups:
+  - The identity-access baseline Purpose and Current boundaries paragraphs still say account setup is absent; archive updates them.
+tasks_progress:
+  completed: []
+  pending: [1, 2a-0, 2a-i, 2a-ii, 2b, 3a, 3b, 4, 5a-i, 5a-ii, 5b, 6a-i, 6a-ii, 6b, 7a, 7b]
+last_updated: 2026-09-15
